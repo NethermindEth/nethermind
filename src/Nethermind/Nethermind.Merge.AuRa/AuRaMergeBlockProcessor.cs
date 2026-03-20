@@ -18,11 +18,14 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
+using System.Threading.Tasks;
+using Nethermind.Consensus.AuRa.Config;
 
 namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor(
     ISpecProvider specProvider,
+    AuRaChainSpecEngineParameters chainSpecEngineParameters,
     IBlockValidator blockValidator,
     IRewardCalculator rewardCalculator,
     IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -38,6 +41,7 @@ public class AuRaMergeBlockProcessor(
     AuRaContractGasLimitOverride? gasLimitOverride = null,
     ContractRewriter? contractRewriter = null)
     : AuRaBlockProcessor(specProvider,
+        chainSpecEngineParameters,
         blockValidator,
         rewardCalculator,
         blockTransactionsExecutor,
@@ -53,7 +57,7 @@ public class AuRaMergeBlockProcessor(
         gasLimitOverride,
         contractRewriter)
 {
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token) =>
+    protected override Task<TxReceipt[]> ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token) =>
         block.IsPostMerge
             ? PostMergeProcessBlock(block, blockTracer, options, spec, token)
             : base.ProcessBlock(block, blockTracer, options, spec, token);

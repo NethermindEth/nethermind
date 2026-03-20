@@ -48,18 +48,22 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
             {
                 throw new RlpException("Storage reads were in incorrect order.");
             }
+            if (slotChangesList.ContainsKey(storageRead.Key))
+            {
+                throw new RlpException("Invalid storage read, already in storage changes.");
+            }
             storageReadsList.Add(storageRead);
             lastRead = storageRead;
         }
 
         BalanceChange[] balanceChanges = ctx.DecodeArray(BalanceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
+        SortedList<int, BalanceChange> balanceChangesList = ToSortedByIndex(balanceChanges, "Balance");
 
         NonceChange[] nonceChanges = ctx.DecodeArray(NonceChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
+        SortedList<int, NonceChange> nonceChangesList = ToSortedByIndex(nonceChanges, "Nonce");
 
         CodeChange[] codeChanges = ctx.DecodeArray(CodeChangeDecoder.Instance, true, default, _txLimit);
-        SortedList<ushort, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
+        SortedList<int, CodeChange> codeChangesList = ToSortedByIndex(codeChanges, "Code");
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
         {
@@ -103,14 +107,14 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         return Rlp.LengthOfSequence(length);
     }
 
-    private static SortedList<ushort, T> ToSortedByIndex<T>(T[] items, string changeName)
+    private static SortedList<int, T> ToSortedByIndex<T>(T[] items, string changeName)
         where T : struct, IIndexedChange
     {
-        ushort? lastIndex = null;
-        SortedList<ushort, T> sorted = new(items.Length);
+        int? lastIndex = null;
+        SortedList<int, T> sorted = new(items.Length);
         foreach (T item in items)
         {
-            ushort index = item.BlockAccessIndex;
+            int index = item.BlockAccessIndex;
             if (lastIndex is not null && index <= lastIndex)
             {
                 throw new RlpException($"{changeName} changes were in incorrect order.");

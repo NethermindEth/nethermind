@@ -7,6 +7,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.State;
 using Nethermind.Taiko.BlockTransactionExecutors;
+using Nethermind.Config;
 
 namespace Nethermind.Taiko;
 

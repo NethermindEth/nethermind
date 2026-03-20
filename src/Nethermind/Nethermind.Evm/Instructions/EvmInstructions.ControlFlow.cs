@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -180,7 +180,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -233,16 +233,16 @@ internal static partial class EvmInstructions
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount);
+        UInt256 result = state.GetBalance(executingAccount, vm.TxExecutionContext.BlockAccessIndex);
 
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // Charge gas if transferring to a dead or non-existent account.
-        bool inheritorAccountExists = state.AccountExists(inheritor);
+        bool inheritorAccountExists = state.AccountExists(inheritor, vm.TxExecutionContext.BlockAccessIndex);
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            true => !result.IsZero && state.IsDeadAccount(inheritor),
+            true => !result.IsZero && state.IsDeadAccount(inheritor, vm.TxExecutionContext.BlockAccessIndex),
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
@@ -257,11 +257,12 @@ internal static partial class EvmInstructions
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
         {
-            state.CreateAccount(inheritor, result);
+            // should only be recorded if result != 0 ?
+            state.CreateAccount(inheritor, result, blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec);
+            state.AddToBalance(inheritor, result, spec, vm.TxExecutionContext.BlockAccessIndex);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -272,9 +273,9 @@ internal static partial class EvmInstructions
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec);
+        state.SubtractFromBalance(executingAccount, result, spec, vm.TxExecutionContext.BlockAccessIndex);
 
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:

@@ -54,8 +54,8 @@ namespace Nethermind.Core
         public bool SupportsBlobs => Type.SupportsBlobs();
         public bool SupportsAuthorizationList => Type.SupportsAuthorizationList();
         public long GasLimit { get; set; }
-        private long _spentGas;
-        private long _blockGasUsed;
+        public long _spentGas;
+        public long _blockGasUsed;
         [JsonIgnore]
         public long SpentGas { get => _spentGas > 0 ? _spentGas : GasLimit; set => _spentGas = value; }
         /// <summary>
@@ -64,6 +64,8 @@ namespace Nethermind.Core
         /// </summary>
         [JsonIgnore]
         public long BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
+        [JsonIgnore]
+        public long BlockGasUsedTest { get => _blockGasUsed > 0 ? _blockGasUsed : SpentGas; set => _blockGasUsed = value; }
         public Address? To { get; set; }
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
@@ -207,6 +209,9 @@ namespace Nethermind.Core
         public ulong PoolIndex { get; set; }
 
         protected int? _size = null;
+
+        [JsonIgnore]
+        public int BlockAccessIndex { get; set; }
 
         /// <summary>
         /// Encoded transaction length

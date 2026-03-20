@@ -3,6 +3,7 @@
 
 using System;
 using System.Globalization;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -235,7 +236,7 @@ class Program
         return result;
     }
 
-    static int Main()
+    static async Task<int> Main()
     {
         using Witness witness = new Witness()
         {
@@ -269,7 +270,7 @@ class Program
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        (Block processed, TxReceipt[] _) = blockProcessor.ProcessOne(suggestedBlock,
+        (Block processed, TxReceipt[] _) = await blockProcessor.ProcessOne(suggestedBlock,
             ProcessingOptions.ReadOnlyChain, NullBlockTracer.Instance, specProvider.GetSpec(suggestedBlock.Header));
 
         return processed.Hash != suggestedBlock.Hash

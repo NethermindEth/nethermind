@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -329,13 +330,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            using var handle = Thread.CurrentThread.SetHighestPriority();
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
             try
             {
-                ProcessBlocks();
+                await ProcessBlocks();
             }
             finally
             {
@@ -354,7 +355,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
     }
 
-    private void ProcessBlocks()
+    private async Task ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
         while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
@@ -370,7 +371,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
+                (Block? processedBlock, string? error) = await Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken);
 
                 if (processedBlock is null)
                 {
@@ -434,15 +435,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default) =>
-        Process(suggestedBlock, options, tracer, token, out _);
-
-    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    public async Task<(Block?, string?)> Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
-        error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
-            return null;
+            return (null, null);
         }
 
         UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
@@ -456,7 +453,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!shouldProcess)
         {
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, Head = {_blockTree.Head?.Header?.ToString(BlockHeader.Format.Short)}, total diff = {totalDifficulty}, head total diff = {_blockTree.Head?.TotalDifficulty}");
-            return null;
+            return (null, null);
         }
 
         bool readonlyChain = options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
@@ -466,11 +463,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
+        (Block[]? processedBlocks, string? error) = await ProcessBranch(processingBranch, options, tracer, token);
+
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
-            return null;
+            return (null, error);
         }
 
         Block? lastProcessed = null;
@@ -513,7 +511,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             Metrics.BestKnownBlockNumber = _blockTree.BestKnownNumber;
         }
 
-        return lastProcessed;
+        return (lastProcessed, error);
     }
 
     public bool IsProcessingBlocks(ulong? maxProcessingInterval) =>
@@ -545,7 +543,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token, out string? error)
+    private async Task<(Block[]?, string?)> ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -561,9 +559,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         Hash256? invalidBlockHash = null;
         Block[]? processedBlocks;
+        string? error = null;
         try
         {
-            processedBlocks = _branchProcessor.Process(
+            processedBlocks = await _branchProcessor.Process(
                 processingBranch.BaseBlock,
                 processingBranch.BlocksToProcess,
                 options,
@@ -619,7 +618,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
         }
 
-        return processedBlocks;
+        return (processedBlocks, error);
     }
 
     private void PrepareBlocksToProcess(Block suggestedBlock, ProcessingOptions options, ProcessingBranch processingBranch)
@@ -884,7 +883,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     [DebuggerDisplay("Root: {Root}, Length: {BlocksToProcess.Count}")]
-    private readonly ref struct ProcessingBranch(BlockHeader? baseBlock, ArrayPoolList<Block> blocks)
+    private readonly struct ProcessingBranch(BlockHeader? baseBlock, ArrayPoolList<Block> blocks) : IDisposable
     {
         public BlockHeader? BaseBlock { get; } = baseBlock;
         public ArrayPoolList<Block> Blocks { get; } = blocks;

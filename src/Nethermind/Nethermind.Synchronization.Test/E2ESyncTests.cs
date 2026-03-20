@@ -744,12 +744,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 remove => blockProcessor.TransactionsExecuted -= value;
             }
 
-            public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options,
+            public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options,
                 IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token = default)
             {
                 try
                 {
-                    return blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                    return await blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
                 catch (Exception ex)
                 {

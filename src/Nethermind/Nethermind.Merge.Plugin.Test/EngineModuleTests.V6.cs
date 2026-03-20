@@ -23,10 +23,8 @@ using Nethermind.TxPool;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Test;
 using System;
-using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -304,14 +302,14 @@ public partial class EngineModuleTests
             ? errorKind switch
             {
                 BalErrorKind.IncorrectChange => "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
-                BalErrorKind.MissingChange => "InvalidBlockLevelAccessList: Suggested block-level access list missing account changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 2.",
+                BalErrorKind.MissingChange => "InvalidBlockLevelAccessList: Account 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 not found in block access list when checking existence at index 2.",
                 BalErrorKind.SurplusChange => "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
                 _ => "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
             }
             : errorKind switch
             {
                 BalErrorKind.IncorrectChange => "incorrect changes",
-                BalErrorKind.MissingChange => "missing account changes",
+                BalErrorKind.MissingChange => "not found in block access list",
                 BalErrorKind.SurplusChange => "surplus changes",
                 _ => "invalid storage reads",
             };
@@ -860,7 +858,7 @@ public partial class EngineModuleTests
 
             if (errorKind is BalErrorKind.SurplusChange)
             {
-                SortedList<ushort, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
+                SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
                     TestItem.AddressF, new(), new SortedSet<StorageRead>(), new(), fakeNonce, new());
             }
@@ -882,8 +880,8 @@ public partial class EngineModuleTests
         SortedList<UInt256, SlotChanges> storageChanges = new();
         foreach (SlotChanges sc in ac.StorageChanges)
         {
-            SortedList<ushort, StorageChange> changes = new();
-            foreach (KeyValuePair<ushort, StorageChange> kvp in sc.Changes)
+            SortedList<int, StorageChange> changes = new();
+            foreach (KeyValuePair<int, StorageChange> kvp in sc.Changes)
                 changes.Add(kvp.Key, kvp.Value);
 
             storageChanges.Add(sc.Slot, sc with { Changes = changes });
@@ -891,18 +889,18 @@ public partial class EngineModuleTests
 
         SortedSet<StorageRead> storageReads = new(ac.StorageReads);
 
-        SortedList<ushort, BalanceChange> balanceChanges = new();
+        SortedList<int, BalanceChange> balanceChanges = new();
         foreach (BalanceChange bc in ac.BalanceChanges)
         {
             BalanceChange modified = balanceModifier?.Invoke(bc) ?? bc;
             balanceChanges.Add(modified.BlockAccessIndex, modified);
         }
 
-        SortedList<ushort, NonceChange> nonceChanges = new();
+        SortedList<int, NonceChange> nonceChanges = new();
         foreach (NonceChange nc in ac.NonceChanges)
             nonceChanges.Add(nc.BlockAccessIndex, nc);
 
-        SortedList<ushort, CodeChange> codeChanges = new();
+        SortedList<int, CodeChange> codeChanges = new();
         foreach (CodeChange cc in ac.CodeChanges)
             codeChanges.Add(cc.BlockAccessIndex, cc);
 

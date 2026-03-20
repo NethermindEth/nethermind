@@ -341,7 +341,7 @@ public class CliqueBlockProducer : IBlockProducer
         }
 
         if (_logger.IsInfo) _logger.Info($"Processing prepared block {block.Number}");
-        Block? processedBlock = _processor.Process(
+        (Block? processedBlock, string? _) = await _processor.Process(
             block,
             ProcessingOptions.ProducingBlock,
             NullBlockTracer.Instance,

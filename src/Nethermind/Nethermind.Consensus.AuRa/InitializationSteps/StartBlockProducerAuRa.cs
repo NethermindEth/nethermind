@@ -168,6 +168,7 @@ public class StartBlockProducerAuRa(
 
         return new AuRaBlockProcessor(
             specProvider,
+            _parameters,
             blockValidator,
             rewardCalculatorSource.Get(txProcessor),
             transactionExecutor,

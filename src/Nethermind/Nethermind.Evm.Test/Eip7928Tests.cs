@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -14,11 +15,14 @@ using Nethermind.Core.Precompiles;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -933,6 +937,178 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             changes = [testAccount];
             yield return new TestCaseData(changes, code, null, GasCostOf.SelfDestructEip150, EvmExceptionType.StackUnderflow)
             { TestName = "selfdestruct_stack_underflow" };
+        }
+    }
+
+    [Test]
+    [TestCase("0x0000000000000000000000000000000000000004", TestName = "Precompile")]
+    [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
+    public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
+    {
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
+        worldState.TracingEnabled = true;
+
+        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
+
+        repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(new(address));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(accountChanges, Is.Not.Null);
+            Assert.That(accountChanges.BalanceChanges, Is.Empty);
+            Assert.That(accountChanges.NonceChanges, Is.Empty);
+            Assert.That(accountChanges.CodeChanges, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void CodeInfoRepository_getcachedcodeinfo_delegated_records_account_read_in_bal()
+    {
+        byte[] targetCode = [(byte)Instruction.STOP];
+        Address delegationTarget = TestItem.AddressC;
+        Address delegatedAccount = TestItem.AddressD;
+
+        TestState.CreateAccount(delegationTarget, 0);
+        TestState.InsertCode(delegationTarget, targetCode, SpecProvider.GenesisSpec);
+
+        byte[] delegationCode = [.. Eip7702Constants.DelegationHeader, .. delegationTarget.Bytes];
+        TestState.CreateAccount(delegatedAccount, 0);
+        TestState.InsertCode(delegatedAccount, delegationCode, SpecProvider.GenesisSpec);
+
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
+        worldState.TracingEnabled = true;
+
+        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
+            // Both the delegated account and the delegation target are traced as account reads in the BAL
+            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegatedAccount), Is.Not.Null);
+            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegationTarget), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void CodeInfoRepository_parallel_world_state_uses_address_based_code_lookup()
+    {
+        byte[] code = [(byte)Instruction.STOP];
+        Address testAddress = TestItem.AddressB;
+
+        IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
+        using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
+
+        ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
+        pws.Inner.CreateAccount(testAddress, 0);
+        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
+        pws.Inner.Commit(SpecProvider.GenesisSpec);
+        pws.Inner.CommitTree(0);
+
+        pws.TracingEnabled = true;
+        pws.IsGenesis = false;
+
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(testAddress);
+        pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
+        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
+
+        CodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        pws.MergeIntermediateBalsUpTo(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Code is served from the suggested BAL via address-based lookup (not hash-based inner-state lookup)
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(delegationAddress, Is.Null);
+            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_tracing_records_account_read_in_bal()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] code = [(byte)Instruction.STOP];
+        ParallelWorldState worldState = (ParallelWorldState)TestState;
+
+        // Set up state via inner world state to avoid polluting the BAL before the test begins
+        IWorldState innerState = worldState.Inner;
+        innerState.CreateAccount(TestItem.AddressB, 0);
+        innerState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
+        innerState.Commit(SpecProvider.GenesisSpec);
+        innerState.CommitTree(0);
+
+        worldState.TracingEnabled = true;
+
+        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(delegationAddress, Is.Null);
+            // GetCachedCodeInfo records a pure account read even through the cache layer
+            Assert.That(accountChanges, Is.Not.Null);
+            Assert.That(accountChanges!.BalanceChanges, Is.Empty);
+            Assert.That(accountChanges.NonceChanges, Is.Empty);
+            Assert.That(accountChanges.CodeChanges, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void CacheCodeInfoRepository_parallel_execution_retrieves_code_from_suggested_bal()
+    {
+        CacheCodeInfoRepository.Clear();
+
+        byte[] code = [(byte)Instruction.STOP];
+        Address testAddress = TestItem.AddressB;
+
+        IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
+        using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
+
+        // Commit code into the inner world state
+        ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
+        pws.Inner.CreateAccount(testAddress, 0);
+        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
+        pws.Inner.Commit(SpecProvider.GenesisSpec);
+        pws.Inner.CommitTree(0);
+
+        // Enable parallel execution: tracing on, mark as non-genesis
+        pws.TracingEnabled = true;
+        pws.IsGenesis = false;
+
+        // Load suggested BAL — LoadPreBlockState reads code from inner state into the BAL entry
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(testAddress);
+        pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
+        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
+
+        CacheCodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+
+        // Merge the intermediate BAL for index 0 so the account read is visible in GeneratedBlockAccessList
+        pws.MergeIntermediateBalsUpTo(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Code is served from the suggested BAL via address-based lookup through the cache layer
+            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
+            Assert.That(delegationAddress, Is.Null);
+            // The address-based code access is traced in the BAL even when the cache is involved
+            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
         }
     }
 }
