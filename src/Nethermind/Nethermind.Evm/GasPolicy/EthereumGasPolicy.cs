@@ -251,7 +251,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             false => UpdateGas(ref gas, GasCostOf.NewAccount)
         };
     }
-        
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)
     {
