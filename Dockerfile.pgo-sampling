@@ -55,14 +55,23 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-# Install dotnet-trace and use it as the entrypoint wrapper.
-# --profile cpu-sampling enables managed thread stack sampling.
-# The .nettrace is written to /nethermind/pgo/ when the process exits.
+# Install dotnet-trace for CPU sampling.
 RUN dotnet tool install -g dotnet-trace
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
-ENTRYPOINT ["dotnet-trace", "collect", \
-  "--profile", "dotnet-sampled-thread-time", \
-  "--show-child-io", \
-  "--output", "/nethermind/pgo/sampling", \
-  "--", "./nethermind"]
+# Entrypoint that forwards SIGTERM as SIGINT to dotnet-trace so it
+# finalizes the .nettrace cleanly before the container stops.
+COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
+#!/bin/sh
+dotnet-trace collect \
+  --profile dotnet-sampled-thread-time \
+  --show-child-io \
+  --output /nethermind/pgo/sampling \
+  -- ./nethermind "$@" &
+child=$!
+trap "kill -INT $child 2>/dev/null; wait $child" TERM
+wait $child
+SCRIPT
+RUN chmod +x /nethermind/trace-entrypoint.sh
+
+ENTRYPOINT ["./trace-entrypoint.sh"]
