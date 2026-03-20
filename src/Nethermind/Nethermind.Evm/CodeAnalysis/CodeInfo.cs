@@ -20,22 +20,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    protected CodeInfo(IPrecompile precompile, int version, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Version = version;
-        Code = code;
-        _analyzer = null;
-    }
-
-    // Eof
-    protected CodeInfo(int version, ReadOnlyMemory<byte> code)
-    {
-        Version = version;
-        Code = code;
-        _analyzer = null;
-    }
-
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
@@ -55,19 +39,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public IPrecompile? Precompile { get; }
 
-    private readonly JumpDestinationAnalyzer _analyzer;
+    private readonly JumpDestinationAnalyzer? _analyzer;
 
     public bool IsEmpty => ReferenceEquals(_analyzer, _emptyAnalyzer);
     public bool IsPrecompile => Precompile is not null;
 
     public bool ValidateJump(int destination)
         => _analyzer?.ValidateJump(destination) ?? false;
-
-    /// <summary>
-    /// Gets the version of the code format.
-    /// The default implementation returns 0, representing a legacy code format or non-EOF code.
-    /// </summary>
-    public int Version { get; } = 0;
 
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();
@@ -76,7 +54,11 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     {
         if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
         {
+#if ZK_EVM
+            _analyzer.Execute();
+#else
             ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+#endif
         }
     }
 

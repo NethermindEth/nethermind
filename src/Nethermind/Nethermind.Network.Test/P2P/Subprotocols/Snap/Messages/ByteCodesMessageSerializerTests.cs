@@ -16,7 +16,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         {
             ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };
 
-            ByteCodesMessage message = new(data);
+            ByteCodesMessage message = new(new ByteArrayListAdapter(data));
 
             ByteCodesMessageSerializer serializer = new();
 

@@ -73,7 +73,7 @@ public class TxBroadcasterTests
         ManualTimestamper timestamper = new(DateTime.UtcNow);
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 100 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, timestamper: timestamper);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -81,7 +81,7 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -124,7 +124,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -132,7 +132,7 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -203,26 +203,37 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_skip_large_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
+    public void should_skip_large_or_blob_txs_when_picking_best_persistent_txs_to_broadcast(
+        [Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold,
+        [Values(true, false)] bool useBlobTxs)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
-        // add 256 transactions, 10% of them is large
+        // add 256 transactions, 10% of them are not broadcast (large or blob)
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
         Parallel.For(0, addedTxsCount, i =>
         {
-            bool isLarge = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithType(TxType.EIP1559)
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
+            bool isSpecial = i % 10 == 0;
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
+                .WithGasPrice((addedTxsCount - i - 1).GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]);
 
+            if (useBlobTxs)
+            {
+                builder.WithType(isSpecial ? TxType.Blob : TxType.Legacy)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx();
+            }
+            else
+            {
+                builder.WithType(TxType.EIP1559)
+                    .WithData(isSpecial ? new byte[4 * 1024] : []);
+            }
+
+            transactions[i] = builder.TestObject;
             _broadcaster.Broadcast(transactions[i], true);
         });
 
@@ -249,62 +260,16 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
-    {
-        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei();
-
-        // add 256 transactions, 10% of them is blob type
-        int addedTxsCount = TestItem.PrivateKeys.Length;
-        Transaction[] transactions = new Transaction[addedTxsCount];
-
-        Parallel.For(0, addedTxsCount, i =>
-        {
-            bool isBlob = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithGasPrice((addedTxsCount - i - 1).GWei())
-                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
-
-            _broadcaster.Broadcast(transactions[i], true);
-        });
-
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
-
-        // count numbers of expected hashes and full transactions
-        int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
-        int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
-
-        // prepare list of expected full transactions and hashes
-        (IList<Transaction> expectedFullTxs, IList<Hash256> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
-
-        // get hashes and full transactions to broadcast
-        (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
-
-        // check if numbers of full transactions and hashes are correct
-        CheckCorrectness(pickedFullTxs, expectedCountOfNonBlobTxs);
-        CheckCorrectness(pickedHashes, expectedCountOfBlobHashes);
-
-        // check if full transactions and hashes returned by broadcaster are as expected
-        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
-    }
-
-    [Test]
     public void should_not_pick_txs_with_GasPrice_lower_than_CurrentBaseFee([Values(1, 2, 99, 100, 101, 1000)] int threshold)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei();
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei;
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
-            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei)
             .TestObject;
         _blockTree.Head.Returns(headBlock);
 
@@ -314,7 +279,7 @@ public class TxBroadcasterTests
         Parallel.For(0, addedTxsCount, i =>
         {
             transactions[i] = Build.A.Transaction
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -375,10 +340,10 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentBaseFeeInGwei = 250;
-        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei();
+        _headInfo.CurrentBaseFee = currentBaseFeeInGwei.GWei;
         Block headBlock = Build.A.Block
             .WithNumber(MainnetSpecProvider.LondonBlockNumber)
-            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei())
+            .WithBaseFeePerGas(currentBaseFeeInGwei.GWei)
             .TestObject;
         _blockTree.Head.Returns(headBlock);
 
@@ -389,7 +354,7 @@ public class TxBroadcasterTests
         {
             transactions[i] = Build.A.Transaction
                 .WithType(TxType.EIP1559)
-                .WithMaxFeePerGas(i.GWei())
+                .WithMaxFeePerGas(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
 
@@ -420,7 +385,7 @@ public class TxBroadcasterTests
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
 
         const int currentFeePerBlobGas = 250;
-        _headInfo.CurrentFeePerBlobGas = currentFeePerBlobGas.GWei();
+        _headInfo.CurrentFeePerBlobGas = currentFeePerBlobGas.GWei;
 
         // add 256 transactions with MaxFeePerBlobGas 0-255
         int addedTxsCount = TestItem.PrivateKeys.Length;
@@ -430,7 +395,7 @@ public class TxBroadcasterTests
         {
             transactions[i] = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields()
-                .WithMaxFeePerBlobGas(i.GWei())
+                .WithMaxFeePerBlobGas(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
                 .TestObject;
         });
@@ -467,7 +432,7 @@ public class TxBroadcasterTests
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = 5 };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         const int addedTxsCount = 5;
         Transaction[] transactions = new Transaction[addedTxsCount];
@@ -476,7 +441,7 @@ public class TxBroadcasterTests
         {
             transactions[i] = Build.A.Transaction
                 .WithNonce((UInt256)i)
-                .WithGasPrice(i.GWei())
+                .WithGasPrice(i.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
                 .TestObject;
 
@@ -512,7 +477,7 @@ public class TxBroadcasterTests
     public void should_broadcast_full_local_tx_immediately_after_receiving_it()
     {
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -650,7 +615,7 @@ public class TxBroadcasterTests
     {
         ITxGossipPolicy txGossipPolicy = Substitute.For<ITxGossipPolicy>();
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager, txGossipPolicy);
-        _headInfo.CurrentBaseFee = 0.GWei();
+        _headInfo.CurrentBaseFee = 0.GWei;
 
         ISession session = Substitute.For<ISession>();
         session.Node.Returns(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
@@ -741,7 +706,7 @@ public class TxBroadcasterTests
         // Arrange
         IChainHeadInfoProvider mockChainHeadInfoProvider = Substitute.For<IChainHeadInfoProvider>();
         mockChainHeadInfoProvider.CurrentProofVersion.Returns(proofVersion);
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7594Enabled.Returns(versionMatches ? proofVersion == ProofVersion.V1 : proofVersion == ProofVersion.V0);
 
         SpecDrivenTxGossipPolicy gossipPolicy = new(mockChainHeadInfoProvider);

@@ -1,32 +1,25 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Specs.Forks;
+
+public class Byzantium() : NamedReleaseSpec<Byzantium>(SpuriousDragon.Instance)
 {
-    public class Byzantium : SpuriousDragon
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected Byzantium()
-        {
-            Name = "Byzantium";
-            BlockReward = new UInt256(3000000000000000000ul);
-            DifficultyBombDelay = 3000000L;
-            IsEip100Enabled = true;
-            IsEip140Enabled = true;
-            IsEip196Enabled = true;
-            IsEip197Enabled = true;
-            IsEip198Enabled = true;
-            IsEip211Enabled = true;
-            IsEip214Enabled = true;
-            IsEip649Enabled = true;
-            IsEip658Enabled = true;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Byzantium());
+        spec.Name = "Byzantium";
+        spec.BlockReward = new UInt256(3000000000000000000ul);
+        spec.DifficultyBombDelay = 3000000L;
+        spec.IsEip100Enabled = true;
+        spec.IsEip140Enabled = true;
+        spec.IsEip196Enabled = true;
+        spec.IsEip197Enabled = true;
+        spec.IsEip198Enabled = true;
+        spec.IsEip211Enabled = true;
+        spec.IsEip214Enabled = true;
+        spec.IsEip649Enabled = true;
+        spec.IsEip658Enabled = true;
     }
 }

@@ -22,15 +22,15 @@ namespace Nethermind.Core.Collections;
 ///
 /// Hash bit partitioning (64-bit hash):
 ///   Bits  0-13: way 0 set index (14 bits)
-///   Bits 14-41: hash signature stored in header (28 bits)
+///   Bits 22-41: hash signature stored in header (20 bits)
 ///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
 ///
 /// Header layout (64-bit):
-/// [Lock:1][Epoch:26][Hash:28][Seq:8][Occ:1]
+/// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
 /// - Lock (bit 63): set during writes - readers retry/miss
 /// - Epoch (bits 37-62): global epoch tag - changes on Clear()
-/// - Hash  (bits  9-36): per-bucket hash signature (28 bits)
-/// - Seq   (bits  1- 8): per-entry sequence counter (8 bits) - increments on every successful write
+/// - Hash  (bits 17-36): per-bucket hash signature (20 bits)
+/// - Seq   (bits  1-16): per-entry sequence counter (16 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
 /// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
@@ -49,16 +49,16 @@ public sealed class SeqlockCache<TKey, TValue>
     private const int SetMask = Sets - 1;
 
     // Header bit layout:
-    // [Lock:1][Epoch:26][Hash:28][Seq:8][Occ:1]
+    // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
 
     private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
 
     private const int EpochShift = 37;
     private const long EpochMask = 0x7FFF_FFE0_0000_0000;                  // bits 37-62 (26 bits)
 
-    private const long HashMask = 0x0000_0001_FFFF_FE00;                   // bits 9-36 (28 bits)
+    private const long HashMask = 0x0000_001F_FFFE_0000;                   // bits 17-36 (20 bits)
 
-    private const long SeqMask = 0x0000_0000_0000_01FE;                    // bits 1-8 (8 bits)
+    private const long SeqMask = 0x0000_0000_0001_FFFE;                    // bits 1-16 (16 bits)
     private const long SeqInc = 0x0000_0000_0000_0002;                    // +1 in seq field
 
     private const long OccupiedBit = 1L;                                   // bit 0
@@ -69,8 +69,8 @@ public sealed class SeqlockCache<TKey, TValue>
     // Mask for checking if an entry is live in the current epoch.
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
-    // With 14-bit set index (bits 0-13) for way 0, hash signature needs bits 14+.
-    // HashShift=5 maps header bits 9-36 to original bits 14-41, avoiding overlap with both ways.
+    // With 14-bit set index (bits 0-13) for way 0, hash signature needs independent bits.
+    // HashShift=5 maps header bits 17-36 to original bits 22-41, avoiding overlap with both ways.
     private const int HashShift = 5;
 
     // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
@@ -130,8 +130,12 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e0.Key;
+            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -147,8 +151,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e1.Key;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -169,11 +175,27 @@ public sealed class SeqlockCache<TKey, TValue>
     public delegate TValue? ValueFactory(in TKey key);
 
     /// <summary>
+    /// Delegate-based factory with state parameter to avoid closure/delegate allocations.
+    /// Cache the delegate in a static field and pass instance state via <paramref name="state"/>.
+    /// </summary>
+    public delegate TValue? ValueFactory<TState>(in TKey key, TState state);
+
+    /// <summary>
     /// Gets a value from the cache, or adds it using the factory if not present.
+    /// Delegates to the state-based overload to avoid code duplication.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+        => GetOrAdd(in key, valueFactory, static (in TKey k, ValueFactory f) => f(in k));
+
+    /// <summary>
+    /// Gets a value from the cache, or adds it using the factory with state if not present.
+    /// Use this overload to avoid per-call delegate allocations by passing a static method
+    /// and the required state separately.
     /// </summary>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public TValue? GetOrAdd(in TKey key, ValueFactory valueFactory)
+    public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
     {
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & SetMask;
@@ -185,7 +207,7 @@ public sealed class SeqlockCache<TKey, TValue>
             return value;
         }
 
-        return GetOrAddMiss(in key, valueFactory, idx0, idx1, hashPart);
+        return GetOrAddMiss(in key, state, valueFactory, idx0, idx1, hashPart);
     }
 
     /// <summary>
@@ -194,9 +216,9 @@ public sealed class SeqlockCache<TKey, TValue>
     /// with minimal register saves and stack frame.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private TValue? GetOrAddMiss(in TKey key, ValueFactory valueFactory, int idx0, int idx1, long hashPart)
+    private TValue? GetOrAddMiss<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory, int idx0, int idx1, long hashPart)
     {
-        TValue? value = valueFactory(in key);
+        TValue? value = valueFactory(in key, state);
         SetCore(in key, value, idx0, idx1, hashPart);
         return value;
     }
@@ -221,8 +243,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e0.Key;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -238,8 +262,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
-            ref readonly TKey storedKey = ref e1.Key;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -269,8 +295,9 @@ public sealed class SeqlockCache<TKey, TValue>
         // === Way 0: check for matching key ===
         if (h0 >= 0 && (h0 & TagMask) == tagToStore)
         {
-            ref readonly TKey k0 = ref e0.Key;
+            TKey k0 = e0.Key;
             TValue? v0 = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
@@ -288,8 +315,9 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if (h1 >= 0 && (h1 & TagMask) == tagToStore)
         {
-            ref readonly TKey k1 = ref e1.Key;
+            TKey k1 = e1.Key;
             TValue? v1 = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))
@@ -310,7 +338,7 @@ public sealed class SeqlockCache<TKey, TValue>
         bool pick0;
         if (!h0Live && h0 >= 0) pick0 = true;
         else if (!h1Live && h1 >= 0) pick0 = false;
-        else if (h0Live && h1Live) pick0 = (hashPart & (1L << 9)) != 0;
+        else if (h0Live && h1Live) pick0 = (hashPart & (1L << 17)) != 0;
         else if (h0 >= 0) pick0 = true;
         else if (h1 >= 0) pick0 = false;
         else return; // both locked, skip

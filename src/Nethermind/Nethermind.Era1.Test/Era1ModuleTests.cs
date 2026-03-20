@@ -30,7 +30,6 @@ public class Era1ModuleTests
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
         using var tmpFile = TempPath.GetTempFile();
-        using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -51,9 +50,12 @@ public class Era1ModuleTests
             .WithAllFieldsFilled
             .TestObject;
 
-        await builder.Add(block0, new[] { receipt0 });
-        await builder.Add(block1, new[] { receipt1 });
-        await builder.Finalize();
+        using (EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>()))
+        {
+            await builder.Add(block0, new[] { receipt0 });
+            await builder.Add(block1, new[] { receipt1 });
+            await builder.Finalize();
+        }
 
         using EraReader reader = new EraReader(tmpFile.Path);
 
@@ -93,15 +95,17 @@ public class Era1ModuleTests
             var readFromFile = new List<(Block b, TxReceipt[] r)>();
 
             using var tmpFile = TempPath.GetTempFile();
-            using var builder = new EraWriter(tmpFile.Path, specProvider);
-
-            using var eraEnumerator = new EraReader(era);
-            await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
             {
-                await builder.Add(b, r);
-                readFromFile.Add((b, r));
+                using var builder = new EraWriter(tmpFile.Path, specProvider);
+
+                using var eraEnumerator = new EraReader(era);
+                await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
+                {
+                    await builder.Add(b, r);
+                    readFromFile.Add((b, r));
+                }
+                await builder.Finalize();
             }
-            await builder.Finalize();
 
             using EraReader exportedToImported = new EraReader(tmpFile.Path);
             int i = 0;
@@ -121,7 +125,7 @@ public class Era1ModuleTests
         TestBlockchain testBlockchain = await BasicTestBlockchain.Create(
             configurer: (builder) => builder.WithGenesisPostProcessor((block, state, specProvider) =>
             {
-                state.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                state.AddToBalance(TestItem.AddressA, 10.Ether, specProvider.GenesisSpec);
             })
         );
 
@@ -157,14 +161,16 @@ public class Era1ModuleTests
         }
 
         blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
-        using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
-
-        foreach (var block in blocks)
         {
-            await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
-        }
+            using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
 
-        await builder.Finalize();
+            foreach (var block in blocks)
+            {
+                await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
+            }
+
+            await builder.Finalize();
+        }
 
         using EraReader eraReader = new EraReader(tmpFile.Path);
 
@@ -186,14 +192,16 @@ public class Era1ModuleTests
         int numOfBlocks = 12;
         await testBlockchain.BuildSomeBlocks(numOfBlocks);
 
-        using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
-        foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
         {
-            await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
+            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
+            foreach ((Block, TxReceipt[]) blockAndReceipt in toAddBlocks)
+            {
+                await builder.Add(blockAndReceipt.Item1, blockAndReceipt.Item2);
+            }
+            await builder.Finalize();
         }
-        await builder.Finalize();
 
-        using SafeFileHandle file = File.OpenHandle(tmpFile.Path, FileMode.Open);
+        using SafeFileHandle file = File.OpenHandle(tmpFile.Path, FileMode.Open, FileAccess.Read, FileShare.Read);
         using E2StoreReader fileReader = new E2StoreReader(tmpFile.Path);
         Assert.That(fileReader.BlockCount, Is.EqualTo(numOfBlocks));
         byte[] buf = new byte[2];
@@ -218,13 +226,12 @@ public class Era1ModuleTests
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
                 new FunctionalGenesisPostProcessor((block) =>
                 {
-                    worldState.AddToBalance(TestItem.AddressA, 10.Ether(), specProvider.GenesisSpec);
+                    worldState.AddToBalance(TestItem.AddressA, 10.Ether, specProvider.GenesisSpec);
                     worldState.RecalculateStateRoot();
                 }));
         });
 
         using var tmpFile = TempPath.GetTempFile();
-        using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
@@ -258,14 +265,17 @@ public class Era1ModuleTests
 
         testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
-        foreach (var block in blocks)
         {
-            foreach (var item in block.Transactions)
-                item.SenderAddress = null;
-            await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
-        }
+            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
+            foreach (var block in blocks)
+            {
+                foreach (var item in block.Transactions)
+                    item.SenderAddress = null;
+                await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
+            }
 
-        await builder.Finalize();
+            await builder.Finalize();
+        }
 
         using EraReader iterator = new EraReader(tmpFile.Path);
 
@@ -284,13 +294,13 @@ public class Era1ModuleTests
         }
     }
 
-    [TestCase(true, 0, 0, 1000, 1001, 9999)]
-    [TestCase(true, 0, 2000, 1000, 1001, 2000)]
-    [TestCase(true, 3000, 0, 5000, 5001, 9999)]
-    [TestCase(true, 0, 0, 0, null, 0)]
-    [TestCase(false, 0, 0, 0, 1, 9999)]
-    [TestCase(false, 0, 0, 2000, 2001, 9999)]
-    [CancelAfter(10000)]
+    [TestCase(true, 0L, 0L, 1000L, 1001L, 9999L)]
+    [TestCase(true, 0L, 2000L, 1000L, 1001L, 2000L)]
+    [TestCase(true, 3000L, 0L, 5000L, 5001L, 9999L)]
+    [TestCase(true, 0L, 0L, 0L, null, 0L)]
+    [TestCase(false, 0L, 0L, 0L, 1L, 9999L)]
+    [TestCase(false, 0L, 0L, 2000L, 2001L, 9999L)]
+    [CancelAfter(120_000)] // macOS ARM runners need more time for 10k-block chain
     public async Task EraExportAndImport(bool fastSync, long start, long end, long headBlockNumber, long? expectedMinSuggestedBlock, long expectedMaxSuggestedBlock, CancellationToken cancellationToken)
     {
         const int ChainLength = 10000;

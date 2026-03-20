@@ -58,7 +58,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip2929Enabled { get; set; }
     public bool IsEip2930Enabled { get; set; }
     public bool IsEip1559Enabled { get => field || IsEip4844Enabled; set; }
-    public bool IsEip158IgnoredAccount(Address address) => false;
+    public Address? Eip158IgnoredAccount { get; set; }
     public bool IsEip3198Enabled { get; set; }
     public bool IsEip3529Enabled { get; set; }
     public bool IsEip3607Enabled { get; set; }
@@ -111,7 +111,7 @@ public class ReleaseSpec : IReleaseSpec
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
     [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
-    public bool IsEofEnabled { get; set; }
+    public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
     public Address? DepositContractAddress { get => IsEip6110Enabled ? field : null; set; }
@@ -126,12 +126,14 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsRip7728Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
+    private SpecGasCosts? _gasCosts;
+    public SpecGasCosts GasCosts => _gasCosts ??= new SpecGasCosts(this);
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public virtual FrozenSet<AddressAsKey> BuildPrecompilesCache()
     {
         HashSet<AddressAsKey> cache = new();
 
-        cache.Add(PrecompiledAddresses.EcRecover);
+        cache.Add(PrecompiledAddresses.ECRecover);
         cache.Add(PrecompiledAddresses.Sha256);
         cache.Add(PrecompiledAddresses.Ripemd160);
         cache.Add(PrecompiledAddresses.Identity);
@@ -139,28 +141,47 @@ public class ReleaseSpec : IReleaseSpec
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
         {
-            cache.Add(PrecompiledAddresses.Bn128Add);
-            cache.Add(PrecompiledAddresses.Bn128Mul);
-            cache.Add(PrecompiledAddresses.Bn128Pairing);
+            cache.Add(PrecompiledAddresses.BN254Add);
+            cache.Add(PrecompiledAddresses.BN254Mul);
+            cache.Add(PrecompiledAddresses.BN254PairingCheck);
         }
 
         if (IsEip152Enabled) cache.Add(PrecompiledAddresses.Blake2F);
         if (IsEip4844Enabled) cache.Add(PrecompiledAddresses.PointEvaluation);
         if (IsEip2537Enabled)
         {
-            cache.Add(PrecompiledAddresses.Bls12G1Add);
-            cache.Add(PrecompiledAddresses.Bls12G1Msm);
-            cache.Add(PrecompiledAddresses.Bls12G2Add);
-            cache.Add(PrecompiledAddresses.Bls12G2Msm);
-            cache.Add(PrecompiledAddresses.Bls12PairingCheck);
-            cache.Add(PrecompiledAddresses.Bls12MapFpToG1);
-            cache.Add(PrecompiledAddresses.Bls12MapFp2ToG2);
+            cache.Add(PrecompiledAddresses.Bls12381G1Add);
+            cache.Add(PrecompiledAddresses.Bls12381G1Msm);
+            cache.Add(PrecompiledAddresses.Bls12381G2Add);
+            cache.Add(PrecompiledAddresses.Bls12381G2Msm);
+            cache.Add(PrecompiledAddresses.Bls12381PairingCheck);
+            cache.Add(PrecompiledAddresses.Bls12381FpToG1);
+            cache.Add(PrecompiledAddresses.Bls12381Fp2ToG2);
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
         if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
 
         return cache.ToFrozenSet();
+    }
+
+    public bool IsEip7928Enabled { get; set; }
+    public bool IsEip8037Enabled { get; set; }
+    public bool IsEip7778Enabled { get; set; }
+    public bool IsEip7843Enabled { get; set; }
+
+    public bool IsEip7708Enabled { get; set; }
+    public bool IsEip7954Enabled { get; set; }
+
+    private ReleaseSpec? _systemSpec;
+
+    internal ReleaseSpec SystemSpec => _systemSpec ??= CreateSystemSpec();
+
+    private ReleaseSpec CreateSystemSpec()
+    {
+        ReleaseSpec clone = Clone();
+        clone.IsEip158Enabled = false;
+        return clone;
     }
 
     // used only in testing

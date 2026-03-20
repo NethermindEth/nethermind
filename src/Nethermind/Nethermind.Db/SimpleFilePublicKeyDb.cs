@@ -60,7 +60,11 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _cacheSpan[key];
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            _cacheSpan.TryGetValue(key, out byte[]? value);
+            return value;
+        }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -73,16 +77,7 @@ namespace Nethermind.Db
                 return;
             }
 
-            bool setValue = true;
-            if (_cacheSpan.TryGetValue(key, out var existingValue))
-            {
-                if (!Bytes.AreEqual(existingValue, value))
-                {
-                    setValue = false;
-                }
-            }
-
-            if (setValue)
+            if (!_cacheSpan.TryGetValue(key, out var existingValue) || !Bytes.AreEqual(existingValue, value))
             {
                 _cacheSpan[key] = value;
                 _hasPendingChanges = true;
