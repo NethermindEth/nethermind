@@ -296,6 +296,19 @@ jobs:
           set -euo pipefail
           sampling_tag="${{ env.PGO_TAG }}-sampling"
 
+          # Clean up containers/networks left by the main PGO collection step
+          cids=$(docker ps -aq --filter "name=expb-executor" 2>/dev/null || true)
+          cids+=" $(docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null || true)"
+          cids=$(echo "${cids}" | xargs -n1 | sort -u | xargs)
+          if [[ -n "${cids}" ]]; then
+            echo "Cleaning up stale containers: ${cids}"
+            docker rm -f ${cids} 2>/dev/null || true
+          fi
+          for net in $(docker network ls --filter "name=expb-executor" -q 2>/dev/null); do
+            docker network rm "${net}" 2>/dev/null || true
+          done
+          rm -f /tmp/expb.lock
+
           echo "Rendering sampling config..."
           sampling_config="${RUNNER_TEMP}/rendered-sampling-config.yaml"
           sed \
