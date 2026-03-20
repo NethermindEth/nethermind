@@ -119,6 +119,9 @@ jobs:
             "${METRICS_FLAGS[@]}" \
             --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
 
+          # Patch compose to not pull the locally-built image
+          sed -i '/image: nethermind-local:smoke/a\    pull_policy: never' $GITHUB_WORKSPACE/sedge/docker-compose.yml
+
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
       - name: Wait for hoodi to sync
