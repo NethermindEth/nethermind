@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Collects CPU sampling profile data via perf + LTTng for call graph
-# construction. perfcollect produces .trace.zip which dotnet-pgo converts
-# to .mibc with CallWeights for Pettis-Hansen method layout.
+# Collects CPU sampling profile data via dotnet-trace for call graph
+# construction. The resulting .nettrace is converted to .mibc with call
+# graph edges (CallWeights) that drive Pettis-Hansen method layout.
 #
 # This image is run AFTER the main PGO collection (Dockerfile.pgo).
 # The two .mibc files are merged to combine edge/type data with call graph.
@@ -43,17 +43,8 @@ ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
-# Install perf + LTTng for perfcollect.
-# Noble ships LTTng 2.13; the .NET 10 runtime in the SDK base image
-# is compiled for Noble so should be compatible.
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends \
-    linux-tools-generic \
-    lttng-tools \
-    liblttng-ust-dev && \
-  rm -rf /var/lib/apt/lists/* && \
-  curl -sL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
-  chmod +x /usr/local/bin/perfcollect
+# No DOTNET_EnableEventPipe — dotnet-trace manages the EventPipe session.
+# No DOTNET_WritePGOData — the main PGO image handles that.
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
@@ -64,39 +55,32 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-# Enable perf map generation for managed symbol resolution
-ENV DOTNET_PerfMapEnabled=1
-ENV DOTNET_EnableEventLog=1
+# Install dotnet-trace for CPU sampling
+RUN dotnet tool install -g dotnet-trace
+ENV PATH="${PATH}:/root/.dotnet/tools"
 
-# Start perfcollect before Nethermind to capture from startup.
-# Cannot use exec — it would kill the background perfcollect.
-# Nethermind runs in foreground; when it exits (EXPB stop signal),
-# we stop perfcollect which then post-processes the trace.
+# Nethermind runs in foreground so it receives EXPB's stop signal.
+# dotnet-trace attaches in background with --duration so it finalizes
+# cleanly before EXPB stops the container.
+# dotnet-sampled-thread-time: managed CPU sampling at ~100Hz
+# dotnet-common: CLR method/JIT events for symbol resolution
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
 
-echo "trace: starting perfcollect"
-perfcollect collect /nethermind/pgo/sampling -collectsec 180 &
-trace_pid=$!
+./nethermind "$@" &
+child=$!
 
-# Give perf/LTTng a moment to set up
 sleep 2
+echo "trace: attaching to PID $child"
+dotnet-trace collect \
+  -p $child \
+  --profile dotnet-sampled-thread-time,dotnet-common \
+  --output /nethermind/pgo/sampling \
+  --duration 00:02:30 || true
+echo "trace: collection complete"
 
-echo "trace: starting Nethermind"
-./nethermind "$@"
-nethermind_exit=$?
-
-# Stop perfcollect early if it's still running (triggers post-processing)
-if kill -0 $trace_pid 2>/dev/null; then
-  echo "trace: stopping perfcollect"
-  kill -INT $trace_pid 2>/dev/null || true
-  wait $trace_pid 2>/dev/null || true
-fi
-
-echo "trace: done"
-ls -lh /nethermind/pgo/sampling* 2>/dev/null || true
-exit $nethermind_exit
+wait $child 2>/dev/null
 SCRIPT
 RUN chmod +x /nethermind/trace-entrypoint.sh
 
