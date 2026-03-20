@@ -1,7 +1,7 @@
 name: Sync Smoke Test
 
 on:
-  push:
+  pull_request:
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
