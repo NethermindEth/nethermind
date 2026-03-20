@@ -40,6 +40,26 @@ public class RocksDbReader : ISortedKeyValueStore
         _hintCacheMissOptions.SetFillCache(false);
     }
 
+    /// <summary>
+    /// Constructor that accepts pre-created <see cref="ReadOptions"/> instead of a factory.
+    /// Used by <see cref="ColumnsDb{T}.ColumnDbSnapshot"/> to share a single pair of ReadOptions
+    /// across all column readers, avoiding per-reader native handle allocation and finalizer pressure.
+    /// </summary>
+    public RocksDbReader(DbOnTheRocks mainDb,
+        ReadOptions options,
+        ReadOptions hintCacheMissOptions,
+        Func<ReadOptions> readOptionsFactory,
+        DbOnTheRocks.IteratorManager? iteratorManager = null,
+        ColumnFamilyHandle? columnFamily = null)
+    {
+        _mainDb = mainDb;
+        _readOptionsFactory = readOptionsFactory;
+        _iteratorManager = iteratorManager;
+        _columnFamily = columnFamily;
+        _options = options;
+        _hintCacheMissOptions = hintCacheMissOptions;
+    }
+
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
         if ((flags & ReadFlags.HintReadAhead) != 0 && _iteratorManager is not null)

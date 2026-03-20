@@ -158,22 +158,46 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         return new ColumnDbSnapshot(this, snapshot);
     }
 
-    private class ColumnDbSnapshot(
-        ColumnsDb<T> columnsDb,
-        Snapshot snapshot
-    ) : IColumnDbSnapshot<T>
+    private class ColumnDbSnapshot : IColumnDbSnapshot<T>
     {
-        private readonly Dictionary<T, IReadOnlyKeyValueStore> _columnDbs = columnsDb.ColumnKeys.ToDictionary(k => k, k =>
-            (IReadOnlyKeyValueStore)new RocksDbReader(
-                columnsDb,
-                () =>
-                {
-                    ReadOptions options = new ReadOptions();
-                    options.SetVerifyChecksums(columnsDb.VerifyChecksum);
-                    options.SetSnapshot(snapshot);
-                    return options;
-                },
-                columnFamily: columnsDb._columnDbs[k]._columnFamily));
+        private readonly Snapshot _snapshot;
+        private readonly ReadOptions _sharedReadOptions;
+        private readonly ReadOptions _sharedCacheMissReadOptions;
+        private readonly Dictionary<T, IReadOnlyKeyValueStore> _columnDbs;
+
+        public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        {
+            _snapshot = snapshot;
+
+            // Create two shared ReadOptions for all column readers instead of 2 per reader.
+            // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
+            // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
+            _sharedReadOptions = new ReadOptions();
+            _sharedReadOptions.SetVerifyChecksums(columnsDb.VerifyChecksum);
+            _sharedReadOptions.SetSnapshot(snapshot);
+
+            _sharedCacheMissReadOptions = new ReadOptions();
+            _sharedCacheMissReadOptions.SetVerifyChecksums(columnsDb.VerifyChecksum);
+            _sharedCacheMissReadOptions.SetSnapshot(snapshot);
+            _sharedCacheMissReadOptions.SetFillCache(false);
+
+            // Factory for GetViewBetween which needs fresh ReadOptions with bound settings
+            ReadOptions CreateReadOptions()
+            {
+                ReadOptions options = new ReadOptions();
+                options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+                options.SetSnapshot(snapshot);
+                return options;
+            }
+
+            _columnDbs = columnsDb.ColumnKeys.ToDictionary(k => k, k =>
+                (IReadOnlyKeyValueStore)new RocksDbReader(
+                    columnsDb,
+                    _sharedReadOptions,
+                    _sharedCacheMissReadOptions,
+                    CreateReadOptions,
+                    columnFamily: columnsDb._columnDbs[k]._columnFamily));
+        }
 
         public IReadOnlyKeyValueStore GetColumn(T key)
         {
@@ -182,7 +206,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public void Dispose()
         {
-            snapshot.Dispose();
+            // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
+            // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
+            Native.Instance.rocksdb_readoptions_destroy(_sharedReadOptions.Handle);
+            GC.SuppressFinalize(_sharedReadOptions);
+            Native.Instance.rocksdb_readoptions_destroy(_sharedCacheMissReadOptions.Handle);
+            GC.SuppressFinalize(_sharedCacheMissReadOptions);
+
+            _snapshot.Dispose();
         }
     }
 }
