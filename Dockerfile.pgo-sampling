@@ -65,19 +65,19 @@ ENV PATH="${PATH}:/root/.dotnet/tools"
 # before EXPB stops the container (which only gives 10s grace period).
 COPY <<'SCRIPT' /nethermind/start-trace.sh
 #!/bin/bash
-sleep 2
+sleep 1
 pid=$(pgrep -f "^./nethermind" || true)
 if [ -z "$pid" ]; then
   echo "trace: Nethermind not found, skipping"
   exit 0
 fi
-echo "trace: attaching to PID $pid for 2 minutes"
+echo "trace: attaching to PID $pid for 2:30 minutes"
 dotnet-trace collect \
   --profile dotnet-sampled-thread-time \
   --providers Microsoft-Windows-DotNETRuntime:0x4000080018:5 \
   --output /nethermind/pgo/sampling \
   -p $pid \
-  --duration 00:02:00 || true
+  --duration 00:02:30 || true
 echo "trace: collection complete"
 SCRIPT
 RUN chmod +x /nethermind/start-trace.sh
