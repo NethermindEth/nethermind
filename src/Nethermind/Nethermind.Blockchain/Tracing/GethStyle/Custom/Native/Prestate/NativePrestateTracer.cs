@@ -94,9 +94,9 @@ public class NativePrestateTracer : GethLikeNativeTxTracer
             ProcessDiffState();
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        base.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+        base.StartOperation(pc, opcode, gas, env);
 
         if (_error is not null) return;
 

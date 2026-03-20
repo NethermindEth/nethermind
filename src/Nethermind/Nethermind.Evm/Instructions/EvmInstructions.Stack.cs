@@ -572,7 +572,7 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// EIP-8024: DUPN instruction for (non-EOF) code.
+    /// EIP-8024: DUPN instruction.
     /// Duplicates a stack item based on an immediate operand with extended encoding.
     /// </summary>
     [SkipLocalsInit]
@@ -589,7 +589,7 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// EIP-8024: SWAPN instruction for (non-EOF) code.
+    /// EIP-8024: SWAPN instruction.
     /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
     /// </summary>
     [SkipLocalsInit]
@@ -606,7 +606,7 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
-    /// EIP-8024: EXCHANGE instruction for (non-EOF) code.
+    /// EIP-8024: EXCHANGE instruction.
     /// Exchanges stack items at positions n and m from the top.
     /// </summary>
     [SkipLocalsInit]

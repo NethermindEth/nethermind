@@ -77,7 +77,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             MissingCode(in codeHash);
         }
 
-        return CodeInfoFactory.CreateCodeInfo(code, vmSpec);
+        return CodeInfoFactory.CreateCodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");
