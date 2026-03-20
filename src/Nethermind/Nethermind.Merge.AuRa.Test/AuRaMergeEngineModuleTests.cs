@@ -16,6 +16,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -186,6 +187,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
         => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
 
+    protected override BlockBuilder BuildNewBlock(Block head)
+        => base.BuildNewBlock(head).WithAura(0, []);
+
+    protected override BlockBuilder BuildOneMoreTerminalBlock(Block head, bool correctStateRoot = true)
+        => base.BuildOneMoreTerminalBlock(head, correctStateRoot).WithAura(0, []);
+
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
@@ -214,8 +221,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 })
 
                 // Aura uses `AuRaNethermindApi` for initialization, so need to do some additional things here
-                // as normally, test blockchain don't use INethermindApi at all. Note: This test does not
-                // seems to use aura block processor which means a lot of aura things is not available here.
+                // as normally, test blockchain don't use INethermindApi at all.
                 .AddModule(new AuRaModule(ChainSpec))
 
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
@@ -235,9 +241,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
-
-                // AuRa was never configured correctly in test.
-                // .AddScoped<IBlockProcessor, BlockProcessor>()
 
                 .AddDecorator<AuRaNethermindApi>((_, api) =>
                 {
@@ -262,7 +265,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 {
                     WithdrawalContractAddress = new(_auraWithdrawalContractAddress),
                     StepDuration = { { 0, 3 } },
-                    ValidatorsJson = validatorsJson,
+                    ValidatorsJson = validatorsJson
                 });
             baseChainSpec.Parameters = new ChainParameters();
             return baseChainSpec;
