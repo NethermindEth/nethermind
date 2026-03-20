@@ -43,6 +43,8 @@ RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 # dlopen's at startup. The Microsoft SDK image doesn't ship it.
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
 
+ARG DOTNET_RUNTIME_VERSION=10.0.5
+
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
     git \
@@ -51,9 +53,16 @@ RUN apt-get update && \
     liblttng-ust-dev && \
   rm -rf /var/lib/apt/lists/*
 
-# Clone the matching runtime tag for the SDK version
-RUN git clone --depth 1 --branch v10.0.5 \
-  https://github.com/dotnet/runtime.git /runtime
+# Sparse checkout — only fetch the files needed for the tracepoint provider
+RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} --no-checkout \
+      --filter=blob:none \
+      https://github.com/dotnet/runtime.git /runtime && \
+    git -C /runtime sparse-checkout init --cone && \
+    git -C /runtime sparse-checkout set \
+      src/coreclr/vm \
+      src/coreclr/scripts \
+      src/coreclr/pal/inc/rt && \
+    git -C /runtime checkout
 
 WORKDIR /runtime/build-lttng
 
@@ -62,21 +71,22 @@ WORKDIR /runtime/build-lttng
 RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
       --man /runtime/src/coreclr/vm/ClrEtwAll.man \
       --intermediate /runtime/build-lttng && \
-    # Compile all traceptprov*.cpp files into the shared library
     cd /runtime/build-lttng/lttng && \
     for f in traceptprov*.cpp; do \
-      clang++ -shared -fPIC -O2 \
+      clang++ -fPIC -O2 \
         -I/runtime/src/coreclr/pal/inc/rt \
         -I/runtime/build-lttng/lttng \
-        -o /tmp/obj_$(basename $f .cpp).o \
+        -o $(basename $f .cpp).o \
         -c "$f"; \
     done && \
     clang++ -shared -o /runtime/build-lttng/libcoreclrtraceptprovider.so \
-      /tmp/obj_traceptprov*.o \
-      -llttng-ust -Wl,--noinhibit-exec
+      traceptprov*.o \
+      -llttng-ust
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
+
+ARG DOTNET_RUNTIME_VERSION=10.0.5
 
 WORKDIR /nethermind
 
@@ -95,7 +105,7 @@ RUN apt-get update && \
 # Inject the LTTng tracepoint provider next to libcoreclr.so so the
 # runtime's PAL_InitializeTracing constructor dlopen's it at startup
 COPY --from=lttng-build /runtime/build-lttng/libcoreclrtraceptprovider.so \
-  /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.5/
+  /usr/share/dotnet/shared/Microsoft.NETCore.App/${DOTNET_RUNTIME_VERSION}/
 
 # Override runtimeconfig.json settings not suitable for PGO collection
 ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
@@ -123,12 +133,8 @@ COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
 
-# Verify LTTng provider is loadable
-if [ -f /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.5/libcoreclrtraceptprovider.so ]; then
-  echo "trace: LTTng tracepoint provider found"
-else
-  echo "trace: WARNING — libcoreclrtraceptprovider.so missing, LTTng events will be empty"
-fi
+# Forward SIGTERM/SIGINT to Nethermind for graceful shutdown
+trap 'kill -TERM $nethermind_pid 2>/dev/null' TERM INT
 
 echo "trace: starting perfcollect (perf + LTTng)"
 perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
@@ -166,7 +172,7 @@ cat /nethermind/pgo/perfcollect.log 2>/dev/null || true
 echo "trace: pgo volume contents:"
 ls -la /nethermind/pgo/ 2>/dev/null || true
 
-# Now wait for Nethermind (EXPB stop signal will reach it via bash)
+# Wait for Nethermind — SIGTERM from Docker is forwarded via the trap above
 wait $nethermind_pid 2>/dev/null
 nethermind_exit=$?
 echo "trace: Nethermind exited with code $nethermind_exit"
