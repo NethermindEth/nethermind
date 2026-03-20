@@ -65,4 +65,11 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
     int? BlockProductionBlobLimit { get; set; }
+
+    [ConfigItem(
+        Description = "The threshold in milliseconds for logging slow block diagnostics. " +
+                      "Blocks processed slower than this value are logged with detailed JSON metrics. " +
+                      "Set to `0` to log all blocks. Set to `-1` to disable slow block logging entirely.",
+        DefaultValue = "1000")]
+    long SlowBlockThresholdMs { get; set; }
 }
