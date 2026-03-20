@@ -81,7 +81,18 @@ echo "trace: starting perfcollect (perf + LTTng)"
 perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
 trace_pid=$!
 
-sleep 3
+# Wait for LTTng session to be created before starting Nethermind.
+# The runtime registers UST tracepoints on startup; if the session
+# isn't active yet, LTTng events are lost.
+echo "trace: waiting for LTTng session..."
+for i in $(seq 1 30); do
+  if grep -q "Collection started" /nethermind/pgo/perfcollect.log 2>/dev/null; then
+    echo "trace: LTTng session active"
+    break
+  fi
+  sleep 1
+done
+
 if ! kill -0 $trace_pid 2>/dev/null; then
   echo "trace: ERROR — perfcollect exited early:"
   cat /nethermind/pgo/perfcollect.log 2>/dev/null
