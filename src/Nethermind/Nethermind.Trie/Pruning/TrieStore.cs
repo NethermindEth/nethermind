@@ -1043,15 +1043,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         // Clear dirty nodes cache (all shards)
         for (int i = 0; i < _dirtyNodes.Length; i++)
-        {
             _dirtyNodes[i].Clear();
-        }
 
         // Clear persisted hash tracking (all shards)
         for (int i = 0; i < _persistedHashes.Length; i++)
-        {
             _persistedHashes[i].Clear();
-        }
 
         // Clear commit queue and tracking
         _commitSetQueue.Clear();
