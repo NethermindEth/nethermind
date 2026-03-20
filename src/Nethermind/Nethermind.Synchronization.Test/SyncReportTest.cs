@@ -192,11 +192,37 @@ namespace Nethermind.Synchronization.Test
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
 
-            // Trigger timer 6 times to hit the SyncBehindWarningFrequency
-            for (int i = 0; i < 6; i++)
-            {
-                timer.Elapsed += Raise.Event();
-            }
+            timer.Elapsed += Raise.Event();
+
+            iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
+        }
+
+        [Test]
+        public void Sync_behind_warning_is_logged_in_waiting_for_block_mode()
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsWarn.Returns(true);
+            ILogger logger = new(iLogger);
+            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+
+            // Simulate blackout recovery: head is 2 hours behind, mode is WaitingForBlock (PoS beacon control)
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddHours(-2)));
+
+            SyncConfig syncConfig = new() { FastSync = true };
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.WaitingForBlock));
+
+            timer.Elapsed += Raise.Event();
 
             iLogger.Received().Warn(Arg.Is<string>(s => s.Contains("Node is behind the head of the chain by")));
         }
@@ -226,11 +252,7 @@ namespace Nethermind.Synchronization.Test
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
 
-            // Trigger timer 6 times
-            for (int i = 0; i < 6; i++)
-            {
-                timer.Elapsed += Raise.Event();
-            }
+            timer.Elapsed += Raise.Event();
 
             iLogger.DidNotReceive().Warn(Arg.Any<string>());
         }
@@ -251,7 +273,7 @@ namespace Nethermind.Synchronization.Test
             ILogger logger = new(iLogger);
             logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
-            // Head is 10 minutes behind, but sync mode is not Full/FastSync
+            // Head is 10 minutes behind, but sync mode is FastHeaders (not Full/FastSync/WaitingForBlock)
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
 
@@ -260,11 +282,7 @@ namespace Nethermind.Synchronization.Test
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders));
 
-            // Trigger timer 6 times
-            for (int i = 0; i < 6; i++)
-            {
-                timer.Elapsed += Raise.Event();
-            }
+            timer.Elapsed += Raise.Event();
 
             iLogger.DidNotReceive().Warn(Arg.Any<string>());
         }

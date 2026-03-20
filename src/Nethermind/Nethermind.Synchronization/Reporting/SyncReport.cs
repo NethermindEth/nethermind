@@ -302,7 +302,7 @@ namespace Nethermind.Synchronization.Reporting
             if (!_logger.IsWarn) return;
 
             SyncMode currentSyncMode = _currentMode;
-            if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync)) == 0)
+            if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync | SyncMode.WaitingForBlock)) == 0)
                 return;
 
             Block? head = _blockTree.Head;
@@ -326,14 +326,14 @@ namespace Nethermind.Synchronization.Reporting
             if (blocksPerSecond > 0 && blocksRemaining > 0)
             {
                 TimeSpan eta = TimeSpan.FromSeconds((double)blocksRemaining / (double)blocksPerSecond);
-                etaMessage = $"Estimated time to catch up: {FormatTimeSpan(eta)}";
+                etaMessage = $" Estimated time to catch up: {FormatTimeSpan(eta)}";
             }
             else
             {
-                etaMessage = "Estimated time to catch up: calculating...";
+                etaMessage = "";
             }
 
-            _logger.Warn($"Node is behind the head of the chain by {FormatTimeSpan(timeBehind)}. {etaMessage}");
+            _logger.Warn($"Node is behind the head of the chain by {FormatTimeSpan(timeBehind)}.{etaMessage}");
         }
 
         private static string FormatTimeSpan(TimeSpan ts) => ts switch
