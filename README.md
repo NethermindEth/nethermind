@@ -1,78 +1,81 @@
-<h1 align="center">Nethermind Ethereum Client</h1>
+# Nethermind Ethereum client
+
+[![Tests](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg)](https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml)
+[![Follow us on X](https://img.shields.io/twitter/follow/nethermind?style=social&label=Follow%20us)](https://x.com/nethermind)
+[![Chat on Discord](https://img.shields.io/discord/629004402170134531?style=social&logo=discord)][discord]
+[![GitHub Discussions](https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social)][discussions]
+[![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 <p align="center">
-  <a href="https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml"><img src="https://github.com/nethermindeth/nethermind/actions/workflows/nethermind-tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://x.com/nethermind"><img src="https://img.shields.io/twitter/follow/nethermind?style=social&label=Follow%20us" alt="Follow on X"></a>
-  <a href="https://discord.gg/GXJFaYk"><img src="https://img.shields.io/discord/629004402170134531?style=social&logo=discord" alt="Discord"></a>
-  <a href="https://github.com/nethermindeth/nethermind/discussions"><img src="https://img.shields.io/github/discussions/nethermindeth/nethermind?style=social" alt="GitHub Discussions"></a>
-  <a href="https://www.gitpoap.io/gh/NethermindEth/nethermind"><img src="https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge" alt="GitPOAPs"></a>
+  <img src="https://github.com/user-attachments/assets/bcc0fbeb-fd03-4b9f-9b19-c3790e1fe2fa" alt="Nethermind client" width="100%">
 </p>
-
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/bcc0fbeb-fd03-4b9f-9b19-c3790e1fe2fa" alt="Nethermind Client" width="100%">
-</p>
-
-<p align="center">
-  <a href="https://docs.nethermind.io/get-started/installing-nethermind"><img src="https://img.shields.io/badge/Install-F0921E?style=flat-square&logoColor=white" alt="Install"></a>&nbsp;
-  <a href="https://docs.nethermind.io"><img src="https://img.shields.io/badge/Docs-1A1A2E?style=flat-square&logoColor=white" alt="Docs"></a>&nbsp;
-  <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/Contribute-1A1A2E?style=flat-square&logoColor=white" alt="Contributing"></a>
-</p>
-
----
 
 ## Overview
 
-Nethermind Client is a high-performance Ethereum execution client built on .NET. Compatible with all consensus layer implementations that support the [Engine API](https://github.com/ethereum/execution-apis/tree/main/src/engine). It provides fast sync, high-throughput JSON-RPC, and a plugin system for extending the client without forking. In production since 2017.
+Nethermind is a high-performance Ethereum execution client built on .NET. It provides fast sync, high-throughput JSON-RPC, and a plugin system for extending the client without forking. In production since 2017.
 
-Runs on Linux, Windows, and macOS (x64 and ARM).
+Runs on Linux, Windows, and macOS.
 
-Supported networks: Ethereum, Gnosis Chain, OP Stack (Optimism, Base, World Chain), Taiko, and Linea.
+### Supported networks
+
+**Ethereum** · **Gnosis** · **Optimism** · **Base** · **Taiko** · **World Chain** · **Linea** · **Energy Web**
+
+### Documentation
+
+Nethermind documentation is available at [docs.nethermind.io][docs].
 
 ## Capabilities
 
-Nethermind Client connects operators to the Ethereum network via JSON-RPC over HTTP, WebSocket, and IPC. Snap sync, enabled by default, reaches the chain tip up to 10x faster than traditional fast sync. Node health and performance are exposed through a built-in UI and Prometheus metrics.
+Nethermind connects operators to the Ethereum network via JSON-RPC over HTTP, WebSocket, and IPC. Snap sync, enabled by default, reaches the chain tip up to 10x faster than traditional fast sync. Node health and performance are exposed through a built-in UI and Prometheus metrics.
 
-1. **Performance:** The EVM is optimized for low-overhead block processing: direct opcode dispatch, hardware-accelerated bitwise operations, and zero heap allocation on the execution stack. A parallel pre-execution system warms state reads before a block's main loop, cutting block processing time roughly in half. 
+1. **Performance:** The EVM is optimized for low-overhead block processing: direct opcode dispatch, hardware-accelerated bitwise operations, and zero heap allocation on the execution stack. A parallel pre-execution system warms state reads before a block's main loop, cutting block processing time roughly in half.
 
-2. **Modularity:** Every component of Nethermind Client is independently extendable without forking the codebase. The plugin system lets teams add consensus algorithms, transaction types, network protocols, and RPC namespaces through a .NET assembly that loads on startup. Nethermind uses this same system internally for L2 network support and health checks.
+2. **Modularity:** Every component of the Nethermind is independently extendable without forking the codebase. The plugin system lets teams add consensus algorithms, transaction types, network protocols, and RPC namespaces through a .NET assembly that loads on startup. Nethermind uses this same system internally for L2 network support and health checks.
 
-3. **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running. 
+3. **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running.
 
-4. **L2 and rollup native:** Each supported L2 network is implemented as a plugin so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
+4. **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
 
 5. **ZK-readiness:** ZK proving is being built directly into the production execution client. Execution witness capture, stateless block replay, and a minimal EVM binary are complete. See the [ZK roadmap](https://www.nethermind.io/blog/road-to-zk-implementation-nethermind-clients-path-to-proofs) for current status.
 
-6. **Open source:** Nethermind Client is licensed under LGPL-3.0 and GPL-3.0. The full source is published on GitHub and the project welcomes contributions from developers and organizations across the Ethereum ecosystem.
+## Getting started
 
-## Getting Started
-
-Standalone release builds are available on [GitHub Releases](https://github.com/nethermindeth/nethermind/releases). For minimum and recommended hardware requirements, see [System requirements](https://docs.nethermind.io/get-started/system-requirements).
+Standalone release builds are available on [GitHub Releases](https://github.com/nethermindeth/nethermind/releases). For hardware requirements, see [System requirements](https://docs.nethermind.io/get-started/system-requirements).
 
 Migrating from Geth? Nethermind supports the same JSON-RPC API. See the [migration guide](https://docs.nethermind.io/get-started/migrating-from-geth).
 
 ### Package managers
 
-**Linux** (Debian/Ubuntu)
+- **Linux**
 
-```bash
-sudo add-apt-repository ppa:nethermindeth/nethermind
-sudo apt-get install nethermind
-```
+  On Debian-based distros, Nethermind can be installed via Launchpad PPA:
 
-**Windows**
+  ```bash
+  sudo add-apt-repository ppa:nethermindeth/nethermind
+  # If command not found, run
+  # sudo apt-get install software-properties-common
 
-```powershell
-winget install --id Nethermind.Nethermind
-```
+  sudo apt-get install nethermind
+  ```
 
-**macOS**
+- **Windows**
 
-```bash
-brew tap nethermindeth/nethermind
-brew install nethermind
-```
+  On Windows, Nethermind can be installed via Windows Package Manager:
 
-Once installed:
+  ```powershell
+  winget install --id Nethermind.Nethermind
+  ```
+
+- **macOS**
+
+  On macOS, Nethermind can be installed via Homebrew:
+
+  ```bash
+  brew tap nethermindeth/nethermind
+  brew install nethermind
+  ```
+
+Once installed, Nethermind can be launched as follows:
 
 ```bash
 nethermind -c mainnet --data-dir path/to/data/dir
@@ -80,50 +83,93 @@ nethermind -c mainnet --data-dir path/to/data/dir
 
 For full setup instructions, see [Running a node](https://docs.nethermind.io/get-started/running-node). To spin up Nethermind alongside a consensus client in one command, see [Sedge](https://docs.sedge.nethermind.io/docs/networks/mainnet).
 
-### Docker
+### Docker containers
 
-Official images are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind). For available tags and usage, see [Docker container setup](https://docs.nethermind.io/get-started/installing-nethermind#docker-container).
+The official Docker images of Nethermind are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind) and tagged as follows:
 
-### Building from source
+- `latest`: the latest version of Nethermind (the default tag)
+- `latest-chiseled`: a rootless and chiseled image of the latest version of Nethermind
+- `x.x.x`: a specific version of Nethermind
+- `x.x.x-chiseled`: a rootless and chiseled image of the specific version of Nethermind
 
-Requires .NET SDK 10 or later. See [Building from source](https://docs.nethermind.io/developers/building-from-source) for instructions on building standalone binaries and Docker images from the repository.
+For more info, see [Installing Nethermind](https://docs.nethermind.io/get-started/installing-nethermind).
 
-## Developer Guide
+## Building from source
 
-### Using Nethermind as a library
+### Docker image
 
-Individual Nethermind components (the EVM, trie, RLP serializer, and cryptographic primitives) are available as NuGet packages. Use [Nethermind.ReferenceAssemblies](https://www.nuget.org/packages/Nethermind.ReferenceAssemblies) to build plugins against the Nethermind API without cloning the source. 
+This is the easiest and fastest way to build Nethermind if you don't want to clone the Nethermind repo, deal with .NET SDK installation, and other configurations. Running the following simple command builds the Docker image, which is ready to run right after:
 
-### Plugin development
+```bash
+docker build https://github.com/nethermindeth/nethermind.git -t nethermind
+```
 
-Nethermind Client's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are .NET assemblies loaded on startup and can provide:
+For more info, see [Building Docker image](https://docs.nethermind.io/developers/building-from-source#building-docker-image).
 
-- New consensus engines (`IConsensusPlugin`, `IConsensusWrapperPlugin`)
-- Custom transaction types and RLP decoders (`InitTxTypesAndRlpDecoders`)
-- New P2P protocol handlers (`InitNetworkProtocol`)
-- Additional JSON-RPC namespaces (`InitRpcModules`)
-- Autofac DI modules and initialization steps
+### Standalone binaries
 
-See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
+**Prerequisites**
 
-## Getting Help
+Install [.NET SDK](https://aka.ms/dotnet/download) 10 or later.
 
-Check the [documentation](https://docs.nethermind.io) first. If the answer is not there:
+**Clone the repository**
+
+```bash
+git clone --recursive https://github.com/nethermindeth/nethermind.git
+```
+
+**Build and run**
+
+```bash
+cd nethermind/src/Nethermind/Nethermind.Runner
+dotnet run -c release -- -c mainnet
+```
+
+**Test**
+
+```bash
+cd nethermind/src/Nethermind
+
+# Run Nethermind tests
+dotnet test --solution Nethermind.slnx -c release
+
+# Run Ethereum Foundation tests
+dotnet test --solution EthereumTests.slnx -c release
+```
+
+For more info, see [Building standalone binaries](https://docs.nethermind.io/developers/building-from-source#building-standalone-binaries).
+
+## Plugin development
+
+Nethermind's plugin system lets teams extend the client without touching the core. This is the same system used internally for L2 network support, health checks, Shutter, and more. Plugins are loaded on startup and can provide:
+
+- New consensus engines
+- Custom transaction types and RLP decoders
+- New P2P protocol handlers
+- Additional JSON-RPC namespaces
+
+See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
+
+## Getting help
+
+Check out the [docs][docs] first. If the answer is not there, see:
 
 - [Discord](https://discord.gg/GXJFaYk) for community support
-- [GitHub Discussions](https://github.com/nethermindeth/nethermind/discussions/new) for questions and proposals
-- [GitHub Issues](https://github.com/nethermindeth/nethermind/issues/new/choose) for confirmed bugs
-
-**Migrating from Geth?** Nethermind supports the same JSON-RPC API. See the [migration guide](https://docs.nethermind.io/get-started/migrating-from-geth).
+- [GitHub Discussions][discussions] for questions and proposals
+- [GitHub Issues](https://github.com/nethermindeth/nethermind/issues) to report an issue
 
 ## Contributing
 
-Before working on a feature or fix, read our [contributing guidelines](https://github.com/NethermindEth/nethermind/blob/master/CONTRIBUTING.md) to avoid wasted or duplicate effort.
+Before you start working on a feature or fix, please read and follow our [contributing guidelines](./CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
 
 ## Security
 
-If you believe you have found a security vulnerability, report it as described in our [security policy](https://github.com/NethermindEth/nethermind/blob/master/SECURITY.md). Do not open a public issue.
+If you believe you have found a security vulnerability in our code, please report it to us as described in our [security policy](SECURITY.md).
 
 ## License
 
-Nethermind is open-source software licensed under [LGPL-3.0](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-LGPL) and [GPL-3.0](https://github.com/NethermindEth/nethermind/blob/master/LICENSE-GPL). By using this project, you agree to abide by the licenses and [additional terms](https://nethermindeth.github.io/NethermindEthereumClientTermsandConditions/).
+Nethermind is an open-source software licensed under the [LGPL-3.0](./LICENSE-LGPL). By using this project, you agree to abide by the license and [additional terms](https://nethermindeth.github.io/NethermindEthereumClientTermsandConditions/).
+
+[discord]: https://discord.gg/GXJFaYk
+[discussions]: https://github.com/nethermindeth/nethermind/discussions
+[docs]: https://docs.nethermind.io
