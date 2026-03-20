@@ -12,6 +12,8 @@ namespace Nethermind.Synchronization.Blocks
     {
         public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
         public OwnedBlockBodies? OwnedBodies { get; set; }
+        public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
+        public IOwnedReadOnlyList<byte[]>? BlockAccessLists { get; set; }
         public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = new ArrayPoolList<BlockHeader>(0);
         public IOwnedReadOnlyList<TxReceipt[]?>? Receipts { get; set; }
 
@@ -21,7 +23,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public override string ToString()
         {
-            return $"Blocks Request: {BodiesRequests.Count} Bodies, {ReceiptsRequests.Count} Receipts";
+            return $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
         }
 
         public void Dispose()
@@ -30,8 +32,10 @@ namespace Nethermind.Synchronization.Blocks
             _disposed = true;
 
             BodiesRequests?.Dispose();
+            BlockAccessListsRequests?.Dispose();
             ReceiptsRequests?.Dispose();
             OwnedBodies?.Dispose();
+            BlockAccessLists?.Dispose();
             Receipts?.Dispose();
             DownloadTask?.Dispose();
         }

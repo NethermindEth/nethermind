@@ -1017,11 +1017,18 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
+                if (wereProcessed)
+                {
+                    _balStore.InsertFromBlock(block);
+                }
+
                 if (ShouldCache(block.Number))
                 {
                     _blockStore.Cache(block);
                     _headerStore.Cache(block.Header);
                 }
+
+                _balStore.InsertFromBlock(block);
 
                 // we only force update head block for last block in processed blocks
                 bool lastProcessedBlock = i == blocks.Count - 1;

@@ -8,10 +8,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -64,6 +66,43 @@ public class BlockTreeTests
     {
         blockTree.SuggestBlock(block0);
         blockTree.UpdateMainChain(new[] { block0 }, true);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_persists_generated_block_access_lists_for_processed_blocks()
+    {
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead;
+        BlockTree blockTree = builder.TestObject;
+        IBlockAccessListStore blockAccessListStore = builder.BlockAccessListStore;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        AddToMain(blockTree, genesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithTotalDifficulty(1L)
+            .TestObject;
+
+        blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
+        blockAccessListStore.GetRlp(block.Hash!).Should().BeNull();
+
+        byte[] encodedBal = Rlp.Encode(new BlockAccessList()).Bytes;
+        block.GeneratedBlockAccessList = new BlockAccessList();
+        block.EncodedBlockAccessList = encodedBal;
+        block.Header.BlockAccessListHash = new Hash256(ValueKeccak.Compute(encodedBal).Bytes);
+
+        blockTree.UpdateMainChain([block], true);
+
+        blockAccessListStore.GetRlp(block.Hash!).Should().Equal(encodedBal);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

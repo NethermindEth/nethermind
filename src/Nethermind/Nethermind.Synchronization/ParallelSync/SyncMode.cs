@@ -51,20 +51,24 @@ namespace Nethermind.Synchronization.ParallelSync
         /// </summary>
         FastReceipts = FastBlocks | 1024,
         /// <summary>
+        /// Stage of fast sync that downloads block access lists in parallel.
+        /// </summary>
+        FastAccessLists = FastBlocks | 2048,
+        /// <summary>
         /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
         /// </summary>
-        SnapSync = 2048,
+        SnapSync = 4096,
         /// <summary>
         /// Reverse download of headers from beacon pivot to genesis
         /// </summary>
-        BeaconHeaders = 4096,
+        BeaconHeaders = 8192,
         /// <summary>
         /// Waiting for Forkchoice message from Consensus Layer to update pivot block
         /// </summary>
-        UpdatingPivot = 8192,
+        UpdatingPivot = 16384,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | FastAccessLists | SnapSync | BeaconHeaders | UpdatingPivot
     }
 
     public static class SyncModeExtensions
@@ -81,6 +85,14 @@ namespace Nethermind.Synchronization.ParallelSync
             syncMode.HasFlag(SyncMode.UpdatingPivot);
 
         public static bool HaveNotSyncedReceiptsYet(this SyncMode syncMode) =>
+            syncMode.HasFlag(SyncMode.FastBlocks) ||
+            syncMode.HasFlag(SyncMode.FastSync) ||
+            syncMode.HasFlag(SyncMode.StateNodes) ||
+            syncMode.HasFlag(SyncMode.SnapSync) ||
+            syncMode.HasFlag(SyncMode.BeaconHeaders) ||
+            syncMode.HasFlag(SyncMode.UpdatingPivot);
+
+        public static bool HaveNotSyncedAccessListsYet(this SyncMode syncMode) =>
             syncMode.HasFlag(SyncMode.FastBlocks) ||
             syncMode.HasFlag(SyncMode.FastSync) ||
             syncMode.HasFlag(SyncMode.StateNodes) ||

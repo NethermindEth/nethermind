@@ -30,12 +30,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
+            int startReaderIndex = byteBuffer.ReaderIndex;
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
+            int sequenceLength = ctx.ReadSequenceLength();
+            int checkPosition = ctx.Position + sequenceLength;
             TEth66Message eth66Message = new();
-            ctx.ReadSequenceLength();
             eth66Message.RequestId = ctx.DecodeLong();
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
+
+            if (byteBuffer.ReaderIndex - startReaderIndex != checkPosition)
+            {
+                throw new RlpException("Unexpected trailing data in eth66 message");
+            }
+
             return eth66Message;
         }
 

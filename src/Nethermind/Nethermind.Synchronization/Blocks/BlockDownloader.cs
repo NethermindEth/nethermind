@@ -278,9 +278,13 @@ namespace Nethermind.Synchronization.Blocks
 
             ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
             ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> blockAccessListsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
+                ?? GethSyncLimits.MaxBodyFetch;
+            int blockAccessListsRequestSize =
+                (await _syncPeerPool.EstimateRequestLimit(RequestType.BlockAccessLists, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
                 ?? GethSyncLimits.MaxBodyFetch;
             int receiptsRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Receipts, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -298,7 +302,7 @@ namespace Nethermind.Synchronization.Blocks
                 BlockEntry? entry;
                 while (!_downloadRequests.TryGetValue(blockHeader.Hash!, out entry))
                 {
-                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null));
+                    _downloadRequests.TryAdd(blockHeader.Hash, new BlockEntry(parentHeader, blockHeader, null, null, null, null));
                 }
                 parentHeader = blockHeader;
 
@@ -307,6 +311,12 @@ namespace Nethermind.Synchronization.Blocks
                     entry.MarkBlockRequestSent();
                     bodiesToDownload.Add(blockHeader);
                     bodiesOnly = true;
+                }
+
+                if (entry.NeedAccessListDownload && blockAccessListsToDownload.Count < blockAccessListsRequestSize)
+                {
+                    entry.MarkAccessListRequestSent();
+                    blockAccessListsToDownload.Add(blockHeader);
                 }
 
                 if (
@@ -323,17 +333,22 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     break;
                 }
+                if (blockAccessListsToDownload.Count >= blockAccessListsRequestSize)
+                {
+                    break;
+                }
                 if (receiptsToDownload.Count >= receiptsRequestSize)
                 {
                     break;
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies and {receiptsToDownload.Count} receipts.");
+            if (_logger.IsTrace) _logger.Trace($"Assembled request of {bodiesToDownload.Count} bodies, {blockAccessListsToDownload.Count} access lists and {receiptsToDownload.Count} receipts.");
 
-            if (receiptsToDownload.Count + bodiesToDownload.Count == 0)
+            if (receiptsToDownload.Count + bodiesToDownload.Count + blockAccessListsToDownload.Count == 0)
             {
                 bodiesToDownload.Dispose();
+                blockAccessListsToDownload.Dispose();
                 receiptsToDownload.Dispose();
                 return null;
             }
@@ -341,6 +356,7 @@ namespace Nethermind.Synchronization.Blocks
             return new BlocksRequest()
             {
                 BodiesRequests = bodiesToDownload,
+                BlockAccessListsRequests = blockAccessListsToDownload,
                 ReceiptsRequests = receiptsToDownload,
             };
         }
@@ -356,6 +372,7 @@ namespace Nethermind.Synchronization.Blocks
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
                     if (blockEntry.Block is null) break;
+                    if (!blockEntry.HasAccessList) break;
                     if (shouldDownloadReceipt && !blockEntry.HasReceipt) break;
 
                     satisfiedEntry.Add(blockEntry);
@@ -376,10 +393,12 @@ namespace Nethermind.Synchronization.Blocks
             using var _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
+            IOwnedReadOnlyList<byte[]>? blockAccessLists = response.BlockAccessLists;
 
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             using ArrayPoolListRef<Block> blocks = new(response.BodiesRequests?.Count ?? 0);
             int bodiesCount = 0;
+            int blockAccessListsCount = 0;
             int receiptsCount = 0;
 
             for (int i = 0; i < response.BodiesRequests.Count; i++)
@@ -413,7 +432,10 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                Block block = new Block(entry.Header, body);
+                Block block = new Block(entry.Header, body)
+                {
+                    EncodedBlockAccessList = entry.EncodedAccessList
+                };
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;
@@ -490,10 +512,51 @@ namespace Nethermind.Synchronization.Blocks
                 receiptsCount++;
             }
 
+            for (int i = 0; i < response.BlockAccessListsRequests.Count; i++)
+            {
+                BlockHeader header = response.BlockAccessListsRequests[i];
+                if (!_downloadRequests.TryGetValue(header.Hash, out BlockEntry entry))
+                {
+                    continue;
+                }
+
+                if ((blockAccessLists?.Count ?? 0) <= i)
+                {
+                    entry.RetryAccessListRequest();
+                    continue;
+                }
+
+                byte[]? encodedAccessList = blockAccessLists[i];
+                if (encodedAccessList is null)
+                {
+                    entry.RetryAccessListRequest();
+                    continue;
+                }
+
+                if (!ValidateAccessListHash(header, encodedAccessList, out string? errorMessage))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block access list from {peer} for block {header.ToString(BlockHeader.Format.Short)}, {errorMessage}");
+
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, $"invalid block access list received: {errorMessage}. Block: {header.ToString(BlockHeader.Format.Short)}");
+                    result = SyncResponseHandlingResult.LesserQuality;
+                    entry.RetryAccessListRequest();
+                    continue;
+                }
+
+                entry.EncodedAccessList = encodedAccessList;
+                if (entry.Block is not null)
+                {
+                    entry.Block.EncodedBlockAccessList = encodedAccessList;
+                }
+
+                entry.PeerInfo = peer;
+                blockAccessListsCount++;
+            }
+
             if (result == SyncResponseHandlingResult.OK)
             {
                 // Request and body does not have the same size so this heuristic is wrong.
-                if (bodiesCount + receiptsCount == 0)
+                if (bodiesCount + blockAccessListsCount + receiptsCount == 0)
                 {
                     // Trigger sleep
                     result = SyncResponseHandlingResult.LesserQuality;
@@ -503,6 +566,26 @@ namespace Nethermind.Synchronization.Blocks
             HandleSyncRequestResult(response.DownloadTask, peer);
 
             return result;
+        }
+
+        private static bool ValidateAccessListHash(BlockHeader header, byte[] encodedAccessList, out string? errorMessage)
+        {
+            Hash256? expectedHash = header.BlockAccessListHash;
+            if (expectedHash is null)
+            {
+                errorMessage = "block header is missing block access list hash";
+                return false;
+            }
+
+            Hash256 actualHash = new(ValueKeccak.Compute(encodedAccessList).Bytes);
+            if (actualHash != expectedHash)
+            {
+                errorMessage = $"block access list hash mismatch, expected {expectedHash}, got {actualHash}";
+                return false;
+            }
+
+            errorMessage = null;
+            return true;
         }
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
@@ -697,9 +780,11 @@ namespace Nethermind.Synchronization.Blocks
             BlockHeader Header,
             Block? Block,
             TxReceipt[]? Receipts,
-            PeerInfo? PeerInfo
+            PeerInfo? PeerInfo,
+            byte[]? EncodedAccessList
         )
         {
+            public bool HasAccessList => Header.BlockAccessListHash is null || EncodedAccessList is not null || Block?.BlockAccessList is not null;
             public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
@@ -710,6 +795,21 @@ namespace Nethermind.Synchronization.Blocks
             public void RetryBlockRequest()
             {
                 _blockRequestDeadline = DateTimeOffset.MinValue;
+            }
+
+            private DateTimeOffset _accessListRequestDeadline = DateTimeOffset.MinValue;
+            public bool NeedAccessListDownload =>
+                !HasAccessList &&
+                _accessListRequestDeadline < DateTimeOffset.Now;
+
+            public void MarkAccessListRequestSent()
+            {
+                _accessListRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            }
+
+            public void RetryAccessListRequest()
+            {
+                _accessListRequestDeadline = DateTimeOffset.MinValue;
             }
 
             private DateTimeOffset _receiptRequestDeadline = DateTimeOffset.MinValue;
@@ -730,6 +830,7 @@ namespace Nethermind.Synchronization.Blocks
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
             public Block? Block { get; set; } = Block;
             public TxReceipt[]? Receipts { get; set; } = Receipts;
+            public byte[]? EncodedAccessList { get; set; } = EncodedAccessList;
         }
     }
 }

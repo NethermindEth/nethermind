@@ -26,7 +26,6 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
@@ -103,7 +102,7 @@ public abstract class BlockchainTestBase
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
 
-        if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled is true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }

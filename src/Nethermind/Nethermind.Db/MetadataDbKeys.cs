@@ -18,5 +18,6 @@ namespace Nethermind.Db
         public const int BodiesBarrierWhenStarted = 11;
         public const int LowestInsertedFastHeaderHash = 12;
         public const int HistoryPruningDeletePointer = 13;
+        public const int BlockAccessListsBarrierWhenStarted = 14;
     }
 }

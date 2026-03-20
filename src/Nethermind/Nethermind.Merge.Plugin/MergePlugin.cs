@@ -236,6 +236,8 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
         if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
+        if (_logger.IsInfo) _logger.Info("Adding eth/71 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 71));
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
