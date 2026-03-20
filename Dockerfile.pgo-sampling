@@ -85,7 +85,7 @@ COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 mkdir -p /nethermind/pgo
 
 echo "trace: starting perfcollect (perf + LTTng)"
-perfcollect collect /nethermind/pgo/sampling -collectsec 180 &
+perfcollect collect /nethermind/pgo/sampling -collectsec 180 > /nethermind/pgo/perfcollect.log 2>&1 &
 trace_pid=$!
 
 sleep 2
