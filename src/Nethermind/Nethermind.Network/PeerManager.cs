@@ -191,23 +191,21 @@ namespace Nethermind.Network
             SignalPeerUpdateNeeded();
         }
 
-        private Task RunPeerUpdateLoopAsync()
+        private async Task RunPeerUpdateLoopAsync()
         {
-            return Task.Factory.StartNew(async () =>
+            try
             {
-                try
-                {
-                    await RunPeerUpdateLoop();
-                }
-                catch (Exception e) when (e is not OperationCanceledException)
-                {
-                    if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", e);
-                }
-                catch (OperationCanceledException)
-                {
-                    if (_logger.IsDebug) _logger.Debug("Peer update loop stopped.");
-                }
-            }, _cancellationTokenSource.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+                await Task.Yield();
+                await RunPeerUpdateLoop();
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                if (_logger.IsError) _logger.Error("Peer update loop encountered an exception.", e);
+            }
+            catch (OperationCanceledException)
+            {
+                if (_logger.IsDebug) _logger.Debug("Peer update loop stopped.");
+            }
         }
 
         public async Task StopAsync()
