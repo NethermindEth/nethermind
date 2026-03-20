@@ -63,7 +63,8 @@ ENV PATH="${PATH}:/root/.dotnet/tools"
 # dotnet-trace attaches in background with --duration so it finalizes
 # cleanly before EXPB stops the container.
 # dotnet-sampled-thread-time: managed CPU sampling at ~100Hz
-# dotnet-common: CLR method/JIT events for symbol resolution
+# Explicit provider adds MethodDetails + JitTracing + Loader + Type events
+# required by dotnet-pgo (keyword 0x4000080018, verbose level 5)
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
@@ -75,7 +76,8 @@ sleep 2
 echo "trace: attaching to PID $child"
 dotnet-trace collect \
   -p $child \
-  --profile dotnet-sampled-thread-time,dotnet-common \
+  --profile dotnet-sampled-thread-time \
+  --providers Microsoft-Windows-DotNETRuntime:0x4000080018:5 \
   --output /nethermind/pgo/sampling \
   --duration 00:02:30 || true
 echo "trace: collection complete"
