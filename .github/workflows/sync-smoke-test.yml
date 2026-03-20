@@ -16,6 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         mode: [HalfPath, Flat]
+        include:
+          - mode: HalfPath
+            flatdb: false
+          - mode: Flat
+            flatdb: true
 
     steps:
       - name: Authenticate App
@@ -36,19 +41,6 @@ jobs:
           path: tests
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Nethermind Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          load: true
-          tags: nethermind-local:smoke
-          build-args: |
-            BUILD_CONFIG=release
-            COMMIT_HASH=${{ github.sha }}
 
       - name: Install requirements
         run: |
@@ -73,28 +65,12 @@ jobs:
           cd sedge
           make compile
 
-      - name: Run Sedge
+      - name: Generate and run Sedge
         working-directory: sedge
         run: |
-          sync_mode="${{ matrix.mode }}"
-          if [[ "${sync_mode,,}" == "flat" ]]; then
-            flatdb_enabled=true
-          else
-            flatdb_enabled=false
-          fi
-
-          node_name="SyncSmokeTest-hoodi-${sync_mode}-${GITHUB_RUN_ID}"
+          node_name="SyncSmokeTest-hoodi-${{ matrix.mode }}-${GITHUB_RUN_ID}"
 
           ./build/sedge deps install
-
-          METRICS_FLAGS=(
-            --el-extra-flag "Metrics.NodeName=${node_name}"
-            --el-extra-flag Metrics.Enabled=true
-            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io"
-            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}"
-            --el-extra-flag Seq.MinLevel=Info
-            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}"
-          )
 
           mkdir -p execution-data/logs/configs
           mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
@@ -104,37 +80,36 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             full-node \
             -c lodestar:chainsafe/lodestar:latest \
-            -e nethermind:nethermind-local:smoke \
+            -e nethermind:nethermindeth/nethermind:master \
             --map-all \
             --no-mev-boost \
             --no-validator \
             --network hoodi \
-            --el-extra-flag FlatDb.Enabled=$flatdb_enabled \
+            --el-extra-flag FlatDb.Enabled=${{ matrix.flatdb }} \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
             --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
             --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
             --el-extra-flag Sync.SnapSync=true \
-            "${METRICS_FLAGS[@]}" \
+            --el-extra-flag "Metrics.NodeName=${node_name}" \
+            --el-extra-flag Metrics.Enabled=true \
+            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
+            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-extra-flag Seq.MinLevel=Info \
+            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}" \
             --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
 
-          # Patch compose to not pull the locally-built image
-          sed -i '/image: nethermind-local:smoke/a\    pull_policy: never' $GITHUB_WORKSPACE/sedge/docker-compose.yml
-
-          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
+          docker compose up -d
 
       - name: Wait for hoodi to sync
-        id: wait
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-        run: |
-          python scripts/wait-for-sync.py
+        run: python scripts/wait-for-sync.py
 
       - name: Get Nethermind Debug Logs
-        if: ${{ failure() || cancelled() }}
-        id: find-and-upload
+        if: failure() || cancelled()
         run: |
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
           cd "$target_dir/logs"
@@ -146,7 +121,7 @@ jobs:
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
 
       - name: Upload Nethermind Debug logs artifact
-        if: ${{ failure() || cancelled() }}
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.artifact_name }}
