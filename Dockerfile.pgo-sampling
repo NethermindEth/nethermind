@@ -5,6 +5,10 @@
 # perfcollect produces .trace.zip which dotnet-pgo --spgo converts
 # to .mibc with sample-based block counts for method layout optimization.
 #
+# The Microsoft .NET 10 SDK does not ship libcoreclrtraceptprovider.so
+# (LTTng tracepoint probes) — PR dotnet/runtime#113876 made it optional.
+# We build it from source and inject it so the runtime emits LTTng events.
+#
 # This image is run AFTER the main PGO collection (Dockerfile.pgo).
 # The two .mibc files are merged to combine edge/type data with SPGO samples.
 
@@ -34,8 +38,45 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-# Noble (24.04): .NET 10 compatible glibc 2.39, LTTng 2.13 (liblttng-ust.so.1)
-# .NET 10 runtime dlopen's liblttng-ust.so.1 so Noble's LTTng 2.13 is compatible.
+# Build libcoreclrtraceptprovider.so from dotnet/runtime source.
+# This .so contains the LTTng UST tracepoint definitions that the runtime
+# dlopen's at startup. The Microsoft SDK image doesn't ship it.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
+
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+    git \
+    cmake \
+    clang \
+    python3 \
+    liblttng-ust-dev && \
+  rm -rf /var/lib/apt/lists/*
+
+# Clone the matching runtime tag for the SDK version
+RUN git clone --depth 1 --branch v10.0.5 \
+  https://github.com/dotnet/runtime.git /runtime
+
+WORKDIR /runtime/build-lttng
+
+# Generate LTTng tracepoint sources from the event manifest and compile
+# just libcoreclrtraceptprovider.so (the shared library the runtime dlopen's)
+RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
+      --man /runtime/src/coreclr/vm/ClrEtwAll.man \
+      --intermediate /runtime/build-lttng && \
+    # Compile all traceptprov*.cpp files into the shared library
+    cd /runtime/build-lttng/lttng && \
+    for f in traceptprov*.cpp; do \
+      clang++ -shared -fPIC -O2 \
+        -I/runtime/src/coreclr/pal/inc/rt \
+        -I/runtime/build-lttng/lttng \
+        -o /tmp/obj_$(basename $f .cpp).o \
+        -c "$f"; \
+    done && \
+    clang++ -shared -o /runtime/build-lttng/libcoreclrtraceptprovider.so \
+      /tmp/obj_traceptprov*.o \
+      -llttng-ust -Wl,--noinhibit-exec
+
+# Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
 
 WORKDIR /nethermind
@@ -52,12 +93,17 @@ RUN apt-get update && \
   chmod +x /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
+# Inject the LTTng tracepoint provider next to libcoreclr.so so the
+# runtime's PAL_InitializeTracing constructor dlopen's it at startup
+COPY --from=lttng-build /runtime/build-lttng/libcoreclrtraceptprovider.so \
+  /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.5/
+
 # Override runtimeconfig.json settings not suitable for PGO collection
 ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
-# Enable perf map generation for managed symbol resolution
+# Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
 
@@ -71,19 +117,27 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 
 # perfcollect runs in background collecting perf CPU samples + LTTng CLR events.
-# Nethermind runs in foreground; when it exits (EXPB stop signal),
-# we stop perfcollect which then post-processes into .trace.zip.
+# Nethermind runs in background; we wait for perfcollect to finish first
+# (collection + post-processing) to ensure .trace.zip is written before
+# Docker's 10s stop grace period kills the container.
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
+
+# Verify LTTng provider is loadable
+if [ -f /usr/share/dotnet/shared/Microsoft.NETCore.App/10.0.5/libcoreclrtraceptprovider.so ]; then
+  echo "trace: LTTng tracepoint provider found"
+else
+  echo "trace: WARNING — libcoreclrtraceptprovider.so missing, LTTng events will be empty"
+fi
 
 echo "trace: starting perfcollect (perf + LTTng)"
 perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
 trace_pid=$!
 
-# Wait for LTTng session to be created before starting Nethermind.
-# The runtime registers UST tracepoints on startup; if the session
-# isn't active yet, LTTng events are lost.
+# Wait for LTTng session to be active before starting Nethermind.
+# The runtime registers UST tracepoints via dlopen at startup;
+# the LTTng session must be active to capture them.
 echo "trace: waiting for LTTng session..."
 for i in $(seq 1 30); do
   if grep -q "Collection started" /nethermind/pgo/perfcollect.log 2>/dev/null; then
