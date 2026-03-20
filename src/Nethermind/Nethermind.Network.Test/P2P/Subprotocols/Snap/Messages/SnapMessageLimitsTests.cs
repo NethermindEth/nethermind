@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -17,36 +16,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages;
 public class SnapMessageLimitsTests
 {
     /// <summary>
-    /// Each response limit must be large enough that a valid message fitting within
-    /// <see cref="SnapMessageLimits.MaxResponseBytes"/> (3 MiB) can never exceed the limit.
+    /// Response limits must be large enough that a valid message within
+    /// <see cref="SnapMessageLimits.MaxResponseBytes"/> (3 MiB) never exceeds the limit.
     /// A too-low limit causes <see cref="RlpLimitException"/>, which disconnects and bans
     /// the peer for 15 minutes — silently killing SnapSync throughput.
-    ///
-    /// We compute the theoretical maximum item count from the minimum per-item RLP size.
     /// </summary>
-    [Test]
-    public void MaxResponseAccounts_accommodates_max_response_bytes()
+    [TestCase(nameof(SnapMessageLimits.MaxResponseAccounts), SnapMessageLimits.MaxResponseAccounts, 40, TestName = "MaxResponseAccounts accommodates 3 MiB at ~40 bytes/account")]
+    [TestCase(nameof(SnapMessageLimits.MaxResponseSlotsPerAccount), SnapMessageLimits.MaxResponseSlotsPerAccount, 36, TestName = "MaxResponseSlotsPerAccount accommodates 3 MiB at ~36 bytes/slot")]
+    public void Response_limit_accommodates_max_response_bytes(string limitName, int limit, int minEntryBytes)
     {
-        // Minimum AccountRange entry: RLP sequence header (1) + 32-byte hash (33) + minimal account (empty nonce/balance/code/storage ~4 bytes + RLP overhead ~5) ≈ 43 bytes
-        // Be conservative — use the smallest realistic entry (~40 bytes) to get the highest possible count.
-        const int minAccountEntryBytes = 40;
-        long maxTheoreticalAccounts = SnapMessageLimits.MaxResponseBytes / minAccountEntryBytes;
+        int maxTheoreticalItems = (int)(SnapMessageLimits.MaxResponseBytes / minEntryBytes);
 
-        SnapMessageLimits.MaxResponseAccounts.Should().BeGreaterThanOrEqualTo((int)maxTheoreticalAccounts,
-            "MaxResponseAccounts must accommodate the maximum number of accounts that can fit in a {0}-byte response at {1} bytes/entry minimum",
-            SnapMessageLimits.MaxResponseBytes, minAccountEntryBytes);
-    }
-
-    [Test]
-    public void MaxResponseSlotsPerAccount_accommodates_max_response_bytes()
-    {
-        // Minimum StorageSlot entry: RLP sequence header (1) + 32-byte hash (33) + minimal 1-byte value RLP (2) = 36 bytes
-        const int minSlotEntryBytes = 36;
-        long maxTheoreticalSlots = SnapMessageLimits.MaxResponseBytes / minSlotEntryBytes;
-
-        SnapMessageLimits.MaxResponseSlotsPerAccount.Should().BeGreaterThanOrEqualTo((int)maxTheoreticalSlots,
-            "MaxResponseSlotsPerAccount must accommodate the maximum number of slots that can fit in a {0}-byte response at {1} bytes/entry minimum",
-            SnapMessageLimits.MaxResponseBytes, minSlotEntryBytes);
+        limit.Should().BeGreaterThanOrEqualTo(maxTheoreticalItems,
+            "{0} must accommodate the maximum item count that fits in a {1}-byte response at {2} bytes/entry",
+            limitName, SnapMessageLimits.MaxResponseBytes, minEntryBytes);
     }
 
     [Test]
