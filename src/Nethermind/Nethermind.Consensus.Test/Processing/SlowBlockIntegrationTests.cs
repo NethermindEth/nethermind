@@ -68,7 +68,7 @@ public class SlowBlockIntegrationTests
     private void DeployCode(Address address, byte[] code)
     {
         _worldState.CreateAccountIfNotExists(address, 0);
-        _worldState.InsertCode(address, code, _specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.InsertCode(address, code, Prague.Instance);
     }
 
     private SlowBlockLogEntry Execute(Transaction tx, Block block)
@@ -117,7 +117,7 @@ public class SlowBlockIntegrationTests
         byte[] code = Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.SLOAD).Op(Instruction.POP).Op(Instruction.STOP).Done;
         DeployCode(contract, code);
         _worldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
-        _worldState.Commit(_specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(100_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
@@ -142,7 +142,7 @@ public class SlowBlockIntegrationTests
             .Op(Instruction.STOP).Done;
         DeployCode(contract, code);
         _worldState.Set(new StorageCell(contract, 1), new byte[] { 0xFF });
-        _worldState.Commit(_specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.Commit(Prague.Instance);
 
         Transaction tx = Build.A.Transaction.WithTo(contract).WithGasLimit(200_000)
             .SignedAndResolved(_ecdsa, sender, true).TestObject;
@@ -204,7 +204,7 @@ public class SlowBlockIntegrationTests
         Eip7702Constants.DelegationHeader.CopyTo(existingDelegation);
         codeSource.Bytes.CopyTo(existingDelegation, 3);
         _worldState.CreateAccount(signer.Address, 0);
-        _worldState.InsertCode(signer.Address, existingDelegation, _specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
         _worldState.IncrementNonce(signer.Address);
 
         Transaction clearTx = Build.A.Transaction.WithType(TxType.SetCode).WithTo(signer.Address).WithGasLimit(100_000)

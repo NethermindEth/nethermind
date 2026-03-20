@@ -120,7 +120,7 @@ public class MetricsIntegrationTests
         _worldState.CreateAccount(sender.Address, 10.Ether);
         DeployCode(contract, Prepare.EvmCode.Op(Instruction.PUSH0).Op(Instruction.PUSH0).Op(Instruction.SSTORE).Done);
         _worldState.Set(new StorageCell(contract, 0), new byte[] { 0x42 });
-        _worldState.Commit(_specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.Commit(Prague.Instance);
 
         long startDeleted = Metrics.ThreadLocalStorageDeleted;
 
@@ -177,7 +177,7 @@ public class MetricsIntegrationTests
         Eip7702Constants.DelegationHeader.CopyTo(existingDelegation);
         TestItem.AddressC.Bytes.CopyTo(existingDelegation, 3);
         _worldState.CreateAccount(signer.Address, 0);
-        _worldState.InsertCode(signer.Address, existingDelegation, _specProvider.GetSpec(ForkActivation.TimestampOnly(MainnetSpecProvider.PragueBlockTimestamp)));
+        _worldState.InsertCode(signer.Address, existingDelegation, Prague.Instance);
         _worldState.IncrementNonce(signer.Address);
 
         long startCleared = Metrics.ThreadLocalEip7702DelegationsCleared;
