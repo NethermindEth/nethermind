@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <Import Project="../tests.props" />
+
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="FluentAssertions" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Serialization.FluentRlp\Nethermind.Serialization.FluentRlp.csproj" />
+        <ProjectReference Include="..\Nethermind.Serialization.FluentRlp.Generator\Nethermind.Serialization.FluentRlp.Generator.csproj" OutputItemType="Analyzer" />
+    </ItemGroup>
+
+</Project>
