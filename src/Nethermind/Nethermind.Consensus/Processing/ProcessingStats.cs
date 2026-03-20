@@ -149,6 +149,14 @@ namespace Nethermind.Consensus.Processing
             // Slow block diagnostics — skip when disabled (-1)
             if (_slowBlockThresholdMs < 0) return;
 
+            // Enable per-tx timing on the current block-processing thread.
+            // Must be set here (not in Start()) because the async processing loop
+            // can resume on a different ThreadPool thread after each await.
+            if (_slowBlockPerTxThresholdMs >= 0)
+            {
+                PerTxTimingCollector.SetEnabled(true);
+            }
+
             _startAccountReads = Evm.Metrics.ThreadLocalAccountReads;
             _startStorageReads = Evm.Metrics.ThreadLocalStorageReads;
             _startCodeReads = Evm.Metrics.ThreadLocalCodeReads;
@@ -697,12 +705,6 @@ namespace Nethermind.Consensus.Processing
             {
                 _lastReportMs = Environment.TickCount64;
                 _runStopwatch.Start();
-
-                // Enable per-tx timing on the block-processing thread (once)
-                if (_slowBlockThresholdMs >= 0 && _slowBlockPerTxThresholdMs >= 0)
-                {
-                    PerTxTimingCollector.SetEnabled(true);
-                }
             }
         }
 
