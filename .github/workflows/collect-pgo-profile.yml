@@ -217,7 +217,7 @@ jobs:
             echo "uv is required but not found in PATH."
             exit 1
           fi
-          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@feat/security-opt-support" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run EXPB for PGO collection
@@ -316,6 +316,8 @@ jobs:
             -e 's#nethermind-pgo-collect:#nethermind-pgo-sampling:#g' \
             "${{ steps.render-config.outputs.rendered_config_file }}" \
             > "${sampling_config}"
+          # Add seccomp=unconfined so perfcollect can call perf_event_open inside the container
+          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'security_opt':['seccomp=unconfined']}) for s in c.get('scenarios',{}).values()];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${sampling_config}"
           echo "Rendered sampling config:"
           cat "${sampling_config}"
 
