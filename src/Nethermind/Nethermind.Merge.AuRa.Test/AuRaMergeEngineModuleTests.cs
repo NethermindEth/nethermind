@@ -68,15 +68,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task processing_block_should_serialize_valid_responses(string blockHash, string latestValidHash, string payloadId)
         => base.processing_block_should_serialize_valid_responses(blockHash, latestValidHash, payloadId);
 
-    // todo: investigate problem with aura parallel state application on gnosis
-    [TestCase(
-        "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
-        "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
-        "0xb8a1a0780980ab4e20a46237a3c533af8cd0386cf4c74d05c8ec5e9bf5cbc482",
-        "0x2802e8a8c34cd1ea",
-        _auraWithdrawalContractAddress)]
-
-    // todo: investigate problem with aura parallel state application on gnosis
     [TestCase(
         "0xec6f5611ce3652fefd669e8d7e6d63bd8cdefdcdfe9a0a44eb61355084831da4",
         "0xf382f220de54b57ac9355d4eeb114f9e6bc4d25e307cdac0347b43d5534ac68e",
@@ -86,18 +77,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override async Task Should_process_block_as_expected_V6(string latestValidHash, string blockHash, string stateRoot, string payloadId, string? customWithdrawalContractAddress)
         => await base.Should_process_block_as_expected_V6(latestValidHash, blockHash, stateRoot, payloadId, customWithdrawalContractAddress);
 
-    [TestCase(
-        "0x76a808853695a92a5ff69afcf430667e54cfcde244d68cdb941ae0f2d543c24e",
-        "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-        "0xc8916243978a690d58166358ae660f3ed20415aa82f8c057ce55412617919888",
-        true, true)]
-    // correct state root:
-    // [TestCase(
-    //     "0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911",
-    //     "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-    //     "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16")]
-    public override Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
-        => NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
+    [TestCase("0x14d7d22cfaa851f3b79a790d6f961f0cc4da2e714cd15b16bce8468f25152911", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0x3e98244425fbc5413150a01fd823bece9ae66ef182f11597f0abdfd251d9aa16", false, false)]
+    public override async Task NewPayloadV5_accepts_valid_BAL(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline)
+        => await NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
     [TestCase(
         "0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21",
@@ -107,8 +89,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         _auraWithdrawalContractAddress)]
     [TestCase("0x0f125b68c09e5dc3b57cc47e93189d431fbb2d02d0aceb001eda8938ae933e21", "0x914892da85e1a085a90e8a02f9a9cf0777d73c5798047c7324859b1c5ad9b67f", "0x7255eb3f45136fccaa3449d2787f80e33e197b4fbc417f1d62423a72a76b5d43", "0xcf205144eb1991b718be9c4694f22d6b0937740c17e2d811c8fc3c999d596fcf", _auraWithdrawalContractAddress)]
     public override Task NewPayloadV5_rejects_invalid_BAL_after_processing(string blockHash, string stateRoot, string invalidBalHash, string expectedBalHash, string? customWithdrawalContractAddress)
-        => Task.CompletedTask;
-    // => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
+        => base.NewPayloadV5_rejects_invalid_BAL_after_processing(blockHash, stateRoot, invalidBalHash, expectedBalHash, customWithdrawalContractAddress);
 
     [TestCase("0x5ab84199bdbe0d5806de6bffbbd52cf31ede2248f842395aa9a850a45ad9f4db", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.IncorrectChange)]
     [TestCase("0x56f188e232e95462ad7235ca53b336f5f73cc208992d307033210c085ea6f959", "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569", "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b", false, false, BalErrorKind.MissingChange)]
@@ -117,45 +98,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task NewPayloadV5_rejects_invalid_BAL_early(string? blockHash, string? receiptsRoot, string? stateRoot, bool eip8037Enabled, bool useEnginePipeline, BalErrorKind errorKind) =>
         NewPayloadV5_via_manual_block(blockHash, receiptsRoot, stateRoot, GetExpectedBalError(errorKind), errorKind, customWithdrawalContractAddress: _auraWithdrawalContractAddress);
 
-    // [TestCase(
-    //     "0x56f188e232e95462ad7235ca53b336f5f73cc208992d307033210c085ea6f959",
-    //     "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-    //     "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    // public override Task NewPayloadV5_rejects_invalid_BAL_with_missing_changes_early(string blockHash, string receiptsRoot, string stateRoot)
-    //     => NewPayloadV5_via_manual_block(
-    //         blockHash,
-    //         receiptsRoot,
-    //         stateRoot,
-    //         "InvalidBlockLevelAccessList: Account 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 not found in block access list when checking existence at index 2.",
-    //         withMissingChange: true,
-    //         auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
-
-    // [TestCase(
-    //     "0x1625b8215c5d6ab493105efb8cc20b7409d4957ca46d98996c6cc01e50b69ab3",
-    //     "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-    //     "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    // public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_changes_early(string blockHash, string receiptsRoot, string stateRoot)
-    //     => NewPayloadV5_via_manual_block(
-    //         blockHash,
-    //         receiptsRoot,
-    //         stateRoot,
-    //         "InvalidBlockLevelAccessList: Suggested block-level access list contained surplus changes for 0x65942aaf2c32a1aca4f14e82e94fce91960893a2 at index 2.",
-    //         withSurplusChange: true,
-    //         auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
-
-    // [TestCase(
-    //     "0x91e03d0f1b756f6577cab73c9f910f9b18fbe45ac27bb346ada0fa912a71dac8",
-    //     "0x3d4548dff4e45f6e7838b223bf9476cd5ba4fd05366e8cb4e6c9b65763209569",
-    //     "0xd2e92dcdc98864f0cf2dbe7112ed1b0246c401eff3b863e196da0bfb0dec8e3b")]
-    // public override Task NewPayloadV5_rejects_invalid_BAL_with_surplus_reads_early(string blockHash, string receiptsRoot, string stateRoot)
-    //     => NewPayloadV5_via_manual_block(
-    //         blockHash,
-    //         receiptsRoot,
-    //         stateRoot,
-    //         "InvalidBlockLevelAccessList: Suggested block-level access list contained invalid storage reads.",
-    //         withSurplusReads: true,
-    //         auraWithdrawalContractAddress: _auraWithdrawalContractAddress);
-
     [Test]
     [TestCase(_auraWithdrawalContractAddress)]
     public override async Task GetPayloadV6_builds_block_with_BAL(string? customWithdrawalContractAddress) =>
@@ -163,13 +105,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     [Test]
     public override async Task GetPayloadBodiesHashV2_returns_correctly()
-    { }
-    // => await base.GetPayloadBodiesHashV2_returns_correctly();
+        => await base.GetPayloadBodiesHashV2_returns_correctly();
 
     [Test]
     public override async Task GetPayloadBodiesByRangeV2_returns_correctly()
-    { }
-    // => await base.GetPayloadBodiesByRangeV2_returns_correctly();
+        => await base.GetPayloadBodiesByRangeV2_returns_correctly();
 
     [TestCase("0xa66ec67b117f57388da53271f00c22a68e6c297b564f67c5904e6f2662881875", "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926")]
     [Parallelizable(ParallelScope.None)]
