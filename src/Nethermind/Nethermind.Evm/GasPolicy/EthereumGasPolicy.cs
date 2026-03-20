@@ -197,12 +197,14 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeStorageWrite<TEip8037>(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec) where TEip8037 : struct, IFlag
+    public static bool ConsumeStorageWrite<TEip8037>(ref EthereumGasPolicy gas, bool isSlotCreation, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
     {
+        if (!isSlotCreation) return UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
         return TEip8037.IsActive switch
         {
             true => ConsumeStateGas(ref gas, GasCostOf.SSetState) && UpdateGas(ref gas, GasCostOf.SSetRegular),
-            false => isSlotCreation ? UpdateGas(ref gas, GasCostOf.SSet) : UpdateGas(ref gas, spec.GasCosts.SStoreResetCost)
+            false => UpdateGas(ref gas, GasCostOf.SSet)
         };
     }
 
