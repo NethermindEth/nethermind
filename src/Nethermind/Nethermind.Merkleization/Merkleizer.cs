@@ -115,6 +115,18 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
+    public void Feed(byte value)
+    {
+        Merkle.Merkleize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
+    public void Feed(ushort value)
+    {
+        Merkle.Merkleize(out _chunks[^1], value);
+        Feed(_chunks[^1]);
+    }
+
     public void Feed(uint value)
     {
         Merkle.Merkleize(out _chunks[^1], value);
