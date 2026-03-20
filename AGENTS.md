@@ -11,24 +11,27 @@ This guide helps to get started with the Nethermind Ethereum execution client re
 
 ## Coding guidelines and style
 
-- Do follow the [CONTRIBUTING.md](./CONTRIBUTING.md) guidelines
-- Do follow the [.editorconfig](./.editorconfig) rules
-- Do prefer low-allocation code patterns
-- Prefer the latest C# syntax and conventions
-- Prefer file-scoped namespaces (for existing files, follow their style)
-- Prefer pattern matching and switch expressions over the traditional control flow
-- Use the `nameof` operator instead of string literals for member references
-- Use `is null` and `is not null` instead of `== null` and `!= null`
-- Use `?.` null-conditional operator where applicable
-- Use the `ArgumentNullException.ThrowIfNull` method for null checks and other similar methods
-- Use the `ObjectDisposedException.ThrowIf` method for disposal checks
-- Use documentation comments for all public APIs with proper structure
-- Consider performance implications in high-throughput paths
-- Trust null annotations—don't add redundant null checks
-- Add tests to existing test files rather than creating new ones
-- Code comments must explain _why_, not _what_
-- Do not use the `#region` and `#endregion` pragmas
-- Do not alter anything in the [src/bench_precompiles](./src/bench_precompiles/) and [src/tests](./src/tests/) directories
+- Follow [CONTRIBUTING.md](./CONTRIBUTING.md) and [.editorconfig](./.editorconfig)
+- Keep changes minimal and focused — don't touch unrelated code
+- When fixing a bug, always add a regression test
+- Do not alter [src/bench_precompiles](./src/bench_precompiles/) or [src/tests](./src/tests/)
+
+---
+
+## Codebase Rules
+
+Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the relevant files before answering any query, reasoning, writing, reviewing, planning, or debugging any code read load additional files as soon as the task touches their domain. Do NOT skip loading a file because you think you already know the rules — always read from disk.**
+
+- [coding-style.md](./.agents/rules/coding-style.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers syntax, coding patterns, documentation, and code quality.
+- [di-patterns.md](./.agents/rules/di-patterns.md) — Core dependency injection patterns. Load when working with DI registration, service wiring, or component architecture. Covers Autofac modules, WorldState architecture, lifetimes, and the custom DSL.
+- [test-infrastructure.md](./.agents/rules/test-infrastructure.md) — Load when working with tests, benchmarks, or designing components that need to be testable. Covers TestBlockchain, benchmark setup, DI anti-patterns, and test guidelines.
+- [robustness.md](./.agents/rules/robustness.md) — Almost always. Load for any task requiring C#-specific reasoning. Covers async pitfalls, resource management, thread safety, input validation, and unsafe blocks.
+- [performance.md](./.agents/rules/performance.md) — Load when working on hot paths in the codebase. Covers ref structs, Span, SIMD, function pointers, and zero-allocation patterns.
+- [package-management.md](./.agents/rules/package-management.md) — Load when working with NuGet dependencies. Covers Central Package Management (CPM) rules.
+- [github-workflows.md](./.agents/rules/github-workflows.md) — Load when working with GitHub Actions, CODEOWNERS, or PR templates. Covers workflow conventions and automation patterns.
+- [agent-skills.md](./.agents/rules/agent-skills.md) — Load when working with agentic skills. Covers the symlink convention.
+
+---
 
 ## Project structure
 
@@ -105,8 +108,84 @@ Before creating a pull request:
   ```bash
   dotnet format whitespace src/Nethermind/ --folder
   ```
-- Use [pull_request_template.md](.github/pull_request_template.md)
+- Follow the [pull_request_template.md](.github/pull_request_template.md) format: fill in the changes section, tick the appropriate type-of-change checkboxes, and complete the testing/documentation sections. The checkboxes drive automatic PR labeling.
 
 ## Prerequisites
 
 See [global.json](./global.json) for the required .NET SDK version.
+
+## Reproducible Benchmark Workflow Guidance
+
+This repository contains a dedicated workflow for reproducible payload benchmarks:
+
+- Workflow file: [`.github/workflows/run-expb-reproducible-benchmarks.yml`](./.github/workflows/run-expb-reproducible-benchmarks.yml)
+- Main execution runner label: `reproducible-benchmarks`
+
+### What the workflow does
+
+- Resolves runtime inputs (branch, state layout, payload set, delay, optional extra flags).
+- Selects one benchmark config file from `/mnt/sda/expb-data`.
+- Builds or reuses Nethermind Docker image tag depending on branch rules.
+- Renders a temporary config (does not modify source files) by:
+  - replacing `<<DOCKER_TAG>>`
+  - replacing `<<DELAY>>`
+  - renaming scenario key `nethermind:` to a detailed scenario name
+  - appending user-provided extra flags under `extra_flags:`
+- Installs `expb` via `uv tool install --force --from ... expb`.
+- Runs `expb execute-scenarios` with per-payload metrics and logs.
+- Handles termination gracefully with cleanup grace period.
+- On successful `master` push runs, caches per-payload timing aggregates extracted from the `processing_ms` table.
+- On labeled PR runs, restores latest cached `master` metrics and posts a PR comment with PR vs master comparison.
+
+### What to inspect in run output
+
+- Inspect the `Run expb scenarios` step output first.
+- Treat any Nethermind `Exception` as a high-priority issue.
+- Explicitly scan logs for invalid block signals, including `Invalid Block` and `Invalid Blocks`.
+- Review the end-of-run summary section with per-block timings and totals.
+- Use summary timing values to derive aggregate metrics (average/mean at minimum; median/p95 when available).
+- If a run fails or is terminated, check whether cleanup grace-period handling completed cleanly.
+
+### Log structure reference
+
+- Reference run used for structure validation:
+  - Run: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008`
+  - Job: `https://github.com/NethermindEth/nethermind/actions/runs/22185801008/job/64159725161`
+- Fetch logs with:
+  ```bash
+  gh run view 22185801008 --job 64159725161 --log
+  ```
+- GitHub job log lines are tab-separated in this shape:
+  - `<job-name>\t<step-name>\t<timestamp>\t<message>`
+  - Example step names in this workflow: `Print resolved inputs`, `Render benchmark config`, `Install or upgrade expb`, `Run expb scenarios`.
+- `Run expb scenarios` contains mixed streams:
+  - EXPB structured events like: `timestamp=... level=info event="..."`.
+  - K6 progress and metric blocks (`http_req_duration`, `iteration_duration`, percentiles like `p(95)`).
+  - Raw Nethermind runtime logs (received blocks, processed block timings, shutdown sequence).
+  - Per-payload metrics table near the end, marked by:
+    - `+---------+------------+-----------------+`
+    - `| payload | gas_used   | processing_ms   |`
+    - rows with payload id, gas used, processing time.
+- ANSI color codes are present; when searching/parsing, strip ANSI escape sequences first.
+- Some non-ASCII time-unit glyphs can appear mangled in plain terminal output, so prefer numeric metric fields when computing aggregates.
+
+### Mandatory log checks
+
+- Fail review if any of these appear in Nethermind logs:
+  - `Exception`
+  - `Invalid Block`
+  - `Invalid Blocks`
+- Workflow behavior requirement: any detected `Exception` in run output must fail the workflow after reporting matching lines.
+- Also flag severe runtime signals if present:
+  - `Unhandled`
+  - `Fatal`
+  - `ERROR`
+- Confirm normal shutdown markers at end:
+  - `Nethermind is shut down`
+  - `event="Cleanup completed"`
+
+### Notes for agents
+
+- The benchmark config is rendered to a temporary file and removed afterward; no source config revert is required.
+- For `pull_request` and `push` auto-runs, default mode is currently `halfpath + superblocks`.
+- Keep benchmark-related changes isolated to the workflow and benchmark guidance unless explicitly asked otherwise.

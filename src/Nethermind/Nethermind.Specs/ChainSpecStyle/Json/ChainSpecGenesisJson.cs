@@ -27,5 +27,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         public ulong BlobGasUsed { get; set; }
         public ulong ExcessBlobGas { get; set; }
         public Hash256 ParentBeaconBlockRoot { get; set; }
+
+        public ulong? SlotNumber { get; set; }
     }
 }

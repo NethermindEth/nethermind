@@ -19,7 +19,7 @@ public class HeaderStore(
     [KeyFilter(DbNames.Headers)] IDb headerDb,
     [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb,
     IHeaderDecoder? decoder = null)
-    : IHeaderStore
+    : IHeaderStore, IClearableCache
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
@@ -112,4 +112,9 @@ public class HeaderStore(
     }
 
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
+
+    void IClearableCache.ClearCache()
+    {
+        _headerCache.Clear();
+    }
 }

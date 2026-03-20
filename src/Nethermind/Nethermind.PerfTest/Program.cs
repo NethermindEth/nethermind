@@ -253,7 +253,7 @@ namespace Nethermind.PerfTest
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* load spec */
-            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer(), _logManager);
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "goerli.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
@@ -272,7 +272,7 @@ namespace Nethermind.PerfTest
             var receiptsDb = dbProvider.ReceiptsDb;
 
             /* state & storage */
-            var trieStore = new TrieStore(stateDb, new DepthAndMemoryBased(8192, 1.GB()), new ConstantInterval(8192), _logManager);
+            var trieStore = new TrieStore(stateDb, new DepthAndMemoryBased(8192, 1.GB), new ConstantInterval(8192), _logManager);
             var stateProvider = new StateProvider(trieStore, codeDb, _logManager);
             var storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
 

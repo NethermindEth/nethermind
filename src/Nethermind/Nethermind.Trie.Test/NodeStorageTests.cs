@@ -13,31 +13,25 @@ namespace Nethermind.Trie.Test;
 
 [TestFixture(INodeStorage.KeyScheme.Hash)]
 [TestFixture(INodeStorage.KeyScheme.HalfPath)]
-public class NodeStorageTests
+[Parallelizable(ParallelScope.All)]
+public class NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
 {
-    private readonly INodeStorage.KeyScheme _currentKeyScheme;
-
-    public NodeStorageTests(INodeStorage.KeyScheme currentKeyScheme)
-    {
-        _currentKeyScheme = currentKeyScheme;
-    }
-
     [Test]
     public void Should_StoreAndRead()
     {
         TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
         nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
         nodeStorage.Set(null, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
         nodeStorage.KeyExists(null, TreePath.Empty, TestItem.KeccakA).Should().BeTrue();
 
-        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash)
+        if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
             testDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
         }
-        else if (_currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
+        else if (currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
         {
             testDb[NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, TestItem.KeccakA)].Should().NotBeNull();
         }
@@ -47,18 +41,18 @@ public class NodeStorageTests
     public void Should_StoreAndRead_WithStorage()
     {
         TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
         nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeFalse();
         nodeStorage.Set(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
         nodeStorage.KeyExists(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeTrue();
 
-        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash)
+        if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
             testDb[TestItem.KeccakA.Bytes].Should().NotBeNull();
         }
-        else if (_currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
+        else if (currentKeyScheme == INodeStorage.KeyScheme.HalfPath)
         {
             testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)].Should().NotBeNull();
         }
@@ -68,7 +62,7 @@ public class NodeStorageTests
     public void When_KeyNotExist_Should_TryBothKeyType()
     {
         TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
         nodeStorage.Get(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA).Should().BeNull();
 
@@ -80,9 +74,9 @@ public class NodeStorageTests
     public void When_EntryOfDifferentScheme_Should_StillBeAbleToRead()
     {
         TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
-        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash)
+        if (currentKeyScheme == INodeStorage.KeyScheme.Hash)
         {
             testDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakB, TreePath.Empty, TestItem.KeccakA)] =
                 TestItem.KeccakA.BytesToArray();
@@ -109,7 +103,7 @@ public class NodeStorageTests
     [TestCase(true, 32, "0211111111111111111111111111111111111111111111111111111111111111112222222222222222203333333333333333333333333333333333333333333333333333333333333333")]
     public void Test_HalfPathEncoding(bool hasAddress, int pathLength, string expectedKey)
     {
-        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
+        if (currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
 
         Hash256? address = null;
         if (hasAddress)
@@ -130,10 +124,10 @@ public class NodeStorageTests
     [TestCase(true, 3, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead3)]
     public void Test_WhenReadaheadUseDifferentReadaheadOnDifferentSection(bool hasAddress, int pathLength, ReadFlags expectedReadFlags)
     {
-        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
+        if (currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
 
         TestMemDb testDb = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+        NodeStorage nodeStorage = new NodeStorage(testDb, currentKeyScheme);
 
         Hash256? address = null;
         if (hasAddress)

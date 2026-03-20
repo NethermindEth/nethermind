@@ -25,11 +25,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 
@@ -219,7 +217,7 @@ public class RangeQueryVisitorTests
     {
         public ArrayPoolList<(ValueHash256, byte[]?)> Leafs { get; } = new(0);
 
-        public int Collect(in ValueHash256 path, SpanSource value)
+        public int Collect(in ValueHash256 path, CappedArray<byte> value)
         {
             Leafs.Add((path, value.ToArray()));
             return 32 + Rlp.LengthOfByteString(value.Length, 0);

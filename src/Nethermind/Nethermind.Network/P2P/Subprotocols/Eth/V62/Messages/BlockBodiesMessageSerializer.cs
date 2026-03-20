@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -25,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 if (body is null)
                 {
-                    stream.Encode(Rlp.OfEmptySequence);
+                    stream.Encode(Rlp.OfEmptyList);
                 }
                 else
                 {
@@ -41,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 length += body switch
                 {
-                    null => Rlp.OfEmptySequence.Length,
+                    null => Rlp.OfEmptyList.Length,
                     _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
                 };
             }

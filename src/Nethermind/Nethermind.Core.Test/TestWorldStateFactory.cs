@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Validators;
+using Autofac;
+using Nethermind.Config;
 using Nethermind.Core.Test.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
@@ -14,7 +16,7 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
+    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = true)
     {
         PruningConfig pruningConfig = new PruningConfig();
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
@@ -28,7 +30,8 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        return new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        IWorldState innerWorldState = new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager);
+        return parallel ? new ParallelWorldState(innerWorldState) : innerWorldState;
     }
 
     public static (IWorldState, IStateReader) CreateForTestWithStateReader(IDbProvider? dbProvider = null, ILogManager? logManager = null)
@@ -47,6 +50,17 @@ public static class TestWorldStateFactory
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
         return (new WorldState(new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager), logManager), new StateReader(trieStore, dbProvider.CodeDb, logManager));
+    }
+
+    public static (IWorldStateScopeProvider scopeProvider, IContainer container) CreateFlatScopeProvider()
+    {
+        ConfigProvider configProvider = new();
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .Build();
+        IWorldStateManager wsm = container.Resolve<IWorldStateManager>();
+        return (wsm.GlobalWorldState, container);
     }
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)

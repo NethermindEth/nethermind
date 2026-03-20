@@ -102,46 +102,11 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(expectedHeader.Hash));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_lookup_up_to_256_before_with_headers_only_and_competing_branches()
-    {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly
-            .OfChainLength(out Block headBlock, chainLength)
-            .OfChainLength(out Block _, chainLength, 1);
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        Block current = Build.A.Block.WithParent(headBlock).TestObject;
-        long lookupNumber = chainLength - 256;
-        Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
-        Assert.That(result, Is.Not.Null);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_lookup_up_to_256_before_soon_after_fast_sync()
-    {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly
-            .OfChainLength(out Block headBlock, chainLength)
-            .OfChainLength(out Block _, chainLength, 1);
-        BlockTree tree = blockTreeBuilder.TestObject;
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        Block current = Build.A.Block.WithParent(headBlock).TestObject;
-        tree.SuggestBlock(current);
-        tree.UpdateMainChain(current);
-        long lookupNumber = chainLength - 256;
-        Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
-        Assert.That(result, Is.Not.Null);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_lookup_up_to_256_before_some_blocks_after_fast_sync()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, TestName = "Can_lookup_up_to_256_before_with_headers_only_and_competing_branches")]
+    [TestCase(1, TestName = "Can_lookup_up_to_256_before_soon_after_fast_sync")]
+    [TestCase(6, TestName = "Can_lookup_up_to_256_before_some_blocks_after_fast_sync")]
+    public void Lookup_with_competing_branches_after_fast_sync(int additionalBlocks)
     {
         const int chainLength = 512;
 
@@ -154,7 +119,7 @@ public class BlockhashProviderTests
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
 
         Block current = Build.A.Block.WithParent(headBlock).TestObject;
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < additionalBlocks; i++)
         {
             tree.SuggestBlock(current);
             tree.UpdateMainChain(current);
@@ -190,28 +155,14 @@ public class BlockhashProviderTests
         Assert.That(result, Is.Not.Null);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_get_parent_hash()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(512, -1, true, TestName = "Can_get_parent_hash")]
+    [TestCase(512, 0, false, TestName = "Cannot_ask_for_self")]
+    [TestCase(512, 1, false, TestName = "Cannot_ask_about_future")]
+    [TestCase(512, -256, true, TestName = "Can_lookup_up_to_256_before")]
+    [TestCase(512, -257, false, TestName = "No_lookup_more_than_256_before")]
+    public void Blockhash_lookup_with_full_chain(int chainLength, int lookupOffset, bool expectNonNull)
     {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
-        BlockTree tree = blockTreeBuilder.TestObject;
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
-        Block current = Build.A.Block.WithParent(head).TestObject;
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
-        Assert.That(result, Is.EqualTo(head.Hash));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Cannot_ask_for_self()
-    {
-        const int chainLength = 512;
-
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
         BlockTree tree = blockTreeBuilder.TestObject;
@@ -219,56 +170,18 @@ public class BlockhashProviderTests
         BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
         BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
         Block current = Build.A.Block.WithParent(head).TestObject;
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength, Frontier.Instance);
-        Assert.That(result, Is.Null);
-    }
+        long lookupNumber = chainLength + lookupOffset;
+        Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Cannot_ask_about_future()
-    {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
-        BlockTree tree = blockTreeBuilder.TestObject;
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
-        Block current = Build.A.Block.WithParent(head).TestObject;
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength + 1, Frontier.Instance);
-        Assert.That(result, Is.Null);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_lookup_up_to_256_before()
-    {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
-        BlockTree tree = blockTreeBuilder.TestObject;
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
-        Block current = Build.A.Block.WithParent(head).TestObject;
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
-        Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void No_lookup_more_than_256_before()
-    {
-        const int chainLength = 512;
-
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfChainLength(chainLength);
-        BlockTree tree = blockTreeBuilder.TestObject;
-
-        BlockhashProvider provider = CreateBlockHashProvider(blockTreeBuilder.HeaderStore, Frontier.Instance);
-        BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
-        Block current = Build.A.Block.WithParent(head).TestObject;
-        Hash256? result = provider.GetBlockhash(current.Header, chainLength - 257, Frontier.Instance);
-        Assert.That(result, Is.Null);
+        if (expectNonNull)
+        {
+            Hash256 expected = tree.FindHeader(lookupNumber, BlockTreeLookupOptions.None)!.Hash!;
+            Assert.That(result, Is.EqualTo(expected));
+        }
+        else
+        {
+            Assert.That(result, Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -438,6 +351,7 @@ public class BlockhashProviderTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [NonParallelizable]
     public async Task Prefetches_come_in_wrong_order()
     {
         const int chainLength = 261;

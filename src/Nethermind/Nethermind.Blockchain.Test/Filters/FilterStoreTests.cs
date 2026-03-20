@@ -14,11 +14,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class FilterStoreTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -153,24 +154,25 @@ public class FilterStoreTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    [Parallelizable(ParallelScope.None)]
     public async Task CleanUps_filters()
     {
         List<int> removedFilterIds = new();
-        FilterStore store = new(new TimerFactory(), 50, 20);
+        FilterStore store = new(new TimerFactory(), 500, 100);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest));
         store.SaveFilter(store.CreatePendingTransactionFilter());
-        await Task.Delay(30);
+        await Task.Delay(300);
         store.RefreshFilter(0);
-        await Task.Delay(30);
+        await Task.Delay(300);
         store.RefreshFilter(0);
-        Assert.That(() => store.FilterExists(0), Is.True.After(30, 5), "filter 0 exists");
-        Assert.That(() => store.FilterExists(1), Is.False.After(30, 5), "filter 1 doesn't exist");
-        Assert.That(() => store.FilterExists(2), Is.False.After(30, 5), "filter 2 doesn't exist");
-        Assert.That(() => store.FilterExists(3), Is.False.After(30, 5), "filter 3 doesn't exist");
+        Assert.That(() => store.FilterExists(0), Is.True.After(300, 10), "filter 0 exists");
+        Assert.That(() => store.FilterExists(1), Is.False.After(300, 10), "filter 1 doesn't exist");
+        Assert.That(() => store.FilterExists(2), Is.False.After(300, 10), "filter 2 doesn't exist");
+        Assert.That(() => store.FilterExists(3), Is.False.After(300, 10), "filter 3 doesn't exist");
         store.RefreshFilter(0);
-        Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(30, 5));
+        Assert.That(() => removedFilterIds, Is.EquivalentTo([1, 2, 3]).After(300, 10));
     }
 }

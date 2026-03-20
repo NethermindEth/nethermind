@@ -25,7 +25,6 @@ public ref struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1025;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
@@ -67,18 +66,19 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(value);
 
-        if (value.Length != WordSize)
+        if (value.Length >= WordSize)
         {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
+            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
+            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
         }
         else
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value));
+            ref byte bytes = ref PushBytesRef();
+            Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
+            value.CopyTo(MemoryMarshal.CreateSpan(ref Unsafe.Add(ref bytes, WordSize - value.Length), value.Length));
         }
     }
+
 
     public void PushBytes<TTracingInst>(scoped in ZeroPaddedSpan value)
         where TTracingInst : struct, IFlag
@@ -87,18 +87,19 @@ public ref struct EvmStack
             _tracer.ReportStackPush(value);
 
         ReadOnlySpan<byte> valueSpan = value.Span;
-        if (valueSpan.Length != WordSize)
+        if (valueSpan.Length >= WordSize)
         {
-            ref byte bytes = ref PushBytesRef();
-            // Not full entry, clear first
-            Unsafe.As<byte, Word>(ref bytes) = default;
-            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
+            Debug.Assert(value.Length == WordSize, "Trying to push more than 32 bytes to the stack.");
+            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
         }
         else
         {
-            PushedHead() = Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan));
+            ref byte bytes = ref PushBytesRef();
+            Unsafe.As<byte, Word>(ref bytes) = default; // Not full entry, clear first
+            valueSpan.CopyTo(MemoryMarshal.CreateSpan(ref bytes, value.Length));
         }
     }
+
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushByte<TTracingInst>(byte value)
@@ -262,7 +263,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive)
             _tracer.ReportStackPush(Bytes.ZeroByteSpan);
 
-        // Single 32-byte store: Zero 
+        // Single 32-byte store: Zero
         PushedHead() = default;
     }
 
@@ -539,7 +540,7 @@ public ref struct EvmStack
         Head = head;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StackOverflow:
@@ -568,7 +569,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

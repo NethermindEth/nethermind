@@ -33,7 +33,6 @@ using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Stats;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 
@@ -398,7 +397,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -674,7 +673,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }

@@ -95,13 +95,13 @@ public class TestBlockchainUtil(
             }
 
             await Task.Yield();
-            if (iteration > 0)
-            {
-                await Task.Delay(100);
-            }
-            else if (iteration > 3)
+            if (iteration > 3)
             {
                 Assert.Fail("Did not produce expected block");
+            }
+            else if (iteration > 0)
+            {
+                await Task.Delay(100);
             }
             iteration++;
         }
@@ -125,6 +125,13 @@ public class TestBlockchainUtil(
     public async Task<Block> AddBlockDoNotWaitForHead(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         AddBlockFlags flags = AddBlockFlags.DoNotWaitForHead;
+        if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
+
+        return await AddBlock(flags, cancellationToken, transactions);
+    }
+    public async Task<Block> AddBlockMayHaveExtraTx(bool mayMissTx, CancellationToken cancellationToken, params Transaction[] transactions)
+    {
+        AddBlockFlags flags = AddBlockFlags.MayHaveExtraTx;
         if (mayMissTx) flags |= AddBlockFlags.MayMissTx;
 
         return await AddBlock(flags, cancellationToken, transactions);

@@ -11,26 +11,16 @@ namespace Nethermind.Network.Test.Rlpx
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class FrameMacProcessorTests
     {
-        [Test]
-        public void Can_add_and_check_frame_mac()
+        [TestCase(128, 112, false, Description = "Frame MAC")]
+        [TestCase(32, 16, true, Description = "Header MAC")]
+        public void Can_add_and_check_mac(int bufferSize, int dataLength, bool isHeader)
         {
-            byte[] frame = new byte[128];
+            byte[] data = new byte[bufferSize];
 
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
-            macProcessorA.AddMac(frame, 0, 112, false);
-            macProcessorB.CheckMac(frame, 0, 112, false);
-        }
-
-        [Test]
-        public void Can_add_and_check_header_mac()
-        {
-            byte[] header = new byte[32];
-
-            FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
-            FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
-            macProcessorA.AddMac(header, 0, 16, true);
-            macProcessorB.CheckMac(header, 0, 16, true);
+            macProcessorA.AddMac(data, 0, dataLength, isHeader);
+            macProcessorB.CheckMac(data, 0, dataLength, isHeader);
         }
 
         [Test]

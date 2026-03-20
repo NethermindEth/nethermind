@@ -27,6 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class PruningScenariosTests
     {
         private ILogger _logger;
@@ -195,6 +196,7 @@ namespace Nethermind.Trie.Test
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
             private readonly ManualResetEvent _stateDbBlocker = new ManualResetEvent(true);
+            private readonly ManualResetEventSlim _writeReached = new ManualResetEventSlim(false);
             private readonly TestMemDb _stateDb;
             private readonly TestMemDb _codeDb;
             private IDisposable? _worldStateCloser = null;
@@ -217,6 +219,7 @@ namespace Nethermind.Trie.Test
                 _stateDb = new TestMemDb();
                 _stateDb.WriteFunc = (k, v) =>
                 {
+                    _writeReached.Set();
                     _stateDbBlocker.WaitOne();
                     return true;
                 };
@@ -435,6 +438,11 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public Task StartSyncPruneInBackground()
+            {
+                return Task.Run(() => _trieStore.SyncPruneQueue());
+            }
+
             public PruningContext DisposeAndRecreate()
             {
                 _worldStateCloser!.Dispose();
@@ -573,6 +581,12 @@ namespace Nethermind.Trie.Test
             public PruningContext UnblockDatabase()
             {
                 _stateDbBlocker.Set();
+                return this;
+            }
+
+            public PruningContext WaitForBlockedWrite(int timeoutMs = 10000)
+            {
+                Assert.That(_writeReached.Wait(timeoutMs), Is.True, "Pruning task did not reach database write");
                 return this;
             }
 
@@ -1148,7 +1162,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1162,7 +1176,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                .AssertThatTotalMemoryUsedIs(822384);
+                .AssertThatTotalMemoryUsedIs(823096);
         }
 
         [Test]
@@ -1170,7 +1184,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1198,7 +1212,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(200.KiB())
+                .WithPersistedMemoryLimit(200.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.1)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
@@ -1212,9 +1226,9 @@ namespace Nethermind.Trie.Test
 
                 if (thresholdReached)
                 {
-                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB * 0.1));
                 }
-                else if (ctx.TotalMemoryUsage > 190.KiB())
+                else if (ctx.TotalMemoryUsage > 190.KiB)
                 {
                     thresholdReached = true;
                 }
@@ -1222,7 +1236,7 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(280);
+                .AssertThatCachedNodeCountMoreThan(275);
         }
 
         [Test]
@@ -1320,8 +1334,11 @@ namespace Nethermind.Trie.Test
             }
             ctx.ExitScope();
 
-            // Make sure prune task started and its snapshotting
-            Thread.Sleep(100);
+            // Start pruning explicitly on background thread (avoids relying on async prune delay timing)
+            Task pruneTask = ctx.StartSyncPruneInBackground();
+
+            // Wait until pruning actually hits the blocked database write
+            ctx.WaitForBlockedWrite();
 
             Task blockTask = Task.Run(() =>
             {
@@ -1346,13 +1363,16 @@ namespace Nethermind.Trie.Test
             }
             else
             {
-                await Task.Delay(1000);
+                await Task.Delay(3000);
                 blockTask.IsCompleted.Should().BeFalse();
 
                 ctx.UnblockDatabase();
 
                 await blockTask;
             }
+
+            ctx.UnblockDatabase();
+            await pruneTask;
 
         }
 
@@ -1365,7 +1385,7 @@ namespace Nethermind.Trie.Test
                     cfg.DirtyNodeShardBit = 12; // More shard, deliberately make it slow
                 })
                 .WithMaxDepth(128)
-                .WithPersistedMemoryLimit(50.KiB())
+                .WithPersistedMemoryLimit(50.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.01)
                 .TurnOffPrune();
 

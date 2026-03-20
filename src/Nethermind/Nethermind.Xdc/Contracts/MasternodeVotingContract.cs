@@ -8,13 +8,11 @@ using Nethermind.Blockchain.Contracts.Json;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
-using Nethermind.State;
-using Nethermind.Xdc.Contracts;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc.Contracts;
 
@@ -57,6 +55,32 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
             throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
 
         return (Address)result[0]!;
+    }
+
+    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    {
+        byte[] result = base.CallCore(transactionProcessor, blockHeader, "getCandidateOwner", GenerateTransaction<Transaction>(ContractAddress, "getCandidateOwner", Address.SystemUser, candidate), true);
+        if (result.Length != 32)
+            throw new InvalidOperationException("Expected 'getCandidateOwner' to return exactly one result.");
+        return new Address(result.AsSpan().Slice(32 - Address.Size));
+    }
+
+
+    public Address GetCandidateOwner(IWorldState worldState, Address candidate)
+    {
+        const int ValidatorsStateSlot = (byte)CandidateContractSlots.ValidatorsState;
+        Span<byte> mappingKeyInput = stackalloc byte[64];
+        mappingKeyInput.Clear();
+        candidate.Bytes.CopyTo(mappingKeyInput.Slice(12, Address.Size));
+        mappingKeyInput[63] = ValidatorsStateSlot;
+        ValueHash256 slotHash = ValueKeccak.Compute(mappingKeyInput);
+        UInt256 slot = new(slotHash.Bytes, isBigEndian: true);
+
+        StorageCell cell = new(ContractAddress!, slot);
+        ReadOnlySpan<byte> storageValue = worldState.Get(cell);
+        if (storageValue.Length != 21 || storageValue[0] != 0x01)
+            throw new InvalidOperationException($"Unexpected storage value for validatorsState owner");
+        return new Address(storageValue.Slice(1, Address.Size));
     }
 
     public Address[] GetCandidates(BlockHeader blockHeader)
@@ -117,7 +141,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
                 Stake = GetCandidateStake(blockHeader, candidate)
             });
         }
-        candidatesAndStake.Sort((x, y) => y.Stake.CompareTo(x.Stake));
+        XdcSort.Slice(candidatesAndStake, (x, y) => x.Stake.CompareTo(y.Stake) >= 0);
 
         Address[] sortedCandidates = new Address[candidatesAndStake.Count];
         for (int i = 0; i < candidatesAndStake.Count; i++)

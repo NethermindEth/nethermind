@@ -4,14 +4,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -22,8 +20,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Trie;
-using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
@@ -353,12 +349,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
-        long start = Stopwatch.GetTimestamp();
-        // Track storage read for execution metrics
-        EvmMetrics.ThreadExecutionMetrics.StorageReads++;
-        ReadOnlySpan<byte> result = GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
-        EvmMetrics.ThreadExecutionMetrics.StateReadTimeTicks += Stopwatch.GetElapsedTime(start).Ticks;
-        return result;
+        return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 
     private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -461,7 +452,6 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private sealed class PerContractState : IReturnable
     {
-        private static readonly Func<StorageCell, PerContractState, byte[]> _loadFromTreeStorageFunc = LoadFromTreeStorage;
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
         private readonly DefaultableDictionary BlockChange = new();

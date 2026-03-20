@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
@@ -25,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
+        private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
         private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests;
 
@@ -40,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
         }
 
@@ -94,7 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
+            IByteArrayList nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
@@ -103,11 +102,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _nodeDataRequests.Handle(msg.Data, size);
         }
 
-        public override Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
+        public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {
             if (keys.Count == 0)
             {
-                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
+                return Task.FromResult<IByteArrayList>(EmptyByteArrayList.Instance);
             }
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
@@ -129,7 +128,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return txReceipts;
         }
 
-        protected virtual Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

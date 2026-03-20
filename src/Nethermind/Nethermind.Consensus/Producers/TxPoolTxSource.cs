@@ -19,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
+using static Nethermind.TxPool.Comparison.TxComparisonResult;
 
 [assembly: InternalsVisibleTo("Nethermind.AuRa.Test")]
 
@@ -138,7 +139,7 @@ namespace Nethermind.Consensus.Producers
             while (selectedBlobTxs.Count > 0)
             {
                 Transaction blobTx = selectedBlobTxs[0];
-                if (comparer.Compare(blobTx, tx) > 0)
+                if (comparer.Compare(blobTx, tx) < Equal)
                 {
                     yield return blobTx;
                     selectedBlobTxs.Remove(blobTx);
@@ -389,7 +390,7 @@ namespace Nethermind.Consensus.Producers
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
         internal static IEnumerable<Transaction> Order(IDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, long gasLimit) =>
-            OrderCore(pendingTransactions, comparer, static tx => tx.SpentGas, filter, gasLimit).Select(static tx => tx.tx);
+            OrderCore(pendingTransactions, comparer, static tx => tx.BlockGasUsed, filter, gasLimit).Select(static tx => tx.tx);
 
         private static IEnumerable<(Transaction tx, long resource)> OrderCore(
             IDictionary<AddressAsKey, Transaction[]> pendingTransactions,

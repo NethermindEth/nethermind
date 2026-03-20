@@ -33,7 +33,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             Data = Bytes.FromHexString("0xee82ac5e0000000000000000000000000000000000000000000000000000000000000001"),
             To = TestItem.AddressA,
             GasLimit = 3_500_000,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei
         };
 
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(systemTransactionForModifiedVm);
@@ -133,9 +133,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
         byte[] transactionData = EthRpcSimulateTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
 
         Hash256 headHash = chain.BlockFinder.Head!.Hash!;
-        Address contractAddress = await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+        Address contractAddress = await EthRpcSimulateTestsBase.DeployECRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.ECRecoverCallerContractBytecode);
 
-        EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        EthRpcSimulateTestsBase.ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
@@ -148,7 +148,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             To = contractAddress,
             SenderAddress = TestItem.AddressA,
             GasLimit = 3_500_000,
-            GasPrice = 20.GWei()
+            GasPrice = 20.GWei
         });
         ((LegacyTransactionForRpc)transactionForRpc).Nonce = null;
 
@@ -161,7 +161,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         {
-                            EcRecoverPrecompile.Address,
+                            ECRecoverPrecompile.Address,
                             new AccountOverride
                             {
                                 Code = code,

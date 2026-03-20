@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -10,10 +12,8 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
-using Nethermind.Db;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -31,6 +31,17 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class MergePluginTests
 {
+    private sealed class SourceGenProbe
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
     private ChainSpec _chainSpec = null!;
     private MergeConfig _mergeConfig = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
@@ -102,6 +113,15 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(api));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!));
+    }
+
+    [Test]
+    public void AddTypeInfoResolver_updates_existing_serializer_instances()
+    {
+        EthereumJsonSerializer serializer = new();
+        EthereumJsonSerializer.AddTypeInfoResolver(new ThrowingProbeResolver());
+
+        Assert.Throws<InvalidOperationException>(() => serializer.Serialize(new SourceGenProbe { Value = 1 }));
     }
 
     [Test]

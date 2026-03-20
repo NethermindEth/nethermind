@@ -115,6 +115,11 @@ namespace Nethermind.Network
         {
             foreach (NetworkNode networkNode in networkNodes)
             {
+                if (!networkNode.IsEnode)
+                {
+                    continue;
+                }
+
                 Node node = new(networkNode);
                 nodeUpdate.Invoke(node);
                 peers.Add(node);

@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks;

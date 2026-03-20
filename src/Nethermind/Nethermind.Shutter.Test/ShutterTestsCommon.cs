@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -27,7 +26,7 @@ class ShutterTestsCommon
     public const ulong InitialSlot = 21;
     public const ulong InitialSlotTimestamp = 1 + 21 * 5;
     public const ulong Threshold = 10;
-    public const int ChainId = BlockchainIds.Chiado;
+    public const ulong ChainId = BlockchainIds.Chiado;
     public const ulong GenesisTimestamp = 1;
     public static readonly TimeSpan SlotLength = TimeSpan.FromSeconds(5);
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;

@@ -18,37 +18,26 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Facade.Find
 {
-    public class LogFinder : ILogFinder
+    public class LogFinder(
+        IBlockFinder? blockFinder,
+        IReceiptFinder? receiptFinder,
+        IReceiptStorage? receiptStorage,
+        IBloomStorage? bloomStorage,
+        ILogManager? logManager,
+        IReceiptsRecovery? receiptsRecovery,
+        int maxBlockDepth = 1000)
+        : ILogFinder
     {
         private static int ParallelExecutions = 0;
         private static int ParallelLock = 0;
 
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IBloomStorage _bloomStorage;
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly int _maxBlockDepth;
-        private readonly int _rpcConfigGetLogsThreads;
-        private readonly IBlockFinder _blockFinder;
-        private readonly ILogger _logger;
-
-        public LogFinder(IBlockFinder? blockFinder,
-            IReceiptFinder? receiptFinder,
-            IReceiptStorage? receiptStorage,
-            IBloomStorage? bloomStorage,
-            ILogManager? logManager,
-            IReceiptsRecovery? receiptsRecovery,
-            int maxBlockDepth = 1000)
-        {
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage)); ;
-            _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
-            _maxBlockDepth = maxBlockDepth;
-            _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
-        }
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        private readonly IBloomStorage _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
+        private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
@@ -65,7 +54,7 @@ namespace Nethermind.Facade.Find
             return FindLogs(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        public virtual IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -97,36 +86,37 @@ namespace Nethermind.Facade.Find
 
         private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
-            var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
+            long blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
         }
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            BlockHeader FindBlockHeader(long blockNumber, CancellationToken token)
+            IEnumerable<long> EnumerateBlockNumbers(LogFilter f, long from, long to)
             {
-                token.ThrowIfCancellationRequested();
-                var block = _blockFinder.FindHeader(blockNumber);
-                if (block is null)
+                IBloomEnumeration enumeration = _bloomStorage.GetBlooms(from, to);
+                foreach (Bloom bloom in enumeration)
                 {
-                    if (_logger.IsError) _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+                    if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
+                    {
+                        yield return blockNumber;
+                    }
                 }
-
-                return block;
             }
 
-            IEnumerable<long> FilterBlocks(LogFilter f, long @from, long to, bool runParallel, CancellationToken token)
+            return FilterLogsInBlocksParallel(filter, EnumerateBlockNumbers(filter, fromBlock.Number, toBlock.Number), cancellationToken);
+        }
+
+        protected IEnumerable<FilterLog> FilterLogsInBlocksParallel(LogFilter filter, IEnumerable<long> blockNumbers, CancellationToken cancellationToken)
+        {
+            static IEnumerable<long> ParallelizeWithLock(IEnumerable<long> blocks, bool runParallel, CancellationToken ct)
             {
                 try
                 {
-                    var enumeration = _bloomStorage.GetBlooms(from, to);
-                    foreach (var bloom in enumeration)
+                    foreach (long blockNumber in blocks)
                     {
-                        token.ThrowIfCancellationRequested();
-                        if (f.Matches(bloom) && enumeration.TryGetBlockNumber(out var blockNumber))
-                        {
-                            yield return blockNumber;
-                        }
+                        yield return blockNumber;
+                        ct.ThrowIfCancellationRequested();
                     }
                 }
                 finally
@@ -145,7 +135,7 @@ namespace Nethermind.Facade.Find
             int parallelExecutions = Interlocked.Increment(ref ParallelExecutions) - 1;
             bool canRunParallel = parallelLock == 0;
 
-            IEnumerable<long> filterBlocks = FilterBlocks(filter, fromBlock.Number, toBlock.Number, canRunParallel, cancellationToken);
+            IEnumerable<long> filterBlocks = ParallelizeWithLock(blockNumbers, canRunParallel, cancellationToken);
 
             if (canRunParallel)
             {
@@ -160,7 +150,7 @@ namespace Nethermind.Facade.Find
             }
 
             return filterBlocks
-                .SelectMany(blockNumber => FindLogsInBlock(filter, FindBlockHeader(blockNumber, cancellationToken), cancellationToken));
+                .SelectMany(blockNumber => FindLogsInBlock(filter, FindHeaderOrLogError(blockNumber, cancellationToken), cancellationToken));
         }
 
         private bool CanUseBloomDatabase(BlockHeader toBlock, BlockHeader fromBlock)
@@ -191,7 +181,7 @@ namespace Nethermind.Facade.Find
         private IEnumerable<FilterLog> FilterLogsIteratively(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
             int count = 0;
-            while (count < _maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
+            while (count < maxBlockDepth && fromBlock.Number <= (toBlock?.Number ?? fromBlock.Number))
             {
                 foreach (var filterLog in FindLogsInBlock(filter, fromBlock, cancellationToken))
                 {
@@ -206,11 +196,11 @@ namespace Nethermind.Facade.Find
         }
 
         private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, BlockHeader block, CancellationToken cancellationToken) =>
-            filter.Matches(block.Bloom)
+            filter.Matches(block.Bloom!)
                 ? FindLogsInBlock(filter, block.Hash, block.Number, block.Timestamp, cancellationToken)
                 : [];
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256? blockHash, long blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -347,6 +337,19 @@ namespace Nethermind.Facade.Find
                     }
                 }
             }
+        }
+
+        protected BlockHeader? FindHeaderOrLogError(long blockNumber, CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+
+            BlockHeader? block = _blockFinder.FindHeader(blockNumber);
+            if (block is null && _logger.IsError)
+            {
+                _logger.Error($"Could not find block {blockNumber} in database. eth_getLogs will return incomplete results.");
+            }
+
+            return block;
         }
     }
 }

@@ -19,8 +19,8 @@ namespace Nethermind.Evm;
 public readonly ref struct TransactionSubstate
 {
     private readonly ILogger _logger;
-    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>();
-    private static readonly IToArrayCollection<LogEntry> _emptyLogs = new JournalCollection<LogEntry>();
+    private static readonly IHashSetEnumerableCollection<Address> _emptyDestroyList = new JournalSet<Address>(Address.EqualityComparer);
+    private static readonly JournalCollection<LogEntry> _emptyLogs = new();
 
     private const string SomeError = "error";
     public const string Revert = "revert";
@@ -46,16 +46,16 @@ public readonly ref struct TransactionSubstate
     }.ToFrozenDictionary();
 
     private readonly IHashSetEnumerableCollection<Address>? _destroyList;
-    private readonly IToArrayCollection<LogEntry>? _logs;
+    private readonly JournalCollection<LogEntry>? _logs;
 
     public bool IsError => Error is not null && !ShouldRevert;
     public string? Error { get; }
     public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
-    public (ICodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
-    public IToArrayCollection<LogEntry> Logs => _logs ?? _emptyLogs;
+    public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
     public TransactionSubstate(EvmExceptionType exceptionType, bool isTracerConnected, string? substateError = null)
@@ -69,28 +69,17 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
-
-    private TransactionSubstate(string errorCode)
-    {
-        Error = errorCode;
-        Refund = 0;
-        _destroyList = _emptyDestroyList;
-        _logs = _emptyLogs;
-        ShouldRevert = true;
-    }
-
-    public TransactionSubstate((ICodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+    public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
         IHashSetEnumerableCollection<Address> destroyList,
-        IToArrayCollection<LogEntry> logs,
+        JournalCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
         EvmExceptionType evmExceptionType = default,
         ILogger logger = default)
     {
         _logger = logger;
-        Output = output;
+        Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
         _logs = logs;
@@ -108,10 +97,10 @@ public readonly ref struct TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Bytes.IsEmpty)
+        if (Output.IsEmpty)
             return;
 
-        ReadOnlySpan<byte> span = Output.Bytes.Span;
+        ReadOnlySpan<byte> span = Output.Span;
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
@@ -169,7 +158,7 @@ public readonly ref struct TransactionSubstate
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
-            if (_logger.IsError == true) _logger.Error("Couldn't parse revert message", e);
+            if (_logger.IsError) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }

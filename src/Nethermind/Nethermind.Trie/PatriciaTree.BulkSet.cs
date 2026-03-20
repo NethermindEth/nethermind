@@ -43,14 +43,9 @@ public partial class PatriciaTree
             int offset = index / 2;
             Span<byte> theSpan = Path.BytesAsSpan;
             int b = theSpan[offset];
-            if ((index & 1) == 0)
-            {
-                return (byte)((b & 0xf0) >> 4);
-            }
-            else
-            {
-                return (byte)(b & 0x0f);
-            }
+            return (index & 1) == 0
+                ? (byte)((b & 0xf0) >> 4)
+                : (byte)(b & 0x0f);
         }
     }
 
@@ -70,8 +65,8 @@ public partial class PatriciaTree
 
         Context ctx = new()
         {
-            originalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
-            originalEntriesArray = entries.UnsafeGetInternalArray(),
+            OriginalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
+            OriginalEntriesArray = entries.UnsafeGetInternalArray(),
         };
 
         if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
@@ -93,11 +88,7 @@ public partial class PatriciaTree
         _writeBeforeCommit += entries.Count;
     }
 
-    private struct Context
-    {
-        internal BulkSetEntry[] originalEntriesArray;
-        internal BulkSetEntry[] originalSortBufferArray;
-    }
+    private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 
     /// <param name="ctx">Just to reduce the param count</param>
     /// <param name="traverseStack">Stack used in set. Parallel call use different stack.</param>
@@ -166,11 +157,11 @@ public partial class PatriciaTree
         int nonNullChildCount = 0;
         if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch && !flags.HasFlag(Flags.DoNotParallelize))
         {
-            var jobs = new (int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)[TrieNode.BranchesCount];
+            using ArrayPoolList<(int startIdx, int count, int nibble, TreePath appendedPath, TrieNode? currentChild, TrieNode? newChild)> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
 
             Context closureCtx = ctx;
-            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.originalEntriesArray : ctx.originalSortBufferArray;
-            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.originalSortBufferArray : ctx.originalEntriesArray;
+            BulkSetEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
+            BulkSetEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
             TrieNode.ChildIterator childIterator = node.CreateChildIterator();
 
             while (nibMask != 0)
@@ -524,10 +515,8 @@ public partial class PatriciaTree
         }
     }
 
-    private void ReturnTraverseStack(Stack<TraverseStack> threadResource)
-    {
+    private void ReturnTraverseStack(Stack<TraverseStack> threadResource) =>
         _threadStaticTraverseStackPool = threadResource;
-    }
 
     private static int GetSpanOffset<T>(T[] array, Span<T> span)
     {

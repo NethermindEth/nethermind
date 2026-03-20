@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Http;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -70,6 +69,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
     public virtual Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
+        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default);
         _syncConfig = nethermindApi.Config<ISyncConfig>();
         _blocksConfig = nethermindApi.Config<IBlocksConfig>();
         _txPoolConfig = nethermindApi.Config<ITxPoolConfig>();
@@ -218,22 +218,24 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
             if (_poSSwitcher.TransitionFinished)
             {
-                AddEth69();
+                AddPostMergeNetworkProtocols();
             }
             else
             {
-                if (_logger.IsDebug) _logger.Debug("Delayed adding eth/69 capability until terminal block reached");
-                _poSSwitcher.TerminalBlockReached += (_, _) => AddEth69();
+                if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
+                _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
             }
         }
 
         return Task.CompletedTask;
     }
 
-    private void AddEth69()
+    private void AddPostMergeNetworkProtocols()
     {
         if (_logger.IsInfo) _logger.Info("Adding eth/69 capability");
         _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 69));
+        if (_logger.IsInfo) _logger.Info("Adding eth/70 capability");
+        _api.ProtocolsManager!.AddSupportedCapability(new(Protocol.Eth, 70));
     }
 
     protected virtual IBlockFinalizationManager InitializeMergeFinalizationManager()
@@ -322,6 +324,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV3Result?>, GetPayloadV3Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV6Result?>, GetPayloadV6Handler>()
                 .AddSingleton<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .AddSingleton<IForkchoiceUpdatedHandler, ForkchoiceUpdatedHandler>()
                 .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>, GetPayloadBodiesByHashV1Handler>()
@@ -331,6 +334,9 @@ public class BaseMergePluginModule : Module
                     .AddSingleton<IRpcCapabilitiesProvider, EngineRpcCapabilitiesProvider>()
                 .AddSingleton<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>, GetBlobsHandler>()
                 .AddSingleton<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>, GetBlobsHandlerV2>()
+                .AddSingleton<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>, GetPayloadBodiesByHashV2Handler>()
+                .AddSingleton<IGetPayloadBodiesByRangeV2Handler, GetPayloadBodiesByRangeV2Handler>()
+                .AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>()
 
                 .AddSingleton<NoSyncGcRegionStrategy>()
                 .AddSingleton<GCKeeper>((ctx) =>

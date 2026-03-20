@@ -12,25 +12,11 @@ public class NodeDataMessageSerializer : IZeroInnerMessageSerializer<NodeDataMes
 {
     private static readonly RlpLimit RlpLimit = RlpLimit.For<NodeDataMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NodeDataMessage.Data));
 
-    public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
-    {
-        int length = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(length);
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+    public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message) =>
+        NettyRlpStream.WriteByteArrayList(byteBuffer, message.Data);
 
-        rlpStream.StartSequence(contentLength);
-        for (int i = 0; i < message.Data.Count; i++)
-        {
-            rlpStream.Encode(message.Data[i]);
-        }
-    }
-
-    public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
-    {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        ArrayPoolList<byte[]>? result = rlpStream.DecodeArrayPoolList(static stream => stream.DecodeByteArray(RlpLimit), limit: RlpLimit);
-        return new NodeDataMessage(result);
-    }
+    public NodeDataMessage Deserialize(IByteBuffer byteBuffer) =>
+        new(NettyRlpStream.DecodeByteArrayList(byteBuffer));
 
     public int GetLength(NodeDataMessage message, out int contentLength)
     {

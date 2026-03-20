@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Transactions;
 using Nethermind.TxPool;
 using Nethermind.Int256;
 
@@ -41,6 +40,6 @@ public class ShutterTxFilter(
             return AcceptTxResult.Invalid;
         }
 
-        return wellFormed ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
+        return AcceptTxResult.Accepted;
     }
 }

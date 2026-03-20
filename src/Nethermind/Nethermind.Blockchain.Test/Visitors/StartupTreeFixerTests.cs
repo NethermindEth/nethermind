@@ -17,6 +17,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Visitors;
 
+[Parallelizable(ParallelScope.All)]
 public class StartupTreeFixerTests
 {
     [Test, MaxTime(Timeout.MaxTestTime), Ignore("Not implemented")]
