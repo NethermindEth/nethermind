@@ -78,7 +78,7 @@ COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 mkdir -p /nethermind/pgo
 
 echo "trace: starting perfcollect (perf + LTTng)"
-perfcollect collect /nethermind/pgo/sampling -collectsec 180 &> /nethermind/pgo/perfcollect.log &
+perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
 trace_pid=$!
 
 sleep 3
@@ -95,10 +95,15 @@ echo "trace: starting Nethermind"
 nethermind_exit=$?
 echo "trace: Nethermind exited with code $nethermind_exit"
 
-# Stop perfcollect early if still running (triggers post-processing)
+# Stop perfcollect if still collecting (triggers post-processing)
 if kill -0 $trace_pid 2>/dev/null; then
-  echo "trace: stopping perfcollect"
+  echo "trace: stopping perfcollect (sending SIGINT, waiting for post-processing)"
   kill -INT $trace_pid 2>/dev/null || true
+  # Wait up to 120s for perfcollect to finish post-processing (perf inject + zip)
+  for i in $(seq 1 120); do
+    kill -0 $trace_pid 2>/dev/null || break
+    sleep 1
+  done
   wait $trace_pid 2>/dev/null || true
 fi
 

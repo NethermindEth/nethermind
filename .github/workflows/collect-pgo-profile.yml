@@ -338,6 +338,8 @@ jobs:
           if [[ -n "${sampling_vol}" ]]; then
             echo "Sampling volume contents:"
             ls -la "${sampling_vol}/" 2>/dev/null || true
+            # Copy perfcollect.log for debugging
+            cp "${sampling_vol}/perfcollect.log" "${RUNNER_TEMP}/pgo-data/" 2>/dev/null || true
             # perfcollect produces sampling.trace.zip (perf + LTTng bundle)
             sampling_file=$(find "${sampling_vol}" -name "sampling.trace.zip" -type f | head -1 || true)
             if [[ -n "${sampling_file}" ]]; then
