@@ -72,4 +72,11 @@ public interface IBlocksConfig : IConfig
                       "Set to `0` to log all blocks. Set to `-1` to disable slow block logging entirely.",
         DefaultValue = "-1")]
     long SlowBlockThresholdMs { get; set; }
+
+    [ConfigItem(
+        Description = "The per-transaction threshold in milliseconds for detailed transaction-level logging within slow blocks. " +
+                      "Transactions slower than this value are included individually in the slow block JSON log. " +
+                      "Set to `0` to log all transactions. Set to `-1` to disable per-transaction logging.",
+        DefaultValue = "-1")]
+    long SlowBlockPerTxThresholdMs { get; set; }
 }

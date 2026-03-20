@@ -102,5 +102,7 @@ namespace Nethermind.Config
         public int? BlockProductionBlobLimit { get; set; }
 
         public long SlowBlockThresholdMs { get; set; } = -1;
+
+        public long SlowBlockPerTxThresholdMs { get; set; } = -1;
     }
 }

@@ -48,9 +48,15 @@ namespace Nethermind.Consensus.Processing
 
         /// <summary>
         /// Threshold in milliseconds for slow block logging (default: 1000ms).
-        /// Set to 0 to log all blocks.
+        /// Set to 0 to log all blocks. Set to -1 to disable.
         /// </summary>
         private readonly long _slowBlockThresholdMs;
+
+        /// <summary>
+        /// Per-tx threshold in milliseconds. Transactions slower than this are included
+        /// individually in the slow block JSON. Set to -1 to disable.
+        /// </summary>
+        private readonly long _slowBlockPerTxThresholdMs;
 
         private bool _showBlobs;
         private long _lastElapsedRunningMicroseconds;
@@ -104,11 +110,13 @@ namespace Nethermind.Consensus.Processing
         private long _cachedContractsUsed;
 
         public ProcessingStats(IStateReader stateReader, ILogManager logManager, IBlocksConfig blocksConfig)
-            : this(stateReader, logManager.GetClassLogger(), logManager.GetClassLogger("SlowBlocks"), slowBlockThresholdMs: blocksConfig.SlowBlockThresholdMs)
+            : this(stateReader, logManager.GetClassLogger(), logManager.GetClassLogger("SlowBlocks"),
+                   slowBlockThresholdMs: blocksConfig.SlowBlockThresholdMs,
+                   slowBlockPerTxThresholdMs: blocksConfig.SlowBlockPerTxThresholdMs)
         {
         }
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000)
+        public ProcessingStats(IStateReader stateReader, ILogger logger, ILogger? slowBlockLogger = null, long slowBlockThresholdMs = 1000, long slowBlockPerTxThresholdMs = -1)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
@@ -116,6 +124,7 @@ namespace Nethermind.Consensus.Processing
             _logger = logger;
             _slowBlockLogger = slowBlockLogger ?? logger;
             _slowBlockThresholdMs = slowBlockThresholdMs;
+            _slowBlockPerTxThresholdMs = slowBlockPerTxThresholdMs;
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -223,6 +232,9 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaStateRootTime = Evm.Metrics.ThreadLocalStateRootTime - _startStateRootTime;
                 blockData.DeltaBloomsTime = Evm.Metrics.ThreadLocalBloomsTime - _startBloomsTime;
                 blockData.DeltaReceiptsRootTime = Evm.Metrics.ThreadLocalReceiptsRootTime - _startReceiptsRootTime;
+
+                // Snapshot per-tx timing (copies array for ThreadPool use, null when disabled)
+                blockData.PerTxTicks = PerTxTimingCollector.Snapshot();
             }
 
             CaptureReportData(blockData);
@@ -620,6 +632,35 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("cached_contracts_used", data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
                     writer.WriteEndObject();
 
+                    // Per-transaction timing breakdown (when enabled)
+                    long[]? perTxTicks = data.PerTxTicks;
+                    if (perTxTicks is not null && txs.Length > 0)
+                    {
+                        long perTxThresholdTicks = _slowBlockPerTxThresholdMs * TimeSpan.TicksPerMillisecond;
+
+                        writer.WriteStartArray("transactions");
+                        for (int i = 0; i < perTxTicks.Length && i < txs.Length; i++)
+                        {
+                            long txTicks = perTxTicks[i];
+                            if (txTicks < perTxThresholdTicks) continue;
+
+                            double txMs = txTicks / (double)TimeSpan.TicksPerMillisecond;
+                            Transaction tx = txs[i];
+                            writer.WriteStartObject();
+                            writer.WriteNumber("index", i);
+                            writer.WriteString("hash", tx.Hash?.ToString() ?? "0x");
+                            writer.WriteNumber("gas_used", tx.SpentGas);
+                            writer.WriteNumber("execution_ms", Math.Round(txMs, 3));
+                            writer.WriteString("type", tx.Type.ToString());
+                            if (tx.To is not null)
+                            {
+                                writer.WriteString("to", tx.To.ToString());
+                            }
+                            writer.WriteEndObject();
+                        }
+                        writer.WriteEndArray();
+                    }
+
                     writer.WriteEndObject();
                 }
 
@@ -652,6 +693,12 @@ namespace Nethermind.Consensus.Processing
             {
                 _lastReportMs = Environment.TickCount64;
                 _runStopwatch.Start();
+
+                // Enable per-tx timing on the block-processing thread (once)
+                if (_slowBlockThresholdMs >= 0 && _slowBlockPerTxThresholdMs >= 0)
+                {
+                    PerTxTimingCollector.SetEnabled(true);
+                }
             }
         }
 
@@ -671,6 +718,7 @@ namespace Nethermind.Consensus.Processing
                 // Release the object references so we don't hold them from being GC'd
                 data.Block = null;
                 data.BaseBlock = null;
+                data.PerTxTicks = null;
 
                 return true;
             }
@@ -726,6 +774,7 @@ namespace Nethermind.Consensus.Processing
             public long DeltaStateRootTime;
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
+            public long[]? PerTxTicks;
         }
     }
 }
