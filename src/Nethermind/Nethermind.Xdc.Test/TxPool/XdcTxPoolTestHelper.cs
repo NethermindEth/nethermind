@@ -77,7 +77,7 @@ internal static class XdcTxPoolTestHelper
         public bool IsValid { get; set; } = true;
         public int ValidateCalls { get; private set; }
 
-        public Dictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock) => new(FeeCapacities);
+        public IReadOnlyDictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock) => new Dictionary<Address, UInt256>(FeeCapacities);
 
         public bool ValidateTransaction(XdcBlockHeader? baseBlock, Address from, Address token, ReadOnlySpan<byte> data)
         {

@@ -344,7 +344,7 @@ internal class XdcTransactionProcessorTests
         public Dictionary<Address, UInt256> FeeCapacities { get; set; } = new();
         public bool ValidateResult { get; set; } = true;
 
-        public Dictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock) => FeeCapacities;
+        public IReadOnlyDictionary<Address, UInt256> GetFeeCapacities(XdcBlockHeader? baseBlock) => FeeCapacities;
 
         public bool ValidateTransaction(XdcBlockHeader? baseBlock, Address from, Address token, ReadOnlySpan<byte> data) => ValidateResult;
     }

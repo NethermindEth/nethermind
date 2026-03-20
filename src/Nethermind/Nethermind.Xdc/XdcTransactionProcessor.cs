@@ -301,7 +301,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
     {
         if (blockNumber >= spec.BlockNumberGas50x)
         {
-            return XdcConstants.GasPrice50x;
+            return XdcConstants.Trc21GasPrice50x;
         }
 
         if (blockNumber > spec.TipTrc21FeeBlock)

@@ -54,7 +54,6 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public bool IsTIPXDCXMiner { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
     public ulong RangeReturnSigner { get; set; }
-    public long BlockNumberGas50x { get; set; }
 
     public void ApplyV2Config(ulong round)
     {
@@ -144,6 +143,5 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public bool IsTIPXDCXMiner { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsDynamicGasLimitBlock { get; set; }
-    public long BlockNumberGas50x { get; set; }
     public void ApplyV2Config(ulong round);
 }
