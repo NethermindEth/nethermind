@@ -72,7 +72,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    internal static void Clear() => _codeCache.Clear();
+    public static void Clear() => _codeCache.Clear();
 
     private sealed class CodeLruCache
     {
