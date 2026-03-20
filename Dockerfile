@@ -43,7 +43,7 @@ VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db
 
-EXPOSE 8545 8551 30303
+EXPOSE 8545 8551 8552 30303
 
 COPY --from=build /publish .
 COPY scripts/entrypoint.sh .

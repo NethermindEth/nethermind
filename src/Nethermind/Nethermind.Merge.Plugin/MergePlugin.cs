@@ -19,6 +19,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Authentication;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
@@ -33,6 +34,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Json;
@@ -225,8 +227,14 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
                 if (_logger.IsDebug) _logger.Debug("Delayed adding post-merge eth/* capabilities until terminal block reached");
                 _poSSwitcher.TerminalBlockReached += (_, _) => AddPostMergeNetworkProtocols();
             }
+
         }
 
+        return Task.CompletedTask;
+    }
+
+    public Task InitRpcModules()
+    {
         return Task.CompletedTask;
     }
 
@@ -349,6 +357,24 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<ILogManager>());
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
+
+                // EIP-8161 SSZ-REST Engine API transport (served on engine port alongside JSON-RPC)
+                .AddSingleton<SszRestHandler>(ctx =>
+                {
+                    ILogManager logManager = ctx.Resolve<ILogManager>();
+
+                    return new SszRestHandler(
+                        ctx.Resolve<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
+                        ctx.Resolve<IForkchoiceUpdatedHandler>(),
+                        ctx.Resolve<IAsyncHandler<byte[], ExecutionPayload?>>(),
+                        ctx.Resolve<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+                        ctx.Resolve<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+                        ctx.Resolve<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+                        ctx.Resolve<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+                        ctx.Resolve<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+                        ctx.Resolve<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+                        logManager);
+                })
             ;
     }
 
