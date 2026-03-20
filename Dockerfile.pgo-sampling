@@ -1,12 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Collects CPU sampling profile data via dotnet-trace for call graph
-# construction. The resulting .nettrace is converted to .mibc with call
-# graph edges (CallWeights) that drive Pettis-Hansen method layout.
+# Collects CPU sampling profile data via perf + LTTng for SPGO call graph
+# construction. perfcollect produces .trace.zip which dotnet-pgo converts
+# to .mibc with sample-based block counts for method layout optimization.
+#
+# Uses Ubuntu Focal (20.04) which ships LTTng 2.12 — compatible with the
+# .NET runtime's LTTng tracepoints (Noble's 2.13 is not).
 #
 # This image is run AFTER the main PGO collection (Dockerfile.pgo).
-# The two .mibc files are merged to combine edge/type data with call graph.
+# The two .mibc files are merged to combine edge/type data with SPGO samples.
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS build
 
@@ -34,17 +37,36 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
+FROM ubuntu:focal
 
 WORKDIR /nethermind
+
+# Install .NET 10 runtime, perf, and LTTng 2.12 (Focal-native)
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    linux-tools-generic \
+    lttng-tools \
+    liblttng-ust-dev && \
+  # Install .NET 10 runtime via dotnet-install script
+  curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
+  bash /tmp/dotnet-install.sh --channel 10.0 --runtime dotnet --install-dir /usr/share/dotnet && \
+  ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet && \
+  rm /tmp/dotnet-install.sh && \
+  # Install perfcollect
+  curl -sSL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
+  chmod +x /usr/local/bin/perfcollect && \
+  rm -rf /var/lib/apt/lists/*
 
 # Override runtimeconfig.json settings not suitable for PGO collection
 ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
-# No DOTNET_EnableEventPipe — dotnet-trace manages the EventPipe session.
-# No DOTNET_WritePGOData — the main PGO image handles that.
+# Enable perf map generation for managed symbol resolution
+ENV DOTNET_PerfMapEnabled=1
+ENV DOTNET_EnableEventLog=1
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
@@ -55,34 +77,32 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-# Install dotnet-trace for CPU sampling
-RUN dotnet tool install -g dotnet-trace
-ENV PATH="${PATH}:/root/.dotnet/tools"
-
-# Nethermind runs in foreground so it receives EXPB's stop signal.
-# dotnet-trace attaches in background with --duration so it finalizes
-# cleanly before EXPB stops the container.
-# dotnet-sampled-thread-time: managed CPU sampling at ~100Hz
-# Explicit provider adds MethodDetails + JitTracing + Loader + Type events
-# required by dotnet-pgo (keyword 0x4000080018, verbose level 5)
+# perfcollect runs in background collecting perf CPU samples + LTTng CLR events.
+# Nethermind runs in foreground; when it exits (EXPB stop signal),
+# we stop perfcollect which then post-processes into .trace.zip.
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
 mkdir -p /nethermind/pgo
 
-./nethermind "$@" &
-child=$!
+echo "trace: starting perfcollect (perf + LTTng)"
+perfcollect collect /nethermind/pgo/sampling -collectsec 180 &
+trace_pid=$!
 
 sleep 2
-echo "trace: attaching to PID $child"
-dotnet-trace collect \
-  -p $child \
-  --profile dotnet-sampled-thread-time \
-  --providers Microsoft-Windows-DotNETRuntime:0x4000080018:5 \
-  --output /nethermind/pgo/sampling \
-  --duration 00:02:30 || true
-echo "trace: collection complete"
+echo "trace: starting Nethermind"
+./nethermind "$@"
+nethermind_exit=$?
 
-wait $child 2>/dev/null
+# Stop perfcollect early if still running (triggers post-processing)
+if kill -0 $trace_pid 2>/dev/null; then
+  echo "trace: stopping perfcollect"
+  kill -INT $trace_pid 2>/dev/null || true
+  wait $trace_pid 2>/dev/null || true
+fi
+
+echo "trace: collection complete"
+ls -la /nethermind/pgo/ 2>/dev/null || true
+exit $nethermind_exit
 SCRIPT
 RUN chmod +x /nethermind/trace-entrypoint.sh
 
