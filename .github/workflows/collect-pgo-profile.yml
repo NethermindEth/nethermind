@@ -319,26 +319,46 @@ jobs:
           echo "Rendered sampling config:"
           cat "${sampling_config}"
 
+          # Ensure perfcollect is available on the host
+          if ! command -v perfcollect >/dev/null 2>&1; then
+            curl -sSL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect
+            chmod +x /usr/local/bin/perfcollect
+          fi
+
+          # Start EXPB in background — it launches the Nethermind container
           echo "Running CPU sampling pass via EXPB..."
           expb execute-scenarios \
             --config-file "${sampling_config}" \
             --per-payload-metrics \
             --print-logs \
-            2>&1 | tee "${RUNNER_TEMP}/expb-sampling-run.log" || true
+            2>&1 | tee "${RUNNER_TEMP}/expb-sampling-run.log" &
+          expb_pid=$!
 
-          # Extract sampling trace (perfcollect produces sampling.trace.zip)
-          expb_outputs="${EXPB_DATA_DIR}/outputs"
-          sampling_vol=$(find "${expb_outputs}" -maxdepth 3 -type d -name "pgo" -path "*/volumes/pgo" \
-            -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-          if [[ -n "${sampling_vol}" ]]; then
-            echo "Sampling volume contents:"
-            ls -la "${sampling_vol}/" 2>/dev/null || true
-            # perfcollect produces sampling.trace.zip (perf + LTTng bundle)
-            sampling_file=$(find "${sampling_vol}" -name "sampling.trace.zip" -type f | head -1 || true)
-            if [[ -n "${sampling_file}" ]]; then
-              cp "${sampling_file}" "${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+          # Wait for the Nethermind container to start
+          echo "Waiting for sampling container..."
+          for i in $(seq 1 60); do
+            cid=$(docker ps --filter "ancestor=nethermindeth/nethermind:${sampling_tag}" \
+              --format '{{.ID}}' 2>/dev/null | head -1)
+            if [[ -n "${cid}" ]]; then
+              echo "Found sampling container: ${cid}"
+              break
             fi
+            sleep 2
+          done
+
+          # Run perfcollect on the host targeting all CPUs (captures container processes)
+          if [[ -n "${cid}" ]]; then
+            sampling_dir="${RUNNER_TEMP}/pgo-data"
+            echo "Starting host-side perfcollect for 180s..."
+            perfcollect collect "${sampling_dir}/sampling" -collectsec 180 || true
+            echo "perfcollect finished"
+            ls -lh "${sampling_dir}"/sampling* 2>/dev/null || true
+          else
+            echo "No sampling container found — skipping perfcollect"
           fi
+
+          # Wait for EXPB to finish
+          wait "${expb_pid}" 2>/dev/null || true
 
           if [[ -f "${RUNNER_TEMP}/pgo-data/sampling.trace.zip" ]]; then
             echo "CPU sampling trace collected:"
