@@ -94,9 +94,7 @@ namespace Nethermind.Blockchain.Contracts.Json
                 // Handle plain "tuple" without array suffix
                 // Note: "tuple[]" and "tuple[N]" fall through to array handling below
                 if (type == "tuple")
-                {
                     return new AbiTuple();
-                }
 
                 // Check for array suffix: [N] for fixed-size or [] for dynamic
                 int lastBracket = type.LastIndexOf('[');
