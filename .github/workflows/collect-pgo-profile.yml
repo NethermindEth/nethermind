@@ -205,8 +205,6 @@ jobs:
             a\        bind: /nethermind/pgo
             a\        mode: rw
           }' "${rendered}"
-          # Single iteration — PGO collection should not retry on failure
-          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'warmup':0,'amount':1}) for s in c.get('scenarios',{}).values()];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
           echo "Rendered config:"
           cat "${rendered}"
@@ -306,7 +304,7 @@ jobs:
             "${{ steps.render-config.outputs.rendered_config_file }}" \
             > "${sampling_config}"
           # Patch sampling config: add --privileged, single iteration (no retries on failure)
-          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'warmup':0,'amount':1}) or s.setdefault('extra_flags',[]).append('--privileged') for s in c.get('scenarios',{}).values() if '--privileged' not in s.get('extra_flags',[])];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${sampling_config}"
+          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.setdefault('extra_flags',[]).append('--privileged') for s in c.get('scenarios',{}).values() if '--privileged' not in s.get('extra_flags',[])];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${sampling_config}"
           echo "Rendered sampling config:"
           cat "${sampling_config}"
 
