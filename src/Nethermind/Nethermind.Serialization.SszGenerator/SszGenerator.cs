@@ -24,7 +24,7 @@ public partial class SszGenerator : IIncrementalGenerator
             {
                 return;
             }
-            var generatedCode = GenerateClassCode(decl.Value.Item1, decl.Value.Item2);
+            string generatedCode = GenerateClassCode(decl.Value.Item1, decl.Value.Item2);
             spc.AddSource($"Serialization.SszEncoding.{decl.Value.Item1.Name}.cs", SourceText.From(generatedCode, Encoding.UTF8));
         });
     }
@@ -43,15 +43,22 @@ public partial class SszGenerator : IIncrementalGenerator
             foreach (AttributeSyntax attribute in attributeList.Attributes)
             {
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
-                if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
+                if (methodSymbol is not null && IsSszRootAttribute(methodSymbol.ContainingType))
                 {
-                    var foundTypes = new List<SszType>(SszType.BasicTypes);
+                    List<SszType> foundTypes = new(SszType.BasicTypes);
                     return (SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
                 }
             }
         }
         return null;
     }
+
+    private static bool IsSszRootAttribute(INamedTypeSymbol attributeType) =>
+        attributeType.ToString() is
+            "Nethermind.Serialization.Ssz.SszContainerAttribute"
+            or "Nethermind.Serialization.Ssz.SszSerializableAttribute"
+            or "Nethermind.Serialization.Ssz.SszUnionAttribute"
+            or "Nethermind.Serialization.Ssz.SszCompatibleUnionAttribute";
 
     const string Whitespace = "/**/";
     static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
@@ -734,6 +741,7 @@ public partial class SszEncoding
 {Whitespace}
     public static void Decode(ReadOnlySpan<byte> data, out {decl.Name} container)
     {{
+        {(variables.Any() ? $"if (data.Length < {decl.StaticLength}) throw new System.IO.InvalidDataException($\"Data too short for {decl.Name}: expected at least {decl.StaticLength} bytes but got {{data.Length}} bytes.\");" : $"if (data.Length != {decl.StaticLength}) throw new System.IO.InvalidDataException($\"Invalid data length for {decl.Name}: expected {decl.StaticLength} bytes but got {{data.Length}} bytes.\");")}
         container = new();
 {Whitespace}
         {(decl.IsVariable ? $"ValidateSszMinimumLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));" : $"ValidateSszExactLength(data.Length, {decl.StaticLength}, nameof({decl.Name}));")}

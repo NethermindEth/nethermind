@@ -5,7 +5,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
 
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public class CollectionTypeAnalyzer : DiagnosticAnalyzer
+public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ002";
     private static readonly LocalizableString Title = "Property with a collection type should be marked as SszList or SszVector";
@@ -28,16 +28,13 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 
-        if (!typeDeclaration.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => attr.ToString() == "SszSerializable" || attr.ToString() == "SszSerializableAttribute"))
+        if (!IsSerializableType(typeDeclaration))
         {
             return;
         }
 
-        foreach (var property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
-            .Where(prop =>
-                prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&
-                prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true))
+        foreach (PropertyDeclarationSyntax property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
+            .Where(IsPublicGetSetProperty))
         {
             CheckProperty(context, property);
         }
@@ -64,7 +61,7 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
                 .SelectMany(attrList => attrList.Attributes)
                 .Any(attr =>
                 {
-                    var name = attr.Name.ToString();
+                    string name = attr.Name.ToString();
                     return name == "SszList"
                         || name == "SszVector"
                         || name == "SszListAttribute"
@@ -78,7 +75,7 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
 
             if (!hasRequiredAttribute)
             {
-                var diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
+                Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
                 context.ReportDiagnostic(diagnostic);
             }
         }

@@ -13,7 +13,6 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 internal class QuorumCertificateDecoderTests
 {
-
     public static IEnumerable QuorumCertificateCases
     {
         get

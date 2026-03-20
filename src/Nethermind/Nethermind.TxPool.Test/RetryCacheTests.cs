@@ -43,13 +43,15 @@ public class RetryCacheTests
     private CancellationTokenSource _cancellationTokenSource;
     private RetryCache<ResourceRequestMessage, int> _cache;
 
-    private readonly int Timeout = 10000;
+    // Short cache timeout so retries fire quickly (~600ms); generous assertion timeout for slow CI
+    private const int CacheTimeoutMs = 500;
+    private const int AssertTimeoutMs = 10_000;
 
     [SetUp]
     public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
-        _cache = new(TestLogManager.Instance, timeoutMs: Timeout / 2, token: _cancellationTokenSource.Token);
+        _cache = new(TestLogManager.Instance, timeoutMs: CacheTimeoutMs, token: _cancellationTokenSource.Token);
     }
 
     [TearDown]
@@ -78,7 +80,7 @@ public class RetryCacheTests
         _cache.Announced(1, request1);
         _cache.Announced(1, request2);
 
-        Assert.That(() => request2.WasCalled, Is.True.After(Timeout, 100));
+        Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
     }
 
@@ -95,8 +97,8 @@ public class RetryCacheTests
         _cache.Announced(2, request3);
         _cache.Announced(2, request4);
 
-        Assert.That(() => request2.WasCalled, Is.True.After(Timeout, 100));
-        Assert.That(() => request4.WasCalled, Is.True.After(Timeout, 100));
+        Assert.That(() => request2.WasCalled, Is.True.After(AssertTimeoutMs, 100));
+        Assert.That(() => request4.WasCalled, Is.True.After(AssertTimeoutMs, 100));
         Assert.That(request1.WasCalled, Is.False);
         Assert.That(request3.WasCalled, Is.False);
     }
@@ -120,7 +122,7 @@ public class RetryCacheTests
         _cache.Announced(1, request);
         _cache.Received(1);
 
-        await Task.Delay(Timeout, _cancellationTokenSource.Token);
+        await Task.Delay(CacheTimeoutMs * 3, _cancellationTokenSource.Token);
 
         Assert.That(request.WasCalled, Is.False);
     }
@@ -136,13 +138,12 @@ public class RetryCacheTests
             });
         });
 
-        await Task.Delay(Timeout * 2, _cancellationTokenSource.Token);
+        await Task.Delay(CacheTimeoutMs * 4, _cancellationTokenSource.Token);
 
         Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
     }
 
     [Test]
-    [Retry(3)]
     public void RetryExecution_HandlesExceptions()
     {
         TestHandler faultyRequest = new() { OnHandleMessage = _ => throw new InvalidOperationException("Test exception") };
@@ -152,7 +153,7 @@ public class RetryCacheTests
         _cache.Announced(1, faultyRequest);
         _cache.Announced(1, normalRequest);
 
-        Assert.That(() => normalRequest.WasCalled, Is.True.After(Timeout, 100));
+        Assert.That(() => normalRequest.WasCalled, Is.True.After(AssertTimeoutMs, 100));
     }
 
     [Test]
@@ -162,7 +163,7 @@ public class RetryCacheTests
 
         _cache.Announced(1, request);
         await _cancellationTokenSource.CancelAsync();
-        await Task.Delay(Timeout);
+        await Task.Delay(CacheTimeoutMs * 3);
 
         Assert.That(request.WasCalled, Is.False);
     }
@@ -172,9 +173,9 @@ public class RetryCacheTests
     {
         _cache.Announced(1, new TestHandler());
 
-        await Task.Delay(Timeout, _cancellationTokenSource.Token);
+        await Task.Delay(CacheTimeoutMs * 3, _cancellationTokenSource.Token);
 
-        Assert.That(() => _cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired).After(Timeout, 100));
+        Assert.That(() => _cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.RequestRequired).After(AssertTimeoutMs, 100));
     }
 
     [Test]

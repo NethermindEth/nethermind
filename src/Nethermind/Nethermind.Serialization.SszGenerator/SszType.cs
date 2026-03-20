@@ -159,7 +159,7 @@ class SszType
             result.IsStruct = true;
         }
 
-        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { HandledByStd: true } member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
+        if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is SszProperty member && (member.Kind == Kind.List || member.Kind == Kind.ProgressiveList))
         {
             result.IsSszListItself = GetIsCollectionItselfValue(type);
         }
@@ -286,8 +286,8 @@ class SszType
             return Kind.Basic;
         }
 
-        bool isProgressiveContainer = HasAttribute(type, "SszProgressiveContainerAttribute");
-        bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
+        bool isProgressiveContainer = HasAttribute(type, "SszProgressiveContainerAttribute") || HasAnyFieldIndex(type);
+        bool isCompatibleUnion = HasAttribute(type, "SszUnionAttribute") || HasAttribute(type, "SszCompatibleUnionAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -415,6 +415,9 @@ class SszType
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
+    private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
+        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
+
     private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
 
     private static string GetTypeName(ITypeSymbol syntaxNode) =>
@@ -425,7 +428,7 @@ class SszType
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
         object? attrValue = typeSymbol
-            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszSerializableAttribute")?
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "SszContainerAttribute" or "SszSerializableAttribute")?
             .ConstructorArguments.FirstOrDefault().Value;
 
         return attrValue is not null && (bool)attrValue;

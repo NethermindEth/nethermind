@@ -114,9 +114,9 @@ public static partial class Merkle
             return;
         }
 
-        int leftChunkCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
-        Merkleize(out UInt256 left, chunks[..leftChunkCount], numLeaves);
-        MerkleizeProgressive(out UInt256 right, chunks[leftChunkCount..], numLeaves * 4);
+        int rightChunkCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
+        MerkleizeProgressive(out UInt256 left, chunks[rightChunkCount..], numLeaves * 4);
+        Merkleize(out UInt256 right, chunks[..rightChunkCount], numLeaves);
         root = HashConcatenation(left, right, 0);
     }
 

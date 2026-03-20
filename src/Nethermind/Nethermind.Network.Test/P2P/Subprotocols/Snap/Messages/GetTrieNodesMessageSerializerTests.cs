@@ -3,9 +3,12 @@
 
 using DotNetty.Buffers;
 using FluentAssertions;
+using System.Linq;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
@@ -101,39 +104,70 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             recode.Should().BeEquivalentTo(data);
         }
 
+        [Test]
+        public void Deserialize_Throws_On_TooMany_Path_Groups()
+        {
+            PathGroup[] groups = Enumerable.Range(0, SnapMessageLimits.MaxRequestPathGroups + 1).Select(static _ => new PathGroup { Group = [TestItem.RandomDataA] }).ToArray();
+            AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList(groups));
+        }
+
+        [Test]
+        public void Deserialize_Throws_On_TooMany_Paths_Per_Group()
+        {
+            byte[][] paths = Enumerable.Range(0, SnapMessageLimits.MaxRequestPathsPerGroup + 1).Select(static _ => TestItem.RandomDataA).ToArray();
+            AssertDeserializeThrows(PathGroup.EncodeToRlpPathGroupList([new() { Group = paths }]));
+        }
+
+        private static void AssertDeserializeThrows(RlpPathGroupList paths)
+        {
+            GetTrieNodesMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                RootHash = TestItem.KeccakA,
+                Paths = paths,
+                Bytes = 10
+            };
+
+            GetTrieNodesMessageSerializer serializer = new();
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 64);
+            try
+            {
+                serializer.Serialize(buffer, msg);
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer));
+            }
+            finally
+            {
+                buffer.Release();
+                msg.Dispose();
+            }
+        }
+
         /// <summary>
         /// RlpItemList has a ReadOnlySpan indexer that FluentAssertions cannot reflect over,
         /// so we verify roundtrip via byte equality instead of SerializerTester.TestZero.
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
         {
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            IByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            try
-            {
-                serializer.Serialize(buffer, msg);
-                byte[] firstBytes = new byte[buffer.ReadableBytes];
-                buffer.GetBytes(buffer.ReaderIndex, firstBytes);
+            using GetTrieNodesMessage _ = msg;
+            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+            using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
 
-                using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
+            serializer.Serialize(buffer, msg);
+            byte[] firstBytes = new byte[buffer.ReadableBytes];
+            buffer.GetBytes(buffer.ReaderIndex, firstBytes);
 
-                deserialized.RequestId.Should().Be(msg.RequestId);
-                deserialized.RootHash.Should().Be(msg.RootHash);
-                deserialized.Bytes.Should().Be(msg.Bytes);
-                deserialized.Paths.Count.Should().Be(msg.Paths.Count);
+            using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
 
-                serializer.Serialize(buffer2, deserialized);
-                byte[] secondBytes = new byte[buffer2.ReadableBytes];
-                buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
+            deserialized.RequestId.Should().Be(msg.RequestId);
+            deserialized.RootHash.Should().Be(msg.RootHash);
+            deserialized.Bytes.Should().Be(msg.Bytes);
+            deserialized.Paths.Count.Should().Be(msg.Paths.Count);
 
-                secondBytes.Should().BeEquivalentTo(firstBytes);
-            }
-            finally
-            {
-                buffer.Release();
-                buffer2.Release();
-                msg.Dispose();
-            }
+            serializer.Serialize(buffer2, deserialized);
+            byte[] secondBytes = new byte[buffer2.ReadableBytes];
+            buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
+
+            secondBytes.Should().BeEquivalentTo(firstBytes);
         }
     }
 }

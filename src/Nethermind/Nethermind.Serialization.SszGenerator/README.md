@@ -27,7 +27,7 @@ Supports vectors, lists, bitvectors, bitlists, unions, etc.
 
 ```csharp
 
-[SszSerializable]
+[SszContainer]
 public struct MyClass
 {
   public ulong Test1 { get; set; }
@@ -50,7 +50,7 @@ SszEncoding.Decode(encoded, out decodedInstance);
 ### Union
 
 ```csharp
-[SszSerializable]
+[SszUnion]
 public struct MyUnion
 {
   public MyUnionEnum Selector { get; set; }

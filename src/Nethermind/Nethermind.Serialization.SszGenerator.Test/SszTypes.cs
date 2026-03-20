@@ -7,7 +7,7 @@ using System.Collections;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
-    [SszSerializable]
+    [SszContainer]
     public struct ComplexStruct
     {
         public ulong Test1 { get; set; }
@@ -49,14 +49,14 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public BitArray? BitList2 { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct FixedC
     {
         public ulong Fixed1 { get; set; }
         public ulong Fixed2 { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct VariableC
     {
         public ulong Fixed1 { get; set; }
@@ -65,14 +65,14 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Fixed2 { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct SingleListContainer
     {
         [SszList(4)]
         public ulong[]? Items { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct DoubleListContainer
     {
         [SszList(4)]
@@ -82,14 +82,16 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong[]? Second { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct BitVectorContainer
     {
+        public ulong Value { get; set; }
+
         [SszVector(10)]
         public BitArray? Bits { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct FixedVectorContainer
     {
         [SszVector(2)]
@@ -97,14 +99,13 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     //// Does not compile
-    //[SszSerializable]
+    //[SszContainer]
     //public struct NoProps
     //{
 
     //}
 
-    [SszSerializable]
-    [SszCompatibleUnion]
+    [SszUnion]
     public struct CompatibleNumberUnion
     {
         public CompatibleNumberUnionSelector Selector { get; set; }
@@ -112,8 +113,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong CurrentValue { get; set; }
     }
 
-    [SszSerializable]
-    [SszProgressiveContainer]
+    [SszContainer]
     public struct ProgressiveContainerSample
     {
         [SszField(2)]
@@ -123,14 +123,28 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong Head { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer]
     public struct ProgressiveListContainer
     {
         [SszProgressiveList]
         public ulong[]? Items { get; set; }
     }
 
-    [SszSerializable]
+    [SszContainer(isCollectionItself: true)]
+    public struct ProgressiveVarTestStructList
+    {
+        [SszProgressiveList]
+        public VariableC[]? Items { get; set; }
+    }
+
+    [SszContainer]
+    public struct NestedProgressiveListContainer
+    {
+        [SszProgressiveList]
+        public ProgressiveVarTestStructList[]? Items { get; set; }
+    }
+
+    [SszContainer]
     public struct ProgressiveBitlistContainer
     {
         [SszProgressiveBitlist]

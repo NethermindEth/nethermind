@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Int256;
-using Nethermind.Merkleization;
-using NUnit.Framework;
 using System;
 using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using Nethermind.Int256;
+using Nethermind.Merkleization;
+using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
@@ -69,6 +69,42 @@ public class EncodingTest
         Assert.That(decoded.Bits, Is.Not.Null);
         Assert.That(decoded.Bits!.Length, Is.EqualTo(10));
         Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(container.Bits!.Cast<bool>()));
+    }
+
+    [Test]
+    public void Encode_and_decode_nested_progressive_list_round_trip()
+    {
+        NestedProgressiveListContainer container = new()
+        {
+            Items =
+            [
+                new ProgressiveVarTestStructList
+                {
+                    Items =
+                    [
+                        new VariableC { Fixed1 = 1, Fixed2 = [2, 3] },
+                        new VariableC { Fixed1 = 4, Fixed2 = [5] },
+                    ],
+                },
+                new ProgressiveVarTestStructList
+                {
+                    Items =
+                    [
+                        new VariableC { Fixed1 = 6, Fixed2 = [] },
+                    ],
+                },
+            ],
+        };
+
+        byte[] encoded = SszEncoding.Encode(container);
+        SszEncoding.Decode(encoded, out NestedProgressiveListContainer decoded);
+
+        Assert.That(SszEncoding.Encode(decoded), Is.EqualTo(encoded));
+        Assert.That(decoded.Items, Has.Length.EqualTo(2));
+        Assert.That(decoded.Items![0].Items, Has.Length.EqualTo(2));
+        Assert.That(decoded.Items[0].Items![0].Fixed2, Is.EqualTo([2UL, 3UL]));
+        Assert.That(decoded.Items[1].Items, Has.Length.EqualTo(1));
+        Assert.That(decoded.Items[1].Items![0].Fixed2, Is.Empty);
     }
 
     [Test]
@@ -200,12 +236,36 @@ public class EncodingTest
     }
 
     [Test]
+    public void Decode_rejects_truncated_variable_container_input()
+    {
+        Assert.That(
+            () => SszEncoding.Decode(new byte[4], out VariableC _),
+            Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
     public void Decode_rejects_offsets_that_point_into_the_fixed_section()
     {
         byte[] encoded = [4, 0, 0, 0, 8, 0, 0, 0];
 
         Assert.That(
             () => SszEncoding.Decode(encoded, out DoubleListContainer _),
+            Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
+    public void Decode_rejects_offsets_that_point_past_the_end()
+    {
+        VariableC valid = new() { Fixed1 = 1, Fixed2 = [10, 20] };
+        byte[] encoded = SszEncoding.Encode(valid);
+
+        encoded[8] = 0xFF;
+        encoded[9] = 0xFF;
+        encoded[10] = 0x00;
+        encoded[11] = 0x00;
+
+        Assert.That(
+            () => SszEncoding.Decode(encoded, out VariableC _),
             Throws.InstanceOf<InvalidDataException>());
     }
 
@@ -275,9 +335,9 @@ public class EncodingTest
             return;
         }
 
-        int leftCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
-        Merkle.Merkleize(out UInt256 left, chunks[..leftCount], numLeaves);
-        MerkleizeProgressiveSpec(chunks[leftCount..], out UInt256 right, numLeaves * 4);
+        int rightCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
+        MerkleizeProgressiveSpec(chunks[rightCount..], out UInt256 left, numLeaves * 4);
+        Merkle.Merkleize(out UInt256 right, chunks[..rightCount], numLeaves);
         root = HashConcat(left, right);
     }
 

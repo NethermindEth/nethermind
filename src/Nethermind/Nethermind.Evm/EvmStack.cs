@@ -25,7 +25,6 @@ public ref struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1025;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
@@ -541,7 +540,7 @@ public ref struct EvmStack
         Head = head;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StackOverflow:
@@ -570,7 +569,7 @@ public ref struct EvmStack
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
