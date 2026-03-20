@@ -61,7 +61,7 @@ RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} --no-checkout \
     git -C /runtime sparse-checkout set \
       src/coreclr/vm \
       src/coreclr/scripts \
-      src/coreclr/pal/inc/rt && \
+      src/coreclr/pal/inc && \
     git -C /runtime checkout
 
 WORKDIR /runtime/build-lttng
@@ -74,6 +74,7 @@ RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
     cd /runtime/build-lttng/lttng && \
     for f in traceptprov*.cpp; do \
       clang++ -fPIC -O2 \
+        -I/runtime/src/coreclr/pal/inc \
         -I/runtime/src/coreclr/pal/inc/rt \
         -I/runtime/build-lttng/lttng \
         -o $(basename $f .cpp).o \
