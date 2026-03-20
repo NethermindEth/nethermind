@@ -39,7 +39,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
     {
         if (_isAura && !VirtualMachine.BlockExecutionContext.IsGenesis)
         {
-            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+            WorldState.CreateAccountIfNotExists(Address.SystemUser, UInt256.Zero, 0);
         }
 
         ExecutionOptions coreOpts = opts & ~ExecutionOptions.Warmup;
@@ -60,13 +60,13 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
 
     protected override IReleaseSpec GetSpec(BlockHeader header) => base.GetSpec(header).ForSystemTransaction(_isAura, header.IsGenesis);
 
-    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired) => TransactionResult.Ok;
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, ulong minGasRequired) => TransactionResult.Ok;
 
     protected override TransactionResult IncrementNonce(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) => TransactionResult.Ok;
 
     protected override void DecrementNonce(Transaction tx) { }
 
-    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, long spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode) { }
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, ulong spentGas, in UInt256 premiumPerGas, in UInt256 blobBaseFee, int statusCode) { }
 
     protected override void PayValue(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
     {

@@ -12,7 +12,7 @@ namespace Nethermind.Core
         bool TryGetAccount(Address address, out AccountStruct account);
 
         [SkipLocalsInit]
-        UInt256 GetNonce(Address address)
+        ulong GetNonce(Address address)
         {
             TryGetAccount(address, out AccountStruct account);
             return account.Nonce;

@@ -291,7 +291,7 @@ internal static partial class EvmInstructions
         if (!stack.PopUInt256(out UInt256 a) || !stack.PopUInt256(out UInt256 b) || !stack.PopUInt256(out UInt256 c)) goto StackUnderflow;
 
         // Calculate additional gas cost based on the length (using a division rounding-up method) and deduct the total cost.
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * EvmCalculations.Div32Ceiling(c, out bool outOfGas));
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.VeryLow * (ulong)(EvmCalculations.Div32Ceiling(c, out bool outOfGas)));
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;
@@ -351,7 +351,7 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
+        if (!TGasPolicy.UpdateGas(ref gas, (ulong)spec.GasCosts.SStoreResetCost))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -377,7 +377,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = spec.GasCosts.SClearRefund;
+        ulong sClearRefunds = (ulong)spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -386,7 +386,7 @@ internal static partial class EvmInstructions
             {
                 vmState.Refund += sClearRefunds;
                 if (vm.TxTracer.IsTracingRefunds)
-                    vm.TxTracer.ReportRefund(sClearRefunds);
+                    vm.TxTracer.ReportRefund((long)sClearRefunds);
             }
         }
         // When setting a non-zero value over an existing zero, apply the difference in gas costs.
@@ -487,11 +487,11 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = gasCosts.SClearRefund;
+        ulong sClearRefunds = gasCosts.SClearRefund;
 
         if (newSameAsCurrent)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, gasCosts.NetMeteredSStoreCost))
+            if (!TGasPolicy.UpdateGas(ref gas, (ulong)gasCosts.NetMeteredSStoreCost))
                 goto OutOfGas;
         }
         else
@@ -522,13 +522,13 @@ internal static partial class EvmInstructions
                     {
                         vmState.Refund += sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(sClearRefunds);
+                            vm.TxTracer.ReportRefund((long)sClearRefunds);
                     }
                 }
             }
             else
             {
-                long netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
+                ulong netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
                 if (!TGasPolicy.UpdateGas(ref gas, netMeteredStoreCost))
                     goto OutOfGas;
 
@@ -539,14 +539,14 @@ internal static partial class EvmInstructions
                     {
                         vmState.Refund -= sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(-sClearRefunds);
+                            vm.TxTracer.ReportRefund(-(long)sClearRefunds); ///?????
                     }
 
                     if (newIsZero)
                     {
                         vmState.Refund += sClearRefunds;
                         if (vm.TxTracer.IsTracingRefunds)
-                            vm.TxTracer.ReportRefund(sClearRefunds);
+                            vm.TxTracer.ReportRefund((long)sClearRefunds);
                     }
                 }
 
@@ -554,11 +554,11 @@ internal static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
+                    ulong refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)
-                        vm.TxTracer.ReportRefund(refundFromReversal);
+                        vm.TxTracer.ReportRefund((long)refundFromReversal);
                 }
             }
         }

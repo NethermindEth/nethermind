@@ -28,7 +28,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Deduct gas: base cost plus additional cost per 32-byte word.
-        TGasPolicy.Consume(ref gas, GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmCalculations.Div32Ceiling(in b, out bool outOfGas));
+        TGasPolicy.Consume(ref gas, (ulong)(GasCostOf.Sha3 + GasCostOf.Sha3Word * (ulong)EvmCalculations.Div32Ceiling(in b, out bool outOfGas)));
         if (outOfGas) goto OutOfGas;
 
         VmState<TGasPolicy> vmState = vm.VmState;

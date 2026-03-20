@@ -114,7 +114,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
         return result > long.MaxValue || overflow
             ? long.MaxValue
-            : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
+            : (long)Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (ulong)result);
     }
 
     private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)

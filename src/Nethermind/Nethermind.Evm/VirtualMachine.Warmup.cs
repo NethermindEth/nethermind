@@ -53,7 +53,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
             value: 0,
             inputData: default);
 
-        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromLong(long.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
+        using (VmState<TGasPolicy> vmState = VmState<TGasPolicy>.RentTopLevel(TGasPolicy.FromULong(ulong.MaxValue), ExecutionType.TRANSACTION, env, new StackAccessTracker(), state.TakeSnapshot()))
         {
             vm.VmState = vmState;
             vm._worldState = state;
@@ -155,7 +155,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         ITxTracer txTracer = new FeesTracer();
         vm._txTracer = txTracer;
         EvmStack stack = new(0, txTracer, vmState.DataStack);
-        TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
+        TGasPolicy gas = TGasPolicy.FromULong(ulong.MaxValue);
         int pc = 0;
 
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
@@ -179,7 +179,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
 
                 state.Reset(resetBlockChanges: true);
                 stack = new(0, txTracer, vmState.DataStack);
-                gas = TGasPolicy.FromLong(long.MaxValue);
+                gas = TGasPolicy.FromULong(ulong.MaxValue);
                 pc = 0;
             }
         }

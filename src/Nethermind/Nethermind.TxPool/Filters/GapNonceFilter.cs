@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
             UInt256 currentNonce = state.SenderAccount.Nonce;
             long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
-            bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
+            bool isTxNonceNextInOrder = tx.Nonce <= (ulong)nextNonceInOrder;
             if (!isTxNonceNextInOrder)
             {
                 Metrics.PendingTransactionsNonceGap++;

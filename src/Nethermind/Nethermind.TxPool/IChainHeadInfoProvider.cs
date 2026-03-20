@@ -17,7 +17,7 @@ namespace Nethermind.TxPool
 
         long HeadNumber { get; }
 
-        long? BlockGasLimit { get; }
+        ulong? BlockGasLimit { get; }
 
         UInt256 CurrentBaseFee { get; }
 

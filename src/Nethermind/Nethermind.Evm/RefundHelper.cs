@@ -13,9 +13,9 @@ namespace Nethermind.Evm
 
         public const long MaxRefundQuotientEIP3529 = 5L;
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static long CalculateClaimableRefund(long spentGas, long totalRefund, IReleaseSpec spec)
+        public static ulong CalculateClaimableRefund(ulong spentGas, ulong totalRefund, IReleaseSpec spec)
         {
-            long maxRefundQuotient = spec.IsEip3529Enabled ? MaxRefundQuotientEIP3529 : MaxRefundQuotient;
+            ulong maxRefundQuotient = (ulong)(spec.IsEip3529Enabled ? MaxRefundQuotientEIP3529 : MaxRefundQuotient);
             return Math.Min(spentGas / maxRefundQuotient, totalRefund);
         }
     }

@@ -120,13 +120,13 @@ internal static partial class EvmInstructions
         }
 
         bool outOfGas = false;
-        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
+        ulong initCodeWords = (ulong)EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
         if (outOfGas)
             goto OutOfGas;
 
-        long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
-        long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
-        long extraCost = initCodeWordCost + create2HashCost;
+        ulong initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        ulong create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
+        ulong extraCost = (ulong)(initCodeWordCost + create2HashCost);
 
         bool createOutOfGas = TEip8037.IsActive switch
         {
@@ -173,7 +173,7 @@ internal static partial class EvmInstructions
         }
 
         // Get remaining gas for the create operation.
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
@@ -181,7 +181,7 @@ internal static partial class EvmInstructions
 
         // Calculate gas available for the contract creation call.
         // Use the 63/64 gas rule if specified in the current EVM specification.
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        ulong callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 

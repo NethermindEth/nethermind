@@ -339,7 +339,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             beneficiary,
             difficulty,
             0,
-            (long)gasLimit,
+            (ulong)gasLimit,
             timestamp,
             extraData)
         {

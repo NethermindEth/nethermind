@@ -54,7 +54,7 @@ public readonly ref struct TransactionSubstate
     public EvmExceptionType EvmExceptionType { get; }
     public (CodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
     public bool ShouldRevert { get; }
-    public long Refund { get; }
+    public ulong Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
     public IHashSetEnumerableCollection<Address> DestroyList => _destroyList ?? _emptyDestroyList;
 
@@ -81,7 +81,7 @@ public readonly ref struct TransactionSubstate
     }
 
     public TransactionSubstate((CodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
-        long refund,
+        ulong refund,
         IHashSetEnumerableCollection<Address> destroyList,
         JournalCollection<LogEntry> logs,
         bool shouldRevert,

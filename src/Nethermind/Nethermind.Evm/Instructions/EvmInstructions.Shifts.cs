@@ -22,7 +22,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for executing a shift operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.VeryLow;
+        virtual static ulong GasCost => GasCostOf.VeryLow;
 
         /// <summary>
         /// Performs the shift operation.

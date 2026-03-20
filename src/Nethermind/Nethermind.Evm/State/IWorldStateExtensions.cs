@@ -31,11 +31,11 @@ public static class WorldStateExtensions
     public static void SubtractFromBalance(this IWorldState worldState, Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => worldState.SubtractFromBalance(address, balanceChange, spec, out _);
 
-    public static void IncrementNonce(this IWorldState worldState, Address address, UInt256 delta)
+    public static void IncrementNonce(this IWorldState worldState, Address address, ulong delta)
         => worldState.IncrementNonce(address, delta, out _);
 
     public static void IncrementNonce(this IWorldState worldState, Address address)
-        => worldState.IncrementNonce(address, UInt256.One);
+        => worldState.IncrementNonce(address, 1);
 
     public static void AddAccountRead(this IWorldState worldState, Address address)
         => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address);

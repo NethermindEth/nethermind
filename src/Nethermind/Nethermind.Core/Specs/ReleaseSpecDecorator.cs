@@ -53,7 +53,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip2929Enabled => spec.IsEip2929Enabled;
     public virtual bool IsEip2930Enabled => spec.IsEip2930Enabled;
     public virtual bool IsEip1559Enabled => spec.IsEip1559Enabled;
-    public virtual long Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
+    public virtual ulong Eip1559TransitionBlock => spec.Eip1559TransitionBlock;
     public virtual Address? Eip158IgnoredAccount => spec.Eip158IgnoredAccount;
     public virtual bool IsEip3198Enabled => spec.IsEip3198Enabled;
     public virtual bool IsEip3529Enabled => spec.IsEip3529Enabled;

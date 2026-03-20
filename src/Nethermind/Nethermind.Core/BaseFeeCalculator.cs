@@ -23,7 +23,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
         {
             UInt256 parentBaseFee = parent.BaseFeePerGas;
             bool isForkBlockNumber = specFor1559.Eip1559TransitionBlock == parent.Number + 1;
-            long parentGasTarget = parent.GasLimit / specFor1559.ElasticityMultiplier;
+            ulong parentGasTarget = parent.GasLimit / (ulong)specFor1559.ElasticityMultiplier;
             if (isForkBlockNumber)
                 parentGasTarget = parent.GasLimit;
 
@@ -37,7 +37,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             }
             else if (parent.GasUsed > parentGasTarget)
             {
-                long gasDelta = parent.GasUsed - parentGasTarget;
+                ulong gasDelta = parent.GasUsed - parentGasTarget;
                 UInt256 feeDelta = UInt256.Max(
                     parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator,
                     UInt256.One);
@@ -45,7 +45,7 @@ public sealed class DefaultBaseFeeCalculator : IBaseFeeCalculator
             }
             else
             {
-                long gasDelta = parentGasTarget - parent.GasUsed;
+                ulong gasDelta = parentGasTarget - parent.GasUsed;
                 UInt256 feeDelta = parentBaseFee * (UInt256)gasDelta / (UInt256)parentGasTarget / specFor1559.BaseFeeMaxChangeDenominator;
                 expectedBaseFee = UInt256.Max(parentBaseFee - feeDelta, 0);
             }

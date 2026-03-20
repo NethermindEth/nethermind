@@ -5,16 +5,16 @@ namespace Nethermind.Core
 {
     public static class RefundOf
     {
-        public const long SSetReversedEip1283 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip1283;
-        public const long SResetReversedEip1283 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip1283;
-        public const long SSetReversedEip2200 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip2200;
-        public const long SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
-        public const long SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
-        public const long SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
-        public const long SSetReversedEip8037 = GasCostOf.SSetState + GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
-        public const long SClearAfterEip3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
-        public const long SClearBeforeEip3529 = 15000;
-        public const long DestroyBeforeEip3529 = 24000;
-        public const long DestroyAfterEip3529 = GasCostOf.Free;
+        public const ulong SSetReversedEip1283 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip1283;
+        public const ulong SResetReversedEip1283 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip1283;
+        public const ulong SSetReversedEip2200 = GasCostOf.SSet - GasCostOf.SStoreNetMeteredEip2200;
+        public const ulong SResetReversedEip2200 = GasCostOf.SReset - GasCostOf.SStoreNetMeteredEip2200;
+        public const ulong SSetReversedHotCold = GasCostOf.SSet - GasCostOf.WarmStateRead;
+        public const ulong SResetReversedHotCold = GasCostOf.SReset - GasCostOf.ColdSLoad - GasCostOf.WarmStateRead;
+        public const ulong SSetReversedEip8037 = GasCostOf.SSetState + GasCostOf.SSetRegular - GasCostOf.WarmStateRead;
+        public const ulong SClearAfterEip3529 = GasCostOf.SReset - GasCostOf.ColdSLoad + GasCostOf.AccessStorageListEntry;
+        public const ulong SClearBeforeEip3529 = 15000;
+        public const ulong DestroyBeforeEip3529 = 24000;
+        public const ulong DestroyAfterEip3529 = GasCostOf.Free;
     }
 }

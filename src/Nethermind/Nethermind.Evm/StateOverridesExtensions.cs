@@ -29,7 +29,7 @@ public static class StateOverridesExtensions
             {
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
-                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
+                    state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? 0);
                 }
                 else
                 {
@@ -117,8 +117,8 @@ public static class StateOverridesExtensions
     {
         if (accountOverride.Nonce is not null)
         {
-            UInt256 nonce = account.Nonce;
-            UInt256 newNonce = accountOverride.Nonce.Value;
+            ulong nonce = account.Nonce;
+            ulong newNonce = accountOverride.Nonce.Value;
             if (nonce > newNonce)
             {
                 stateProvider.DecrementNonce(address, nonce - newNonce);

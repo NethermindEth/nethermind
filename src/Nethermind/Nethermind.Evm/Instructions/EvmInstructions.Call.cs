@@ -161,7 +161,7 @@ internal static partial class EvmInstructions
         IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
+        if (!TGasPolicy.UpdateGas(ref gas, (ulong)spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
@@ -206,7 +206,7 @@ internal static partial class EvmInstructions
         }
 
         // Get remaining gas for 63/64 calculation
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
 
         // Apply the 63/64 gas rule if enabled.
         if (spec.Use63Over64Rule)
@@ -217,7 +217,7 @@ internal static partial class EvmInstructions
         // If gasLimit exceeds the host's representable range, treat as out-of-gas.
         if (gasLimit >= long.MaxValue) goto OutOfGas;
 
-        long gasLimitUl = (long)gasLimit;
+        ulong gasLimitUl = (ulong)gasLimit;
         if (!TGasPolicy.UpdateGas(ref gas, gasLimitUl)) goto OutOfGas;
 
         // Add call stipend if value is being transferred.
@@ -333,8 +333,8 @@ internal static partial class EvmInstructions
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))
         {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, largeContractCost)) return false;
+            ulong largeContractCost = GasCostOf.InitCodeWord * (ulong)EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
+            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, (ulong)largeContractCost)) return false;
         }
 
         return true;

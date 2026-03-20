@@ -29,11 +29,11 @@ namespace Nethermind.Db.Blooms
         private readonly IBloomConfig _config;
         private readonly IDb _bloomInfoDb;
         private readonly IFileStoreFactory _fileStoreFactory;
-        private long _minBlockNumber;
-        private long _maxBlockNumber;
-        private long _migratedBlockNumber;
+        private ulong _minBlockNumber;
+        private ulong _maxBlockNumber;
+        private ulong _migratedBlockNumber;
 
-        public long MinBlockNumber
+        public ulong MinBlockNumber
         {
             get => _minBlockNumber;
             private set
@@ -43,7 +43,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public long MaxBlockNumber
+        public ulong MaxBlockNumber
         {
             get => _maxBlockNumber;
             set
@@ -53,7 +53,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public long MigratedBlockNumber
+        public ulong MigratedBlockNumber
         {
             get => _migratedBlockNumber;
             private set
@@ -233,7 +233,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        private void Set(Hash256 key, long value)
+        private void Set(Hash256 key, ulong value)
         {
             _bloomInfoDb.PutSpan(key.Bytes, value.ToBigEndianSpanWithoutLeadingZeros(out _));
         }
@@ -246,7 +246,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new BloomEnumeration(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
+        public IBloomEnumeration GetBlooms(ulong fromBlock, ulong toBlock) => new BloomEnumeration(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
 
         private class BloomStorageLevel : IDisposable
         {
@@ -326,11 +326,11 @@ namespace Nethermind.Db.Blooms
 
             private static uint CountBits(Bloom bloom) => bloom.Bytes.CountBits();
 
-            public long GetBucket(long blockNumber) => blockNumber / LevelElementSize;
+            public long GetBucket(ulong blockNumber) => blockNumber / LevelElementSize;
 
             public IFileReader CreateReader() => _fileStore.CreateFileReader();
 
-            public void Migrate(in long blockNumber, Bloom bloom)
+            public void Migrate(in ulong blockNumber, Bloom bloom)
             {
                 if (_migrationStatistics)
                 {

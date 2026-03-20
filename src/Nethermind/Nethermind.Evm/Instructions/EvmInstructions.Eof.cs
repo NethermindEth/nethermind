@@ -108,7 +108,7 @@ internal static partial class EvmInstructions
         }
 
         // Deduct the fixed gas cost and the memory cost based on the size (rounded up to 32-byte words).
-        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow + GasCostOf.Memory * (ulong)EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
         if (outOfGas) goto OutOfGas;
 
         ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
@@ -260,7 +260,7 @@ internal static partial class EvmInstructions
         }
 
         // Calculate memory expansion gas cost and deduct overall gas for data copy.
-        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataCopy + GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas))
+        if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.DataCopy + GasCostOf.Memory * (ulong)EvmCalculations.Div32Ceiling(in size, out bool outOfGas))
             || outOfGas)
         {
             goto OutOfGas;
@@ -669,8 +669,8 @@ internal static partial class EvmInstructions
 
         // 6. Deduct gas for keccak256 hashing of the init code.
         long numberOfWordsInInitCode = EvmCalculations.Div32Ceiling((UInt256)initContainer.Length, out bool outOfGas);
-        long hashCost = GasCostOf.Sha3Word * numberOfWordsInInitCode;
-        if (outOfGas || !TGasPolicy.UpdateGas(ref gas, hashCost))
+        ulong hashCost = GasCostOf.Sha3Word * (ulong)numberOfWordsInInitCode;
+        if (outOfGas || !TGasPolicy.UpdateGas(ref gas, (ulong)hashCost))
             goto OutOfGas;
 
         IWorldState state = vm.WorldState;
@@ -685,8 +685,8 @@ internal static partial class EvmInstructions
         }
 
         // 9. Determine gas available for the new contract execution, applying the 63/64 rule if enabled.
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
         if (!TGasPolicy.UpdateGas(ref gas, callGas))
             goto OutOfGas;
 
@@ -956,8 +956,8 @@ internal static partial class EvmInstructions
         }
 
         // 9. Compute the gas available to the callee after reserving a minimum.
-        long gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-        long callGas = gasAvailable - Math.Max(gasAvailable / 64, MIN_RETAINED_GAS);
+        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
+        ulong callGas = gasAvailable - Math.Max(gasAvailable / 64, MIN_RETAINED_GAS);
 
         // 10. Check that the call gas is sufficient, the caller has enough balance, and the call depth is within limits.
         if (callGas < GasCostOf.CallStipend ||

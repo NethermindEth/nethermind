@@ -272,7 +272,7 @@ public struct EvmPooledMemory : IEvmMemory
 
             // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
             ulong cost = (ulong)
-                ((newActiveWords - activeWords) * GasCostOf.Memory +
+                ((newActiveWords - activeWords) * (long)GasCostOf.Memory +
                  ((newActiveWords * newActiveWords) >> 9) -
                  ((activeWords * activeWords) >> 9));
 

@@ -28,7 +28,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -47,7 +47,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as ref to big endian word.
         /// </summary>
@@ -66,7 +66,7 @@ internal static partial class EvmInstructions
         /// <summary>
         /// The gas cost for the operation.
         /// </summary>
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as address.
         /// </summary>
@@ -81,7 +81,7 @@ internal static partial class EvmInstructions
     public interface IOpEnvUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -97,7 +97,7 @@ internal static partial class EvmInstructions
     public interface IOpBlkUInt256<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt256.
         /// </summary>
@@ -113,7 +113,7 @@ internal static partial class EvmInstructions
     public interface IOpEnvUInt32<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt32.
         /// </summary>
@@ -128,7 +128,7 @@ internal static partial class EvmInstructions
     public interface IOpEnvUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -143,7 +143,7 @@ internal static partial class EvmInstructions
     public interface IOpBlkUInt64<TGasPolicy>
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        virtual static long GasCost => GasCostOf.Base;
+        virtual static ulong GasCost => GasCostOf.Base;
         /// <summary>
         /// Executes the operation and returns the result as a UInt64.
         /// </summary>
@@ -551,7 +551,7 @@ internal static partial class EvmInstructions
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct gas cost for balance operation as per specification.
-        TGasPolicy.Consume(ref gas, spec.GasCosts.BalanceCost);
+        TGasPolicy.Consume(ref gas, (ulong)spec.GasCosts.BalanceCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -615,7 +615,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
+        TGasPolicy.Consume(ref gas, (ulong)spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;
@@ -663,7 +663,7 @@ internal static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
-        TGasPolicy.Consume(ref gas, spec.GasCosts.ExtCodeHashCost);
+        TGasPolicy.Consume(ref gas, (ulong)spec.GasCosts.ExtCodeHashCost);
 
         Address address = stack.PopAddress();
         if (address is null) goto StackUnderflow;

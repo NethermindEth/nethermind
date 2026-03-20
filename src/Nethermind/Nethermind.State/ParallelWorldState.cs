@@ -71,7 +71,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         return _innerWorldState.Get(storageCell);
     }
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public override void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
     {
         _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
@@ -81,7 +81,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         }
     }
 
-    public override void SetNonce(Address address, in UInt256 nonce)
+    public override void SetNonce(Address address, in ulong nonce)
     {
         _innerWorldState.SetNonce(address, nonce);
 
@@ -162,7 +162,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.DeleteAccount(address);
     }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
     {
         if (TracingEnabled)
         {
@@ -171,7 +171,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             {
                 GeneratedBlockAccessList.AddBalanceChange(address, 0, balance);
             }
-            if (!nonce.IsZero)
+            if (!(nonce == 0))
             {
                 GeneratedBlockAccessList.AddNonceChange(address, (ulong)nonce);
             }
@@ -179,7 +179,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _innerWorldState.CreateAccount(address, balance, nonce);
     }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
     {
         if (!_innerWorldState.AccountExists(address))
         {
@@ -244,7 +244,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public long GasUsed()
         => _gasUsed;
 
-    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, ulong gasRemaining)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -331,7 +331,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             AdvanceSuggested();
         }
 
-        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        if (gasRemaining < (ulong)(suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }

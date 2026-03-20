@@ -44,16 +44,16 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void CommitTree(long blockNumber)
         => _innerWorldState.CommitTree(blockNumber);
 
-    public virtual void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         => _innerWorldState.CreateAccount(address, balance, nonce);
 
-    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
+    public virtual void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         => _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
 
     public virtual void CreateEmptyAccountIfDeleted(Address address) =>
         _innerWorldState.CreateEmptyAccountIfDeleted(address);
 
-    public virtual void DecrementNonce(Address address, UInt256 delta)
+    public virtual void DecrementNonce(Address address, ulong delta)
         => _innerWorldState.DecrementNonce(address, delta);
 
     public virtual void DeleteAccount(Address address)
@@ -86,7 +86,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public virtual void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         => _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
     public virtual bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -113,7 +113,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void Set(in StorageCell storageCell, byte[] newValue)
         => _innerWorldState.Set(storageCell, newValue);
 
-    public virtual void SetNonce(Address address, in UInt256 nonce)
+    public virtual void SetNonce(Address address, in ulong nonce)
         => _innerWorldState.SetNonce(address, nonce);
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)

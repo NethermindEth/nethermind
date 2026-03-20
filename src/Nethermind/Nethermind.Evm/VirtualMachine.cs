@@ -268,7 +268,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     {
                         // Refund the remaining gas from the completed call frame (success path).
                         TGasPolicy.Refund(ref _currentState.Gas, in previousState.Gas);
-                        long gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
+                        ulong gasAvailableForCodeDeposit = TGasPolicy.GetRemainingGas(previousState.Gas);
 
                         // Process contract creation calls differently from regular calls.
                         if (previousState.ExecutionType.IsAnyCreate())
@@ -374,7 +374,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         return previousCallOutput;
     }
 
-    protected void HandleEofCreate(in CallResult callResult, VmState<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
+    protected void HandleEofCreate(in CallResult callResult, VmState<TGasPolicy> previousState, ulong gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
     {
         Address callCodeOwner = previousState.Env.ExecutingAccount;
         // ReturnCode was called with a container index and auxdata
@@ -416,7 +416,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-        if (!CodeDepositHandler.CalculateCost(spec, bytecodeResultArray.Length, out long regularDepositCost, out long stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, bytecodeResultArray.Length, out ulong regularDepositCost, out ulong stateDepositCost))
         {
             regularDepositCost = long.MaxValue;
             stateDepositCost = long.MaxValue;
@@ -448,14 +448,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected void HandleLegacyCreate(
         in CallResult callResult,
         VmState<TGasPolicy> previousState,
-        long gasAvailableForCodeDeposit,
+        ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length, out long regularDepositCost, out long stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length, out ulong regularDepositCost, out ulong stateDepositCost))
         {
-            regularDepositCost = long.MaxValue;
-            stateDepositCost = long.MaxValue;
+            regularDepositCost = ulong.MaxValue;
+            stateDepositCost = ulong.MaxValue;
         }
 
         bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
@@ -478,18 +478,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private void TryChargeAndDepositCode(
         VmState<TGasPolicy> previousState,
-        long gasAvailableForCodeDeposit,
+        ulong gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded,
-        long regularDepositCost,
-        long stateDepositCost,
+        ulong regularDepositCost,
+        ulong stateDepositCost,
         bool invalidCode,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         Address callCodeOwner = previousState.Env.ExecutingAccount;
 
-        long childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
-        long stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
+        ulong childStateReservoir = TGasPolicy.GetStateReservoir(in previousState.Gas);
+        ulong stateSpill = Math.Max(0, stateDepositCost - childStateReservoir);
         bool hasEnoughGas = gasAvailableForCodeDeposit >= regularDepositCost + stateSpill;
         bool chargedCodeDeposit = false;
 
@@ -879,7 +879,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        ulong codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
 
         // Cache the output bytes for reuse in the tracing reports.
         ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
@@ -893,14 +893,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         else if (callResult.ShouldRevert)
         {
             // For creation operations, subtract the code deposit cost from the available gas; otherwise, use full gas.
-            long gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
-            long reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable - codeDepositGasCost : gasAvailable;
+            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            ulong reportedGas = currentState.ExecutionType.IsAnyCreate() ? gasAvailable - codeDepositGasCost : gasAvailable;
             _txTracer.ReportActionRevert(reportedGas, outputBytes);
         }
         // Process contract creation flows.
         else if (currentState.ExecutionType.IsAnyCreate())
         {
-            long gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
             // If available gas is insufficient to cover the code deposit cost...
             if (gasAvailable < codeDepositGasCost)
             {
@@ -977,7 +977,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
-            !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
+            !TGasPolicy.UpdateGas(ref gas, (ulong)(baseGasCost + dataGasCost)))
         {
             return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
@@ -1349,7 +1349,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
 
-    private CallResult GetFailureReturn(long gasAvailable, EvmExceptionType exceptionType)
+    private CallResult GetFailureReturn(ulong gasAvailable, EvmExceptionType exceptionType)
     {
         if (_txTracer.IsTracingInstructions) EndInstructionTraceError(gasAvailable, exceptionType);
 
@@ -1380,7 +1380,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
+    private void StartInstructionTrace(Instruction instruction, ulong gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
         int sectionIndex = SectionIndex;
@@ -1430,13 +1430,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(long gasAvailable)
+    internal void EndInstructionTrace(ulong gasAvailable)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)
+    private void EndInstructionTraceError(ulong gasAvailable, EvmExceptionType evmExceptionType)
     {
         _txTracer.ReportOperationRemainingGas(gasAvailable);
         _txTracer.ReportOperationError(evmExceptionType);

@@ -164,7 +164,7 @@ namespace Nethermind.Serialization.Rlp
                 return null;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             Hash256 storageRoot = DecodeStorageRoot(ref decoderContext);
             Hash256 codeHash = DecodeCodeHash(ref decoderContext);
@@ -249,7 +249,7 @@ namespace Nethermind.Serialization.Rlp
                 return false;
             }
 
-            UInt256 nonce = decoderContext.DecodeUInt256();
+            ulong nonce = decoderContext.DecodeULong();
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);

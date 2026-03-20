@@ -26,7 +26,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="value">The initial gas value</param>
     /// <returns>A new gas instance</returns>
-    static abstract TSelf FromLong(long value);
+    static abstract TSelf FromULong(ulong value);
 
     /// <summary>
     /// Get the remaining single-dimensional gas available for execution.
@@ -34,7 +34,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to query.</param>
     /// <returns>Remaining gas (negative values indicate out-of-gas)</returns>
-    static abstract long GetRemainingGas(in TSelf gas);
+    static abstract ulong GetRemainingGas(in TSelf gas);
 
     /// <summary>
     /// Gets the remaining state gas reservoir.
@@ -42,7 +42,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to query.</param>
     /// <returns>Remaining state reservoir gas.</returns>
-    static virtual long GetStateReservoir(in TSelf gas) => 0;
+    static virtual ulong GetStateReservoir(in TSelf gas) => 0;
 
     /// <summary>
     /// Gets state gas consumed by the current execution.
@@ -50,7 +50,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to query.</param>
     /// <returns>Consumed state gas.</returns>
-    static virtual long GetStateGasUsed(in TSelf gas) => 0;
+    static virtual ulong GetStateGasUsed(in TSelf gas) => 0;
 
     /// <summary>
     /// Gets the amount of state gas that spilled into gas_left.
@@ -59,14 +59,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to query.</param>
     /// <returns>State gas drawn from gas_left when reservoir was empty.</returns>
-    static virtual long GetStateGasSpill(in TSelf gas) => 0;
+    static virtual ulong GetStateGasSpill(in TSelf gas) => 0;
 
     /// <summary>
     /// Consume gas for an EVM operation.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="cost">The gas cost to consume.</param>
-    static abstract void Consume(ref TSelf gas, long cost);
+    static abstract void Consume(ref TSelf gas, ulong cost);
 
     /// <summary>
     /// Consume gas for SelfDestruct operation.
@@ -79,7 +79,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="cost">The gas cost (GasCostOf.CodeDeposit * codeLength).</param>
-    static abstract void ConsumeCodeDeposit(ref TSelf gas, long cost);
+    static abstract void ConsumeCodeDeposit(ref TSelf gas, ulong cost);
 
     /// <summary>
     /// Refund gas from a child call frame.
@@ -97,7 +97,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">The parent gas state to restore into.</param>
     /// <param name="childGas">The child gas state to restore from.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
-    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RestoreChildStateGas(ref TSelf parentGas, in TSelf childGas, ulong initialStateReservoir) { }
 
     /// <summary>
     /// Adjusts parent gas state when a child <see cref="Refund"/> was already applied but the child
@@ -108,7 +108,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">The parent gas state to adjust.</param>
     /// <param name="childGas">The child gas state that was previously merged via Refund.</param>
     /// <param name="initialStateReservoir">The initial state reservoir that was assigned to the child frame.</param>
-    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, long initialStateReservoir) { }
+    static virtual void RevertRefundToHalt(ref TSelf parentGas, in TSelf childGas, ulong initialStateReservoir) { }
 
     /// <summary>
     /// Mark the gas state as out of gas.
@@ -194,7 +194,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="gasCost">The gas cost to deduct.</param>
     /// <returns><c>true</c> if there was enough gas; otherwise, <c>false</c>.</returns>
-    static abstract bool UpdateGas(ref TSelf gas, long gasCost);
+    static abstract bool UpdateGas(ref TSelf gas, ulong gasCost);
 
     /// <summary>
     /// Consumes state gas for state-expansion operations.
@@ -203,7 +203,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="stateGasCost">The state gas cost to deduct.</param>
     /// <returns><c>true</c> if there was enough gas; otherwise, <c>false</c>.</returns>
-    static virtual bool ConsumeStateGas(ref TSelf gas, long stateGasCost) =>
+    static virtual bool ConsumeStateGas(ref TSelf gas, ulong stateGasCost) =>
         TSelf.UpdateGas(ref gas, stateGasCost);
 
     /// <summary>
@@ -215,7 +215,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="stateGasCost">State gas component.</param>
     /// <param name="regularGasCost">Regular gas component.</param>
     /// <returns><c>true</c> if both deductions succeeded; otherwise, <c>false</c>.</returns>
-    static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost) =>
+    static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, ulong stateGasCost, ulong regularGasCost) =>
         (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost)) &&
         (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost));
 
@@ -224,7 +224,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="refund">The gas amount to refund.</param>
-    static abstract void UpdateGasUp(ref TSelf gas, long refund);
+    static abstract void UpdateGasUp(ref TSelf gas, ulong refund);
 
     /// <summary>
     /// Refunds state gas back to the state reservoir.
@@ -233,21 +233,21 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="amount">Refunded state gas amount.</param>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas).</param>
-    static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
+    static virtual void RefundStateGas(ref TSelf gas, ulong amount, ulong stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
     /// Pre-EIP-8037: (NewAccount - PerAuthBaseCost) per refund. EIP-8037: zero (state refund only).
     /// </summary>
-    static virtual long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
-        codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * codeInsertRefunds : 0;
+    static virtual ulong GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
+        codeInsertRefunds > 0 ? (GasCostOf.NewAccount - GasCostOf.PerAuthBaseCost) * (ulong)codeInsertRefunds : 0;
 
     /// <summary>
     /// Applies EIP-7702 code insert refunds: state refund to reservoir + returns regular refund amount.
     /// Only call on success paths (state gas accounting must not be modified on error).
     /// </summary>
     /// <param name="stateGasFloor">Minimum state gas used (intrinsic state gas), for clamping refunds.</param>
-    static virtual long ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, long stateGasFloor) =>
+    static virtual ulong ApplyCodeInsertRefunds(ref TSelf gas, int codeInsertRefunds, IReleaseSpec spec, ulong stateGasFloor) =>
         TSelf.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
 
     /// <summary>
@@ -301,7 +301,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="intrinsicGas">The intrinsic gas to subtract.</param>
     /// <param name="spec">The release specification for EIP feature detection.</param>
     /// <returns>Available gas with preserved tracking data.</returns>
-    static abstract TSelf CreateAvailableFromIntrinsic(long gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
+    static abstract TSelf CreateAvailableFromIntrinsic(ulong gasLimit, in TSelf intrinsicGas, IReleaseSpec spec);
 
     /// <summary>
     /// Creates a gas state for a child call/create frame.
@@ -311,7 +311,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="parentGas">Parent gas state (can be mutated when splitting gas dimensions).</param>
     /// <param name="childRegularGas">Regular gas assigned to the child frame.</param>
     /// <returns>Child frame gas state.</returns>
-    static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, long childRegularGas) => TSelf.FromLong(childRegularGas);
+    static virtual TSelf CreateChildFrameGas(ref TSelf parentGas, ulong childRegularGas) => TSelf.FromULong(childRegularGas);
 
     /// <summary>
     /// Consumes gas for code copy operations (CODECOPY, CALLDATACOPY, EXTCODECOPY, etc.).
@@ -321,7 +321,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="isExternalCode">True for EXTCODECOPY (external account code).</param>
     /// <param name="baseCost">Fixed opcode cost.</param>
     /// <param name="dataCost">Per-word copy cost.</param>
-    static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, long baseCost, long dataCost);
+    static abstract void ConsumeDataCopyGas(ref TSelf gas, bool isExternalCode, ulong baseCost, ulong dataCost);
 
     /// <summary>
     /// Hook called before instruction execution when tracing is active.
@@ -340,14 +340,14 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The current gas state after execution.</param>
     static abstract void OnAfterInstructionTrace(in TSelf gas);
 
-    protected static long CalculateTokensInCallData(Transaction transaction, IReleaseSpec spec)
+    protected static ulong CalculateTokensInCallData(Transaction transaction, IReleaseSpec spec)
     {
         ReadOnlySpan<byte> data = transaction.Data.Span;
         int totalZeros = data.CountZeros();
-        return totalZeros + (data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
+        return (ulong)(totalZeros + (data.Length - totalZeros)) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    public static long AccessListCost(Transaction transaction, IReleaseSpec spec)
+    public static ulong AccessListCost(Transaction transaction, IReleaseSpec spec)
     {
         AccessList? accessList = transaction.AccessList;
         if (accessList is not null)
@@ -358,7 +358,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             }
 
             (int addressesCount, int storageKeysCount) = accessList.Count;
-            return addressesCount * GasCostOf.AccessAccountListEntry + storageKeysCount * GasCostOf.AccessStorageListEntry;
+            return (ulong)addressesCount * GasCostOf.AccessAccountListEntry + (ulong)storageKeysCount * GasCostOf.AccessStorageListEntry;
         }
 
         return 0;
@@ -368,7 +368,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an access list received within the context of {spec.Name}. EIP-2930 is not enabled.");
     }
 
-    public static (long RegularCost, long StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
+    public static (ulong RegularCost, ulong StateCost) AuthorizationListCost(Transaction transaction, IReleaseSpec spec)
     {
         AuthorizationTuple[]? authList = transaction.AuthorizationList;
         if (authList is null)
@@ -381,7 +381,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             ThrowAuthorizationListNotEnabled(spec);
         }
 
-        long authCount = authList.Length;
+        ulong authCount = (ulong)authList.Length;
         return spec.IsEip8037Enabled
             ? (
                 authCount * GasCostOf.PerAuthBaseRegular,
@@ -394,9 +394,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
             throw new InvalidDataException($"Transaction with an authorization list received within the context of {releaseSpec.Name}. EIP-7702 is not enabled.");
     }
 
-    protected static long CalculateFloorCost(long tokensInCallData, IReleaseSpec spec) =>
+    protected static ulong CalculateFloorCost(ulong tokensInCallData, IReleaseSpec spec) =>
         spec.IsEip7623Enabled
-            ? GasCostOf.Transaction + tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
+            ? GasCostOf.Transaction + (ulong)tokensInCallData * GasCostOf.TotalCostFloorPerTokenEip7623
             : 0L;
 }
 

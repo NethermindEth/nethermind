@@ -52,10 +52,10 @@ public class LightTxDecoder : TxDecoder<Transaction>
         return new LightTransaction(
             ctx.DecodeUInt256(),
             ctx.DecodeAddress()!,
-            ctx.DecodeUInt256(),
+            ctx.DecodeULong(),
             ctx.DecodeKeccak()!,
             ctx.DecodeUInt256(),
-            ctx.DecodeLong(),
+            ctx.DecodeULong(),
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),
             ctx.DecodeUInt256(),

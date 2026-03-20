@@ -12,7 +12,7 @@ namespace Nethermind.Specs
     {
         private ForkActivation? _theMergeBlock = null;
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
+        public void UpdateMergeTransitionInfo(ulong? blockNumber, UInt256? terminalTotalDifficulty = null)
         {
             if (blockNumber is not null)
                 _theMergeBlock = (ForkActivation)blockNumber;

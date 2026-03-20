@@ -12,12 +12,12 @@ namespace Nethermind.Evm
     {
         private const byte InvalidStartingCodeByte = 0xEF;
 
-        public static long CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
-            CalculateCost(spec, byteCodeLength, out long regularCost, out long stateCost)
+        public static ulong CalculateCost(IReleaseSpec spec, int byteCodeLength) =>
+            CalculateCost(spec, byteCodeLength, out ulong regularCost, out ulong stateCost)
                 ? regularCost + stateCost
-                : long.MaxValue;
+                : ulong.MaxValue;
 
-        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out long regularCost, out long stateCost)
+        public static bool CalculateCost(IReleaseSpec spec, int byteCodeLength, out ulong regularCost, out ulong stateCost)
         {
             stateCost = 0;
 
@@ -29,7 +29,7 @@ namespace Nethermind.Evm
 
             if (!spec.IsEip8037Enabled)
             {
-                regularCost = GasCostOf.CodeDeposit * byteCodeLength;
+                regularCost = GasCostOf.CodeDeposit * (ulong)byteCodeLength;
                 return true;
             }
 
@@ -41,8 +41,8 @@ namespace Nethermind.Evm
                 return false;
             }
 
-            regularCost = GasCostOf.CodeDepositRegularPerWord * words;
-            stateCost = GasCostOf.CodeDepositState * byteCodeLength;
+            regularCost = GasCostOf.CodeDepositRegularPerWord * (ulong)words;
+            stateCost = GasCostOf.CodeDepositState * (ulong)byteCodeLength;
             return true;
         }
 

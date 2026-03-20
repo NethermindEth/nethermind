@@ -96,8 +96,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void DeleteAccount(Address address);
 
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
-    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default);
     void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -119,13 +119,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
+    void IncrementNonce(Address address, ulong delta, out ulong oldNonce);
 
-    void DecrementNonce(Address address, UInt256 delta);
+    void DecrementNonce(Address address, ulong delta);
 
-    void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
+    void DecrementNonce(Address address) => DecrementNonce(address, 1);
 
-    void SetNonce(Address address, in UInt256 nonce);
+    void SetNonce(Address address, in ulong nonce);
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
@@ -145,7 +145,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     {
         accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
+            && (IsContract(address) || !(GetNonce(address) == 0) || !IsStorageEmpty(address));
     }
 
 }

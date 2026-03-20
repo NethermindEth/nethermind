@@ -81,10 +81,10 @@ public class VmState<TGasPolicy> : IDisposable
     public byte[]? DataStack;
     public ReturnState[]? ReturnStack;
     public TGasPolicy Gas;
-    public long InitialStateReservoir;
+    public ulong InitialStateReservoir;
     internal long OutputDestination { get; private set; } // TODO: move to CallEnv
     internal long OutputLength { get; private set; } // TODO: move to CallEnv
-    public long Refund { get; set; }
+    public ulong Refund { get; set; }
     public int DataStackHead;
     public int ReturnStackHead;
     public ExecutionType ExecutionType { get; private set; } // TODO: move to CallEnv
