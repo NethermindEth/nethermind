@@ -69,6 +69,7 @@ public enum DisconnectReason : byte
     MultipleHeaderDependencies,
 
     // Try not to use this. Instead, create a new one.
+    InvalidTx,
     Other,
 }
 
