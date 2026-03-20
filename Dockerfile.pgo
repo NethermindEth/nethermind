@@ -4,6 +4,8 @@
 # Builds Nethermind WITHOUT ReadyToRun so the JIT compiles all methods,
 # then enables EventPipe to collect profile data for Static PGO.
 # The resulting .nettrace file is converted to .mibc offline.
+# Also writes edge/block profiling data (.jit) via DOTNET_WritePGOData
+# which is trimmed by PgoTrim and consumed at runtime via DOTNET_ReadPGOData.
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS build
 
@@ -47,6 +49,10 @@ ENV DOTNET_EnableEventPipe=1
 ENV DOTNET_EventPipeCircularMB=256
 ENV DOTNET_EventPipeOutputPath=/nethermind/pgo/nethermind-{pid}.nettrace
 ENV DOTNET_EventPipeConfig=Microsoft-Windows-DotNETRuntime:0x1E000080018:4
+# Write edge/block profiling data after Tier-1 compilation for branch optimization
+ENV DOTNET_TieredPGO=1
+ENV DOTNET_WritePGOData=1
+ENV DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs

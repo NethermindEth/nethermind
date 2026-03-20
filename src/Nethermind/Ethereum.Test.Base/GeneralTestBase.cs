@@ -128,7 +128,7 @@ namespace Ethereum.Test.Base
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
-                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork.IsEip4844Enabled ? 0ul : null),
                 SlotNumber = test.CurrentSlotNumber,
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
