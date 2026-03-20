@@ -12,8 +12,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using System.Text.Json.Serialization;
 using Nethermind.Core.ExecutionRequest;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.Plugin.Data;
 
