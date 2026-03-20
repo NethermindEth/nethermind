@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -17,6 +16,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -42,16 +42,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
     protected override Hash256 ExpectedBlockHash => new("0x990d377b67dbffee4a60db6f189ae479ffb406e8abea16af55e0469b8524cf46");
     private const string _auraWithdrawalContractAddress = "0xbabe2bed00000000000000000000000000000003";
-
-    [TestCase(true)]
-    [CancelAfter(5000)]
-    public override async Task executePayloadV1_on_top_of_terminal_block(bool isAura, CancellationToken cancellationToken)
-        => await base.executePayloadV1_on_top_of_terminal_block(isAura, cancellationToken);
-
-    [TestCase(true)]
-    [CancelAfter(5000)]
-    public override async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(bool isAura, CancellationToken cancellationToken)
-        => await base.executePayloadV1_on_top_of_not_processed_invalid_terminal_block(isAura, cancellationToken);
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
@@ -121,6 +111,12 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [Platform(Exclude = "MacOsX", Reason = "Timing-sensitive 10ms delays too tight on macOS ARM runners")]
     public new Task getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
         => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
+
+    protected override BlockBuilder BuildNewBlock(Block head)
+        => base.BuildNewBlock(head).WithAura(0, []);
+
+    protected override BlockBuilder BuildOneMoreTerminalBlock(Block head, bool correctStateRoot = true)
+        => base.BuildOneMoreTerminalBlock(head, correctStateRoot).WithAura(0, []);
 
     public class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
