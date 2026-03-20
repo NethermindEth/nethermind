@@ -410,25 +410,17 @@ jobs:
             dotnet-pgo create-mibc "${sampling_args[@]}" || true
 
             if [[ -f "${sampling_mibc}" ]]; then
-              # Check if the sampling .mibc is larger than the main one —
-              # if it's much smaller, it has no useful data and merging
-              # would dilute the main profile. Only merge if it adds value.
               main_size=$(stat -c%s "${trace_mibc}" 2>/dev/null || echo 0)
               sampling_size=$(stat -c%s "${sampling_mibc}" 2>/dev/null || echo 0)
               echo "Main .mibc: ${main_size} bytes, Sampling .mibc: ${sampling_size} bytes"
 
-              if [[ "${sampling_size}" -gt "${main_size}" ]]; then
-                echo "Merging main + sampling .mibc profiles..."
-                dotnet-pgo merge \
-                  --input "${trace_mibc}" \
-                  --input "${sampling_mibc}" \
-                  --output "${mibc_file}"
-                echo "Merged .mibc profile:"
-                ls -lh "${mibc_file}"
-              else
-                echo "Sampling .mibc has no additional data — using main trace only."
-                cp "${trace_mibc}" "${mibc_file}"
-              fi
+              echo "Merging main + sampling .mibc profiles..."
+              dotnet-pgo merge \
+                --input "${trace_mibc}" \
+                --input "${sampling_mibc}" \
+                --output "${mibc_file}"
+              echo "Merged .mibc profile:"
+              ls -lh "${mibc_file}"
             else
               echo "Sampling .mibc creation failed — using main trace only."
               cp "${trace_mibc}" "${mibc_file}"
