@@ -234,7 +234,9 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="isSlotCreation">True if creating a new slot (original was zero).</param>
     /// <param name="spec">The release specification for determining reset cost.</param>
     /// <returns>True if sufficient gas available</returns>
-    static abstract bool ConsumeStorageWrite<TEip8037>(ref TSelf gas, bool isSlotCreation, IReleaseSpec spec) where TEip8037 : struct, IFlag;
+    static abstract bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag;
 
     /// <summary>
     /// Refunds state gas back to the state reservoir.
