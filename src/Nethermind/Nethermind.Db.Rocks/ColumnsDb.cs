@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
@@ -18,9 +17,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
-    // Cached for ColumnDbSnapshot to avoid per-snapshot recomputation
-    private T[]? _cachedColumnKeys;
-    private int _cachedMaxOrdinal = -1;
+    // Cached for ColumnDbSnapshot to avoid per-snapshot recomputation.
+    // Initialized once on first CreateSnapshot call; both fields are idempotent (same result from any thread).
+    private volatile T[]? _cachedColumnKeys;
+    private volatile int _cachedMaxOrdinal = -1;
 
     public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, IRocksDbConfigFactory rocksDbConfigFactory, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
         : this(basePath, settings, dbConfig, rocksDbConfigFactory, logManager, ResolveKeys(keys), sharedCache)
@@ -168,6 +168,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
+        private bool _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
@@ -189,7 +190,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _sharedCacheMissReadOptions.SetSnapshot(snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
-            // Single shared delegate for GetViewBetween — avoids per-reader closure allocation
+            // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
+            // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
+            // that is pre-existing behavior not addressed by this PR.
             Func<ReadOptions> readOptionsFactory = () =>
             {
                 ReadOptions options = new ReadOptions();
@@ -198,17 +201,25 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                 return options;
             };
 
-            // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot recomputation
-            T[] keys = columnsDb._cachedColumnKeys ??= columnsDb._columnDbs.Keys.ToArray();
+            // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
+            // recomputation. The race is benign (both threads compute identical results) and
+            // volatile ensures visibility across cores.
+            T[]? keys = columnsDb._cachedColumnKeys;
+            if (keys is null)
+            {
+                IDictionary<T, ColumnDb> columnDbs = columnsDb._columnDbs;
+                keys = new T[columnDbs.Count];
+                int idx = 0;
+                foreach (T key in columnDbs.Keys)
+                    keys[idx++] = key;
+                columnsDb._cachedColumnKeys = keys;
+            }
+
             if (columnsDb._cachedMaxOrdinal < 0)
             {
                 int max = 0;
                 for (int i = 0; i < keys.Length; i++)
-                {
-                    T k = keys[i];
-                    int ord = Unsafe.As<T, int>(ref k);
-                    if (ord > max) max = ord;
-                }
+                    max = Math.Max(max, Convert.ToInt32(keys[i]));
                 columnsDb._cachedMaxOrdinal = max;
             }
 
@@ -217,8 +228,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             for (int i = 0; i < keys.Length; i++)
             {
                 T k = keys[i];
-                int ordinal = Unsafe.As<T, int>(ref k);
-                _readers[ordinal] = new RocksDbReader(
+                _readers[Convert.ToInt32(k)] = new RocksDbReader(
                     columnsDb,
                     _sharedReadOptions,
                     _sharedCacheMissReadOptions,
@@ -229,13 +239,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public IReadOnlyKeyValueStore GetColumn(T key)
         {
-            T k = key;
-            int ordinal = Unsafe.As<T, int>(ref k);
-            return _readers[ordinal];
+            return _readers[Convert.ToInt32(key)];
         }
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
             Native.Instance.rocksdb_readoptions_destroy(_sharedReadOptions.Handle);
