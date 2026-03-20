@@ -857,14 +857,16 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithAura(0, []).TestObject;
         newBlock.CalculateHash();
         Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithAura(0, []).TestObject;
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -903,14 +905,16 @@ public partial class EngineModuleTests
             .WithNonce(0)
             .WithDifficulty(1000000)
             .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"))
+            .WithAura(0, []).TestObject;
         newBlock.CalculateHash();
         Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
             .WithParent(chain.BlockTree.Head!)
             .WithNonce(0)
             .WithDifficulty(900000)
             .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject; //incorrect state root
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")) //incorrect state root
+            .WithAura(0, []).TestObject;
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
