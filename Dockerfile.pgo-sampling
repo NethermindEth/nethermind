@@ -59,19 +59,11 @@ COPY --from=build /publish .
 RUN dotnet tool install -g dotnet-trace
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
-# Entrypoint that forwards SIGTERM as SIGINT to dotnet-trace so it
-# finalizes the .nettrace cleanly before the container stops.
-COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
-#!/bin/sh
-dotnet-trace collect \
-  --profile dotnet-sampled-thread-time \
-  --show-child-io \
-  --output /nethermind/pgo/sampling \
-  -- ./nethermind "$@" &
-child=$!
-trap "kill -INT $child 2>/dev/null; wait $child" TERM
-wait $child
-SCRIPT
-RUN chmod +x /nethermind/trace-entrypoint.sh
-
-ENTRYPOINT ["./trace-entrypoint.sh"]
+# Run dotnet-trace in the foreground wrapping Nethermind.
+# When Nethermind shuts down (via EXPB's admin_shutdown), dotnet-trace
+# sees the child exit and finalizes the .nettrace before exiting itself.
+ENTRYPOINT ["dotnet-trace", "collect", \
+  "--profile", "dotnet-sampled-thread-time", \
+  "--show-child-io", \
+  "--output", "/nethermind/pgo/sampling", \
+  "--", "./nethermind"]
