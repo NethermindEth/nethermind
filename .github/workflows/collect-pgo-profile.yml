@@ -324,8 +324,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Pin to v10.0.5 — matches the SDK/runtime in our Docker base images
-          git clone --depth 1 --branch v10.0.5 \
+          # Use main branch to support collect-linux's new .nettrace format
+          git clone --depth 1 --branch main \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
