@@ -15,6 +15,7 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -22,7 +23,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-public class TimeoutCertificateManager : ITimeoutCertificateManager
+internal class TimeoutCertificateManager : ITimeoutCertificateManager
 {
     private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
@@ -35,8 +36,11 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly IBlockTree _blockTree;
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
+    private readonly ConcurrentDictionary<ulong, byte> _tcBuildStartedByRound = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ITimeoutTimer timeoutTimer, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
+    private readonly ConsensusEventChannel _channel;
+
+    public TimeoutCertificateManager(IXdcConsensusContext context, ITimeoutTimer timeoutTimer, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer, ConsensusEventChannel channel)
     {
         _consensusContext = context;
         this._timeoutTimer = timeoutTimer;
@@ -46,7 +50,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         this._specProvider = specProvider;
         this._blockTree = blockTree;
         this._signer = signer;
-        _timeoutTimer.TimeoutElapsed += (s, e) => OnCountdownTimer();
+        _channel = channel;
+        _timeoutTimer.TimeoutElapsed += (s, e) => _channel.TryWrite(new TimeoutElapsedEvent());
     }
 
     public Task HandleTimeoutVote(Timeout timeout)
@@ -74,7 +79,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var CertificateThreshold = spec.CertificateThreshold;
         if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
         {
-            OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
+            if (_tcBuildStartedByRound.TryAdd(timeout.Round, 0))
+                OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
         return Task.CompletedTask;
     }
@@ -107,6 +113,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         if (timeoutCertificate.Round >= _consensusContext.CurrentRound)
         {
             _timeouts.EndRound(timeoutCertificate.Round);
+            foreach (ulong key in _tcBuildStartedByRound.Keys)
+                if (key <= timeoutCertificate.Round) _tcBuildStartedByRound.TryRemove(key, out _);
             _consensusContext.SetNewRound(timeoutCertificate.Round + 1);
         }
     }
