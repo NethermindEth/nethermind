@@ -2715,6 +2715,65 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_fcu_to_ancestor_with_stale_head_clears_all_beacon_synced_descendants()
+    {
+        // ePBS scenario: FCU can reorg to an ancestor (not just a sibling at the same height).
+        // If head is stale because beacon sync marked descendants canonical without updating Head,
+        // a subsequent FCU to an ancestor must clear ALL canonical markers above the ancestor —
+        // including beacon-synced blocks above the stale head that the IF branch cannot reach.
+        //
+        // Scenario:
+        //   genesis → b1(H=1) → b2(H=2) → b3(H=3) → b4(H=4)
+        //
+        //   UpdateMainChain([b1], wereProcessed: true)   — FCU(b1): head = b1 at H=1.
+        //   UpdateMainChain([b2], wereProcessed: false)  — beacon sync: b2 canonical, head stays at b1.
+        //   UpdateMainChain([b3], wereProcessed: false)  — beacon sync: b3 canonical, head stays at b1.
+        //   UpdateMainChain([b4], wereProcessed: false)  — beacon sync: b4 canonical, head stays at b1.
+        //   UpdateMainChain([genesis], wereProcessed: true) — ePBS FCU to ancestor at H=0:
+        //     previousHeadNumber(1) > lastNumber(0) → IF branch clears H=1 only.
+        //     b2, b3, b4 are NOT cleared — they are above the stale head and invisible to the IF branch.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+        Block b3 = Build.A.Block.WithNumber(3).WithParent(b2).TestObject;
+        Block b4 = Build.A.Block.WithNumber(4).WithParent(b3).TestObject;
+
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.SuggestBlock(b3);
+        blockTree.SuggestBlock(b4);
+
+        // FCU(b1): head = b1 at H=1.
+        blockTree.UpdateMainChain(new[] { b1 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Beacon sync: b2, b3, b4 marked canonical without updating Head.
+        blockTree.UpdateMainChain(new[] { b2 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b3 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b4 }, wereProcessed: false);
+
+        // Preconditions: head stale at b1, b2-b4 canonical via beacon sync.
+        blockTree.Head!.Hash.Should().Be(b1.Hash!, "precondition: head stale at b1");
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b2 beacon-synced canonical");
+        blockTree.FindBlock(b4.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b4 beacon-synced canonical");
+
+        // ePBS FCU to ancestor: reorg back to genesis at H=0.
+        // The IF branch (previousHeadNumber=1 > lastNumber=0) clears b1 at H=1.
+        // b2, b3, b4 must also be cleared — they are above the stale head.
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.FindBlock(genesis.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("genesis must be canonical");
+        blockTree.FindBlock(b1.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b1 must be de-canonicalized");
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b2 must be de-canonicalized — beacon sync stale marker above stale head");
+        blockTree.FindBlock(b3.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b3 must be de-canonicalized — beacon sync stale marker above stale head");
+        blockTree.FindBlock(b4.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b4 must be de-canonicalized — beacon sync stale marker above stale head");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void HealCanonicalChain_clears_stale_marker_above_head_left_by_sync()
     {
         // Scenario: sync (wereProcessed=false) marks C canonical at H=2 without updating Head.

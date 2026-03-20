@@ -999,6 +999,8 @@ namespace Nethermind.Blockchain
             long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
+            // Downward unmark: clear levels from previousHead down to lastNumber+1.
+            // Handles the normal reorg case where the new chain is shorter than the old head.
             if (previousHeadNumber > lastNumber)
             {
                 for (long i = 0; i < previousHeadNumber - lastNumber; i++)
@@ -1013,24 +1015,23 @@ namespace Nethermind.Blockchain
                     }
                 }
             }
-            else
-            {
-                // Head can be stale when BlockchainProcessor calls UpdateMainChain with
-                // forceUpdateHeadBlock=false (e.g. during newPayload processing). In that case
-                // previousHeadNumber reflects a height we already moved past, so the loop above
-                // never runs and canonical markers above lastNumber are left unreachable.
-                // Scan upward from lastNumber+1 and clear any stale canonical levels we find.
-                for (long levelNumber = lastNumber + 1; ; levelNumber++)
-                {
-                    ChainLevelInfo? level = LoadLevel(levelNumber);
-                    if (level is null || !level.HasBlockOnMainChain)
-                    {
-                        break;
-                    }
 
-                    level.HasBlockOnMainChain = false;
-                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+            // Upward scan: clear any stale canonical markers above max(previousHead, lastNumber).
+            // Beacon sync (wereProcessed=false) marks blocks canonical without updating Head,
+            // leaving stale markers the downward loop cannot reach. This covers two cases:
+            //   - FCU at same/higher height (previousHeadNumber <= lastNumber): scans from lastNumber+1.
+            //   - ePBS FCU to ancestor with stale head: scans from previousHeadNumber+1, clearing
+            //     beacon-synced markers above the stale head that the downward loop misses.
+            for (long levelNumber = Math.Max(previousHeadNumber, lastNumber) + 1; ; levelNumber++)
+            {
+                ChainLevelInfo? level = LoadLevel(levelNumber);
+                if (level is null || !level.HasBlockOnMainChain)
+                {
+                    break;
                 }
+
+                level.HasBlockOnMainChain = false;
+                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
             }
 
             for (int i = 0; i < blocks.Count; i++)
