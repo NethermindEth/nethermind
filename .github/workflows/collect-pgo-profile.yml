@@ -299,16 +299,16 @@ jobs:
           if [[ -n "${sampling_vol}" ]]; then
             echo "Sampling volume contents:"
             ls -la "${sampling_vol}/" 2>/dev/null || true
-            # perfcollect produces sampling.trace.zip
+            # dotnet-trace produces sampling.nettrace
             sampling_file=$(find "${sampling_vol}" -name "sampling*" -type f | head -1 || true)
             if [[ -n "${sampling_file}" ]]; then
-              cp "${sampling_file}" "${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+              cp "${sampling_file}" "${RUNNER_TEMP}/pgo-data/sampling.nettrace"
             fi
           fi
 
-          if [[ -f "${RUNNER_TEMP}/pgo-data/sampling.trace.zip" ]]; then
+          if [[ -f "${RUNNER_TEMP}/pgo-data/sampling.nettrace" ]]; then
             echo "CPU sampling trace collected:"
-            ls -lh "${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+            ls -lh "${RUNNER_TEMP}/pgo-data/sampling.nettrace"
           else
             echo "No sampling trace found — call graph data will not be available."
           fi
@@ -394,7 +394,7 @@ jobs:
           dotnet-pgo create-mibc "${create_mibc_args[@]}"
 
           # Step 1b: If CPU sampling trace exists, convert and merge for call graph data
-          sampling_trace="${pgo_dir}/sampling.trace.zip"
+          sampling_trace="${pgo_dir}/sampling.nettrace"
           if [[ -f "${sampling_trace}" ]]; then
             echo "Converting CPU sampling trace to .mibc..."
             sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
