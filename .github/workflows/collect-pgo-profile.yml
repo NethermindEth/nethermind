@@ -143,6 +143,19 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
+      - name: Clean up stale containers from previous runs
+        if: always()
+        shell: bash
+        run: |
+          for tag in "${{ env.PGO_TAG }}" "${{ env.PGO_TAG }}-sampling"; do
+            cids=$(docker ps -aq --filter "ancestor=nethermindeth/nethermind:${tag}" 2>/dev/null || true)
+            if [[ -n "${cids}" ]]; then
+              echo "Killing stale containers for ${tag}: ${cids}"
+              docker rm -f ${cids} 2>/dev/null || true
+            fi
+          done
+          rm -f /tmp/expb.lock
+
       - name: Check out repository
         uses: actions/checkout@v6
 

@@ -1,12 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
 #
-# Collects CPU sampling profile data via perf + LTTng for SPGO call graph
-# construction. perfcollect produces .trace.zip which dotnet-pgo converts
+# Collects CPU sampling profile data via perf + LTTng for SPGO.
+# perfcollect produces .trace.zip which dotnet-pgo --spgo converts
 # to .mibc with sample-based block counts for method layout optimization.
-#
-# Uses Ubuntu Focal (20.04) which ships LTTng 2.12 — compatible with the
-# .NET runtime's LTTng tracepoints (Noble's 2.13 is not).
 #
 # This image is run AFTER the main PGO collection (Dockerfile.pgo).
 # The two .mibc files are merged to combine edge/type data with SPGO samples.
@@ -37,24 +34,18 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-FROM ubuntu:focal
+# Noble (24.04): .NET 10 compatible glibc 2.39, LTTng 2.13 (liblttng-ust.so.1)
+# .NET 10 runtime dlopen's liblttng-ust.so.1 so Noble's LTTng 2.13 is compatible.
+FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
 
 WORKDIR /nethermind
 
-# Install .NET 10 runtime, perf, and LTTng 2.12 (Focal-native)
+# Install perf + LTTng for perfcollect
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
     linux-tools-generic \
     lttng-tools \
     liblttng-ust-dev && \
-  # Install .NET 10 runtime via dotnet-install script
-  curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh && \
-  bash /tmp/dotnet-install.sh --channel 10.0 --runtime dotnet --install-dir /usr/share/dotnet && \
-  ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet && \
-  rm /tmp/dotnet-install.sh && \
-  # Install perfcollect
   curl -sSL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
   chmod +x /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
@@ -89,6 +80,10 @@ perfcollect collect /nethermind/pgo/sampling -collectsec 180 > /nethermind/pgo/p
 trace_pid=$!
 
 sleep 2
+if ! kill -0 $trace_pid 2>/dev/null; then
+  echo "trace: perfcollect crashed on startup:"
+  cat /nethermind/pgo/perfcollect.log 2>/dev/null || true
+fi
 echo "trace: starting Nethermind"
 ./nethermind "$@"
 nethermind_exit=$?
@@ -100,6 +95,8 @@ if kill -0 $trace_pid 2>/dev/null; then
   wait $trace_pid 2>/dev/null || true
 fi
 
+echo "trace: perfcollect log:"
+cat /nethermind/pgo/perfcollect.log 2>/dev/null || true
 echo "trace: collection complete"
 ls -la /nethermind/pgo/ 2>/dev/null || true
 exit $nethermind_exit
