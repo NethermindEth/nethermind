@@ -29,14 +29,8 @@ public class RocksDbReader : ISortedKeyValueStore
         Func<ReadOptions> readOptionsFactory,
         DbOnTheRocks.IteratorManager? iteratorManager = null,
         ColumnFamilyHandle? columnFamily = null)
+        : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
-        _mainDb = mainDb;
-        _readOptionsFactory = readOptionsFactory;
-        _iteratorManager = iteratorManager;
-        _columnFamily = columnFamily;
-
-        _options = readOptionsFactory();
-        _hintCacheMissOptions = readOptionsFactory();
         _hintCacheMissOptions.SetFillCache(false);
     }
 

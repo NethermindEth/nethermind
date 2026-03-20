@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Db.Rocks.Config;
@@ -168,7 +169,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
-        private bool _disposed;
+        private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
@@ -181,25 +182,15 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             // Create two shared ReadOptions for all column readers instead of 2 per reader.
             // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
             // short-lived instances causes Gen1/Gen2 GC pressure from finalizer queue buildup.
-            _sharedReadOptions = new ReadOptions();
-            _sharedReadOptions.SetVerifyChecksums(columnsDb.VerifyChecksum);
-            _sharedReadOptions.SetSnapshot(snapshot);
+            _sharedReadOptions = CreateReadOptions(columnsDb, snapshot);
 
-            _sharedCacheMissReadOptions = new ReadOptions();
-            _sharedCacheMissReadOptions.SetVerifyChecksums(columnsDb.VerifyChecksum);
-            _sharedCacheMissReadOptions.SetSnapshot(snapshot);
+            _sharedCacheMissReadOptions = CreateReadOptions(columnsDb, snapshot);
             _sharedCacheMissReadOptions.SetFillCache(false);
 
             // Single shared delegate for GetViewBetween — avoids per-reader closure allocation.
             // Note: each GetViewBetween call still creates a new ReadOptions with a finalizer;
             // that is pre-existing behavior not addressed by this PR.
-            Func<ReadOptions> readOptionsFactory = () =>
-            {
-                ReadOptions options = new ReadOptions();
-                options.SetVerifyChecksums(columnsDb.VerifyChecksum);
-                options.SetSnapshot(snapshot);
-                return options;
-            };
+            Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
 
             // Cache column keys and max ordinal on the parent ColumnsDb to avoid per-snapshot
             // recomputation. The race is benign (both threads compute identical results) and
@@ -219,7 +210,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             {
                 int max = 0;
                 for (int i = 0; i < keys.Length; i++)
-                    max = Math.Max(max, Convert.ToInt32(keys[i]));
+                    max = Math.Max(max, EnumToInt(keys[i]));
                 columnsDb._cachedMaxOrdinal = max;
             }
 
@@ -228,7 +219,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             for (int i = 0; i < keys.Length; i++)
             {
                 T k = keys[i];
-                _readers[Convert.ToInt32(k)] = new RocksDbReader(
+                _readers[EnumToInt(k)] = new RocksDbReader(
                     columnsDb,
                     _sharedReadOptions,
                     _sharedCacheMissReadOptions,
@@ -237,24 +228,34 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             }
         }
 
-        public IReadOnlyKeyValueStore GetColumn(T key)
-        {
-            return _readers[Convert.ToInt32(key)];
-        }
+        public IReadOnlyKeyValueStore GetColumn(T key) => _readers[EnumToInt(key)];
 
         public void Dispose()
         {
-            if (_disposed) return;
-            _disposed = true;
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
             // Explicitly destroy native ReadOptions handles to prevent finalizer queue buildup.
             // GC.SuppressFinalize prevents the finalizer from running on already-destroyed handles.
-            Native.Instance.rocksdb_readoptions_destroy(_sharedReadOptions.Handle);
-            GC.SuppressFinalize(_sharedReadOptions);
-            Native.Instance.rocksdb_readoptions_destroy(_sharedCacheMissReadOptions.Handle);
-            GC.SuppressFinalize(_sharedCacheMissReadOptions);
+            DestroyReadOptions(_sharedReadOptions);
+            DestroyReadOptions(_sharedCacheMissReadOptions);
 
             _snapshot.Dispose();
         }
+
+        private static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
+        {
+            ReadOptions options = new ReadOptions();
+            options.SetVerifyChecksums(columnsDb.VerifyChecksum);
+            options.SetSnapshot(snapshot);
+            return options;
+        }
+
+        private static void DestroyReadOptions(ReadOptions options)
+        {
+            Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+            GC.SuppressFinalize(options);
+        }
+
+        private static int EnumToInt(T value) => Convert.ToInt32(value);
     }
 }
