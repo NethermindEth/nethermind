@@ -1029,6 +1029,59 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         _pruningTask.Wait();
     }
 
+    /// <summary>
+    /// Resets all internal state for test isolation.
+    /// Used by comparison testing to allow worker reuse without restarting the process.
+    /// </summary>
+    public void ClearForTesting()
+    {
+        // Wait for any in-progress pruning to finish
+        _pruningTask.Wait();
+
+        using var scopeL = _scopeLock.EnterScope();
+        using var pruneL = _pruningLock.EnterScope();
+
+        // Clear dirty nodes cache (all shards)
+        for (int i = 0; i < _dirtyNodes.Length; i++)
+        {
+            _dirtyNodes[i].Clear();
+        }
+
+        // Clear persisted hash tracking (all shards)
+        for (int i = 0; i < _persistedHashes.Length; i++)
+        {
+            _persistedHashes[i].Clear();
+        }
+
+        // Clear commit queue and tracking
+        _commitSetQueue.Clear();
+        _lastCommitSet = null;
+        _commitBuffer = null;
+        _commitBufferUnused = null;
+        _currentBlockCommitter = null;
+
+        // Reset counters
+        MemoryUsedByDirtyCache = 0;
+        DirtyMemoryUsedByDirtyCache = 0;
+        Interlocked.Exchange(ref _totalCachedNodesCount, 0);
+        Interlocked.Exchange(ref _dirtyNodesCount, 0);
+        _committedNodesCount = 0;
+        _persistedNodesCount = 0;
+        _latestPersistedBlockNumber = 0;
+        LatestCommittedBlockNumber = 0;
+        _lastPersistedReachedReorgBoundary = false;
+        _toBePersistedBlockNumber = -1;
+        _isFirst = 0;
+        _lastPrunedShardIdx = 0;
+
+        // Reset metrics
+        Metrics.CachedNodesCount = 0;
+        Metrics.DirtyNodesCount = 0;
+        Metrics.LastPersistedBlockNumber = 0;
+
+        if (_logger.IsInfo) _logger.Info("TrieStore cleared for testing");
+    }
+
     private readonly INodeStorage _nodeStorage;
 
     private readonly TrieKeyValueStore _publicStore;
