@@ -12,6 +12,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -25,7 +26,7 @@ namespace Nethermind.Trie.Pruning;
 /// Trie store helps to manage trie commits block by block.
 /// If persistence and pruning are needed they have a chance to execute their behavior on commits.
 /// </summary>
-public sealed class TrieStore : ITrieStore, IPruningTrieStore
+public sealed class TrieStore : ITrieStore, IPruningTrieStore, IClearableCache
 {
     private const double PruningEfficiencyWarningThreshold = 0.9;
     private readonly int _shardedDirtyNodeCount = 256;
@@ -1033,7 +1034,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     /// Resets all internal state for test isolation.
     /// Used by comparison testing to allow worker reuse without restarting the process.
     /// </summary>
-    public void ClearForTesting()
+    void IClearableCache.ClearCache()
     {
         // Wait for any in-progress pruning to finish
         _pruningTask.Wait();
