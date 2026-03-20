@@ -140,7 +140,11 @@ This is the most common failure pattern for new forks. Follow these steps:
 
 1. **Apply the minimal fix** — prefer spec flag checks over type checks, add missing defaults, or fix gas calculations
 2. **Re-run the failing test** to verify the fix resolves the issue
-3. **Report the result** — include:
+3. If test still fails:
+   - Re-read the trace output
+   - Return to Phase 2 with the new trace
+   - Repeat until pass or root cause is confirmed as upstream
+4. **Report the result** — include:
    - Root cause (one sentence)
    - What was fixed (file:line)
    - Verification result (pass/fail + new state root)
