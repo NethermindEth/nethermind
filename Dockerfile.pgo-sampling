@@ -60,23 +60,15 @@ RUN dotnet tool install -g dotnet-trace
 ENV PATH="${PATH}:/root/.dotnet/tools"
 
 # Nethermind is PID 1 so it receives EXPB's stop signal directly.
-# A background script attaches dotnet-trace for a timed collection.
-# Using --duration ensures dotnet-trace finalizes the trace cleanly
-# before EXPB stops the container (which only gives 10s grace period).
+# collect-linux uses perf_events for real kernel CPU sampling with native
+# call stacks. Requires kernel >= 6.4 and root (both satisfied here).
+# Uses --duration so the trace finalizes cleanly before EXPB stops the container.
 COPY <<'SCRIPT' /nethermind/start-trace.sh
 #!/bin/bash
 sleep 1
-pid=$(pgrep -f "^./nethermind" || true)
-if [ -z "$pid" ]; then
-  echo "trace: Nethermind not found, skipping"
-  exit 0
-fi
-echo "trace: attaching to PID $pid for 2:30 minutes"
-dotnet-trace collect \
-  --profile dotnet-sampled-thread-time \
-  --providers Microsoft-Windows-DotNETRuntime:0x4000080018:5 \
+echo "trace: starting collect-linux for 2:30"
+dotnet-trace collect-linux \
   --output /nethermind/pgo/sampling \
-  -p $pid \
   --duration 00:02:30 || true
 echo "trace: collection complete"
 SCRIPT
