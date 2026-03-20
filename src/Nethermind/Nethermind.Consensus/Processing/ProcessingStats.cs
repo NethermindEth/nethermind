@@ -291,10 +291,14 @@ namespace Nethermind.Consensus.Processing
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
 
             // Log slow blocks in JSON format for cross-client performance analysis
-            long processingMs = data.ProcessingMicroseconds / 1000;
-            if (processingMs >= _slowBlockThresholdMs)
+            // Only log when slow block threshold is enabled (>= 0)
+            if (_slowBlockThresholdMs >= 0)
             {
-                LogSlowBlock(block, data, mgasPerSec);
+                long processingMs = data.ProcessingMicroseconds / 1000;
+                if (processingMs >= _slowBlockThresholdMs)
+                {
+                    LogSlowBlock(block, data, mgasPerSec);
+                }
             }
 
             Metrics.Mgas += block.GasUsed / 1_000_000.0;
