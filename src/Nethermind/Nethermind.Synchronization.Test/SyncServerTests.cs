@@ -596,34 +596,23 @@ public class SyncServerTests
 
         long expectedFinalLatest = validLatestValues.Max();
 
+        (long earliest, long latest)[] GetNotifications(PeerInfo peer) =>
+            peer.SyncPeer.ReceivedCalls()
+                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                .Select(a => (earliest: a[0], latest: a[1])).ToArray();
+
         foreach (PeerInfo peerInfo in peers)
         {
-            Assert.That(
-                () =>
-                {
-                    (long earliest, long latest)[] arr = peerInfo.SyncPeer.ReceivedCalls()
-                        .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                        .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                        .Select(a => (earliest: a[0], latest: a[1])).ToArray();
+            // Wait for the final broadcast to arrive
+            Assert.That(() => GetNotifications(peerInfo).LastOrDefault(),
+                Is.EqualTo((expectedGenesis, expectedFinalLatest)).After(15000, 50));
 
-                    if (arr.Length == 0)
-                        return "no notifications received yet";
-
-                    if (arr[^1] != (expectedGenesis, expectedFinalLatest))
-                        return $"last notification was ({arr[^1].earliest}, {arr[^1].latest}), expected ({expectedGenesis}, {expectedFinalLatest})";
-
-                    // Intermediate notifications may be coalesced by the async cancellation logic,
-                    // so we only check all notifications are valid and the last one is the final update.
-                    (long earliest, long latest)[] invalid = arr
-                        .Where(x => x.earliest != expectedGenesis || !validLatestValues.Contains(x.latest))
-                        .ToArray();
-
-                    return invalid.Length > 0
-                        ? $"invalid notifications: {string.Join(", ", invalid.Select(x => $"({x.earliest}, {x.latest})"))}"
-                        : null;
-                },
-                Is.Null.After(15000, 50)
-            );
+            // Intermediate notifications may be coalesced by the async cancellation logic,
+            // so just verify every received notification has valid values.
+            Assert.That(GetNotifications(peerInfo),
+                Has.All.Matches<(long earliest, long latest)>(
+                    x => x.earliest == expectedGenesis && validLatestValues.Contains(x.latest)));
         }
     }
 
