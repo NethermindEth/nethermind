@@ -53,16 +53,10 @@ RUN apt-get update && \
     liblttng-ust-dev && \
   rm -rf /var/lib/apt/lists/*
 
-# Sparse checkout — only fetch the files needed for the tracepoint provider
-RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} --no-checkout \
+# Shallow clone with blob filter — only blobs for checked-out files are fetched
+RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
       --filter=blob:none \
-      https://github.com/dotnet/runtime.git /runtime && \
-    git -C /runtime sparse-checkout init --cone && \
-    git -C /runtime sparse-checkout set \
-      src/coreclr/vm \
-      src/coreclr/scripts \
-      src/coreclr/pal/inc && \
-    git -C /runtime checkout
+      https://github.com/dotnet/runtime.git /runtime
 
 WORKDIR /runtime/build-lttng
 
@@ -76,6 +70,7 @@ RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
       clang++ -fPIC -O2 \
         -I/runtime/src/coreclr/pal/inc \
         -I/runtime/src/coreclr/pal/inc/rt \
+        -I/runtime/src/native \
         -I/runtime/build-lttng/lttng \
         -o $(basename $f .cpp).o \
         -c "$f"; \
