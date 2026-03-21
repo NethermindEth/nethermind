@@ -54,8 +54,7 @@ jobs:
             "image-name": "nethermind",
             "tag": "${{ env.PGO_TAG }}",
             "dockerfile": "Dockerfile.pgo",
-            "build-config": "release",
-            "platforms": "linux/amd64"
+            "build-config": "release"
             }'
 
       - name: Trigger publish-docker.yml with Dockerfile.pgo-sampling
@@ -68,8 +67,7 @@ jobs:
             "image-name": "nethermind",
             "tag": "${{ env.PGO_TAG }}-sampling",
             "dockerfile": "Dockerfile.pgo-sampling",
-            "build-config": "release",
-            "platforms": "linux/amd64"
+            "build-config": "release"
             }'
 
       - name: Wait for publish-docker.yml builds to complete
