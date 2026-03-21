@@ -194,7 +194,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             // that is pre-existing behavior not addressed by this PR.
             Func<ReadOptions> readOptionsFactory = () => CreateReadOptions(columnsDb, snapshot);
             T[] keys = CreateKeyCache(columnsDb);
-            columnsDb._cachedMaxOrdinal = GetCachedMaxOrdinal(columnsDb, keys);
+            GetCachedMaxOrdinal(columnsDb, keys);
             _readers = CreateReaders();
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
@@ -226,9 +226,9 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
                 return keys;
             }
-            static int GetCachedMaxOrdinal(ColumnsDb<T> columnsDb, T[] keys)
+            static void GetCachedMaxOrdinal(ColumnsDb<T> columnsDb, T[] keys)
             {
-                if (columnsDb._cachedMaxOrdinal >= 0) return columnsDb._cachedMaxOrdinal;
+                if (columnsDb._cachedMaxOrdinal >= 0) return;
 
                 int max = 0;
                 for (int i = 0; i < keys.Length; i++)
@@ -236,7 +236,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
                     max = Math.Max(max, EnumToInt(keys[i]));
                 }
 
-                return max;
+                columnsDb._cachedMaxOrdinal = max;
             }
 
             // Build flat array of readers indexed by column ordinal
@@ -289,8 +289,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             GC.SuppressFinalize(options);
         }
 
-        // Safety: all column enums in this codebase use int as underlying type.
-        // Unsafe.As avoids the boxing that Convert.ToInt32(object) would cause.
-        private static int EnumToInt(T value) => Unsafe.As<T, int>(ref value);
+        // Non-boxing enum-to-int conversion. JIT eliminates dead branches at
+        // instantiation time, so this is zero-cost for any underlying type.
+        private static int EnumToInt(T value)
+        {
+            if (Unsafe.SizeOf<T>() == sizeof(int)) return Unsafe.As<T, int>(ref value);
+            if (Unsafe.SizeOf<T>() == sizeof(byte)) return Unsafe.As<T, byte>(ref value);
+            if (Unsafe.SizeOf<T>() == sizeof(short)) return Unsafe.As<T, short>(ref value);
+            return Convert.ToInt32(value); // fallback for long-backed enums
+        }
     }
 }
