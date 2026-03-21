@@ -81,9 +81,8 @@ static class TraceConverter
                 Console.Error.WriteLine("Error: Could not find CreateFromLinuxEventSources");
                 return 1;
             }
+            Console.WriteLine($"CTF source dispatched: {ctfTotal:N0} events, {ctfILMap:N0} ILToNativeMap");
         }
-
-        Console.WriteLine($"CTF source dispatched: {ctfTotal:N0} events, {ctfILMap:N0} ILToNativeMap");
 
         // Verify the .etlx has the events dotnet-pgo needs
         Console.WriteLine("Verifying via OpenOrConvert (same path as dotnet-pgo)...");
