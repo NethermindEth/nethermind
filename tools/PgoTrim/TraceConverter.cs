@@ -43,6 +43,28 @@ static class TraceConverter
             InjectCtfMapping(ctfSource, "DotNETRuntime:MethodILToNativeMap_V1",
                 ClrTraceEventParser.ProviderGuid, opcode: 87, id: 190, version: 1);
 
+            // Debug: verify mappings are in the dictionary
+            var debugField = typeof(CtfTraceEventSource).GetField("_eventMapping",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (debugField?.GetValue(ctfSource) is System.Collections.IDictionary debugDict)
+            {
+                int ilMapCount = 0;
+                foreach (var key in debugDict.Keys)
+                    if (key.ToString()!.Contains("ILToNativeMap"))
+                    {
+                        Console.WriteLine($"  Mapping: {key}");
+                        ilMapCount++;
+                    }
+                Console.WriteLine($"  Total mappings: {debugDict.Count}, ILToNativeMap entries: {ilMapCount}");
+            }
+
+            // Debug: count events seen by the CTF source
+            int ctfTotal = 0, ctfILMap = 0;
+            ctfSource.AllEvents += evt => {
+                ctfTotal++;
+                if (evt.EventName?.Contains("ILToNative") == true) ctfILMap++;
+            };
+
             // Use the same path as CreateFromLttngTextDataFile:
             // CreateFromLinuxEventSources(source, etlxPath, options)
             // This is an internal method — call via reflection
@@ -60,6 +82,8 @@ static class TraceConverter
                 return 1;
             }
         }
+
+        Console.WriteLine($"CTF source dispatched: {ctfTotal:N0} events, {ctfILMap:N0} ILToNativeMap");
 
         // Verify the .etlx has the events dotnet-pgo needs
         Console.WriteLine("Verifying via OpenOrConvert (same path as dotnet-pgo)...");
@@ -87,9 +111,15 @@ static class TraceConverter
             }
         }
 
+        // Debug: count raw events with ID 190 (MethodILToNativeMap)
+        int rawId190 = 0;
+        foreach (var process in traceLog.Processes)
+            foreach (var evt in process.EventsInProcess)
+                if ((int)evt.ID == 190) rawId190++;
+
         Console.WriteLine($"Total: MethodDetails={totalMethodDetails:N0} " +
                           $"MethodLoadVerbose={totalMethodLoad:N0} JittingStarted={totalJitStart:N0} " +
-                          $"ILToNativeMap={totalILToNativeMap:N0}");
+                          $"ILToNativeMap={totalILToNativeMap:N0} (raw ID 190: {rawId190:N0})");
         Console.WriteLine($"Output: {etlxPath} ({new FileInfo(etlxPath).Length / 1024.0 / 1024.0:F1} MB)");
 
         return totalMethodDetails > 0 ? 0 : 1;
