@@ -48,36 +48,21 @@ ARG DOTNET_RUNTIME_VERSION=10.0.5
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
     git \
+    cmake \
     clang \
     python3 \
     liblttng-ust-dev && \
   rm -rf /var/lib/apt/lists/*
 
-# Shallow clone with blob filter — only blobs for checked-out files are fetched
 RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
-      --filter=blob:none \
       https://github.com/dotnet/runtime.git /runtime
 
-WORKDIR /runtime/build-lttng
-
-# Generate LTTng tracepoint sources from the event manifest and compile
-# just libcoreclrtraceptprovider.so (the shared library the runtime dlopen's)
-RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
-      --man /runtime/src/coreclr/vm/ClrEtwAll.man \
-      --intermediate /runtime/build-lttng && \
-    cd /runtime/build-lttng/lttng && \
-    for f in traceptprov*.cpp; do \
-      clang++ -fPIC -O2 \
-        -I/runtime/src/coreclr/pal/inc \
-        -I/runtime/src/coreclr/pal/inc/rt \
-        -I/runtime/src/native \
-        -I/runtime/build-lttng/lttng \
-        -o $(basename $f .cpp).o \
-        -c "$f"; \
-    done && \
-    clang++ -shared -o /runtime/build-lttng/libcoreclrtraceptprovider.so \
-      traceptprov*.o \
-      -llttng-ust
+# Build coreclr subset which produces libcoreclrtraceptprovider.so.
+# The PAL headers need architecture defines and transitive includes that
+# are only set correctly by the runtime's CMake build.
+RUN cd /runtime && \
+    ./build.sh clr.runtime -c Release -a x64 && \
+    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclrtraceptprovider.so /tmp/
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
@@ -100,7 +85,7 @@ RUN apt-get update && \
 
 # Inject the LTTng tracepoint provider next to libcoreclr.so so the
 # runtime's PAL_InitializeTracing constructor dlopen's it at startup
-COPY --from=lttng-build /runtime/build-lttng/libcoreclrtraceptprovider.so \
+COPY --from=lttng-build /tmp/libcoreclrtraceptprovider.so \
   /usr/share/dotnet/shared/Microsoft.NETCore.App/${DOTNET_RUNTIME_VERSION}/
 
 # Override runtimeconfig.json settings not suitable for PGO collection
