@@ -250,6 +250,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/pgo-data"
           mkdir -p "${RUNNER_TEMP}/pgo-data"
 
           # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
