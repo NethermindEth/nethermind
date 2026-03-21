@@ -76,7 +76,7 @@ namespace Nethermind.Network.Discovery.Test
             _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
 
             // Poll for the expected state instead of relying on a fixed delay
-            while (_discoveryDb.Count < 2)
+            while (_discoveryDb.Count < nodes.Length)
             {
                 cts.Token.ThrowIfCancellationRequested();
                 await Task.Delay(10, cts.Token);
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Discovery.Test
 
             await cts.CancelAsync();
 
-            _discoveryDb.Count.Should().Be(2);
+            _discoveryDb.Count.Should().Be(nodes.Length);
         }
     }
 }
