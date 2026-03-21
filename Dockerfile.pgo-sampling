@@ -132,6 +132,14 @@ echo "trace: waiting for LTTng session..."
 for i in $(seq 1 30); do
   if grep -q "Collection started" /nethermind/pgo/perfcollect.log 2>/dev/null; then
     echo "trace: LTTng session active"
+    # perfcollect's tracepoint list doesn't include MethodDetails (added with
+    # MethodDiagnostic keyword 0x4000000000). Enable all DotNETRuntime events
+    # so dotnet-pgo gets MethodDetails for SPGO.
+    session=$(lttng list --output-format=json 2>/dev/null | python3 -c "import sys,json;print(json.load(sys.stdin)['sessions'][0]['name'])" 2>/dev/null || ls /root/lttng-traces/ 2>/dev/null | head -1)
+    if [ -n "$session" ]; then
+      lttng enable-event -s "$session" -u --tracepoint 'DotNETRuntime:*' 2>/dev/null || true
+      echo "trace: enabled all DotNETRuntime tracepoints on session $session"
+    fi
     break
   fi
   sleep 1
