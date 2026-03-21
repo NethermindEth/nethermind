@@ -118,7 +118,7 @@ public class BlockchainProcessorTests
 
                         if (notYet)
                         {
-                            Monitor.Wait(_gate, ProcessingWait);
+                            Monitor.Wait(_gate, MockRecheckInterval);
                         }
                         else
                         {
@@ -175,7 +175,7 @@ public class BlockchainProcessorTests
                                 throw new Exception();
                             }
 
-                            Monitor.Wait(_gate, ProcessingWait);
+                            Monitor.Wait(_gate, MockRecheckInterval);
                             continue;
                         }
 
@@ -199,6 +199,7 @@ public class BlockchainProcessorTests
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
         private const int ProcessingWait = 10_000;
+        private const int MockRecheckInterval = 200;
 
         public ProcessingTestContext(bool startProcessor)
         {
@@ -500,17 +501,33 @@ public class BlockchainProcessorTests
         public static ProcessingTestContext ProcessorIsNotStarted => new(false);
     }
 
-    private static readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
-    private static readonly Block _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
-    private static readonly Block _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
-    private static readonly Block _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
-    private static readonly Block _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
-    private static readonly Block _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
-    private static readonly Block _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
-    private static readonly Block _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
-    private static readonly Block _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
-    private static readonly Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
-    private static readonly Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    // Instance fields — not static — so that parallel test instances do not share
+    // mutable Block objects (RecoverData mutates Header.Author).
+    private readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
+    private readonly Block _block1D2;
+    private readonly Block _block2D4;
+    private readonly Block _block3D6;
+    private readonly Block _block4D8;
+    private readonly Block _block5D10;
+    private readonly Block _blockB2D4;
+    private readonly Block _blockB3D8;
+    private readonly Block _blockC2D100;
+    private readonly Block _blockD2D200;
+    private readonly Block _blockE2D300;
+
+    public BlockchainProcessorTests()
+    {
+        _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
+        _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
+        _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
+        _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
+        _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
+        _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
+        _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
+        _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_lower_difficulty()
@@ -634,7 +651,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block5D10).BecomesNewHead();
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), Retry(3)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_to_longer_path()
     {
         When.ProcessingBlocks
@@ -672,7 +689,6 @@ public class BlockchainProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)] // some flakiness
     public void Can_change_branch_on_invalid_block()
     {
         When.ProcessingBlocks
