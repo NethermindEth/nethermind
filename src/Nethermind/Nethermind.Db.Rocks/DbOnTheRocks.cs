@@ -304,7 +304,6 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         if (rocksDbException.Message.Contains("Corruption:") || rocksDbException.Message.Contains("IO error"))
         {
             if (_logger.IsWarn) _logger.Warn($"Corrupted DB detected on path {_fullPath}. Please restart Nethermind to attempt repair.");
-
             _fileSystem.File.WriteAllText(CorruptMarkerPath, "marker");
 
             // Don't kill tests checking corruption response
