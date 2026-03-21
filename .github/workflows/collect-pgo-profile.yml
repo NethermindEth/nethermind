@@ -446,7 +446,8 @@ jobs:
             # (TraceEvent's ClrTraceEventParser is missing this mapping)
             sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
             echo "Converting sampling trace with PgoTrim (injecting MethodDetails CTF mapping)..."
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+            dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
               convert-trace "${sampling_trace}" "${sampling_etlx}" || true
 
             echo "Converting CPU sampling trace to .mibc..."
