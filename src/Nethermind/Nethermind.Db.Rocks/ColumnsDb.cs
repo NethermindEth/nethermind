@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core;
@@ -169,6 +170,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         private readonly Snapshot _snapshot;
         private readonly ReadOptions _sharedReadOptions;
         private readonly ReadOptions _sharedCacheMissReadOptions;
+        private readonly RocksDbSharp.Native _rocksDbNative;
         private int _disposed;
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
@@ -178,6 +180,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public ColumnDbSnapshot(ColumnsDb<T> columnsDb, Snapshot snapshot)
         {
             _snapshot = snapshot;
+            _rocksDbNative = columnsDb._rocksDbNative;
 
             // Create two shared ReadOptions for all column readers instead of 2 per reader.
             // ReadOptions in RocksDbSharp has a finalizer but no IDisposable — creating many
@@ -258,7 +261,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public IReadOnlyKeyValueStore GetColumn(T key)
         {
             ObjectDisposedException.ThrowIf(_disposed != 0, this);
-            return _readers[EnumToInt(key)];
+
+            int ordinal = EnumToInt(key);
+            if ((uint)ordinal >= (uint)_readers.Length || _readers[ordinal] is null)
+            {
+                throw new KeyNotFoundException($"Column '{key}' is not configured.");
+            }
+
+            return _readers[ordinal];
         }
 
         public void Dispose()
@@ -273,12 +283,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             _snapshot.Dispose();
         }
 
-        private static void DestroyReadOptions(ReadOptions options)
+        private void DestroyReadOptions(ReadOptions options)
         {
-            Native.Instance.rocksdb_readoptions_destroy(options.Handle);
+            _rocksDbNative.rocksdb_readoptions_destroy(options.Handle);
             GC.SuppressFinalize(options);
         }
 
-        private static int EnumToInt(T value) => Convert.ToInt32(value);
+        // Safety: all column enums in this codebase use int as underlying type.
+        // Unsafe.As avoids the boxing that Convert.ToInt32(object) would cause.
+        private static int EnumToInt(T value) => Unsafe.As<T, int>(ref value);
     }
 }
