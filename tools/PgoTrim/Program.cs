@@ -26,6 +26,17 @@ if (args.Length >= 1 && args[0] == "convert-trace")
     return TraceConverter.Convert(args[1], args[2]);
 }
 
+// Subcommand: extract-spgo — extract perf sample IPs for dotnet-pgo SPGO
+if (args.Length >= 1 && args[0] == "extract-spgo")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("Usage: PgoTrim extract-spgo <sampling.trace.zip> <output.spgo>");
+        return 1;
+    }
+    return SpgoExtractor.Extract(args[1], args[2]);
+}
+
 int minBlock = 100;
 int minEdge = 250;
 string? inputPath = null;

@@ -359,13 +359,28 @@ jobs:
         with:
           cache: false
 
-      - name: Compress .jit with PgoTrim
+      - name: Process traces with PgoTrim
         id: pgotrim
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           pgo_dir="${RUNNER_TEMP}/pgo-data"
+
+          # Convert sampling .trace.zip to .etlx (injects MethodDetails CTF mapping)
+          sampling_trace="${pgo_dir}/sampling.trace.zip"
+          sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
+          if [[ -f "${sampling_trace}" ]]; then
+            echo "Converting sampling trace (injecting MethodDetails CTF mapping)..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              convert-trace "${sampling_trace}" "${sampling_etlx}" || true
+
+            # Extract perf sample IPs for SPGO — placed alongside .etlx so
+            # dotnet-pgo finds it via Path.ChangeExtension(etlx, ".spgo")
+            echo "Extracting perf sample IPs for SPGO..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              extract-spgo "${sampling_trace}" "${sampling_etlx%.etlx}.spgo" || true
+          fi
 
           # Compress .jit edge/block profiling data for runtime PGO
           jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
@@ -417,6 +432,25 @@ jobs:
           # Replace NuGet TraceEvent reference with project reference to our patched source
           pgo_csproj="src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
           sed -i 's|<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="$(TraceEventVersion)" />|<ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/TraceEvent/TraceEvent.csproj" />\n    <ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/FastSerialization/FastSerialization.csproj" />|' "${pgo_csproj}"
+          # Patch dotnet-pgo to read supplementary .spgo file (perf sample IPs from PgoTrim)
+          # alongside the .etlx for SPGO block count attribution
+          pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
+          sed -i '/PrintOutput(\$"Samples outside managed code: {correlator.SamplesOutsideManagedCode}");/i\
+                        // Read supplementary perf samples from PgoTrim .spgo file\
+                        string spgoFile = Path.ChangeExtension(etlFileName, ".spgo");\
+                        if (File.Exists(spgoFile))\
+                        {\
+                            int spgoCount = 0;\
+                            foreach (string line in File.ReadLines(spgoFile))\
+                            {\
+                                if (ulong.TryParse(line.Trim(), System.Globalization.NumberStyles.HexNumber, null, out ulong ip))\
+                                {\
+                                    correlator.AttributeSamplesToIP(ip, 1);\
+                                    spgoCount++;\
+                                }\
+                            }\
+                            PrintOutput(\$"Supplementary .spgo samples loaded: {spgoCount}");\
+                        }' "${pgo_program}"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
@@ -487,9 +521,14 @@ jobs:
           if [[ -f "${sampling_trace}" ]]; then
             echo "Converting CPU sampling trace to .mibc..."
             sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
-            # dotnet-pgo is built with our PerfView PR branch which has the
-            # MethodDetails CTF mapping — pass .trace.zip directly
+            # Use PgoTrim-converted .etlx (has MethodDetails) with .spgo alongside
+            # (perf sample IPs that dotnet-pgo's patched SPGO code reads)
+            sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
             sampling_input="${sampling_trace}"
+            if [[ -f "${sampling_etlx}" ]]; then
+              sampling_input="${sampling_etlx}"
+              echo "Using converted .etlx with .spgo samples"
+            fi
             sampling_args=(
               --trace "${sampling_input}"
               --output "${sampling_mibc}"
