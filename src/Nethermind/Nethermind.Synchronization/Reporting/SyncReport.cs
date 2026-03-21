@@ -32,6 +32,7 @@ namespace Nethermind.Synchronization.Reporting
         private const int SyncFullPeersReportFrequency = 120;
         private const int SyncBehindWarningFrequency = 6; // every 6 ticks × 10s = ~60s
         private const ulong SyncBehindThresholdSeconds = 5 * 60;
+        private bool _wasBehind;
         private readonly TimeSpan _defaultReportingIntervals;
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
@@ -310,6 +311,8 @@ namespace Nethermind.Synchronization.Reporting
                 return;
 
             ulong headTimestamp = head.Header.Timestamp;
+            if (headTimestamp == 0) return; // genesis or uninitialized
+
             ulong currentTimestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
             if (headTimestamp >= currentTimestamp)
@@ -317,7 +320,17 @@ namespace Nethermind.Synchronization.Reporting
 
             ulong secondsBehind = currentTimestamp - headTimestamp;
             if (secondsBehind <= SyncBehindThresholdSeconds)
+            {
+                if (_wasBehind)
+                {
+                    _wasBehind = false;
+                    if (_logger.IsInfo) _logger.Info("Node has caught up with the head of the chain.");
+                }
+
                 return;
+            }
+
+            _wasBehind = true;
 
             decimal blocksPerSecond = FullSyncBlocksDownloaded.CurrentPerSecond;
             long blocksRemaining = FullSyncBlocksDownloaded.TargetValue - FullSyncBlocksDownloaded.CurrentValue;
