@@ -58,6 +58,7 @@ internal class SpecialTransactionsTests
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
             .WithValue(amount)
+            .WithGasPrice((UInt256)XdcConstants.Trc21GasPrice)
             .WithType(TxType.Legacy)
             .TestObject;
 
@@ -232,7 +233,8 @@ internal class SpecialTransactionsTests
 
         var moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance, Substitute.For<IMasternodeVotingContract>());
+        var transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance, Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -291,7 +293,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -382,7 +385,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -438,7 +442,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -495,7 +500,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -695,7 +701,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         Block head = blockChain.BlockTree.Head!;
@@ -771,7 +778,8 @@ internal class SpecialTransactionsTests
             moqVm,
             Substitute.For<ICodeInfoRepository>(),
             NullLogManager.Instance,
-            Substitute.For<IMasternodeVotingContract>());
+            Substitute.For<IMasternodeVotingContract>(),
+            Substitute.For<ITrc21StateReader>());
 
 
         Block head = blockChain.BlockTree.Head!;

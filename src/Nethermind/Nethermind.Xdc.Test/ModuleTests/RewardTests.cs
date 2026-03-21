@@ -129,7 +129,7 @@ public class RewardTests
         PrivateKey signerForPart2 = chain.MasterNodeCandidates.First(k => k.Address == epochSwitchInfoFor2E!.Masternodes[0]);
 
         // Set the chain's signer to our chosen masternode - required because
-        // SignTransactionFilter rejects signing txs from non-current-signers
+        // XdcIncomingTxFilter rejects signing txs from non-current-signers
         chain.Signer.SetSigner(signerForPart2);
 
         await chain.AddBlock(BuildSigningTx(

@@ -49,6 +49,13 @@ internal static class XdcConstants
     public static readonly byte[] ResignMethod = Bytes.FromHexString("0xae6e43f5");
     public static readonly byte[] SignMethod = Bytes.FromHexString("0xe341eaa4");
 
-    // 4-byte selector + 32-byte block number + 32-byte block hash
-    public const int SignTransactionDataLength = 68;
+    public const int SignTransactionDataLength = 68; // 4-byte selector + 32-byte block number + 32-byte block hash
+
+    public static readonly byte[] Trc21TransferMethod = Bytes.FromHexString("0xa9059cbb");
+    public static readonly byte[] Trc21TransferFromMethod = Bytes.FromHexString("0x23b872dd");
+    public const int Trc21TransferCalldataLength = 68;
+    public const int Trc21TransferFromCalldataLength = 80;
+    public static readonly UInt256 Trc21GasPriceBefore = 2500;
+    public static readonly UInt256 Trc21GasPrice = 250000000;
+    public static readonly UInt256 Trc21GasPrice50x = 12500000000;
 }

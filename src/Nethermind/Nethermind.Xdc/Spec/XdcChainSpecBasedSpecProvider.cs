@@ -26,8 +26,11 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.FoundationWallet = chainSpecEngineParameters.FoundationWalletAddr;
         releaseSpec.Reward = chainSpecEngineParameters.Reward;
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
+        releaseSpec.Trc21IssuerContract = chainSpecEngineParameters.Trc21IssuerContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
 
+        releaseSpec.TipTrc21FeeBlock = chainSpecEngineParameters.TipTrc21Fee ?? 0;
+        releaseSpec.BlockNumberGas50x = chainSpecEngineParameters.BlockNumberGas50x ?? long.MaxValue;
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;
         releaseSpec.IsTIP2019 = chainSpecEngineParameters.TIP2019Block <= releaseStartBlock;

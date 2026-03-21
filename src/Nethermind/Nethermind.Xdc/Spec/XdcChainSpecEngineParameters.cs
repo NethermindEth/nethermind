@@ -32,6 +32,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public Address TradingStateAddressBinary { get; set; }
 
     public Address MasternodeVotingContract { get; set; }
+    public Address Trc21IssuerContract { get; set; }
 
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
@@ -48,6 +49,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
     public long? TipTrc21Fee { get; set; }
+    public long? BlockNumberGas50x { get; set; }
     public long TIP2019Block { get; set; }
     public long? TipUpgradePenalty { get; set; }
     public long MergeSignRange { get; set; }
@@ -77,6 +79,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     {
         if (TipTrc21Fee is not null)
             blockNumbers.Add(TipTrc21Fee.Value);
+        if (BlockNumberGas50x is not null)
+            blockNumbers.Add(BlockNumberGas50x.Value);
         if (TipUpgradePenalty is not null)
             blockNumbers.Add(TipUpgradePenalty.Value);
     }

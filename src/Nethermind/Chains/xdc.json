@@ -66,6 +66,7 @@
 
         "DynamicGasLimitBlock": 99999999999999,
         "tip2019Block": 1,
+        "blockNumberGas50x": 80370000,
         "BlackListHFNumber": 38383838,
         "blackListedAddresses": [
           "0x5248bfb72fd4f234e062d3e9bb76f08643004fcd",
@@ -133,6 +134,7 @@
 
         "masternodeVotingContract": "0x0000000000000000000000000000000000000088",
         "blockSignerContract": "0x0000000000000000000000000000000000000089",
+        "trc21IssuerContract": "0x8c0faeb5C6bEd2129b8674F262Fd45c4e9468bee",
         "randomizeSMCBinary": "0x0000000000000000000000000000000000000090",
         "XDCXAddrBinary": "0x0000000000000000000000000000000000000091",
         "tradingStateAddressBinary": "0x0000000000000000000000000000000000000092",
