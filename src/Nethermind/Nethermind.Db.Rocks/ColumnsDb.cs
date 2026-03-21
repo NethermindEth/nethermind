@@ -260,7 +260,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
         public IReadOnlyKeyValueStore GetColumn(T key)
         {
-            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
             int ordinal = EnumToInt(key);
             if ((uint)ordinal >= (uint)_readers.Length || _readers[ordinal] is null)
