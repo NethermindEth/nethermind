@@ -47,29 +47,36 @@ ARG DOTNET_RUNTIME_VERSION=10.0.5
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    clang \
-    llvm \
-    lld \
-    python-is-python3 \
     git \
-    libicu-dev \
-    liblttng-ust-dev \
-    libssl-dev \
-    libkrb5-dev \
-    ninja-build && \
+    clang \
+    python3 \
+    liblttng-ust-dev && \
   rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
-      https://github.com/dotnet/runtime.git /runtime
+RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} --filter=blob:none --sparse \
+      https://github.com/dotnet/runtime.git /runtime && \
+    git -C /runtime sparse-checkout set src/coreclr/vm src/coreclr/scripts
 
-# Build coreclr subset which produces libcoreclrtraceptprovider.so.
-# The PAL headers need architecture defines and transitive includes that
-# are only set correctly by the runtime's CMake build.
-RUN cd /runtime && \
-    ./build.sh clr.runtime -c Release -a x64 && \
-    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclrtraceptprovider.so /tmp/
+WORKDIR /runtime/build-lttng
+
+# Generate LTTng tracepoint sources, then compile with a minimal PAL stub.
+# The generated headers include palrt.h/pal.h but only need BOOL and ULONG
+# typedefs — the actual tracepoint code uses standard C types.
+RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
+      --man /runtime/src/coreclr/vm/ClrEtwAll.man \
+      --intermediate /runtime/build-lttng && \
+    printf '#pragma once\ntypedef int BOOL;\ntypedef unsigned int ULONG;\ntypedef unsigned int UINT;\ntypedef unsigned long ULONG64;\ntypedef unsigned short USHORT;\ntypedef int LONG;\ntypedef void* PVOID;\ntypedef const void* LPCVOID;\ntypedef unsigned char BYTE;\ntypedef char16_t WCHAR;\ntypedef const WCHAR* LPCWSTR;\ntypedef WCHAR* LPWSTR;\ntypedef unsigned long long ULONGLONG;\ntypedef long long LONGLONG;\ntypedef double DOUBLE;\n#define ERROR_SUCCESS 0\n#define ERROR_WRITE_FAULT 29\n' > /runtime/build-lttng/lttng/palrt.h && \
+    cp /runtime/build-lttng/lttng/palrt.h /runtime/build-lttng/lttng/pal.h && \
+    cd /runtime/build-lttng/lttng && \
+    for f in traceptprov*.cpp; do \
+      clang++ -fPIC -O2 \
+        -I/runtime/build-lttng/lttng \
+        -o $(basename $f .cpp).o \
+        -c "$f"; \
+    done && \
+    clang++ -shared -o /tmp/libcoreclrtraceptprovider.so \
+      traceptprov*.o \
+      -llttng-ust
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
