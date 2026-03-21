@@ -86,8 +86,9 @@ RUN apt-get update && \
   # 2. Add TypeKeyword to default events — needed for BulkType events
   # 3. Add AssemblyLoad to second LoaderKeyword array — the duplicate declaration
   #    overwrites the first which had AssemblyLoad. dotnet-pgo needs AssemblyLoadUnload.
+  # 4. Add JittedMethodILToNativeMapKeyword — needed for SPGO block attribution
   sed -i '/DotNETRuntime:MethodJittingStarted_V1/a\    DotNETRuntime:MethodDetails' /usr/local/bin/perfcollect && \
-  sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}' /usr/local/bin/perfcollect && \
+  sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}\n            EnableLTTngEvents ${DotNETRuntime_JittedMethodILToNativeMapKeyword[@]}' /usr/local/bin/perfcollect && \
   sed -i '/DotNETRuntime:ModuleUnload_V2/a\    DotNETRuntime:AssemblyLoad\n    DotNETRuntime:AssemblyLoad_V1\n    DotNETRuntime:AssemblyUnload\n    DotNETRuntime:AssemblyUnload_V1' /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
@@ -105,9 +106,11 @@ ENV DOTNET_GCRegionRange=0x800000000
 # Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
-# Keyword 0x4000080018: MethodDiagnostic(0x4000000000) + Type(0x80000) + JIT(0x10) + Loader(0x8)
-# Level 5 (Verbose) needed for MethodDetails and BulkType events.
-ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x4000080018:5
+# Keyword 0x40000A0018:
+#   MethodDiagnostic(0x4000000000) + Type(0x80000) +
+#   JittedMethodILToNativeMap(0x20000) + JIT(0x10) + Loader(0x8)
+# Level 5 (Verbose) needed for MethodDetails, BulkType, and IL-to-native maps.
+ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x40000A0018:5
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
