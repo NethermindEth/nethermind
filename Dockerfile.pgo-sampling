@@ -42,7 +42,7 @@ RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 # The Microsoft SDK ships a dummy provider (no-op FireEtXplat* functions).
 # We rebuild coreclr with FEATURE_EVENTSOURCE_XPLAT=1 so the event dispatch
 # code calls tracepoint() and perfcollect can capture CLR events.
-FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
+FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
 
 ARG DOTNET_RUNTIME_VERSION=10.0.5
 
