@@ -359,27 +359,13 @@ jobs:
         with:
           cache: false
 
-      - name: Process traces with PgoTrim
+      - name: Compress .jit with PgoTrim
         id: pgotrim
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           pgo_dir="${RUNNER_TEMP}/pgo-data"
-          # Clean any stale local NuGet sources from previous runs
-          dotnet nuget remove source local-traceevent 2>/dev/null || true
-          dotnet nuget locals all --clear 2>/dev/null || true
-          dotnet restore "${GITHUB_WORKSPACE}/tools/PgoTrim" --force -v normal 2>&1 | grep -i "TraceEvent" || true
-          dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-incremental --no-restore 2>&1 | tail -5
-
-          # Convert sampling .trace.zip to .etlx with injected MethodDetails CTF mapping
-          sampling_trace="${pgo_dir}/sampling.trace.zip"
-          sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
-          if [[ -f "${sampling_trace}" ]]; then
-            echo "Converting sampling trace (injecting MethodDetails CTF mapping)..."
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
-              convert-trace "${sampling_trace}" "${sampling_etlx}" || true
-          fi
 
           # Compress .jit edge/block profiling data for runtime PGO
           jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
@@ -403,16 +389,23 @@ jobs:
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
 
-          # Patch: OpenOrConvert fails with standalone .etlx files (falls back to .etl).
-          # Use new TraceLog(path) directly when the input is .etlx.
-          pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
-          sed -i 's|using (var traceLog = TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|using (var traceLog = etlFileName.EndsWith(".etlx", StringComparison.OrdinalIgnoreCase) ? new TraceLog(etlFileName) : TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|' "${pgo_program}"
-
-          # Check which TraceEvent version dotnet-pgo will use
-          grep "TraceEventVersion" eng/Versions.props || true
-          # Override TraceEvent to 3.1.30 to match PgoTrim's .etlx format version
-          sed -i 's|<TraceEventVersion>.*</TraceEventVersion>|<TraceEventVersion>3.1.30</TraceEventVersion>|' eng/Versions.props
-          grep "TraceEventVersion" eng/Versions.props || true
+          # Build TraceEvent from our PerfView PR branch which has the MethodDetails
+          # CTF mapping fix. This lets dotnet-pgo read perfcollect .trace.zip directly
+          # (both LTTng CLR events AND perf CPU samples).
+          git clone --depth 1 --branch fix/add-methoddetails-ctf-mapping \
+            https://github.com/benaadams/perfview.git "${RUNNER_TEMP}/perfview"
+          # Strip SupportFiles dependency (private feed, Windows-only native DLLs)
+          python3 -c "
+          import re, sys
+          p = sys.argv[1]
+          with open(p) as f: xml = f.read()
+          xml = re.sub(r'<PackageReference Include=\"Microsoft\.Diagnostics\.Tracing\.TraceEvent\.SupportFiles\"[^/]*/>', '', xml)
+          xml = re.sub(r'<None Include=\"\\\$\(TraceEventSupportFilesBase\)[^>]*>.*?</None>', '', xml, flags=re.DOTALL)
+          with open(p, 'w') as f: f.write(xml)
+          " "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          # Replace NuGet TraceEvent reference with project reference to our patched source
+          pgo_csproj="src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
+          sed -i 's|<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="$(TraceEventVersion)" />|<ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/TraceEvent/TraceEvent.csproj" />\n    <ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/FastSerialization/FastSerialization.csproj" />|' "${pgo_csproj}"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
@@ -481,28 +474,11 @@ jobs:
           # Step 1b: If CPU sampling trace exists, convert and merge for call graph data
           sampling_trace="${pgo_dir}/sampling.trace.zip"
           if [[ -f "${sampling_trace}" ]]; then
-            sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
             echo "Converting CPU sampling trace to .mibc..."
             sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
-            # Use the PgoTrim-converted .etlx which has MethodDetails injected.
-            # dotnet-pgo's OpenOrConvert needs .trace.zip alongside .etlx to avoid
-            # fallback to .etl — pass .etlx only if conversion succeeded.
+            # dotnet-pgo is built with our PerfView PR branch which has the
+            # MethodDetails CTF mapping — pass .trace.zip directly
             sampling_input="${sampling_trace}"
-            if [[ -f "${sampling_etlx}" ]]; then
-              sampling_input="${sampling_etlx}"
-              etlx_size=$(stat -c%s "${sampling_etlx}")
-              echo "Using converted .etlx: ${sampling_etlx} (${etlx_size} bytes)"
-              # Check file version (version int32 is at a known offset near start)
-              python3 -c "
-          import struct, sys
-          with open(sys.argv[1], 'rb') as f:
-              data = f.read(100)
-              for i in range(len(data)-4):
-                  v = struct.unpack_from('<i', data, i)[0]
-                  if 70 <= v <= 80:
-                      print(f'  .etlx version field: {v} at offset {i}')
-          " "${sampling_etlx}" || true
-            fi
             sampling_args=(
               --trace "${sampling_input}"
               --output "${sampling_mibc}"
