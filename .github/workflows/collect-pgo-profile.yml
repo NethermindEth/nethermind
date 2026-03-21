@@ -378,8 +378,8 @@ jobs:
           # Add the missing CTF mapping (one line after MethodJittingStarted_V1)
           sed -i '/CtfEventMapping("DotNETRuntime:MethodJittingStarted_V1"/a\            yield return new CtfEventMapping("DotNETRuntime:MethodDetails", Parsers.ClrTraceEventParser.ProviderGuid, 72, 9, 0);' \
             "${RUNNER_TEMP}/perfview/src/TraceEvent/Parsers/ClrTraceEventParser.cs"
-          # Build TraceEvent NuGet package
-          dotnet pack "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj" -c Release -o "${RUNNER_TEMP}/local-nuget"
+          # Build TraceEvent NuGet as version 3.1.28 to match dotnet-pgo's pinned reference
+          dotnet pack "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj" -c Release -o "${RUNNER_TEMP}/local-nuget" /p:Version=3.1.28
           # Point dotnet-pgo to our patched TraceEvent
           dotnet nuget add source "${RUNNER_TEMP}/local-nuget" --name local-traceevent --configfile "$(pwd)/NuGet.Config" 2>/dev/null || true
 
