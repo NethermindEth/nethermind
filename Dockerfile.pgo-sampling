@@ -47,11 +47,18 @@ ARG DOTNET_RUNTIME_VERSION=10.0.5
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
-    git \
+    build-essential \
     cmake \
     clang \
-    python3 \
-    liblttng-ust-dev && \
+    llvm \
+    lld \
+    python-is-python3 \
+    git \
+    libicu-dev \
+    liblttng-ust-dev \
+    libssl-dev \
+    libkrb5-dev \
+    ninja-build && \
   rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
