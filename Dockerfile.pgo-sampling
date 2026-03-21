@@ -100,9 +100,8 @@ ENV DOTNET_GCRegionRange=0x800000000
 # Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
-# dotnet-pgo needs MethodDiagnostic(0x4000000000) + Type(0x80000) + JIT(0x10) +
-# Loader(0x8) at Verbose(5). Default perfcollect keywords miss MethodDiagnostic.
-ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x4000080018:5
+# Without DOTNET_LTTngConfig, the runtime activates ALL keywords on ALL
+# providers (ActivateAllKeywordsOfAllProviders), which includes MethodDiagnostic.
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
