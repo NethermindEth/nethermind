@@ -359,6 +359,22 @@ jobs:
         with:
           cache: false
 
+      - name: Convert sampling trace with PgoTrim
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          sampling_trace="${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+          sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
+          if [[ -f "${sampling_trace}" ]]; then
+            echo "Converting sampling trace with PgoTrim (injecting MethodDetails CTF mapping)..."
+            dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
+              convert-trace "${sampling_trace}" "${sampling_etlx}" || true
+          else
+            echo "No sampling trace found — skipping conversion."
+          fi
+
       - name: Build dotnet-pgo from source
         if: always()
         shell: bash
@@ -442,14 +458,7 @@ jobs:
           # Step 1b: If CPU sampling trace exists, convert and merge for call graph data
           sampling_trace="${pgo_dir}/sampling.trace.zip"
           if [[ -f "${sampling_trace}" ]]; then
-            # Convert .trace.zip to .etlx with injected MethodDetails CTF mapping
-            # (TraceEvent's ClrTraceEventParser is missing this mapping)
             sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
-            echo "Converting sampling trace with PgoTrim (injecting MethodDetails CTF mapping)..."
-            dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
-              convert-trace "${sampling_trace}" "${sampling_etlx}" || true
-
             echo "Converting CPU sampling trace to .mibc..."
             sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
             # Use the PgoTrim-converted .etlx which has MethodDetails injected.
