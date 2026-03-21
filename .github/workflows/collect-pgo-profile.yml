@@ -376,7 +376,7 @@ jobs:
           git clone --depth 1 --branch v3.1.28 \
             https://github.com/microsoft/perfview.git "${RUNNER_TEMP}/perfview"
           # Add the missing CTF mapping (one line after MethodJittingStarted_V1)
-          sed -i '/CtfEventMapping("DotNETRuntime:MethodJittingStarted_V1"/a\            yield return new CtfEventMapping("DotNETRuntime:MethodDetails", Parsers.ClrTraceEventParser.ProviderGuid, 72, 9, 0);' \
+          sed -i '/CtfEventMapping("DotNETRuntime:MethodJittingStarted_V1"/a\            yield return new CtfEventMapping("DotNETRuntime:MethodDetails", Parsers.ClrTraceEventParser.ProviderGuid, 43, 72, 0);' \
             "${RUNNER_TEMP}/perfview/src/TraceEvent/Parsers/ClrTraceEventParser.cs"
           # SupportFiles 1.0.30 is on a private feed; remove the dependency (Windows-only native DLLs)
           sed -i '/<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent.SupportFiles"/d' \
