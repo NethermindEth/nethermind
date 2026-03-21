@@ -446,9 +446,13 @@ jobs:
 
             echo "Converting CPU sampling trace to .mibc..."
             sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
-            sampling_input="${sampling_etlx}"
-            if [[ ! -f "${sampling_etlx}" ]]; then
-              sampling_input="${sampling_trace}"
+            # Use the PgoTrim-converted .etlx which has MethodDetails injected.
+            # dotnet-pgo's OpenOrConvert needs .trace.zip alongside .etlx to avoid
+            # fallback to .etl — pass .etlx only if conversion succeeded.
+            sampling_input="${sampling_trace}"
+            if [[ -f "${sampling_etlx}" ]]; then
+              sampling_input="${sampling_etlx}"
+              echo "Using converted .etlx: ${sampling_etlx} ($(stat -c%s "${sampling_etlx}") bytes)"
             fi
             sampling_args=(
               --trace "${sampling_input}"
