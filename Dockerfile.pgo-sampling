@@ -134,7 +134,7 @@ mkdir -p /nethermind/pgo
 trap 'kill -TERM $nethermind_pid 2>/dev/null' TERM INT
 
 echo "trace: starting perfcollect (perf + LTTng)"
-perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
+perfcollect collect /nethermind/pgo/sampling -collectsec 150 &> /nethermind/pgo/perfcollect.log &
 trace_pid=$!
 
 # Wait for LTTng session to be active before starting Nethermind.
