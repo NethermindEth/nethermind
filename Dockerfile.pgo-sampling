@@ -89,6 +89,8 @@ RUN apt-get update && \
   # 4. Add JittedMethodILToNativeMapKeyword — needed for SPGO block attribution
   sed -i '/DotNETRuntime:MethodJittingStarted_V1/a\    DotNETRuntime:MethodDetails' /usr/local/bin/perfcollect && \
   sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}\n            EnableLTTngEvents ${DotNETRuntime_JittedMethodILToNativeMapKeyword[@]}' /usr/local/bin/perfcollect && \
+  # perfcollect only lists MethodILToNativeMap (v0) but runtime fires _V1 — add it
+  sed -i '/DotNETRuntime:MethodILToNativeMap$/a\    DotNETRuntime:MethodILToNativeMap_V1' /usr/local/bin/perfcollect && \
   sed -i '/DotNETRuntime:ModuleUnload_V2/a\    DotNETRuntime:AssemblyLoad\n    DotNETRuntime:AssemblyLoad_V1\n    DotNETRuntime:AssemblyUnload\n    DotNETRuntime:AssemblyUnload_V1' /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 

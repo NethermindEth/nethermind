@@ -36,10 +36,12 @@ static class TraceConverter
             // Register CLR parser (populates _eventMapping with known mappings)
             new ClrTraceEventParser(ctfSource);
 
-            // Inject the missing MethodDetails CTF mapping
+            // Inject missing CTF mappings
             // CtfEventMapping(eventName, providerGuid, opcode, id, version)
             InjectCtfMapping(ctfSource, "DotNETRuntime:MethodDetails",
                 ClrTraceEventParser.ProviderGuid, opcode: 43, id: 72, version: 0);
+            InjectCtfMapping(ctfSource, "DotNETRuntime:MethodILToNativeMap_V1",
+                ClrTraceEventParser.ProviderGuid, opcode: 87, id: 190, version: 1);
 
             // Use the same path as CreateFromLttngTextDataFile:
             // CreateFromLinuxEventSources(source, etlxPath, options)
