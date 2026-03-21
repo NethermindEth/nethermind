@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -58,7 +58,7 @@ namespace Nethermind.Synchronization.Test
                 FastSync = fastSync,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), LimboLogs.Instance, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), LimboLogs.Instance, timerFactory);
 
             void UpdateMode()
             {
@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.Test
                 PivotNumber = 100,
             };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), logManager, timerFactory);
             syncReport.FastBlocksHeaders.Reset(0, 100);
             syncReport.FastBlocksHeaders.CurrentQueued = 0;
             syncReport.FastBlocksBodies.Reset(0, 70);
@@ -150,7 +150,7 @@ namespace Nethermind.Synchronization.Test
                 syncConfig.AncientReceiptsBarrier = 35;
             }
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockTree>(), logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), Substitute.For<IBlockFinder>(), logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
@@ -184,12 +184,12 @@ namespace Nethermind.Synchronization.Test
             logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
             // Set up a head block with a timestamp 10 minutes behind current time
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
 
             timer.Elapsed += Raise.Event();
@@ -214,12 +214,12 @@ namespace Nethermind.Synchronization.Test
             logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
             // Simulate blackout recovery: head is 2 hours behind, mode is WaitingForBlock (PoS beacon control)
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddHours(-2)));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddHours(-2)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.WaitingForBlock));
 
             timer.Elapsed += Raise.Event();
@@ -244,12 +244,12 @@ namespace Nethermind.Synchronization.Test
             logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
             // Set up a head block with a timestamp only 2 minutes behind (under threshold)
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-2)));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-2)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.Full));
 
             timer.Elapsed += Raise.Event();
@@ -274,12 +274,12 @@ namespace Nethermind.Synchronization.Test
             logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
 
             // Head is 10 minutes behind, but sync mode is FastHeaders (not Full/FastSync/WaitingForBlock)
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(CreateBlockWithTimestamp(DateTimeOffset.UtcNow.AddMinutes(-10)));
 
             SyncConfig syncConfig = new() { FastSync = true };
 
-            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockTree, logManager, timerFactory);
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), blockFinder, logManager, timerFactory);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders));
 
             timer.Elapsed += Raise.Event();

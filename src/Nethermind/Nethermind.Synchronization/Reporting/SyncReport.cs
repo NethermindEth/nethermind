@@ -3,7 +3,7 @@
 
 using System;
 using System.Text;
-using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Timers;
@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IPivot _pivot;
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockFinder;
         private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
@@ -30,17 +30,17 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        private const int SyncBehindWarningFrequency = 6;
-        private static readonly TimeSpan SyncBehindThreshold = TimeSpan.FromMinutes(5);
+        private const int SyncBehindWarningFrequency = 6; // every 6 ticks × 10s = ~60s
+        private const ulong SyncBehindThresholdSeconds = 5 * 60;
         private readonly TimeSpan _defaultReportingIntervals;
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockTree blockTree, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.Reporting
             if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync | SyncMode.WaitingForBlock)) == 0)
                 return;
 
-            Block? head = _blockTree.Head;
+            Block? head = _blockFinder.Head;
             if (head is null)
                 return;
 
@@ -315,8 +315,8 @@ namespace Nethermind.Synchronization.Reporting
             if (headTimestamp >= currentTimestamp)
                 return;
 
-            TimeSpan timeBehind = TimeSpan.FromSeconds(currentTimestamp - headTimestamp);
-            if (timeBehind <= SyncBehindThreshold)
+            ulong secondsBehind = currentTimestamp - headTimestamp;
+            if (secondsBehind <= SyncBehindThresholdSeconds)
                 return;
 
             decimal blocksPerSecond = FullSyncBlocksDownloaded.CurrentPerSecond;
@@ -325,23 +325,30 @@ namespace Nethermind.Synchronization.Reporting
             string etaMessage;
             if (blocksPerSecond > 0 && blocksRemaining > 0)
             {
-                TimeSpan eta = TimeSpan.FromSeconds((double)blocksRemaining / (double)blocksPerSecond);
-                etaMessage = $" Estimated time to catch up: {FormatTimeSpan(eta)}";
+                ulong etaSeconds = (ulong)((double)blocksRemaining / (double)blocksPerSecond);
+                etaMessage = $" Estimated time to catch up: {FormatSeconds(etaSeconds)}";
             }
             else
             {
                 etaMessage = "";
             }
 
-            _logger.Warn($"Node is behind the head of the chain by {FormatTimeSpan(timeBehind)}.{etaMessage}");
+            _logger.Warn($"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{etaMessage}");
         }
 
-        private static string FormatTimeSpan(TimeSpan ts) => ts switch
+        private static string FormatSeconds(ulong totalSeconds)
         {
-            { TotalDays: >= 1 } => $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m",
-            { TotalHours: >= 1 } => $"{(int)ts.TotalHours}h {ts.Minutes}m",
-            _ => $"{(int)ts.TotalMinutes}m {ts.Seconds}s"
-        };
+            ulong days = totalSeconds / 86400;
+            ulong hours = totalSeconds % 86400 / 3600;
+            ulong minutes = totalSeconds % 3600 / 60;
+            ulong seconds = totalSeconds % 60;
+
+            if (days >= 1)
+                return $"{days}d {hours}h {minutes}m";
+            if (hours >= 1)
+                return $"{hours}h {minutes}m";
+            return $"{minutes}m {seconds}s";
+        }
 
         public void Dispose()
         {
