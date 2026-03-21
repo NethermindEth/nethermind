@@ -56,8 +56,6 @@ public partial class SszGenerator : IIncrementalGenerator
     private static bool IsSszRootAttribute(INamedTypeSymbol attributeType) =>
         attributeType.ToString() is
             "Nethermind.Serialization.Ssz.SszContainerAttribute"
-            or "Nethermind.Serialization.Ssz.SszSerializableAttribute"
-            or "Nethermind.Serialization.Ssz.SszUnionAttribute"
             or "Nethermind.Serialization.Ssz.SszCompatibleUnionAttribute";
 
     const string Whitespace = "/**/";

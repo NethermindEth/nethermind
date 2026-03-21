@@ -105,7 +105,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
     //}
 
-    [SszUnion]
+    [SszCompatibleUnion]
     public struct CompatibleNumberUnion
     {
         public CompatibleNumberUnionSelector Selector { get; set; }

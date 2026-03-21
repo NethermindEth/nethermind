@@ -28,7 +28,7 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 
-        if (!IsSerializableType(typeDeclaration))
+        if (!IsSszRootType(typeDeclaration))
         {
             return;
         }

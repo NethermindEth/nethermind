@@ -8,9 +8,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 public class PropertyRequiredInSszTypeAnalyzer : SszDiagnosticAnalyzer
 {
     public const string DiagnosticId = "SSZ001";
-    private static readonly LocalizableString Title = "Class or struct marked with SszContainer or SszUnion must have at least one public property with public getter and setter";
-    private static readonly LocalizableString MessageFormat = "Type '{0}' is marked with SszContainer or SszUnion, but does not have any public property with public getter and setter";
-    private static readonly LocalizableString Description = "A class or struct marked with SszContainer or SszUnion should have at least one public property with both a public getter and setter.";
+    private static readonly LocalizableString Title = "Class or struct marked with SszContainer or SszCompatibleUnion must have at least one public property with public getter and setter";
+    private static readonly LocalizableString MessageFormat = "Type '{0}' is marked with SszContainer or SszCompatibleUnion, but does not have any public property with public getter and setter";
+    private static readonly LocalizableString Description = "A class or struct marked with SszContainer or SszCompatibleUnion should have at least one public property with both a public getter and setter.";
     private const string Category = "Design";
 
     private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
@@ -29,7 +29,7 @@ public class PropertyRequiredInSszTypeAnalyzer : SszDiagnosticAnalyzer
     {
         TypeDeclarationSyntax typeDeclaration = (TypeDeclarationSyntax)context.Node;
 
-        if (!IsSerializableType(typeDeclaration))
+        if (!IsSszRootType(typeDeclaration))
         {
             return;
         }

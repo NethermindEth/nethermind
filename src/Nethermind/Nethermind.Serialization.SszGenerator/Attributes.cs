@@ -10,16 +10,7 @@ public class SszContainerAttribute(bool isCollectionItself = false) : Attribute
 }
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszSerializableAttribute(bool isCollectionItself = false) : SszContainerAttribute(isCollectionItself);
-
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszUnionAttribute : Attribute;
-
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszCompatibleUnionAttribute : SszUnionAttribute;
-
-[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszProgressiveContainerAttribute : Attribute;
+public class SszCompatibleUnionAttribute : Attribute;
 
 [AttributeUsage(AttributeTargets.Property)]
 public class SszFieldAttribute(int index) : Attribute

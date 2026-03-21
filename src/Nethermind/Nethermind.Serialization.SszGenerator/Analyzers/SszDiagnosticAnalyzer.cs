@@ -9,14 +9,10 @@ using System.Collections;
 
 public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
 {
-    protected static string[] SszTypeAttributeNames =
+    protected static string[] SszRootAttributeNames =
     [
         "SszContainer",
         "SszContainerAttribute",
-        "SszSerializable",
-        "SszSerializableAttribute",
-        "SszUnion",
-        "SszUnionAttribute",
         "SszCompatibleUnion",
         "SszCompatibleUnionAttribute",
     ];
@@ -33,8 +29,8 @@ public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
         "SszProgressiveBitlistAttribute",
     ];
 
-    protected static bool IsSerializableType(TypeDeclarationSyntax type) =>
-        type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => SszTypeAttributeNames.Contains(attr.Name.ToString()));
+    protected static bool IsSszRootType(TypeDeclarationSyntax type) =>
+        type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => SszRootAttributeNames.Contains(attr.Name.ToString()));
 
     protected static bool IsCollectionType(ITypeSymbol typeSymbol) =>
             typeSymbol is IArrayTypeSymbol || (typeSymbol is INamedTypeSymbol namedTypeSymbol

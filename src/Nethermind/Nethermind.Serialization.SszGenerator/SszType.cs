@@ -286,8 +286,8 @@ class SszType
             return Kind.Basic;
         }
 
-        bool isProgressiveContainer = HasAttribute(type, "SszProgressiveContainerAttribute") || HasAnyFieldIndex(type);
-        bool isCompatibleUnion = HasAttribute(type, "SszUnionAttribute") || HasAttribute(type, "SszCompatibleUnionAttribute");
+        bool isProgressiveContainer = HasAnyFieldIndex(type);
+        bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -428,7 +428,7 @@ class SszType
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
         object? attrValue = typeSymbol
-            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name is "SszContainerAttribute" or "SszSerializableAttribute")?
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszContainerAttribute")?
             .ConstructorArguments.FirstOrDefault().Value;
 
         return attrValue is not null && (bool)attrValue;
