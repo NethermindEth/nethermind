@@ -373,15 +373,22 @@ jobs:
           # MethodDetails (event ID 72), causing dotnet-pgo to skip it when reading
           # perfcollect .trace.zip files. Build TraceEvent from source with the fix,
           # then build dotnet-pgo against it.
-          git clone --depth 1 --branch v3.1.30 \
+          git clone --depth 1 --branch v3.1.28 \
             https://github.com/microsoft/perfview.git "${RUNNER_TEMP}/perfview"
           # Add the missing CTF mapping (one line after MethodJittingStarted_V1)
           sed -i '/CtfEventMapping("DotNETRuntime:MethodJittingStarted_V1"/a\            yield return new CtfEventMapping("DotNETRuntime:MethodDetails", Parsers.ClrTraceEventParser.ProviderGuid, 72, 9, 0);' \
             "${RUNNER_TEMP}/perfview/src/TraceEvent/Parsers/ClrTraceEventParser.cs"
+          # SupportFiles 1.0.30 is on a private feed; remove the dependency (Windows-only native DLLs)
+          sed -i '/<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent.SupportFiles"/d' \
+            "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          # Remove file references to SupportFiles content (native DLLs not needed on Linux)
+          sed -i '/TraceEventSupportFilesBase/d' "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
           # Build TraceEvent NuGet as version 3.1.28 to match dotnet-pgo's pinned reference
-          dotnet pack "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj" -c Release -o "${RUNNER_TEMP}/local-nuget" /p:Version=3.1.28
-          # Point dotnet-pgo to our patched TraceEvent
-          dotnet nuget add source "${RUNNER_TEMP}/local-nuget" --name local-traceevent --configfile "$(pwd)/NuGet.Config" 2>/dev/null || true
+          dotnet pack "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj" -c Release \
+            -o "${RUNNER_TEMP}/local-nuget" /p:Version=3.1.28 /p:ContinuousIntegrationBuild=false || true
+          # Point dotnet-pgo to our patched TraceEvent (local source takes priority)
+          dotnet nuget add source "${RUNNER_TEMP}/local-nuget" --name local-traceevent \
+            --configfile "$(pwd)/NuGet.Config" 2>/dev/null || true
 
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
