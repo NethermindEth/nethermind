@@ -410,11 +410,12 @@ jobs:
 
           # Check which TraceEvent version dotnet-pgo will use
           grep "TraceEventVersion" eng/Versions.props || true
+          # Override TraceEvent to 3.1.30 to match PgoTrim's .etlx format version
+          sed -i 's|<TraceEventVersion>.*</TraceEventVersion>|<TraceEventVersion>3.1.30</TraceEventVersion>|' eng/Versions.props
+          grep "TraceEventVersion" eng/Versions.props || true
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
-          # Verify the actual TraceEvent DLL version
-          find artifacts -name "Microsoft.Diagnostics.Tracing.TraceEvent.dll" -exec strings {} \; 2>/dev/null | grep "AssemblyFileVersion" | head -1 || true
 
           dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
           if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
