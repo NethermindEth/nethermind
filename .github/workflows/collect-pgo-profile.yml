@@ -451,6 +451,11 @@ jobs:
                             }\
                             PrintOutput(\$"Supplementary .spgo samples loaded: {spgoCount}");\
                         }' "${pgo_program}"
+          # Patch: FlowSmoothing.MakeGraphFeasible crashes with "Stack empty" for some
+          # methods with disconnected flow graphs. Wrap SmoothFlow in try-catch so one
+          # bad method doesn't kill the entire SPGO pass.
+          sed -i 's|pmi.Profile.SmoothFlow();|try { pmi.Profile.SmoothFlow(); } catch (Exception ex) { Console.Error.WriteLine(\$"Warning: SmoothFlow failed for method: {ex.Message}"); }|' \
+            "src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
