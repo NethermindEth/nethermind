@@ -543,7 +543,7 @@ jobs:
                 sampling_args+=(--reference "${dll}")
               done
             fi
-            dotnet-pgo create-mibc --spgo "${sampling_args[@]}" || true
+            dotnet-pgo create-mibc --spgo --spgo-min-samples 20 "${sampling_args[@]}" || true
 
             if [[ -f "${sampling_mibc}" ]]; then
               main_size=$(stat -c%s "${trace_mibc}" 2>/dev/null || echo 0)
