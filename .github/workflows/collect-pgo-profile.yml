@@ -369,6 +369,11 @@ jobs:
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
 
+          # Patch: OpenOrConvert fails with standalone .etlx files (falls back to .etl).
+          # Use new TraceLog(path) directly when the input is .etlx.
+          pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
+          sed -i 's|using (var traceLog = TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|using (var traceLog = etlFileName.EndsWith(".etlx", StringComparison.OrdinalIgnoreCase) ? new TraceLog(etlFileName) : TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|' "${pgo_program}"
+
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
