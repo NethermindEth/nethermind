@@ -106,11 +106,12 @@ ENV DOTNET_GCRegionRange=0x800000000
 # Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
-# Keyword 0x40000A0018:
-#   MethodDiagnostic(0x4000000000) + Type(0x80000) +
-#   JittedMethodILToNativeMap(0x20000) + JIT(0x10) + Loader(0x8)
+# Keyword 0x60000A0018:
+#   MethodDiagnostic(0x4000000000) + CompilationDiagnostic(0x2000000000) +
+#   Type(0x80000) + JittedMethodILToNativeMap(0x20000) + JIT(0x10) + Loader(0x8)
 # Level 5 (Verbose) needed for MethodDetails, BulkType, and IL-to-native maps.
-ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x40000A0018:5
+# Matches dotnet-pgo README recommended keyword 0x6000080018 + ILToNativeMap.
+ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x60000A0018:5
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs

@@ -65,25 +65,29 @@ static class TraceConverter
         int totalMethodDetails = 0;
         int totalMethodLoad = 0;
         int totalJitStart = 0;
+        int totalILToNativeMap = 0;
 
         foreach (var process in traceLog.Processes)
         {
             int md = process.EventsInProcess.ByEventType<MethodDetailsTraceData>().Count();
             int ml = process.EventsInProcess.ByEventType<MethodLoadUnloadVerboseTraceData>().Count();
             int js = process.EventsInProcess.ByEventType<MethodJittingStartedTraceData>().Count();
+            int il = process.EventsInProcess.ByEventType<MethodILToNativeMapTraceData>().Count();
             totalMethodDetails += md;
             totalMethodLoad += ml;
             totalJitStart += js;
+            totalILToNativeMap += il;
 
             if (md > 0 || ml > 0)
             {
                 Console.WriteLine($"  {process.Name} (PID {process.ProcessID}): " +
-                                  $"MethodDetails={md:N0} MethodLoadVerbose={ml:N0} JittingStarted={js:N0}");
+                                  $"MethodDetails={md:N0} MethodLoadVerbose={ml:N0} JittingStarted={js:N0} ILToNativeMap={il:N0}");
             }
         }
 
         Console.WriteLine($"Total: MethodDetails={totalMethodDetails:N0} " +
-                          $"MethodLoadVerbose={totalMethodLoad:N0} JittingStarted={totalJitStart:N0}");
+                          $"MethodLoadVerbose={totalMethodLoad:N0} JittingStarted={totalJitStart:N0} " +
+                          $"ILToNativeMap={totalILToNativeMap:N0}");
         Console.WriteLine($"Output: {etlxPath} ({new FileInfo(etlxPath).Length / 1024.0 / 1024.0:F1} MB)");
 
         return totalMethodDetails > 0 ? 0 : 1;
