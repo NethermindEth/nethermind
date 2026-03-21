@@ -63,7 +63,8 @@ static class TraceConverter
 
             // Debug: count events seen by the CTF source
             int ctfTotal = 0, ctfILMap = 0;
-            ctfSource.AllEvents += evt => {
+            ctfSource.AllEvents += evt =>
+            {
                 ctfTotal++;
                 if (evt.EventName?.Contains("ILToNative") == true) ctfILMap++;
             };
