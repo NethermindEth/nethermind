@@ -359,20 +359,34 @@ jobs:
         with:
           cache: false
 
-      - name: Convert sampling trace with PgoTrim
+      - name: Process traces with PgoTrim
+        id: pgotrim
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          sampling_trace="${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+          pgo_dir="${RUNNER_TEMP}/pgo-data"
+          dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
+
+          # Convert sampling .trace.zip to .etlx with injected MethodDetails CTF mapping
+          sampling_trace="${pgo_dir}/sampling.trace.zip"
           sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
           if [[ -f "${sampling_trace}" ]]; then
-            echo "Converting sampling trace with PgoTrim (injecting MethodDetails CTF mapping)..."
-            dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
+            echo "Converting sampling trace (injecting MethodDetails CTF mapping)..."
             dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
               convert-trace "${sampling_trace}" "${sampling_etlx}" || true
+          fi
+
+          # Compress .jit edge/block profiling data for runtime PGO
+          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
+          if [[ -n "${jit_file}" ]]; then
+            echo "Compressing ${jit_file} with PgoTrim..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
+              "${jit_file}" "${jit_gz}" --min-block 0 --min-edge 0
+            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
           else
-            echo "No sampling trace found — skipping conversion."
+            echo "No .jit file found — skipping edge profiling."
           fi
 
       - name: Build dotnet-pgo from source
@@ -505,20 +519,7 @@ jobs:
           ls -lh "${mibc_file}"
           echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
 
-          # Step 2: Compress .jit edge/block profiling data for runtime PGO
-          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
-          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
-          # Keep all methods with any PGO records (including low-count GDV type data).
-          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
-          if [[ -n "${jit_file}" ]]; then
-            echo "Compressing ${jit_file} with PgoTrim..."
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
-              "${jit_file}" "${jit_gz}" --min-block 0 --min-edge 0
-            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "No .jit file found — skipping edge profiling."
-          fi
+          # .jit compression is handled by the "Process traces with PgoTrim" step above
 
       - name: Upload .mibc artifact
         if: always()
@@ -529,11 +530,11 @@ jobs:
           retention-days: 90
 
       - name: Upload compressed .jit.gz artifact
-        if: always() && steps.convert.outputs.jit_gz != ''
+        if: always() && steps.pgotrim.outputs.jit_gz != ''
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-jit
-          path: ${{ steps.convert.outputs.jit_gz }}
+          path: ${{ steps.pgotrim.outputs.jit_gz }}
           retention-days: 90
 
       - name: Upload raw PGO data
