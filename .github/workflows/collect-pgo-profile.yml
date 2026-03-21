@@ -394,7 +394,8 @@ jobs:
           # (both LTTng CLR events AND perf CPU samples).
           git clone --depth 1 --branch fix/add-methoddetails-ctf-mapping \
             https://github.com/benaadams/perfview.git "${RUNNER_TEMP}/perfview"
-          # Strip SupportFiles dependency (private feed, Windows-only native DLLs)
+          # Strip SupportFiles package ref and its file copy entries (private feed).
+          # Keep Dia2Lib.dll and TraceReloggerLib.dll as compile refs from the NuGet cache.
           python3 -c "
           import re, sys
           p = sys.argv[1]
@@ -403,6 +404,16 @@ jobs:
           xml = re.sub(r'<None Include=\"\\\$\(TraceEventSupportFilesBase\)[^>]*>.*?</None>', '', xml, flags=re.DOTALL)
           with open(p, 'w') as f: f.write(xml)
           " "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          # Copy compile-time reference DLLs from the NuGet TraceEvent 3.1.30 package
+          # (Dia2Lib.dll and TraceReloggerLib.dll provide Windows COM interop types)
+          nuget_te=$(find ~/.nuget/packages/microsoft.diagnostics.tracing.traceevent/3.1.* -name "Dia2Lib.dll" -path "*/netstandard*" 2>/dev/null | head -1 | xargs dirname)
+          if [[ -n "${nuget_te}" ]]; then
+            cp "${nuget_te}/Dia2Lib.dll" "${nuget_te}/TraceReloggerLib.dll" \
+              "${RUNNER_TEMP}/perfview/src/TraceEvent/" 2>/dev/null || true
+            # Add as compile references
+            sed -i '/<\/ItemGroup>/i\    <Reference Include="Dia2Lib"><HintPath>Dia2Lib.dll<\/HintPath><\/Reference>\n    <Reference Include="TraceReloggerLib"><HintPath>TraceReloggerLib.dll<\/HintPath><\/Reference>' \
+              "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          fi
           # Replace NuGet TraceEvent reference with project reference to our patched source
           pgo_csproj="src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
           sed -i 's|<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="$(TraceEventVersion)" />|<ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/TraceEvent/TraceEvent.csproj" />\n    <ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/FastSerialization/FastSerialization.csproj" />|' "${pgo_csproj}"
