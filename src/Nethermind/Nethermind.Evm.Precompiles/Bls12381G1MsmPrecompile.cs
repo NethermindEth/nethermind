@@ -22,13 +22,15 @@ public partial class Bls12381G1MsmPrecompile : IPrecompile<Bls12381G1MsmPrecompi
 
     public static string Name => "BLS12_G1MSM";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
+    public long BaseGasCost(IReleaseSpec _) => 0L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         int k = inputData.Length / ItemSize;
         return 12000L * k * Eip2537.DiscountForG1(k) / 1000;
     }
+
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
     private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) =>
         inputData.Length != 0 && inputData.Length % ItemSize == 0;

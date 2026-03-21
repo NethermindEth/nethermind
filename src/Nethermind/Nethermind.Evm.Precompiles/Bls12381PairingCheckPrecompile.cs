@@ -22,9 +22,12 @@ public partial class Bls12381PairingCheckPrecompile : IPrecompile<Bls12381Pairin
 
     public static string Name => "BLS12_PAIRING_CHECK";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 37700L;
+    public long BaseGasCost(IReleaseSpec _) => 37700L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 32600L * (inputData.Length / PairSize);
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 32600L * (inputData.Length / PairSize);
 
-    private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) => inputData.Length != 0 && inputData.Length % PairSize == 0;
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
+
+    private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) =>
+        inputData.Length != 0 && inputData.Length % PairSize == 0;
 }

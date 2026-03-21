@@ -10,9 +10,9 @@ using Nethermind.GmpBindings;
 
 namespace Nethermind.Evm.Precompiles;
 
-public partial class ModExpPrecompile
+public unsafe partial class ModExpPrecompile
 {
-    public unsafe Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         Metrics.ModExpPrecompile++;
 

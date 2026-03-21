@@ -9,7 +9,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Bls12381FpToG1Precompile
 {
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;

@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class ModExpPrecompile
 {
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!TryPrepareInput(
             inputData,

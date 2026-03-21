@@ -77,6 +77,8 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         }
     }
 
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static long DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
     {

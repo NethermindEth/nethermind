@@ -20,9 +20,11 @@ public partial class Bls12381FpToG1Precompile : IPrecompile<Bls12381FpToG1Precom
 
     public static string Name => "BLS12_MAP_FP_TO_G1";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 5500L;
+    public long BaseGasCost(IReleaseSpec _) => 5500L;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) => 0L;
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0L;
+
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
     private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) => inputData.Length == Eip2537.LenFp;
 }

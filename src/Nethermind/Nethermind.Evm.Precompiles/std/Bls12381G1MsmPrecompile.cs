@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Precompiles;
 public partial class Bls12381G1MsmPrecompile
 {
     [SkipLocalsInit]
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         Metrics.Bls12381G1MsmPrecompile++;
 

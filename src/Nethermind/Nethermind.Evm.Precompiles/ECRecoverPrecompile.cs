@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -47,18 +47,13 @@ public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     {
         ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
 
-        // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
-        // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
         if (!Bytes.AreEqual(_zero31, vBytes[..31]))
-        {
             return Empty;
-        }
 
         byte v = vBytes[31];
+
         if (v != 27 && v != 28)
-        {
             return Empty;
-        }
 
         ReadOnlySpan<byte> message = inputDataSpan[..32];
         ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
