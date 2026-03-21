@@ -27,6 +27,8 @@ static class TraceConverter
             ? outputPath
             : Path.ChangeExtension(outputPath, ".etlx");
 
+        var teVersion = typeof(TraceLog).Assembly.GetName().Version;
+        Console.WriteLine($"TraceEvent version: {teVersion}");
         Console.WriteLine($"Converting {inputPath} to {etlxPath}...");
 
         using (var ctfSource = new CtfTraceEventSource(inputPath))
