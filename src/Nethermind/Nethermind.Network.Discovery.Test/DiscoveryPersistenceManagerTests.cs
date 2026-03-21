@@ -73,7 +73,7 @@ namespace Nethermind.Network.Discovery.Test
 
             _discoveryManager.GetNodeLifecycleManagers().Returns(lifecycleManagers);
 
-            Task commitTask = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
 
             // Poll for the expected state instead of relying on a fixed delay
             while (_discoveryDb.Count < 2)
