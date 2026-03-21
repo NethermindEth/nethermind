@@ -84,8 +84,11 @@ RUN apt-get update && \
   # Patch perfcollect for dotnet-pgo SPGO support:
   # 1. Add MethodDetails tracepoint (keyword MethodDiagnostic) — predates perfcollect's list
   # 2. Add TypeKeyword to default events — needed for BulkType events
+  # 3. Add AssemblyLoad to second LoaderKeyword array — the duplicate declaration
+  #    overwrites the first which had AssemblyLoad. dotnet-pgo needs AssemblyLoadUnload.
   sed -i '/DotNETRuntime:MethodJittingStarted_V1/a\    DotNETRuntime:MethodDetails' /usr/local/bin/perfcollect && \
   sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}' /usr/local/bin/perfcollect && \
+  sed -i '/DotNETRuntime:ModuleUnload_V2/a\    DotNETRuntime:AssemblyLoad\n    DotNETRuntime:AssemblyLoad_V1\n    DotNETRuntime:AssemblyUnload\n    DotNETRuntime:AssemblyUnload_V1' /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
 # Replace libcoreclr.so with our LTTng-enabled build and add the
