@@ -15,6 +15,17 @@ using System.Text;
 //
 // Usage: dotnet run -- <input.jit> [output.jit.gz] [--min-block 100] [--min-edge 250]
 
+// Subcommand: convert-trace — inject missing MethodDetails CTF mapping and convert to .etlx
+if (args.Length >= 1 && args[0] == "convert-trace")
+{
+    if (args.Length < 3)
+    {
+        Console.Error.WriteLine("Usage: PgoTrim convert-trace <input.trace.zip> <output.etlx>");
+        return 1;
+    }
+    return TraceConverter.Convert(args[1], args[2]);
+}
+
 int minBlock = 100;
 int minEdge = 250;
 string? inputPath = null;

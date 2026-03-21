@@ -1,0 +1,115 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections;
+using System.Reflection;
+using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Etlx;
+using Microsoft.Diagnostics.Tracing.Parsers;
+using Microsoft.Diagnostics.Tracing.Parsers.Clr;
+
+/// <summary>
+/// Converts a perfcollect .trace.zip to .etlx with the missing MethodDetails CTF mapping.
+/// Uses the same CreateFromLinuxEventSources path as TraceLog.CreateFromLttngTextDataFile
+/// but with the MethodDetails mapping injected first.
+/// </summary>
+static class TraceConverter
+{
+    public static int Convert(string inputPath, string outputPath)
+    {
+        if (!inputPath.EndsWith(".trace.zip", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine($"Input must be a .trace.zip file: {inputPath}");
+            return 1;
+        }
+
+        string etlxPath = outputPath.EndsWith(".etlx", StringComparison.OrdinalIgnoreCase)
+            ? outputPath
+            : Path.ChangeExtension(outputPath, ".etlx");
+
+        Console.WriteLine($"Converting {inputPath} to {etlxPath}...");
+
+        using (var ctfSource = new CtfTraceEventSource(inputPath))
+        {
+            // Register CLR parser (populates _eventMapping with known mappings)
+            new ClrTraceEventParser(ctfSource);
+
+            // Inject the missing MethodDetails CTF mapping
+            // CtfEventMapping(eventName, providerGuid, opcode, id, version)
+            InjectCtfMapping(ctfSource, "DotNETRuntime:MethodDetails",
+                ClrTraceEventParser.ProviderGuid, opcode: 43, id: 72, version: 0);
+
+            // Use the same path as CreateFromLttngTextDataFile:
+            // CreateFromLinuxEventSources(source, etlxPath, options)
+            // This is an internal method — call via reflection
+            Console.WriteLine("Processing events via CreateFromLinuxEventSources...");
+            var method = typeof(TraceLog).GetMethod("CreateFromLinuxEventSources",
+                BindingFlags.NonPublic | BindingFlags.Static);
+
+            if (method != null)
+            {
+                method.Invoke(null, [ctfSource, etlxPath, null]);
+            }
+            else
+            {
+                Console.Error.WriteLine("Error: Could not find CreateFromLinuxEventSources");
+                return 1;
+            }
+        }
+
+        // Verify the .etlx has the events dotnet-pgo needs
+        Console.WriteLine("Verifying...");
+        using var traceLog = TraceLog.OpenOrConvert(etlxPath);
+        int totalMethodDetails = 0;
+        int totalMethodLoad = 0;
+        int totalJitStart = 0;
+
+        foreach (var process in traceLog.Processes)
+        {
+            int md = process.EventsInProcess.ByEventType<MethodDetailsTraceData>().Count();
+            int ml = process.EventsInProcess.ByEventType<MethodLoadUnloadVerboseTraceData>().Count();
+            int js = process.EventsInProcess.ByEventType<MethodJittingStartedTraceData>().Count();
+            totalMethodDetails += md;
+            totalMethodLoad += ml;
+            totalJitStart += js;
+
+            if (md > 0 || ml > 0)
+            {
+                Console.WriteLine($"  {process.Name} (PID {process.ProcessID}): " +
+                                  $"MethodDetails={md:N0} MethodLoadVerbose={ml:N0} JittingStarted={js:N0}");
+            }
+        }
+
+        Console.WriteLine($"Total: MethodDetails={totalMethodDetails:N0} " +
+                          $"MethodLoadVerbose={totalMethodLoad:N0} JittingStarted={totalJitStart:N0}");
+        Console.WriteLine($"Output: {etlxPath} ({new FileInfo(etlxPath).Length / 1024.0 / 1024.0:F1} MB)");
+
+        return totalMethodDetails > 0 ? 0 : 1;
+    }
+
+    static void InjectCtfMapping(CtfTraceEventSource source, string eventName,
+        Guid providerGuid, int opcode, int id, int version)
+    {
+        var field = typeof(CtfTraceEventSource).GetField("_eventMapping",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+        if (field?.GetValue(source) is not IDictionary dict)
+        {
+            Console.Error.WriteLine("Warning: Could not access _eventMapping");
+            return;
+        }
+
+        var mappingType = typeof(CtfTraceEventSource).Assembly.GetTypes()
+            .FirstOrDefault(t => t.Name == "CtfEventMapping");
+        var ctor = mappingType?.GetConstructors().FirstOrDefault();
+
+        if (ctor == null)
+        {
+            Console.Error.WriteLine("Warning: Could not find CtfEventMapping constructor");
+            return;
+        }
+
+        dict[eventName] = ctor.Invoke([eventName, providerGuid, opcode, id, version]);
+        Console.WriteLine($"Injected: {eventName} -> opcode={opcode}, id={id}");
+    }
+}

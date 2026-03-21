@@ -100,8 +100,9 @@ ENV DOTNET_GCRegionRange=0x800000000
 # Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1
-# Without DOTNET_LTTngConfig, the runtime activates ALL keywords on ALL
-# providers (ActivateAllKeywordsOfAllProviders), which includes MethodDiagnostic.
+# Keyword 0x4000080018: MethodDiagnostic(0x4000000000) + Type(0x80000) + JIT(0x10) + Loader(0x8)
+# Level 5 (Verbose) needed for MethodDetails and BulkType events.
+ENV DOTNET_LTTngConfig=Microsoft-Windows-DotNETRuntime:0x4000080018:5
 
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
