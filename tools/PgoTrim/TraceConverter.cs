@@ -40,8 +40,11 @@ static class TraceConverter
             // CtfEventMapping(eventName, providerGuid, opcode, id, version)
             InjectCtfMapping(ctfSource, "DotNETRuntime:MethodDetails",
                 ClrTraceEventParser.ProviderGuid, opcode: 43, id: 72, version: 0);
+            // Use version=0 for the V1 event — TraceLog's template lookup matches
+            // on (providerGuid, eventId, opcode) and the only registered template
+            // for ID 190 is version 0. Version 1 events won't match if we use version=1.
             InjectCtfMapping(ctfSource, "DotNETRuntime:MethodILToNativeMap_V1",
-                ClrTraceEventParser.ProviderGuid, opcode: 87, id: 190, version: 1);
+                ClrTraceEventParser.ProviderGuid, opcode: 87, id: 190, version: 0);
 
             // Debug: verify mappings are in the dictionary
             var debugField = typeof(CtfTraceEventSource).GetField("_eventMapping",
@@ -74,7 +77,7 @@ static class TraceConverter
 
             if (method != null)
             {
-                method.Invoke(null, [ctfSource, etlxPath, null]);
+                method.Invoke(null, [ctfSource, etlxPath, new TraceLogOptions { KeepAllEvents = true }]);
             }
             else
             {
@@ -112,9 +115,14 @@ static class TraceConverter
 
         // Debug: count raw events with ID 190 (MethodILToNativeMap)
         int rawId190 = 0;
+        int etlxTotal = 0;
         foreach (var process in traceLog.Processes)
             foreach (var evt in process.EventsInProcess)
+            {
+                etlxTotal++;
                 if ((int)evt.ID == 190) rawId190++;
+            }
+        Console.WriteLine($"  .etlx total events: {etlxTotal:N0}");
 
         Console.WriteLine($"Total: MethodDetails={totalMethodDetails:N0} " +
                           $"MethodLoadVerbose={totalMethodLoad:N0} JittingStarted={totalJitStart:N0} " +
