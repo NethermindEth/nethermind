@@ -219,7 +219,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
-    private TValue? LoadDependentParam<TTransition, TValue>(
+    internal static TValue? LoadDependentParam<TTransition, TValue>(
         TTransition? transition,
         TValue? value,
         Func<TValue?>? fallback = null,
