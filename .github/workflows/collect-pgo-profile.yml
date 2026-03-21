@@ -366,7 +366,10 @@ jobs:
         run: |
           set -euo pipefail
           pgo_dir="${RUNNER_TEMP}/pgo-data"
-          dotnet restore "${GITHUB_WORKSPACE}/tools/PgoTrim" --force
+          # Clean any stale local NuGet sources from previous runs
+          dotnet nuget remove source local-traceevent 2>/dev/null || true
+          dotnet nuget locals all --clear 2>/dev/null || true
+          dotnet restore "${GITHUB_WORKSPACE}/tools/PgoTrim" --force -v normal 2>&1 | grep -i "TraceEvent" || true
           dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-incremental --no-restore 2>&1 | tail -5
 
           # Convert sampling .trace.zip to .etlx with injected MethodDetails CTF mapping
