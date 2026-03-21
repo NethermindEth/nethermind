@@ -81,9 +81,11 @@ RUN apt-get update && \
     unzip && \
   curl -sSL https://aka.ms/perfcollect -o /usr/local/bin/perfcollect && \
   chmod +x /usr/local/bin/perfcollect && \
-  # Patch perfcollect: add MethodDetails tracepoint (keyword MethodDiagnostic 0x4000000000)
-  # needed by dotnet-pgo for SPGO. perfcollect's tracepoint list predates this event.
+  # Patch perfcollect for dotnet-pgo SPGO support:
+  # 1. Add MethodDetails tracepoint (keyword MethodDiagnostic) — predates perfcollect's list
+  # 2. Add TypeKeyword to default events — needed for BulkType events
   sed -i '/DotNETRuntime:MethodJittingStarted_V1/a\    DotNETRuntime:MethodDetails' /usr/local/bin/perfcollect && \
+  sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}' /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
 # Replace libcoreclr.so with our LTTng-enabled build and add the

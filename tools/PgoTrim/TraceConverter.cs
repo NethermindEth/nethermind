@@ -58,8 +58,8 @@ static class TraceConverter
         }
 
         // Verify the .etlx has the events dotnet-pgo needs
-        Console.WriteLine("Verifying...");
-        using var traceLog = TraceLog.OpenOrConvert(etlxPath);
+        Console.WriteLine("Verifying via OpenOrConvert (same path as dotnet-pgo)...");
+        using var traceLog = TraceLog.OpenOrConvert(etlxPath, new TraceLogOptions { KeepAllEvents = true });
         int totalMethodDetails = 0;
         int totalMethodLoad = 0;
         int totalJitStart = 0;
