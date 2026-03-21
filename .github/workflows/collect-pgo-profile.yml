@@ -366,7 +366,8 @@ jobs:
         run: |
           set -euo pipefail
           pgo_dir="${RUNNER_TEMP}/pgo-data"
-          dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --force 2>&1 | tail -3
+          dotnet restore "${GITHUB_WORKSPACE}/tools/PgoTrim" --force
+          dotnet build "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-incremental --no-restore 2>&1 | tail -5
 
           # Convert sampling .trace.zip to .etlx with injected MethodDetails CTF mapping
           sampling_trace="${pgo_dir}/sampling.trace.zip"
