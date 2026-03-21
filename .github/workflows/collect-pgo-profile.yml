@@ -378,11 +378,15 @@ jobs:
           # Add the missing CTF mapping (one line after MethodJittingStarted_V1)
           sed -i '/CtfEventMapping("DotNETRuntime:MethodJittingStarted_V1"/a\            yield return new CtfEventMapping("DotNETRuntime:MethodDetails", Parsers.ClrTraceEventParser.ProviderGuid, 43, 72, 0);' \
             "${RUNNER_TEMP}/perfview/src/TraceEvent/Parsers/ClrTraceEventParser.cs"
-          # SupportFiles 1.0.30 is on a private feed; remove the dependency (Windows-only native DLLs)
-          sed -i '/<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent.SupportFiles"/d' \
-            "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
-          # Remove file references to SupportFiles content (native DLLs not needed on Linux)
-          sed -i '/TraceEventSupportFilesBase/d' "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          # SupportFiles 1.0.30 is on a private feed; strip it and its file refs (Windows-only native DLLs)
+          python3 -c "
+          import re, sys
+          p = sys.argv[1]
+          with open(p) as f: xml = f.read()
+          xml = re.sub(r'<PackageReference Include=\"Microsoft\.Diagnostics\.Tracing\.TraceEvent\.SupportFiles\"[^/]*/>', '', xml)
+          xml = re.sub(r'<None Include=\"\$\(TraceEventSupportFilesBase\)[^>]*>.*?</None>', '', xml, flags=re.DOTALL)
+          with open(p, 'w') as f: f.write(xml)
+          " "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
           # Build TraceEvent NuGet as version 3.1.28 to match dotnet-pgo's pinned reference
           dotnet pack "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj" -c Release \
             -o "${RUNNER_TEMP}/local-nuget" /p:Version=3.1.28 /p:ContinuousIntegrationBuild=false || true
