@@ -20,8 +20,12 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
   dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  echo "=== PGO profile check ===" && \
+  ls -lh src/Nethermind/Nethermind.Runner/pgo/ 2>/dev/null || echo "No PGO directory" && \
+  grep -c "PublishReadyToRunMibcPaths\|Crossgen2Extra" ../../Directory.Build.targets || true && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH
+    -p:SourceRevisionId=$COMMIT_HASH \
+    -p:PublishReadyToRunShowWarnings=true
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
