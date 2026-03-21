@@ -60,9 +60,9 @@ RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
 # This produces both libcoreclr.so (with LTTng event dispatch) and
 # libcoreclrtraceptprovider.so (with LTTng tracepoint definitions).
 RUN cd /runtime && \
-    ./build.sh clr.runtime -c Release -a x64 && \
-    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclr.so /tmp/ && \
-    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclrtraceptprovider.so /tmp/
+    ./build.sh clr.runtime -c Release -a x64
+
+WORKDIR /runtime/artifacts/bin/coreclr/linux.x64.Release
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
@@ -85,7 +85,8 @@ RUN apt-get update && \
 
 # Replace libcoreclr.so with our LTTng-enabled build and add the
 # tracepoint provider .so that it dlopen's at startup
-COPY --from=lttng-build /tmp/libcoreclr.so /tmp/libcoreclrtraceptprovider.so \
+COPY --from=lttng-build /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclr.so \
+  /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclrtraceptprovider.so \
   /usr/share/dotnet/shared/Microsoft.NETCore.App/${DOTNET_RUNTIME_VERSION}/
 
 # Override runtimeconfig.json settings not suitable for PGO collection
