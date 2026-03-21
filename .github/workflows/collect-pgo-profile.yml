@@ -372,7 +372,7 @@ jobs:
           jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
           if [[ -n "${jit_file}" ]]; then
             echo "Compressing ${jit_file} with PgoTrim..."
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release --no-build -- \
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
               "${jit_file}" "${jit_gz}" --min-block 0 --min-edge 0
             echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
           else
