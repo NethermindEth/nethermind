@@ -408,9 +408,13 @@ jobs:
           pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
           sed -i 's|using (var traceLog = TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|using (var traceLog = etlFileName.EndsWith(".etlx", StringComparison.OrdinalIgnoreCase) ? new TraceLog(etlFileName) : TraceLog.OpenOrConvert(etlFileName, new TraceLogOptions { KeepAllEvents = true }))|' "${pgo_program}"
 
+          # Check which TraceEvent version dotnet-pgo will use
+          grep "TraceEventVersion" eng/Versions.props || true
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
+          # Verify the actual TraceEvent DLL version
+          find artifacts -name "Microsoft.Diagnostics.Tracing.TraceEvent.dll" -exec strings {} \; 2>/dev/null | grep "AssemblyFileVersion" | head -1 || true
 
           dotnet_pgo_dir=$(find "${RUNNER_TEMP}/dotnet-runtime/artifacts" -type d -name "dotnet-pgo" -path "*/bin/*" | head -1)
           if [[ -z "${dotnet_pgo_dir}" ]] || [[ ! -f "${dotnet_pgo_dir}/dotnet-pgo.dll" ]]; then
@@ -485,7 +489,18 @@ jobs:
             sampling_input="${sampling_trace}"
             if [[ -f "${sampling_etlx}" ]]; then
               sampling_input="${sampling_etlx}"
-              echo "Using converted .etlx: ${sampling_etlx} ($(stat -c%s "${sampling_etlx}") bytes)"
+              etlx_size=$(stat -c%s "${sampling_etlx}")
+              echo "Using converted .etlx: ${sampling_etlx} (${etlx_size} bytes)"
+              # Check file version (version int32 is at a known offset near start)
+              python3 -c "
+          import struct, sys
+          with open(sys.argv[1], 'rb') as f:
+              data = f.read(100)
+              for i in range(len(data)-4):
+                  v = struct.unpack_from('<i', data, i)[0]
+                  if 70 <= v <= 80:
+                      print(f'  .etlx version field: {v} at offset {i}')
+          " "${sampling_etlx}" || true
             fi
             sampling_args=(
               --trace "${sampling_input}"
