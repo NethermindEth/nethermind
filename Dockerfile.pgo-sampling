@@ -38,45 +38,31 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-# Build libcoreclrtraceptprovider.so from dotnet/runtime source.
-# This .so contains the LTTng UST tracepoint definitions that the runtime
-# dlopen's at startup. The Microsoft SDK image doesn't ship it.
+# Build libcoreclr.so + libcoreclrtraceptprovider.so with LTTng enabled.
+# The Microsoft SDK ships a dummy provider (no-op FireEtXplat* functions).
+# We rebuild coreclr with FEATURE_EVENTSOURCE_XPLAT=1 so the event dispatch
+# code calls tracepoint() and perfcollect can capture CLR events.
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
 
 ARG DOTNET_RUNTIME_VERSION=10.0.5
 
 RUN apt-get update && \
   apt-get install -y --no-install-recommends \
-    git \
-    clang \
-    python3 \
-    liblttng-ust-dev && \
+    build-essential cmake clang llvm lld ninja-build \
+    python-is-python3 git curl \
+    libicu-dev liblttng-ust-dev libssl-dev libkrb5-dev && \
   rm -rf /var/lib/apt/lists/*
 
-RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} --filter=blob:none --sparse \
-      https://github.com/dotnet/runtime.git /runtime && \
-    git -C /runtime sparse-checkout set src/coreclr/vm src/coreclr/scripts
+RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
+      https://github.com/dotnet/runtime.git /runtime
 
-WORKDIR /runtime/build-lttng
-
-# Generate LTTng tracepoint sources, then compile with a minimal PAL stub.
-# The generated headers include palrt.h/pal.h but only need BOOL and ULONG
-# typedefs — the actual tracepoint code uses standard C types.
-RUN python3 /runtime/src/coreclr/scripts/genLttngProvider.py \
-      --man /runtime/src/coreclr/vm/ClrEtwAll.man \
-      --intermediate /runtime/build-lttng && \
-    printf '#pragma once\ntypedef int BOOL;\ntypedef unsigned int ULONG;\ntypedef unsigned int UINT;\ntypedef unsigned long ULONG64;\ntypedef unsigned short USHORT;\ntypedef int LONG;\ntypedef void* PVOID;\ntypedef const void* LPCVOID;\ntypedef unsigned char BYTE;\ntypedef char16_t WCHAR;\ntypedef const WCHAR* LPCWSTR;\ntypedef WCHAR* LPWSTR;\ntypedef unsigned long long ULONGLONG;\ntypedef long long LONGLONG;\ntypedef double DOUBLE;\n#define ERROR_SUCCESS 0\n#define ERROR_WRITE_FAULT 29\n' > /runtime/build-lttng/lttng/palrt.h && \
-    cp /runtime/build-lttng/lttng/palrt.h /runtime/build-lttng/lttng/pal.h && \
-    cd /runtime/build-lttng/lttng && \
-    for f in traceptprov*.cpp; do \
-      clang++ -fPIC -O2 \
-        -I/runtime/build-lttng/lttng \
-        -o $(basename $f .cpp).o \
-        -c "$f"; \
-    done && \
-    clang++ -shared -o /tmp/libcoreclrtraceptprovider.so \
-      traceptprov*.o \
-      -llttng-ust
+# Build only the coreclr runtime subset (~15 min).
+# This produces both libcoreclr.so (with LTTng event dispatch) and
+# libcoreclrtraceptprovider.so (with LTTng tracepoint definitions).
+RUN cd /runtime && \
+    ./build.sh clr.runtime -c Release -a x64 && \
+    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclr.so /tmp/ && \
+    cp /runtime/artifacts/bin/coreclr/linux.x64.Release/libcoreclrtraceptprovider.so /tmp/
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
@@ -97,9 +83,9 @@ RUN apt-get update && \
   chmod +x /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
-# Inject the LTTng tracepoint provider next to libcoreclr.so so the
-# runtime's PAL_InitializeTracing constructor dlopen's it at startup
-COPY --from=lttng-build /tmp/libcoreclrtraceptprovider.so \
+# Replace libcoreclr.so with our LTTng-enabled build and add the
+# tracepoint provider .so that it dlopen's at startup
+COPY --from=lttng-build /tmp/libcoreclr.so /tmp/libcoreclrtraceptprovider.so \
   /usr/share/dotnet/shared/Microsoft.NETCore.App/${DOTNET_RUNTIME_VERSION}/
 
 # Override runtimeconfig.json settings not suitable for PGO collection
