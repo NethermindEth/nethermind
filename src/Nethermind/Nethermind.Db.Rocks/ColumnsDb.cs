@@ -255,7 +255,11 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
             }
         }
 
-        public IReadOnlyKeyValueStore GetColumn(T key) => _readers[EnumToInt(key)];
+        public IReadOnlyKeyValueStore GetColumn(T key)
+        {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+            return _readers[EnumToInt(key)];
+        }
 
         public void Dispose()
         {

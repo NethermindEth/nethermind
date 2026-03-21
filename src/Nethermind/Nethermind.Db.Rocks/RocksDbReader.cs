@@ -22,8 +22,8 @@ public class RocksDbReader : ISortedKeyValueStore
     private readonly DbOnTheRocks.IteratorManager? _iteratorManager;
     private readonly ColumnFamilyHandle? _columnFamily;
 
-    readonly ReadOptions _options;
-    readonly ReadOptions _hintCacheMissOptions;
+    private readonly ReadOptions _options;
+    private readonly ReadOptions _hintCacheMissOptions;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
