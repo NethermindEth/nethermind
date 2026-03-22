@@ -45,6 +45,11 @@ public class OptimismChainSpecEngineParameters : IChainSpecEngineParameters
 
     public byte[]? Create2DeployerCode { get; set; }
 
+    public void ApplyToChainSpec(ChainSpec chainSpec)
+    {
+        chainSpec.Parameters.OpJovianTransitionTimestamp ??= JovianTimestamp;
+    }
+
     public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
     {
         ArgumentNullException.ThrowIfNull(CanyonBaseFeeChangeDenominator);

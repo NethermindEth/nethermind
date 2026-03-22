@@ -32,6 +32,12 @@ public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerif
             result = false;
         }
 
+        if (expected.MinBaseFee != actual.MinBaseFee)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid MinBaseFee expected: {expected.MinBaseFee}, actual: {actual.MinBaseFee}");
+            result = false;
+        }
+
         if (expected.GasLimit != actual.GasLimit)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid GasLimit. Expected {expected.GasLimit}, Actual {actual.GasLimit}");

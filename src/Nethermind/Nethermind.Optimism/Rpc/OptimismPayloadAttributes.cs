@@ -36,6 +36,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
     /// </remarks>
     public byte[]? EIP1559Params { get; set; }
 
+    /// <remarks>
+    /// See <see href="https://specs.optimism.io/protocol/jovian/exec-engine.html"/>
+    /// minBaseFee is a separate QUANTITY field, non-null only after the Jovian fork.
+    /// </remarks>
+    public ulong? MinBaseFee { get; set; }
+
     private int TransactionsLength => Transactions?.Length ?? 0;
 
     private Transaction[]? _transactions;
@@ -74,7 +80,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
         + sizeof(bool) // noTxPool
         + (Keccak.Size * TransactionsLength) // Txs
         + sizeof(long) // gasLimit
-        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0); // eip1559Params
+        + ((EIP1559Params?.Length * sizeof(byte)) ?? 0) // eip1559Params
+        + (MinBaseFee.HasValue ? sizeof(ulong) : 0); // minBaseFee
 
     protected override int WritePayloadIdMembers(BlockHeader parentHeader, Span<byte> inputSpan)
     {
@@ -102,6 +109,12 @@ public class OptimismPayloadAttributes : PayloadAttributes
             offset += EIP1559Params.Length;
         }
 
+        if (MinBaseFee.HasValue)
+        {
+            BinaryPrimitives.WriteUInt64BigEndian(inputSpan.Slice(offset, sizeof(ulong)), MinBaseFee.Value);
+            offset += sizeof(ulong);
+        }
+
         return offset;
     }
 
@@ -127,18 +140,16 @@ public class OptimismPayloadAttributes : PayloadAttributes
                 error = decodeError;
                 return PayloadAttributesValidationResult.InvalidPayloadAttributes;
             }
+        }
 
-            (int version, string reason) versionCheck = parameters switch
-            {
-                // Newer forks should be added on top
-                _ when releaseSpec.IsOpJovianEnabled => (1, "since Jovian"),
-                _ => (0, "before Jovian")
-            };
-            if (versionCheck.version != parameters.Version)
-            {
-                error = $"{nameof(EIP1559Params)} version should be {versionCheck.version} {versionCheck.reason}";
-                return PayloadAttributesValidationResult.InvalidPayloadAttributes;
-            }
+        if (!releaseSpec.IsOpJovianEnabled)
+        {
+            MinBaseFee = null;
+        }
+        if (releaseSpec.IsOpJovianEnabled && MinBaseFee is null)
+        {
+            error = $"{nameof(MinBaseFee)} must be set since Jovian";
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         try
@@ -161,7 +172,8 @@ public class OptimismPayloadAttributes : PayloadAttributes
             .Append($"{nameof(SuggestedFeeRecipient)}: {SuggestedFeeRecipient}, ")
             .Append($"{nameof(GasLimit)}: {GasLimit}, ")
             .Append($"{nameof(NoTxPool)}: {NoTxPool}, ")
-            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}")
+            .Append($"{nameof(EIP1559Params)}: {EIP1559Params}, ")
+            .Append($"{nameof(MinBaseFee)}: {MinBaseFee}, ")
             .Append($"{nameof(Transactions)}: {Transactions?.Length ?? 0}");
 
         if (Withdrawals is not null)
