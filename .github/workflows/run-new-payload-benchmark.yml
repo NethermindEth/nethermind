@@ -1,12 +1,8 @@
-name: Run Block Processing Benchmark
+name: Run NewPayload Benchmark
 
 on:
   workflow_call:
     inputs:
-      filter:
-        type: string
-        required: false
-        default: ""
       head_sha:
         type: string
         required: true
@@ -16,12 +12,7 @@ on:
       pr_number:
         type: number
         required: true
-  workflow_dispatch:
-    inputs:
-      filter:
-        description: "BenchmarkDotNet filter pattern"
-        required: false
-        default: ""
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -44,7 +35,7 @@ jobs:
         with:
           ref: ${{ inputs.head_sha || github.ref }}
 
-      - name: Clean up stale benchmark temp dirs
+      - name: Clean temp dirs
         run: rm -rf /tmp/nethermind-bench-*
 
       - name: Set up .NET
@@ -62,18 +53,10 @@ jobs:
         id: run-pr
         continue-on-error: true
         shell: bash
-        env:
-          FILTER: ${{ inputs.filter }}
         run: |
-          if [[ -z "${FILTER}" ]]; then
-            FILTER_ARG="*BlockProcessingBenchmark*"
-          else
-            FILTER_ARG="*${FILTER}*"
-          fi
-
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --filter "${FILTER_ARG}" \
+            -- --filter "*NewPayloadBenchmark*" \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-pr"
 
@@ -103,18 +86,10 @@ jobs:
         id: run-base
         continue-on-error: true
         shell: bash
-        env:
-          FILTER: ${{ inputs.filter }}
         run: |
-          if [[ -z "${FILTER}" ]]; then
-            FILTER_ARG="*BlockProcessingBenchmark*"
-          else
-            FILTER_ARG="*${FILTER}*"
-          fi
-
           dotnet run -c Release --no-build \
             --project ${{ env.BENCHMARK_PROJECT }} \
-            -- --filter "${FILTER_ARG}" \
+            -- --filter "*NewPayloadBenchmark*" \
                --exporters json \
                --artifacts "${RUNNER_TEMP}/bdn-base"
 
@@ -209,7 +184,7 @@ jobs:
                   return " :arrow_up_small:"
               return ""
 
-          marker = "<!-- block-processing-benchmark-report -->"
+          marker = "<!-- newpayload-benchmark-report -->"
           run_url = os.environ["RUN_URL"]
           base_sha = os.environ["BASE_SHA"][:8]
           head_sha = os.environ["HEAD_SHA"][:8]
@@ -217,7 +192,7 @@ jobs:
           pr_outcome = os.environ["PR_OUTCOME"]
 
           lines = [marker]
-          lines.append("### Block Processing Benchmark Comparison")
+          lines.append("### engine_newPayload Benchmark Comparison")
           lines.append("")
           lines.append(f"Run: [View workflow run]({run_url})")
           lines.append(f"Base: `{base_sha}` | Head: `{head_sha}`")
@@ -256,7 +231,6 @@ jobs:
 
           # Build summary table
           methods = [m for m in base if m in pr]
-          # Sort by baseline order: Baseline first, then alphabetical
           methods.sort()
 
           lines.append("| Method | Base (us) | PR (us) | Delta | Base CV | PR CV | Alloc Base | Alloc PR | Alloc Delta |")
@@ -317,7 +291,7 @@ jobs:
           PR_NUMBER: ${{ inputs.pr_number }}
         with:
           script: |
-            const marker = '<!-- block-processing-benchmark-report -->';
+            const marker = '<!-- newpayload-benchmark-report -->';
             const body = process.env.COMMENT_BODY;
             if (!body) {
               console.log('No comment body produced, skipping.');
@@ -357,12 +331,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: newpayload-benchmark-results
           path: |
             ${{ runner.temp }}/bdn-base/results/
             ${{ runner.temp }}/bdn-pr/results/
           retention-days: 30
 
-      - name: Clean up benchmark temp dirs
+      - name: Clean temp dirs
         if: always()
         run: rm -rf /tmp/nethermind-bench-*

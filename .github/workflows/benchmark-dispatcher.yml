@@ -1,0 +1,65 @@
+name: Benchmark Dispatcher
+
+on:
+  pull_request:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: benchmark-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  check-labels:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.action == 'synchronize' ||
+       (github.event.action == 'labeled' &&
+        (startsWith(github.event.label.name, 'block-processing-benchmark') ||
+         startsWith(github.event.label.name, 'new-payload-benchmark'))))
+    runs-on: ubuntu-latest
+    outputs:
+      run_bdn: ${{ steps.check.outputs.run_bdn }}
+      run_newpayload: ${{ steps.check.outputs.run_newpayload }}
+    steps:
+      - name: Check which benchmarks to run
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+            });
+            const labelNames = labels.map(l => l.name);
+            const runBdn = labelNames.some(l => l.startsWith('block-processing-benchmark'));
+            const runNewpayload = labelNames.some(l => l.startsWith('new-payload-benchmark'));
+            core.setOutput('run_bdn', String(runBdn));
+            core.setOutput('run_newpayload', String(runNewpayload));
+            console.log(`Labels: ${labelNames.join(', ')}`);
+            console.log(`Run BDN: ${runBdn}, Run NewPayload: ${runNewpayload}`);
+
+  block-processing:
+    needs: check-labels
+    if: needs.check-labels.outputs.run_bdn == 'true'
+    uses: ./.github/workflows/run-block-processing-benchmark.yml
+    with:
+      filter: ""
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      pr_number: ${{ github.event.pull_request.number }}
+
+  new-payload:
+    needs: check-labels
+    if: needs.check-labels.outputs.run_newpayload == 'true'
+    uses: ./.github/workflows/run-new-payload-benchmark.yml
+    with:
+      head_sha: ${{ github.event.pull_request.head.sha }}
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      pr_number: ${{ github.event.pull_request.number }}
