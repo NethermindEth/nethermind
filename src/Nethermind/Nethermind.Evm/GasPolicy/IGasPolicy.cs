@@ -112,7 +112,6 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <summary>
     /// Charges gas for accessing the SELFDESTRUCT beneficiary account.
     /// For Arbitrum, cold access is charged as FULL StorageAccess (no Computation split).
-    /// This matches Nitro's makeSelfdestructGasFn behavior in operations_acl.go.
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="spec">The release specification governing gas costs.</param>
