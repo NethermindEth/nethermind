@@ -666,7 +666,6 @@ jobs:
 
       - name: Download .jit.gz artifact
         uses: actions/download-artifact@v7
-        continue-on-error: true
         with:
           name: nethermind-pgo-jit
           path: src/Nethermind/Nethermind.Runner/pgo/
