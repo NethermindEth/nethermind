@@ -41,7 +41,7 @@ RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 # Pre-built coreclr with LTTng tracepoint support.
 # The Microsoft SDK ships a dummy provider (no-op FireEtXplat* functions).
 # This image was built from dotnet/runtime v10.0.5 with FEATURE_EVENTSOURCE_XPLAT=1.
-# Rebuild with: docker buildx build --platform=linux/amd64 -f Dockerfile.lttng-coreclr -t nethermindeth/nethermind:lttng-coreclr-10.0.5 --push .
+# Rebuild with: docker buildx build --platform=linux/amd64 -f tools/PgoTrim/Dockerfile.lttng-coreclr -t nethermindeth/nethermind:lttng-coreclr-10.0.5 --push .
 FROM --platform=linux/amd64 nethermindeth/nethermind:lttng-coreclr-10.0.5 AS lttng-build
 
 # Runtime stage

@@ -9,7 +9,7 @@
 #
 # Build & push (one-time, only needed when .NET version changes):
 #   docker buildx build --platform=linux/amd64 \
-#     -f Dockerfile.lttng-coreclr \
+#     -f tools/PgoTrim/Dockerfile.lttng-coreclr \
 #     -t nethermindeth/nethermind:lttng-coreclr-10.0.5 \
 #     --push .
 
