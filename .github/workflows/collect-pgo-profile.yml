@@ -217,8 +217,9 @@ jobs:
             a\        mode: rw
           }' "${rendered}"
           # Patch config for PGO collection:
-          # - Delay Tier-1 so perf map stays valid (same reason as sampling)
-          # - COLLECTSEC=720 for EventPipe tracing window
+          # - Delay Tier-1 so methods stay at Tier-0 addresses (EventPipe traces
+          #   record Tier-0 method IDs; recompilation doesn't affect EventPipe but
+          #   keeping Tier-0 avoids edge count splits across compilation tiers)
           # - 10000 blocks for broader method coverage
           python3 -c "
           import yaml, sys
@@ -228,7 +229,6 @@ jobs:
               s['amount'] = 10000
               env = s.get('extra_env', {}) or {}
               env['DOTNET_TC_CallCountingDelayMs'] = '900000'
-              env['COLLECTSEC'] = '720'
               s['extra_env'] = env
           yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
           " "${rendered}"
@@ -362,7 +362,7 @@ jobs:
           }' "${sampling_config}"
           # Patch sampling config for SPGO:
           # - seccomp=unconfined for perf_event_open
-          # - TC_CallCountingDelayMs=420000 in Dockerfile prevents Tier-1 recompilation
+          # - TC_CallCountingDelayMs=900000 in Dockerfile prevents Tier-1 recompilation
           #   during sampling (recompiled methods get new addresses not in perf map)
           # - COLLECTSEC=720 (12 min) for perfcollect — must finish before container stops
           # - amount=10000 (2x default) for more representative CPU sampling
