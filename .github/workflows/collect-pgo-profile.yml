@@ -217,19 +217,16 @@ jobs:
             a\        mode: rw
           }' "${rendered}"
           # Patch config for PGO collection:
-          # - Delay Tier-1 so methods stay at Tier-0 addresses (EventPipe traces
-          #   record Tier-0 method IDs; recompilation doesn't affect EventPipe but
-          #   keeping Tier-0 avoids edge count splits across compilation tiers)
           # - 10000 blocks for broader method coverage
+          # - No TC delay override — Tier-1 recompilation produces richer edge/block
+          #   counts in the .jit file (TC delay is only needed for the sampling pass
+          #   where perf map validity matters)
           python3 -c "
           import yaml, sys
           p = sys.argv[1]
           c = yaml.safe_load(open(p))
           for s in c.get('scenarios', {}).values():
               s['amount'] = 10000
-              env = s.get('extra_env', {}) or {}
-              env['DOTNET_TC_CallCountingDelayMs'] = '900000'
-              s['extra_env'] = env
           yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
           " "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
