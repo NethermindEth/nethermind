@@ -282,7 +282,6 @@ jobs:
           find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
 
       - name: Run CPU sampling pass
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -356,14 +355,12 @@ jobs:
           fi
 
       - name: Set up .NET
-        if: always()
         uses: actions/setup-dotnet@v5
         with:
           cache: false
 
       - name: Process traces with PgoTrim
         id: pgotrim
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -397,7 +394,6 @@ jobs:
           fi
 
       - name: Build dotnet-pgo from source
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -481,7 +477,6 @@ jobs:
 
       - name: Convert traces to .mibc and merge with edge profiling
         id: convert
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
