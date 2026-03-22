@@ -38,31 +38,11 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
 
-# Build libcoreclr.so + libcoreclrtraceptprovider.so with LTTng enabled.
+# Pre-built coreclr with LTTng tracepoint support.
 # The Microsoft SDK ships a dummy provider (no-op FireEtXplat* functions).
-# We rebuild coreclr with FEATURE_EVENTSOURCE_XPLAT=1 so the event dispatch
-# code calls tracepoint() and perfcollect can capture CLR events.
-FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49 AS lttng-build
-
-ARG DOTNET_RUNTIME_VERSION=10.0.5
-
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends \
-    build-essential cmake clang llvm lld ninja-build \
-    python-is-python3 git curl \
-    libicu-dev liblttng-ust-dev libssl-dev libkrb5-dev && \
-  rm -rf /var/lib/apt/lists/*
-
-RUN git clone --depth 1 --branch v${DOTNET_RUNTIME_VERSION} \
-      https://github.com/dotnet/runtime.git /runtime
-
-# Build only the coreclr runtime subset (~15 min).
-# This produces both libcoreclr.so (with LTTng event dispatch) and
-# libcoreclrtraceptprovider.so (with LTTng tracepoint definitions).
-RUN cd /runtime && \
-    ./build.sh clr.runtime -c Release -a x64
-
-WORKDIR /runtime/artifacts/bin/coreclr/linux.x64.Release
+# This image was built from dotnet/runtime v10.0.5 with FEATURE_EVENTSOURCE_XPLAT=1.
+# Rebuild with: docker buildx build --platform=linux/amd64 -f Dockerfile.lttng-coreclr -t nethermindeth/nethermind:lttng-coreclr-10.0.5 --push .
+FROM --platform=linux/amd64 nethermindeth/nethermind:lttng-coreclr-10.0.5 AS lttng-build
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/sdk:10.0.201-noble@sha256:478b9038d187e5b5c29bfa8173ded5d29e864b5ad06102a12106380ee01e2e49
