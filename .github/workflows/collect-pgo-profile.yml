@@ -309,6 +309,8 @@ jobs:
 
       - name: Run CPU sampling pass
         shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
         run: |
           set -euo pipefail
           sampling_tag="${{ env.PGO_TAG }}-sampling"
@@ -326,13 +328,22 @@ jobs:
           sudo rm -rf /mnt/sda/expb-data/work/upper /mnt/sda/expb-data/work/work /mnt/sda/expb-data/work/merged 2>/dev/null || true
           rm -f /tmp/expb.lock
 
-          echo "Rendering sampling config..."
+          echo "Rendering sampling config from base config..."
           sampling_config="${RUNNER_TEMP}/rendered-sampling-config.yaml"
+          # Render directly from the base config — don't depend on RUNNER_TEMP files
+          # from earlier steps which may be cleaned up
           sed \
-            -e "s#${{ env.PGO_TAG }}#${sampling_tag}#g" \
-            -e 's#nethermind-pgo-collect:#nethermind-pgo-sampling:#g' \
-            "${{ steps.render-config.outputs.rendered_config_file }}" \
+            -e "s#<<DOCKER_TAG>>#${sampling_tag}#g" \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-sampling:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
             > "${sampling_config}"
+          # Inject pgo volume (same as main config)
+          sed -i '/^[[:space:]]*mode: r$/{
+            a\      pgo:
+            a\        bind: /nethermind/pgo
+            a\        mode: rw
+          }' "${sampling_config}"
           # Add seccomp=unconfined so perfcollect can call perf_event_open inside the container
           python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'security_opt':['seccomp=unconfined']}) for s in c.get('scenarios',{}).values()];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${sampling_config}"
           echo "Rendered sampling config:"
