@@ -103,7 +103,7 @@ run-zisk: build-zisk
 		dotnet run -c release --no-restore --project $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj -- $(GUEST_DIR)/bin/input.bin
 	docker run --rm -it -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
-		nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
+		nethermindeth/zisk:0.16.1 \
 		ziskemu -e /n/nethermind -i /n/input.bin
 
 clean:
