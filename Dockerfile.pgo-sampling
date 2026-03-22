@@ -128,6 +128,15 @@ COPY --from=build /publish .
 # Docker's 10s stop grace period kills the container.
 COPY <<'SCRIPT' /nethermind/trace-entrypoint.sh
 #!/bin/bash
+
+# Prevent restart loops: if we already ran and failed, exit cleanly
+# so Docker's "unless-stopped" restart policy doesn't keep retrying.
+if [[ -f /nethermind/pgo/.started ]]; then
+  echo "trace: container already ran — exiting to prevent restart loop"
+  exit 0
+fi
+touch /nethermind/pgo/.started
+
 mkdir -p /nethermind/pgo
 
 # Forward SIGTERM/SIGINT to Nethermind for graceful shutdown
