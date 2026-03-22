@@ -69,8 +69,6 @@ namespace Nethermind.Specs.Test
             {
                 _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip2935ContractAddress.Should().BeNull();
             }
-            // EOF was once in Prague but moved to Osaka, so let's verify it's not enabled.
-            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEofEnabled.Should().Be(false);
         }
 
         [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, false)]
