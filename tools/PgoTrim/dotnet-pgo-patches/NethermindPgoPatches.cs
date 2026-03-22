@@ -7,6 +7,8 @@
 //
 // Copied into the dotnet-pgo source tree at build time by collect-pgo-profile.yml.
 
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -48,9 +50,7 @@ namespace Microsoft.Diagnostics.Tools.Pgo
             string etlxPath,
             MethodMemoryMap mmap,
             Dictionary<MethodDesc, Dictionary<MethodDesc, int>> callGraph,
-            Dictionary<MethodDesc, int> exclusiveSamples,
-            HashSet<MethodDesc> methodsListedToPrepare,
-            SortedDictionary<int, ProcessedMethodData> methodsToAttemptToPrepare)
+            Dictionary<MethodDesc, int> exclusiveSamples)
         {
             if (callGraph == null || exclusiveSamples == null || mmap == null)
                 return;
@@ -61,7 +61,6 @@ namespace Microsoft.Diagnostics.Tools.Pgo
 
             int edgeCount = 0;
             int sampleCount = 0;
-            int syntheticIndex = unchecked((int)0x80000000);
 
             foreach (string line in File.ReadLines(callGraphFile))
             {
@@ -73,9 +72,9 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                 if (space <= 0)
                     continue;
 
-                if (!ulong.TryParse(span[..space], NumberStyles.HexNumber, null, out ulong calleeIp))
+                if (!ulong.TryParse(span.Slice(0, space), NumberStyles.HexNumber, null, out ulong calleeIp))
                     continue;
-                if (!ulong.TryParse(span[(space + 1)..], NumberStyles.HexNumber, null, out ulong callerIp))
+                if (!ulong.TryParse(span.Slice(space + 1), NumberStyles.HexNumber, null, out ulong callerIp))
                     continue;
 
                 MethodDesc callee = mmap.GetMethod(calleeIp);
@@ -89,19 +88,14 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                         exclusiveSamples[callee] = count + 1;
                     else
                         exclusiveSamples[callee] = 1;
-
-                    if (methodsListedToPrepare.Add(callee))
-                        methodsToAttemptToPrepare.Add(syntheticIndex++, new ProcessedMethodData(0, callee, "CallGraphSample"));
                 }
 
                 // Add caller->callee edge for Pettis-Hansen
                 if (callee != null && caller != null)
                 {
                     edgeCount++;
-                    if (methodsListedToPrepare.Add(caller))
-                        methodsToAttemptToPrepare.Add(syntheticIndex++, new ProcessedMethodData(0, caller, "CallGraphCaller"));
 
-                    if (!callGraph.TryGetValue(caller, out Dictionary<MethodDesc, int>? innerDict))
+                    if (!callGraph.TryGetValue(caller, out Dictionary<MethodDesc, int> innerDict))
                     {
                         innerDict = new Dictionary<MethodDesc, int>();
                         callGraph[caller] = innerDict;
@@ -125,9 +119,9 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         {
             // Access internal _methodInf via reflection since SmoothAllProfiles
             // iterates it directly and we need per-method error handling.
-            System.Reflection.FieldInfo? field = typeof(SampleCorrelator).GetField("_methodInf",
+            System.Reflection.FieldInfo field = typeof(SampleCorrelator).GetField("_methodInf",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            if (field?.GetValue(correlator) is not System.Collections.IDictionary dict)
+            if (field == null || field.GetValue(correlator) is not System.Collections.IDictionary dict)
             {
                 // Fallback: call original and let it throw if it throws
                 correlator.SmoothAllProfiles();
@@ -139,15 +133,15 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                 try
                 {
                     // PerMethodInfo.Profile.SmoothFlow()
-                    object? pmi = entry.Value;
-                    System.Reflection.PropertyInfo? profileProp = pmi?.GetType().GetProperty("Profile");
-                    object? profile = profileProp?.GetValue(pmi);
-                    System.Reflection.MethodInfo? smoothMethod = profile?.GetType().GetMethod("SmoothFlow");
-                    smoothMethod?.Invoke(profile, null);
+                    object pmi = entry.Value;
+                    System.Reflection.PropertyInfo profileProp = pmi.GetType().GetProperty("Profile");
+                    object profile = profileProp.GetValue(pmi);
+                    System.Reflection.MethodInfo smoothMethod = profile.GetType().GetMethod("SmoothFlow");
+                    smoothMethod.Invoke(profile, null);
                 }
                 catch (Exception ex)
                 {
-                    string innerMsg = ex.InnerException?.Message ?? ex.Message;
+                    string innerMsg = ex.InnerException != null ? ex.InnerException.Message : ex.Message;
                     Console.Error.WriteLine($"Warning: SmoothFlow failed for method: {innerMsg}");
                 }
             }

@@ -487,7 +487,7 @@ jobs:
           # 2. Load .callgraph after the SampledProfileTraceData loop (after "}" closing the GenerateCallGraph block)
           #    Insert right before the instrumentationDataByMethod dictionary creation
           sed -i '/Dictionary<MethodDesc, MethodChunks> instrumentationDataByMethod/i\
-                    NethermindPgoPatches.LoadCallGraph(etlFileName, GetMethodMemMap(), callGraph, exclusiveSamples, methodsListedToPrepare, methodsToAttemptToPrepare);' "${pgo_program}"
+                    NethermindPgoPatches.LoadCallGraph(etlFileName, GetMethodMemMap(), callGraph, exclusiveSamples);' "${pgo_program}"
           # 3. Replace SmoothAllProfiles with safe version
           sed -i 's|correlator.SmoothAllProfiles();|NethermindPgoPatches.SafeSmoothAllProfiles(correlator);|' "${pgo_program}"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
