@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class Secp256r1PrecompileTests : PrecompileTests<Secp256r1PrecompileTests>, IPrecompileTests
+    public class SecP256r1PrecompileTests : PrecompileTests<SecP256r1PrecompileTests>, IPrecompileTests
     {
         private static readonly byte[] ValidResult = new byte[] { 1 }.PadLeft(32);
 
@@ -21,7 +21,7 @@ namespace Nethermind.Evm.Test
             yield return "p256Verify.json";
         }
 
-        public static IPrecompile Precompile() => Secp256r1Precompile.Instance;
+        public static IPrecompile Precompile() => SecP256r1Precompile.Instance;
 
         [Test]
         [TestCase(
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(RandomECDsaInputs))]
         public void Verifies_random_valid_signature(byte[] input)
         {
-            (ReadOnlyMemory<byte> output, var success) = Secp256r1Precompile.Instance.Run(input, Prague.Instance);
+            (ReadOnlyMemory<byte> output, var success) = SecP256r1Precompile.Instance.Run(input, Prague.Instance);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(success, Is.True);

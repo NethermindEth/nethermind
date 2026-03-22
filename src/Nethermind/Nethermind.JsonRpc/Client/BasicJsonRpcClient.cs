@@ -37,9 +37,9 @@ namespace Nethermind.JsonRpc.Client
         public async Task<string?> Post(string method, params object?[] parameters)
         {
             string request = GetJsonRequest(method, parameters);
-            HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
-            string content = await response.Content.ReadAsStringAsync();
-            return content;
+            using StringContent requestContent = new(request, Encoding.UTF8, "application/json");
+            using HttpResponseMessage response = await _client.PostAsync("", requestContent);
+            return await response.Content.ReadAsStringAsync();
         }
 
         public async Task<T?> Post<T>(string method, params object?[] parameters)
@@ -48,7 +48,8 @@ namespace Nethermind.JsonRpc.Client
             try
             {
                 string request = GetJsonRequest(method, parameters);
-                HttpResponseMessage response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
+                using StringContent requestContent = new(request, Encoding.UTF8, "application/json");
+                using HttpResponseMessage response = await _client.PostAsync("", requestContent);
                 responseString = await response.Content.ReadAsStringAsync();
                 if (_logger.IsTrace) _logger.Trace(responseString);
 
