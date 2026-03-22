@@ -372,6 +372,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.FlushToPersistence();
 
         if (cancellationToken.IsCancellationRequested) return;
+        if (persistedState.BlockNumber < 0) return;
 
         _snapshotRepository.RemoveStatesUntil(persistedState);
 
