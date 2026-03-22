@@ -22,7 +22,7 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         /// Reads a .spgo file (one hex IP per line) and attributes each sample
         /// to the correlator for SPGO basic block attribution.
         /// </summary>
-        public static void LoadSpgoSamples(string etlxPath, SPGO.SampleCorrelator correlator)
+        public static void LoadSpgoSamples(string etlxPath, SampleCorrelator correlator)
         {
             string spgoFile = Path.ChangeExtension(etlxPath, ".spgo");
             if (!File.Exists(spgoFile))
@@ -121,11 +121,11 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         /// with a disconnected flow graph doesn't kill the entire SPGO pass.
         /// FlowSmoothing.MakeGraphFeasible crashes with "Stack empty" for some methods.
         /// </summary>
-        public static void SafeSmoothAllProfiles(SPGO.SampleCorrelator correlator)
+        public static void SafeSmoothAllProfiles(SampleCorrelator correlator)
         {
             // Access internal _methodInf via reflection since SmoothAllProfiles
             // iterates it directly and we need per-method error handling.
-            System.Reflection.FieldInfo? field = typeof(SPGO.SampleCorrelator).GetField("_methodInf",
+            System.Reflection.FieldInfo? field = typeof(SampleCorrelator).GetField("_methodInf",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (field?.GetValue(correlator) is not System.Collections.IDictionary dict)
             {
