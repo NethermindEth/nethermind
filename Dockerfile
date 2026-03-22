@@ -25,7 +25,9 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cat ../../../Directory.Build.targets 2>/dev/null || echo "Directory.Build.targets not found" && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH \
-    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | grep -i "mibc\|pettis\|cross-module\|crossgen\|r2r\|ReadyToRun\|nethermind.mibc\|method-layout\|MibcPath" || true
+    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | \
+    tee /tmp/publish.log | grep -i "mibc\|pettis\|cross-module\|crossgen\|r2r\|ReadyToRun\|nethermind.mibc\|method-layout\|MibcPath\|error\|warning.*R2R\|warning.*ReadyToRun" || true && \
+  test -f /publish/nethermind || { echo "=== PUBLISH FAILED ===" && tail -50 /tmp/publish.log && exit 1; }
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
