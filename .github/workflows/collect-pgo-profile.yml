@@ -259,7 +259,6 @@ jobs:
           exit "${expb_exit}"
 
       - name: Extract PGO data from EXPB output
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -614,7 +613,6 @@ jobs:
           # .jit compression is handled by the "Process traces with PgoTrim" step above
 
       - name: Upload .mibc artifact
-        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-profile
@@ -622,7 +620,7 @@ jobs:
           retention-days: 90
 
       - name: Upload compressed .jit.gz artifact
-        if: always() && steps.pgotrim.outputs.jit_gz != ''
+        if: steps.pgotrim.outputs.jit_gz != ''
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-jit
