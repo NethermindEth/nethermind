@@ -146,16 +146,10 @@ jobs:
       - name: Check EXPB lock
         shell: bash
         run: |
-          lock="/tmp/expb.lock"
-          if [[ -f "${lock}" ]]; then
-            lock_age=$(( $(date +%s) - $(stat -c %Y "${lock}") ))
-            if [[ "${lock_age}" -lt 3600 ]]; then
-              echo "EXPB lock file exists and is ${lock_age}s old (< 1h) — another run is active."
-              echo "Run the 'Clean up EXPB runner' workflow to force-clear if stuck."
-              exit 1
-            fi
-            echo "EXPB lock file is stale (${lock_age}s > 1h) — removing."
-            rm -f "${lock}"
+          if [[ -f /tmp/expb.lock ]]; then
+            echo "EXPB lock file exists — another run is active or a previous run was cancelled."
+            echo "Run the 'Clean up EXPB runner' workflow to force-clear if stuck."
+            exit 1
           fi
 
       - name: Check out repository
