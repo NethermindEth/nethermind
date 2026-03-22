@@ -257,7 +257,9 @@ namespace Nethermind.Trie
                 path.TruncateMut(previousPathLength);
             }
 
-            node.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool);
+            // The child should already have all key calculated at this point, so canBeParallel flag is set
+            // to false to reduce overhead.
+            node.ResolveKey(TrieStore, ref path, bufferPool: _bufferPool, canBeParallel: false);
             node.Seal();
 
             if (node.FullRlp.Length >= 32)
