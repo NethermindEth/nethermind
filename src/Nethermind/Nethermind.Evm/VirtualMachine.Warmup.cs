@@ -158,17 +158,31 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         TGasPolicy gas = TGasPolicy.FromLong(long.MaxValue);
         int pc = 0;
 
+        // Values that exercise common (non-trivial, non-failing) opcode paths:
+        // - Not 0 or 1 (avoids fast-path/short-circuit branches)
+        // - Multi-word (exercises full 256-bit arithmetic)
+        // - Different from each other (avoids equality fast-paths)
+        // These influence Tier-0 PGO edge counts — we want the common-case branches
+        // profiled, not the degenerate/edge-case branches.
+        UInt256 a = new(0x1234567890ABCDEF, 0xFEDCBA0987654321, 0x1111111111111111, 0x2222222222222222);
+        UInt256 b = new(0x42, 0, 0, 0); // small but > 1
+        UInt256 c = new(0xDEADBEEFCAFEBABE, 0x0123456789ABCDEF, 0x3333333333333333, 0x4444444444444444);
+
         for (int repeat = 0; repeat < WarmUpIterations; repeat++)
         {
             for (int i = 0; i < opcodes.Length; i++)
             {
-                // LOG4 needs 6 values on stack
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
-                stack.PushOne<TTracingInst>();
+                // LOG4 needs 6 values on stack.
+                // Push representative values so arithmetic opcodes take common paths:
+                // a / b → multi-word division (not by 0 or 1)
+                // a % c → remainder with c > result (common case)
+                // a * b % c → mulmod where modulus > product (common case)
+                stack.PushUInt256<TTracingInst>(in a);
+                stack.PushUInt256<TTracingInst>(in b);
+                stack.PushUInt256<TTracingInst>(in c);
+                stack.PushUInt256<TTracingInst>(in a);
+                stack.PushUInt256<TTracingInst>(in b);
+                stack.PushUInt256<TTracingInst>(in c);
 
                 opcodes[i](vm, ref stack, ref gas, ref pc);
                 if (vm.ReturnData is VmState<TGasPolicy> returnState)
