@@ -20,6 +20,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
+using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
@@ -349,6 +350,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
     private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
     {
+        EvmMetrics.IncrementStorageReads();
         return GetOrCreateStorage(storageCell.Address).LoadFromTree(storageCell);
     }
 

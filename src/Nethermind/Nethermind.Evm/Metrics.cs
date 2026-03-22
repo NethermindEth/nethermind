@@ -3,11 +3,15 @@
 
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Threading;
-using Nethermind.Core.Attributes;
 using System.Threading;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Threading;
 
 [assembly: InternalsVisibleTo("Nethermind.Consensus")]
+[assembly: InternalsVisibleTo("Nethermind.State")]
+[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Consensus.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
 
@@ -104,6 +108,131 @@ public class Metrics
     [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.ThreadLocalValue;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Increment();
+
+    // Cross-client execution metrics — same ZeroContentionCounter pattern as existing metrics.
+    // Each counter is a single ThreadLocal<BoxedLong>; Increment() is just _threadLocal.Value!._value += 1.
+
+    [CounterMetric]
+    [Description("Number of account reads during execution.")]
+    public static long AccountReads => _accountReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountReads = new();
+    internal static long ThreadLocalAccountReads => _accountReads.ThreadLocalValue;
+    internal static void IncrementAccountReads() => _accountReads.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slot reads during execution.")]
+    public static long StorageReads => _storageReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageReads = new();
+    internal static long ThreadLocalStorageReads => _storageReads.ThreadLocalValue;
+    internal static void IncrementStorageReads() => _storageReads.Increment();
+
+    [CounterMetric]
+    [Description("Number of code reads during execution.")]
+    public static long CodeReads => _codeReads.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeReads = new();
+    internal static long ThreadLocalCodeReads => _codeReads.ThreadLocalValue;
+    internal static void IncrementCodeReads() => _codeReads.Increment();
+
+    [CounterMetric]
+    [Description("Total bytes of code read during execution.")]
+    public static long CodeBytesRead => _codeBytesRead.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesRead = new();
+    internal static long ThreadLocalCodeBytesRead => _codeBytesRead.ThreadLocalValue;
+    internal static void IncrementCodeBytesRead(int bytes) => _codeBytesRead.Increment(bytes);
+
+    [CounterMetric]
+    [Description("Number of account writes during execution.")]
+    public static long AccountWrites => _accountWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountWrites = new();
+    internal static long ThreadLocalAccountWrites => _accountWrites.ThreadLocalValue;
+    internal static void IncrementAccountWrites() => _accountWrites.Increment();
+
+    [CounterMetric]
+    [Description("Number of accounts deleted during execution.")]
+    public static long AccountDeleted => _accountDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _accountDeleted = new();
+    internal static long ThreadLocalAccountDeleted => _accountDeleted.ThreadLocalValue;
+    internal static void IncrementAccountDeleted() => _accountDeleted.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slot writes during execution.")]
+    public static long StorageWrites => _storageWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageWrites = new();
+    internal static long ThreadLocalStorageWrites => _storageWrites.ThreadLocalValue;
+    internal static void IncrementStorageWrites() => _storageWrites.Increment();
+
+    [CounterMetric]
+    [Description("Number of storage slots deleted during execution.")]
+    public static long StorageDeleted => _storageDeleted.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageDeleted = new();
+    internal static long ThreadLocalStorageDeleted => _storageDeleted.ThreadLocalValue;
+    internal static void IncrementStorageDeleted() => _storageDeleted.Increment();
+
+    [CounterMetric]
+    [Description("Number of code writes during execution.")]
+    public static long CodeWrites => _codeWrites.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeWrites = new();
+    internal static long ThreadLocalCodeWrites => _codeWrites.ThreadLocalValue;
+    internal static void IncrementCodeWrites() => _codeWrites.Increment();
+
+    [CounterMetric]
+    [Description("Total bytes of code written during execution.")]
+    public static long CodeBytesWritten => _codeBytesWritten.GetTotalValue();
+    private static readonly ZeroContentionCounter _codeBytesWritten = new();
+    internal static long ThreadLocalCodeBytesWritten => _codeBytesWritten.ThreadLocalValue;
+    internal static void IncrementCodeBytesWritten(int bytes) => _codeBytesWritten.Increment(bytes);
+
+    [CounterMetric]
+    [Description("Number of EIP-7702 delegations set during execution.")]
+    public static long Eip7702DelegationsSet => _eip7702DelegationsSet.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsSet = new();
+    internal static long ThreadLocalEip7702DelegationsSet => _eip7702DelegationsSet.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsSet() => _eip7702DelegationsSet.Increment();
+
+    [CounterMetric]
+    [Description("Number of EIP-7702 delegations cleared during execution.")]
+    public static long Eip7702DelegationsCleared => _eip7702DelegationsCleared.GetTotalValue();
+    private static readonly ZeroContentionCounter _eip7702DelegationsCleared = new();
+    internal static long ThreadLocalEip7702DelegationsCleared => _eip7702DelegationsCleared.ThreadLocalValue;
+    internal static void IncrementEip7702DelegationsCleared() => _eip7702DelegationsCleared.Increment();
+
+    // Timing metrics — accumulated via ZeroContentionCounter(long) in coarse-grained paths only
+    // (WorldStateMetricsDecorator, BlockProcessor — NOT per-read hot paths).
+    [Description("Time spent on state hashing/merkleization (ticks). Sum of storage merkle + state root.")]
+    public static long StateHashTime => _stateHashTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateHashTime = new();
+    internal static long ThreadLocalStateHashTime => _stateHashTime.ThreadLocalValue;
+    internal static void IncrementStateHashTime(long ticks) => _stateHashTime.Increment(ticks);
+
+    [Description("Time spent committing state to storage (ticks).")]
+    public static long CommitTime => _commitTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _commitTime = new();
+    internal static long ThreadLocalCommitTime => _commitTime.ThreadLocalValue;
+    internal static void IncrementCommitTime(long ticks) => _commitTime.Increment(ticks);
+
+    [Description("Time spent on storage trie merkleization — Commit(commitRoots: true) (ticks).")]
+    public static long StorageMerkleTime => _storageMerkleTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _storageMerkleTime = new();
+    internal static long ThreadLocalStorageMerkleTime => _storageMerkleTime.ThreadLocalValue;
+    internal static void IncrementStorageMerkleTime(long ticks) => _storageMerkleTime.Increment(ticks);
+
+    [Description("Time spent on state root recalculation + commit tree (ticks).")]
+    public static long StateRootTime => _stateRootTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _stateRootTime = new();
+    internal static long ThreadLocalStateRootTime => _stateRootTime.ThreadLocalValue;
+    internal static void IncrementStateRootTime(long ticks) => _stateRootTime.Increment(ticks);
+
+    [Description("Time spent calculating bloom filters (ticks).")]
+    public static long BloomsTime => _bloomsTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _bloomsTime = new();
+    internal static long ThreadLocalBloomsTime => _bloomsTime.ThreadLocalValue;
+    internal static void IncrementBloomsTime(long ticks) => _bloomsTime.Increment(ticks);
+
+    [Description("Time spent calculating receipts root (ticks).")]
+    public static long ReceiptsRootTime => _receiptsRootTime.GetTotalValue();
+    private static readonly ZeroContentionCounter _receiptsRootTime = new();
+    internal static long ThreadLocalReceiptsRootTime => _receiptsRootTime.ThreadLocalValue;
+    internal static void IncrementReceiptsRootTime(long ticks) => _receiptsRootTime.Increment(ticks);
 
     [GaugeMetric]
     [Description("The number of tasks currently scheduled in the background.")]
