@@ -616,7 +616,7 @@ jobs:
         with:
           name: nethermind-pgo-profile
           path: ${{ steps.convert.outputs.mibc_file }}
-          retention-days: 90
+          retention-days: 1
 
       - name: Upload compressed .jit.gz artifact
         if: steps.pgotrim.outputs.jit_gz != ''
@@ -624,7 +624,7 @@ jobs:
         with:
           name: nethermind-pgo-jit
           path: ${{ steps.pgotrim.outputs.jit_gz }}
-          retention-days: 90
+          retention-days: 1
 
       - name: Upload raw PGO data
         if: always()
@@ -633,7 +633,7 @@ jobs:
           name: nethermind-pgo-raw-data
           path: ${{ runner.temp }}/pgo-data/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
 
       - name: Clean up Docker resources
         if: always()
