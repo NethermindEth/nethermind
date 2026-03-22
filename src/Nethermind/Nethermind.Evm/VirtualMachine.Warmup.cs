@@ -146,6 +146,23 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         codeToDeploy.Add((byte)Instruction.POP);
     }
 
+    // Opcodes that interact with world state or code repository.
+    // Skip these during warmup to avoid polluting GDV type histograms with the
+    // warmup state type — real block processing uses a different IWorldState
+    // implementation, and a bimodal histogram causes the JIT to emit type-check
+    // guards instead of direct devirtualization.
+    private static readonly HashSet<int> StateOpcodes =
+    [
+        (int)Instruction.BALANCE, (int)Instruction.SELFBALANCE,
+        (int)Instruction.SLOAD, (int)Instruction.SSTORE,
+        (int)Instruction.TLOAD, (int)Instruction.TSTORE,
+        (int)Instruction.EXTCODESIZE, (int)Instruction.EXTCODECOPY, (int)Instruction.EXTCODEHASH,
+        (int)Instruction.CALL, (int)Instruction.STATICCALL, (int)Instruction.DELEGATECALL, (int)Instruction.CALLCODE,
+        (int)Instruction.CREATE, (int)Instruction.CREATE2,
+        (int)Instruction.SELFDESTRUCT,
+        (int)Instruction.LOG0, (int)Instruction.LOG1, (int)Instruction.LOG2, (int)Instruction.LOG3, (int)Instruction.LOG4,
+    ];
+
     private static void RunOpCodes<TTracingInst>(VirtualMachine<TGasPolicy> vm, IWorldState state, VmState<TGasPolicy> vmState, IReleaseSpec spec)
         where TTracingInst : struct, IFlag
     {
@@ -172,7 +189,12 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         {
             for (int i = 0; i < opcodes.Length; i++)
             {
-                // LOG4 needs 6 values on stack.
+                // Skip state-interacting opcodes — their GDV type profiling during
+                // warmup would record the wrong IWorldState type, creating bimodal
+                // histograms that prevent devirtualization during real execution.
+                if (StateOpcodes.Contains(i))
+                    continue;
+
                 // Push representative values so arithmetic opcodes take common paths:
                 // a / b → multi-word division (not by 0 or 1)
                 // a % c → remainder with c > result (common case)
