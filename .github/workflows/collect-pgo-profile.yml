@@ -147,8 +147,12 @@ jobs:
         if: always()
         shell: bash
         run: |
-          docker ps -aq --filter "name=expb-executor" --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          # Kill ALL expb containers (nethermind + Alloy + k6 + payload-server)
+          # Must remove containers before networks since containers hold network refs
+          docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+          rm -f /tmp/expb.lock
 
       - name: Check out repository
         uses: actions/checkout@v6
