@@ -23,8 +23,8 @@ static class SpgoExtractor
 
         Console.WriteLine($"Extracting perf sample IPs from {traceZipPath}...");
 
-        using var zip = ZipFile.OpenRead(traceZipPath);
-        var perfEntry = zip.Entries.FirstOrDefault(e => e.Name == "perf.data.txt");
+        using ZipArchive zip = ZipFile.OpenRead(traceZipPath);
+        ZipArchiveEntry? perfEntry = zip.Entries.FirstOrDefault(e => e.Name == "perf.data.txt");
         if (perfEntry == null)
         {
             Console.Error.WriteLine("No perf.data.txt found in .trace.zip");
@@ -37,10 +37,10 @@ static class SpgoExtractor
         int frameCount = 0;
         int edgeCount = 0;
 
-        using (var stream = perfEntry.Open())
-        using (var reader = new StreamReader(stream))
-        using (var spgoWriter = new StreamWriter(outputPath))
-        using (var cgWriter = new StreamWriter(callGraphPath))
+        using (Stream stream = perfEntry.Open())
+        using (StreamReader reader = new StreamReader(stream))
+        using (StreamWriter spgoWriter = new StreamWriter(outputPath))
+        using (StreamWriter cgWriter = new StreamWriter(callGraphPath))
         {
             cgWriter.WriteLine("# callee_ip caller_ip");
 
@@ -51,7 +51,7 @@ static class SpgoExtractor
                 //     7dc812345678 MethodName+0x1a3 (/path/to/module)
                 if (line.Length > 0 && line[0] == '\t')
                 {
-                    var trimmed = line.AsSpan().TrimStart();
+                    ReadOnlySpan<char> trimmed = line.AsSpan().TrimStart();
                     int spaceIdx = trimmed.IndexOf(' ');
                     if (spaceIdx > 0 &&
                         ulong.TryParse(trimmed[..spaceIdx], NumberStyles.HexNumber, null, out _))
@@ -67,7 +67,7 @@ static class SpgoExtractor
                         if (line != null && line.Length > 0 && line[0] == '\t')
                         {
                             frameCount++;
-                            var callerTrimmed = line.AsSpan().TrimStart();
+                            ReadOnlySpan<char> callerTrimmed = line.AsSpan().TrimStart();
                             int callerSpace = callerTrimmed.IndexOf(' ');
                             if (callerSpace > 0 &&
                                 ulong.TryParse(callerTrimmed[..callerSpace], NumberStyles.HexNumber, null, out _))

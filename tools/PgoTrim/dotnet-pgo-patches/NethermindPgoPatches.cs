@@ -101,7 +101,7 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                     if (methodsListedToPrepare.Add(caller))
                         methodsToAttemptToPrepare.Add(syntheticIndex++, new ProcessedMethodData(0, caller, "CallGraphCaller"));
 
-                    if (!callGraph.TryGetValue(caller, out var innerDict))
+                    if (!callGraph.TryGetValue(caller, out Dictionary<MethodDesc, int>? innerDict))
                     {
                         innerDict = new Dictionary<MethodDesc, int>();
                         callGraph[caller] = innerDict;
@@ -125,7 +125,7 @@ namespace Microsoft.Diagnostics.Tools.Pgo
         {
             // Access internal _methodInf via reflection since SmoothAllProfiles
             // iterates it directly and we need per-method error handling.
-            var field = typeof(SPGO.SampleCorrelator).GetField("_methodInf",
+            System.Reflection.FieldInfo? field = typeof(SPGO.SampleCorrelator).GetField("_methodInf",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (field?.GetValue(correlator) is not System.Collections.IDictionary dict)
             {
@@ -139,10 +139,10 @@ namespace Microsoft.Diagnostics.Tools.Pgo
                 try
                 {
                     // PerMethodInfo.Profile.SmoothFlow()
-                    var pmi = entry.Value;
-                    var profileProp = pmi?.GetType().GetProperty("Profile");
-                    var profile = profileProp?.GetValue(pmi);
-                    var smoothMethod = profile?.GetType().GetMethod("SmoothFlow");
+                    object? pmi = entry.Value;
+                    System.Reflection.PropertyInfo? profileProp = pmi?.GetType().GetProperty("Profile");
+                    object? profile = profileProp?.GetValue(pmi);
+                    System.Reflection.MethodInfo? smoothMethod = profile?.GetType().GetMethod("SmoothFlow");
                     smoothMethod?.Invoke(profile, null);
                 }
                 catch (Exception ex)
