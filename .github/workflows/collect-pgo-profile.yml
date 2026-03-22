@@ -152,6 +152,23 @@ jobs:
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
           rm -f /tmp/expb.lock
 
+          # Free disk space: remove old Docker images but keep current run's tags
+          echo "Disk usage before cleanup:"
+          df -h / | tail -1
+          # Remove all stopped containers
+          docker container prune -f 2>/dev/null || true
+          # Remove images not used by the current PGO run (keep pgo-$RUN_ID tags and base images)
+          current_tags="${{ env.PGO_TAG }}|${{ env.PGO_TAG }}-sampling|noble|aspnet"
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
+            grep -v -E "${current_tags}|<none>" | \
+            awk '{print $2}' | sort -u | \
+            xargs -r docker rmi -f 2>/dev/null || true
+          # Remove dangling images and build cache
+          docker image prune -f 2>/dev/null || true
+          docker builder prune -f --keep-storage 5G 2>/dev/null || true
+          echo "Disk usage after cleanup:"
+          df -h / | tail -1
+
       - name: Check out repository
         uses: actions/checkout@v6
 
