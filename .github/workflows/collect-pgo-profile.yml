@@ -143,37 +143,12 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
-      - name: Clean up stale containers from previous runs
+      - name: Kill stale containers and networks
         if: always()
         shell: bash
         run: |
-          # Kill all EXPB-related containers + networks + lock
           docker ps -aq --filter "name=expb-executor" --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
-          rm -f /tmp/expb.lock
-
-          # Free disk space: remove old Docker containers, images, and EXPB infra
-          echo "Disk usage before cleanup:"
-          df -h / | tail -1
-          # Remove ALL stopped containers (old EXPB runs, Alloy, k6, payload servers)
-          docker container prune -f 2>/dev/null || true
-          # Remove old EXPB infra images (Alloy, k6) — keep only latest
-          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
-            grep -E "grafana/alloy|grafana/k6" | \
-            awk '{print $2}' | sort -u | \
-            xargs -r docker rmi -f 2>/dev/null || true
-          # Remove old nethermind images — keep current run's PGO tags and base images
-          current_tags="${{ env.PGO_TAG }}|${{ env.PGO_TAG }}-sampling|noble|aspnet"
-          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
-            grep "nethermindeth/nethermind" | \
-            grep -v -E "${current_tags}" | \
-            awk '{print $2}' | sort -u | \
-            xargs -r docker rmi -f 2>/dev/null || true
-          # Remove dangling images and build cache
-          docker image prune -f 2>/dev/null || true
-          docker builder prune -f 2>/dev/null || true
-          echo "Disk usage after cleanup:"
-          df -h / | tail -1
 
       - name: Check out repository
         uses: actions/checkout@v6
@@ -314,7 +289,8 @@ jobs:
           sudo sysctl -w kernel.perf_event_paranoid=-1 || true
 
           # Clean up containers/networks left by the main PGO collection step
-          docker ps -aq --filter "name=expb-executor" --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
           rm -f /tmp/expb.lock
 
@@ -619,6 +595,30 @@ jobs:
           path: ${{ runner.temp }}/pgo-data/
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Clean up Docker resources
+        if: always()
+        shell: bash
+        run: |
+          echo "Disk usage before cleanup:"
+          df -h / | tail -1
+          # Stop and remove all EXPB containers + networks
+          docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+          rm -f /tmp/expb.lock
+          # Remove all stopped containers
+          docker container prune -f 2>/dev/null || true
+          # Remove old images (keep base images needed by other workflows)
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
+            grep -E "nethermindeth/nethermind:pgo-|grafana/alloy|grafana/k6" | \
+            awk '{print $2}' | sort -u | \
+            xargs -r docker rmi -f 2>/dev/null || true
+          # Remove dangling images and all build cache
+          docker image prune -f 2>/dev/null || true
+          docker builder prune -f 2>/dev/null || true
+          echo "Disk usage after cleanup:"
+          df -h / | tail -1
 
   update-pgo-profile:
     name: Update PGO profile
