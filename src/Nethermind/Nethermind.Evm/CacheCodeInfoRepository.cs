@@ -72,7 +72,16 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         }
     }
 
-    public static void Clear() => _codeCache.Clear();
+    internal static void Clear() => _codeCache.Clear();
+
+    /// <summary>
+    /// Lightweight service for DI auto-discovery of code cache clearing.
+    /// Nested to access the private static cache without changing visibility.
+    /// </summary>
+    public sealed class CacheClearService : IClearableCache
+    {
+        public void ClearCache() => _codeCache.Clear();
+    }
 
     private sealed class CodeLruCache
     {
