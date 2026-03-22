@@ -153,6 +153,9 @@ jobs:
           timeout 30 bash -c 'docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
           timeout 30 bash -c 'docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+          # Remove EXPB Docker volumes — they bind-mount into output directories
+          # and cause "no such file or directory" mount failures if those dirs are deleted
+          docker volume ls -q --filter "name=expb-executor" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
           # Unmount stale overlay mounts and clean work directories
           mount | grep "expb-data/work" | awk '{print $3}' | xargs -r sudo umount -l 2>/dev/null || true
           sudo rm -rf /mnt/sda/expb-data/work/upper /mnt/sda/expb-data/work/work /mnt/sda/expb-data/work/merged 2>/dev/null || true
@@ -164,7 +167,7 @@ jobs:
             awk '{print $2}' | sort -u | \
             xargs -r docker rmi -f 2>/dev/null || true
           docker image prune -f 2>/dev/null || true
-          docker builder prune -f --keep-storage 4G 2>/dev/null || true
+          docker builder prune -f --max-storage 4G 2>/dev/null || true
           # Clean old EXPB output directories (keep last 3)
           ls -dt /mnt/sda/expb-data/outputs/expb-executor-* 2>/dev/null | tail -n +4 | xargs -r sudo rm -rf 2>/dev/null || true
           echo "Disk usage after cleanup:"
@@ -298,6 +301,12 @@ jobs:
           echo "=== .jit files (edge/block profiling data) ==="
           find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
 
+          # Fail if no trace data was collected — no point running subsequent steps
+          if ! find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f 2>/dev/null | grep -q .; then
+            echo "ERROR: No .nettrace files found — PGO collection failed"
+            exit 1
+          fi
+
       - name: Run CPU sampling pass
         shell: bash
         run: |
@@ -312,6 +321,7 @@ jobs:
           timeout 30 bash -c 'docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
           timeout 30 bash -c 'docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
           timeout 10 bash -c 'docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null' || true
+          docker volume ls -q --filter "name=expb-executor" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
           mount | grep "expb-data/work" | awk '{print $3}' | xargs -r sudo umount -l 2>/dev/null || true
           sudo rm -rf /mnt/sda/expb-data/work/upper /mnt/sda/expb-data/work/work /mnt/sda/expb-data/work/merged 2>/dev/null || true
           rm -f /tmp/expb.lock
@@ -624,6 +634,7 @@ jobs:
           docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
           docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
           docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+          docker volume ls -q --filter "name=expb-executor" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
           rm -f /tmp/expb.lock
           # Remove all stopped containers
           docker container prune -f 2>/dev/null || true
@@ -634,7 +645,7 @@ jobs:
             xargs -r docker rmi -f 2>/dev/null || true
           # Remove dangling images and all build cache
           docker image prune -f 2>/dev/null || true
-          docker builder prune -f --keep-storage 4G 2>/dev/null || true
+          docker builder prune -f --max-storage 4G 2>/dev/null || true
           echo "Disk usage after cleanup:"
           df -h / | tail -1
 
