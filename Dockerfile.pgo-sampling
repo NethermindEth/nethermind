@@ -85,6 +85,12 @@ ENV DOTNET_System_Diagnostics_Tracing_EventSource_IsSupported=true
 ENV DOTNET_GCLargePages=0
 ENV DOTNET_GCRegionRange=0x800000000
 
+# Delay Tier-1 recompilation so the perf map (written at Tier-0 JIT time)
+# stays valid for the entire perfcollect window. Without this, Tier-1
+# recompiles methods to new addresses and 97% of CPU samples fall outside
+# managed code (unresolvable IPs).
+ENV DOTNET_TC_CallCountingDelayMs=420000
+
 # Enable LTTng tracepoints + perf map for managed symbol resolution
 ENV DOTNET_PerfMapEnabled=1
 ENV DOTNET_EnableEventLog=1

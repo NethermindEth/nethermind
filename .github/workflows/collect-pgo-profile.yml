@@ -356,10 +356,7 @@ jobs:
           c = yaml.safe_load(open(p))
           for s in c.get('scenarios', {}).values():
               s['security_opt'] = ['seccomp=unconfined']
-              # Delay Tier-1 recompilation so perf map stays valid during sampling
-              # (recompiled methods get new code addresses not in the perf map)
               env = s.get('environment', {}) or {}
-              env['DOTNET_TC_CallCountingDelayMs'] = '420000'
               env['COLLECTSEC'] = '400'
               s['environment'] = env
               # Use 15000-block payloads file if available, otherwise keep default
