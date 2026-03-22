@@ -368,7 +368,7 @@ public class DiscoveryMessageSerializerTests
     private EnrResponseMsg BuildEnrResponse(CompressedPublicKey enrPublicKey)
     {
         NodeRecord nodeRecord = new();
-        nodeRecord.SetEntry(new Secp256K1Entry(enrPublicKey));
+        nodeRecord.SetEntry(new SecP256k1Entry(enrPublicKey));
         nodeRecord.EnrSequence = 5;
         NodeRecordSigner signer = new(new Ecdsa(), _privateKey);
         signer.Sign(nodeRecord);
