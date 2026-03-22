@@ -12,6 +12,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -25,7 +26,7 @@ namespace Nethermind.Trie.Pruning;
 /// Trie store helps to manage trie commits block by block.
 /// If persistence and pruning are needed they have a chance to execute their behavior on commits.
 /// </summary>
-public sealed class TrieStore : ITrieStore, IPruningTrieStore
+public sealed class TrieStore : ITrieStore, IPruningTrieStore, IClearableCache
 {
     private const double PruningEfficiencyWarningThreshold = 0.9;
     private readonly int _shardedDirtyNodeCount = 256;
@@ -1027,6 +1028,55 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public void WaitForPruning()
     {
         _pruningTask.Wait();
+    }
+
+    /// <summary>
+    /// Resets all internal state for test isolation.
+    /// Used by comparison testing to allow worker reuse without restarting the process.
+    /// </summary>
+    void IClearableCache.ClearCache()
+    {
+        // Wait for any in-progress pruning to finish
+        _pruningTask.Wait();
+
+        using var scopeL = _scopeLock.EnterScope();
+        using var pruneL = _pruningLock.EnterScope();
+
+        // Clear dirty nodes cache (all shards)
+        for (int i = 0; i < _dirtyNodes.Length; i++)
+            _dirtyNodes[i].Clear();
+
+        // Clear persisted hash tracking (all shards)
+        for (int i = 0; i < _persistedHashes.Length; i++)
+            _persistedHashes[i].Clear();
+
+        // Clear commit queue and tracking
+        _commitSetQueue.Clear();
+        _lastCommitSet = null;
+        _commitBuffer = null;
+        _commitBufferUnused = null;
+        _currentBlockCommitter = null;
+
+        // Reset counters
+        MemoryUsedByDirtyCache = 0;
+        DirtyMemoryUsedByDirtyCache = 0;
+        Interlocked.Exchange(ref _totalCachedNodesCount, 0);
+        Interlocked.Exchange(ref _dirtyNodesCount, 0);
+        _committedNodesCount = 0;
+        _persistedNodesCount = 0;
+        _latestPersistedBlockNumber = 0;
+        LatestCommittedBlockNumber = 0;
+        _lastPersistedReachedReorgBoundary = false;
+        _toBePersistedBlockNumber = -1;
+        _isFirst = 0;
+        _lastPrunedShardIdx = 0;
+
+        // Reset metrics
+        Metrics.CachedNodesCount = 0;
+        Metrics.DirtyNodesCount = 0;
+        Metrics.LastPersistedBlockNumber = 0;
+
+        if (_logger.IsInfo) _logger.Info("TrieStore cleared for testing");
     }
 
     private readonly INodeStorage _nodeStorage;
