@@ -344,8 +344,30 @@ jobs:
             a\        bind: /nethermind/pgo
             a\        mode: rw
           }' "${sampling_config}"
-          # Add seccomp=unconfined so perfcollect can call perf_event_open inside the container
-          python3 -c "import yaml,sys;p=sys.argv[1];c=yaml.safe_load(open(p));[s.update({'security_opt':['seccomp=unconfined']}) for s in c.get('scenarios',{}).values()];yaml.safe_dump(c,open(p,'w'),default_flow_style=False,sort_keys=False)" "${sampling_config}"
+          # Patch sampling config for SPGO:
+          # - seccomp=unconfined for perf_event_open
+          # - TC_CallCountingDelayMs=420000 to prevent Tier-1 recompilation during sampling
+          #   (recompiled methods get new addresses not in the perf map, causing 97% sample loss)
+          # - 15000 blocks (3x default) for more representative CPU sampling
+          # - COLLECTSEC=400 for perfcollect (passed via env to trace-entrypoint.sh)
+          python3 -c "
+          import yaml, sys, re
+          p = sys.argv[1]
+          c = yaml.safe_load(open(p))
+          for s in c.get('scenarios', {}).values():
+              s['security_opt'] = ['seccomp=unconfined']
+              # Delay Tier-1 recompilation so perf map stays valid during sampling
+              # (recompiled methods get new code addresses not in the perf map)
+              env = s.get('environment', {}) or {}
+              env['DOTNET_TC_CallCountingDelayMs'] = '420000'
+              env['COLLECTSEC'] = '400'
+              s['environment'] = env
+              # Use 15000-block payloads file if available, otherwise keep default
+              pf = s.get('payloads', '')
+              pf15k = re.sub(r'payloads-\d+\.jsonl', 'payloads-15000.jsonl', pf)
+              s['payloads'] = pf15k
+          yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
+          " "${sampling_config}"
           echo "Rendered sampling config:"
           cat "${sampling_config}"
 
