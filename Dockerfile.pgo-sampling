@@ -91,8 +91,6 @@ RUN apt-get update && \
   sed -i '/EnableLTTngEvents \${DotNETRuntime_CompilationKeyword\[@\]}/a\            EnableLTTngEvents ${DotNETRuntime_TypeKeyword[@]}\n            EnableLTTngEvents ${DotNETRuntime_JittedMethodILToNativeMapKeyword[@]}' /usr/local/bin/perfcollect && \
   # perfcollect only lists MethodILToNativeMap (v0) but runtime fires _V1 — add it
   sed -i '/DotNETRuntime:MethodILToNativeMap$/a\    DotNETRuntime:MethodILToNativeMap_V1' /usr/local/bin/perfcollect && \
-  # Increase sampling frequency from 1000 Hz to 4000 Hz for more SPGO coverage
-  sed -i 's/-F 1000/-F 4000/' /usr/local/bin/perfcollect && \
   sed -i '/DotNETRuntime:ModuleUnload_V2/a\    DotNETRuntime:AssemblyLoad\n    DotNETRuntime:AssemblyLoad_V1\n    DotNETRuntime:AssemblyUnload\n    DotNETRuntime:AssemblyUnload_V1' /usr/local/bin/perfcollect && \
   rm -rf /var/lib/apt/lists/*
 
@@ -136,7 +134,7 @@ mkdir -p /nethermind/pgo
 trap 'kill -TERM $nethermind_pid 2>/dev/null' TERM INT
 
 echo "trace: starting perfcollect (perf + LTTng)"
-perfcollect collect /nethermind/pgo/sampling -collectsec 150 &> /nethermind/pgo/perfcollect.log &
+perfcollect collect /nethermind/pgo/sampling -collectsec 120 &> /nethermind/pgo/perfcollect.log &
 trace_pid=$!
 
 # Wait for LTTng session to be active before starting Nethermind.
