@@ -22,10 +22,10 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
   echo "=== PGO profile check ===" && \
   ls -lh pgo/ 2>/dev/null || echo "No pgo/ directory in Runner" && \
-  cat ../../Directory.Build.targets && \
+  cat ../../../Directory.Build.targets 2>/dev/null || echo "Directory.Build.targets not found" && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH \
-    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | grep -i "mibc\|Crossgen2Extra\|pettis\|cross-module\|ReadyToRun.*Composite\|PublishReadyToRunMibcPaths" || true
+    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | grep -i "mibc\|pettis\|cross-module\|crossgen\|r2r\|ReadyToRun\|nethermind.mibc\|method-layout\|MibcPath" || true
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
