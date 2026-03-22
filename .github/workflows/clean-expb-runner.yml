@@ -1,0 +1,53 @@
+name: Clean up EXPB runner
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  cleanup:
+    name: Clean up stale EXPB resources
+    runs-on: [self-hosted, reproducible-benchmarks]
+    timeout-minutes: 10
+    steps:
+      - name: Force clean all EXPB resources
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Disk usage before cleanup ==="
+          df -h / /mnt/sda 2>/dev/null | tail -2
+
+          echo "=== Killing all EXPB containers ==="
+          timeout 30 bash -c 'docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
+          timeout 30 bash -c 'docker ps -aq --filter "ancestor=nethermindeth/nethermind" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
+
+          echo "=== Removing EXPB networks ==="
+          docker network ls --filter "name=expb-executor" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+
+          echo "=== Removing EXPB volumes ==="
+          docker volume ls -q --filter "name=expb-executor" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
+
+          echo "=== Unmounting stale overlays ==="
+          mount | grep "expb-data/work" | awk '{print $3}' | xargs -r sudo umount -l 2>/dev/null || true
+          sudo rm -rf /mnt/sda/expb-data/work/upper /mnt/sda/expb-data/work/work /mnt/sda/expb-data/work/merged 2>/dev/null || true
+
+          echo "=== Removing EXPB lock file ==="
+          rm -f /tmp/expb.lock
+
+          echo "=== Pruning stopped containers ==="
+          docker container prune -f 2>/dev/null || true
+
+          echo "=== Removing old PGO/EXPB images ==="
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
+            grep -E "nethermindeth/nethermind:pgo-|grafana/alloy|grafana/k6" | \
+            awk '{print $2}' | sort -u | \
+            xargs -r docker rmi -f 2>/dev/null || true
+          docker image prune -f 2>/dev/null || true
+          docker builder prune -f --max-storage 4G 2>/dev/null || true
+
+          echo "=== Cleaning old EXPB output directories (keep last 3) ==="
+          ls -dt /mnt/sda/expb-data/outputs/expb-executor-* 2>/dev/null | tail -n +4 | xargs -r sudo rm -rf 2>/dev/null || true
+
+          echo "=== Disk usage after cleanup ==="
+          df -h / /mnt/sda 2>/dev/null | tail -2

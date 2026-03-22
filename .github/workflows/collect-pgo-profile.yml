@@ -53,68 +53,88 @@ jobs:
           inputs: '{
             "image-name": "nethermind",
             "tag": "${{ env.PGO_TAG }}",
-            "dockerfile": "Dockerfile.pgo",
+            "dockerfile": "tools/PgoTrim/Dockerfile.pgo",
             "build-config": "release"
             }'
 
-      - name: Wait for publish-docker.yml to complete
+      - name: Trigger publish-docker.yml with Dockerfile.pgo-sampling
+        uses: benc-uk/workflow-dispatch@v1
+        with:
+          workflow: publish-docker.yml
+          ref: ${{ github.ref }}
+          token: ${{ github.token }}
+          inputs: '{
+            "image-name": "nethermind",
+            "tag": "${{ env.PGO_TAG }}-sampling",
+            "dockerfile": "tools/PgoTrim/Dockerfile.pgo-sampling",
+            "build-config": "release"
+            }'
+
+      - name: Wait for publish-docker.yml builds to complete
         env:
           GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "Waiting for publish-docker.yml to start and complete..."
+          echo "Waiting for publish-docker.yml runs to start and complete..."
 
           max_discovery=300
           poll=15
           max_completion=7200
-          elapsed=0
-          run_id=""
-
-          # Phase 1: discover the run (filter by head_sha to avoid matching unrelated runs)
           head_sha="${{ github.sha }}"
-          while [[ -z "${run_id}" ]]; do
-            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=5&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
-            run_id=$(echo "${response}" | jq -r '.workflow_runs[0].id // empty')
 
-            if [[ -n "${run_id}" ]]; then
-              echo "Found publish-docker run: ${run_id}"
+          # Phase 1: discover both runs (two dispatches for pgo + pgo-sampling)
+          elapsed=0
+          run_ids=()
+          while [[ "${#run_ids[@]}" -lt 2 ]]; do
+            response=$(gh api "repos/${{ github.repository }}/actions/workflows/publish-docker.yml/runs?per_page=10&branch=${{ github.ref_name }}&head_sha=${head_sha}" 2>/dev/null || echo '{"workflow_runs":[]}')
+            mapfile -t run_ids < <(echo "${response}" | jq -r '.workflow_runs[].id // empty' | head -2)
+
+            if [[ "${#run_ids[@]}" -ge 2 ]]; then
+              echo "Found ${#run_ids[@]} publish-docker runs: ${run_ids[*]}"
               break
             fi
 
             elapsed=$((elapsed + poll))
             if [[ "${elapsed}" -ge "${max_discovery}" ]]; then
-              echo "No publish-docker.yml run found within ${max_discovery}s."
-              exit 1
+              echo "Found ${#run_ids[@]}/2 publish-docker.yml runs within ${max_discovery}s."
+              if [[ "${#run_ids[@]}" -eq 0 ]]; then
+                exit 1
+              fi
+              echo "Proceeding with ${#run_ids[@]} run(s)."
+              break
             fi
-            echo "Waiting for run to appear... (${elapsed}/${max_discovery}s)"
+            echo "Waiting for runs to appear... (${#run_ids[@]}/2 found, ${elapsed}/${max_discovery}s)"
             sleep "${poll}"
           done
 
-          # Phase 2: wait for completion
-          elapsed=0
-          while true; do
-            run_data=$(gh api "repos/${{ github.repository }}/actions/runs/${run_id}" 2>/dev/null || echo '{}')
-            status=$(echo "${run_data}" | jq -r '.status // "unknown"')
-            conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
+          # Phase 2: wait for all discovered runs to complete
+          for run_id in "${run_ids[@]}"; do
+            echo "Waiting for run ${run_id}..."
+            elapsed=0
+            while true; do
+              run_data=$(gh api "repos/${{ github.repository }}/actions/runs/${run_id}" 2>/dev/null || echo '{}')
+              status=$(echo "${run_data}" | jq -r '.status // "unknown"')
+              conclusion=$(echo "${run_data}" | jq -r '.conclusion // empty')
 
-            if [[ "${status}" == "completed" ]]; then
-              if [[ "${conclusion}" == "success" ]]; then
-                echo "publish-docker.yml completed successfully."
-                exit 0
-              else
-                echo "publish-docker.yml finished with conclusion: ${conclusion}"
+              if [[ "${status}" == "completed" ]]; then
+                if [[ "${conclusion}" == "success" ]]; then
+                  echo "Run ${run_id} completed successfully."
+                  break
+                else
+                  echo "Run ${run_id} finished with conclusion: ${conclusion}"
+                  exit 1
+                fi
+              fi
+
+              elapsed=$((elapsed + poll))
+              if [[ "${elapsed}" -ge "${max_completion}" ]]; then
+                echo "Timeout waiting for run ${run_id} (${max_completion}s)."
                 exit 1
               fi
-            fi
-
-            elapsed=$((elapsed + poll))
-            if [[ "${elapsed}" -ge "${max_completion}" ]]; then
-              echo "Timeout waiting for publish-docker.yml (${max_completion}s)."
-              exit 1
-            fi
-            echo "Status: ${status} — waiting... (${elapsed}/${max_completion}s)"
-            sleep "${poll}"
+              echo "Run ${run_id}: ${status} — waiting... (${elapsed}/${max_completion}s)"
+              sleep "${poll}"
+            done
           done
 
   collect:
@@ -123,6 +143,15 @@ jobs:
     runs-on: [self-hosted, reproducible-benchmarks]
     timeout-minutes: 720
     steps:
+      - name: Check EXPB lock
+        shell: bash
+        run: |
+          if [[ -f /tmp/expb.lock ]]; then
+            echo "EXPB lock file exists — another run is active or a previous run was cancelled."
+            echo "Run the 'Clean up EXPB runner' workflow to force-clear if stuck."
+            exit 1
+          fi
+
       - name: Check out repository
         uses: actions/checkout@v6
 
@@ -166,6 +195,19 @@ jobs:
             a\        bind: /nethermind/pgo
             a\        mode: rw
           }' "${rendered}"
+          # Patch config for PGO collection:
+          # - 10000 blocks for broader method coverage
+          # - No TC delay override — Tier-1 recompilation produces richer edge/block
+          #   counts in the .jit file (TC delay is only needed for the sampling pass
+          #   where perf map validity matters)
+          python3 -c "
+          import yaml, sys
+          p = sys.argv[1]
+          c = yaml.safe_load(open(p))
+          for s in c.get('scenarios', {}).values():
+              s['amount'] = 10000
+          yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
+          " "${rendered}"
           echo "rendered_config_file=${rendered}" >> "${GITHUB_OUTPUT}"
           echo "Rendered config:"
           cat "${rendered}"
@@ -178,12 +220,11 @@ jobs:
             echo "uv is required but not found in PATH."
             exit 1
           fi
-          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@56f83b112a93436a66468b863ed9e47bcd5feba6" expb
+          uv tool install --force --from "git+https://github.com/NethermindEth/execution-payloads-benchmarks@feat/security-opt-support" expb
           echo "$(uv tool dir --bin)" >> "${GITHUB_PATH}"
 
       - name: Run EXPB for PGO collection
         id: run-expb
-        continue-on-error: true
         shell: bash
         working-directory: ${{ env.EXPB_DATA_DIR }}
         run: |
@@ -217,10 +258,10 @@ jobs:
           exit "${expb_exit}"
 
       - name: Extract PGO data from EXPB output
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf "${RUNNER_TEMP}/pgo-data"
           mkdir -p "${RUNNER_TEMP}/pgo-data"
 
           # EXPB stores extra_volumes under {outputs_dir}/{scenario}/volumes/{name}/
@@ -250,14 +291,151 @@ jobs:
           echo "=== .jit files (edge/block profiling data) ==="
           find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
 
+          # Fail if no trace data was collected — no point running subsequent steps
+          if ! find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f 2>/dev/null | grep -q .; then
+            echo "ERROR: No .nettrace files found — PGO collection failed"
+            exit 1
+          fi
+
+      - name: Run CPU sampling pass
+        shell: bash
+        env:
+          CONFIG_FILE: ${{ steps.resolve.outputs.config_file }}
+        run: |
+          set -euo pipefail
+          sampling_tag="${{ env.PGO_TAG }}-sampling"
+
+          # Allow perf_event_open inside containers (host-level sysctl)
+          sudo sysctl -w kernel.perf_event_paranoid=-1 || true
+
+          # Clean up this run's containers/networks/volumes from the main PGO collection step
+          timeout 30 bash -c 'docker ps -aq --filter "name=expb-executor-nethermind-pgo-collect" 2>/dev/null | xargs -r docker rm -f 2>/dev/null' || true
+          timeout 10 bash -c 'docker network ls --filter "name=expb-executor-nethermind-pgo-collect" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null' || true
+          docker volume ls -q --filter "name=expb-executor-nethermind-pgo-collect" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
+
+          echo "Rendering sampling config from base config..."
+          sampling_config="${RUNNER_TEMP}/rendered-sampling-config.yaml"
+          # Render directly from the base config — don't depend on RUNNER_TEMP files
+          # from earlier steps which may be cleaned up
+          sed \
+            -e "s#<<DOCKER_TAG>>#${sampling_tag}#g" \
+            -e 's#<<DELAY>>#0#g' \
+            -e 's#^\([[:space:]]*\)nethermind:#\1nethermind-pgo-sampling:#g' \
+            "${EXPB_DATA_DIR}/${CONFIG_FILE}" \
+            > "${sampling_config}"
+          # Inject pgo volume (same as main config)
+          sed -i '/^[[:space:]]*mode: r$/{
+            a\      pgo:
+            a\        bind: /nethermind/pgo
+            a\        mode: rw
+          }' "${sampling_config}"
+          # Patch sampling config for SPGO:
+          # - seccomp=unconfined for perf_event_open
+          # - TC_CallCountingDelayMs=900000 in Dockerfile prevents Tier-1 recompilation
+          #   during sampling (recompiled methods get new addresses not in perf map)
+          # - COLLECTSEC=580 for perfcollect — must finish before container stops
+          # - amount=10000 (2x default) for more representative CPU sampling
+          python3 -c "
+          import yaml, sys
+          p = sys.argv[1]
+          c = yaml.safe_load(open(p))
+          for s in c.get('scenarios', {}).values():
+              s['security_opt'] = ['seccomp=unconfined']
+              s['amount'] = 10000
+              env = s.get('extra_env', {}) or {}
+              env['COLLECTSEC'] = '580'
+              s['extra_env'] = env
+          yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
+          " "${sampling_config}"
+          echo "Rendered sampling config:"
+          cat "${sampling_config}"
+
+          echo "Running CPU sampling pass via EXPB..."
+          expb execute-scenarios \
+            --config-file "${sampling_config}" \
+            --per-payload-metrics \
+            --print-logs \
+            2>&1 | tee "${RUNNER_TEMP}/expb-sampling-run.log"
+
+          # Extract sampling trace (perfcollect produces sampling.trace.zip)
+          expb_outputs="${EXPB_DATA_DIR}/outputs"
+          sampling_vol=$(find "${expb_outputs}" -maxdepth 3 -type d -name "pgo" -path "*/volumes/pgo" \
+            -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          if [[ -n "${sampling_vol}" ]]; then
+            echo "Sampling volume contents:"
+            ls -la "${sampling_vol}/" 2>/dev/null || true
+            # Copy perfcollect.log for debugging
+            cp "${sampling_vol}/perfcollect.log" "${RUNNER_TEMP}/pgo-data/" 2>/dev/null || true
+            # perfcollect produces sampling.trace.zip (perf + LTTng bundle)
+            sampling_file=$(find "${sampling_vol}" -name "sampling.trace.zip" -type f | head -1 || true)
+            if [[ -n "${sampling_file}" ]]; then
+              # Repack zip with paths relative to the trace root.
+              # perfcollect inside Docker produces paths like nethermind/pgo/sampling.trace/...
+              # but CtfTraceEventSource expects lttngTrace/... and perf.data.txt at the root.
+              repack_dir="${RUNNER_TEMP}/sampling-repack"
+              mkdir -p "${repack_dir}"
+              cd "${repack_dir}"
+              unzip -q "${sampling_file}"
+              trace_root=$(find . -name "lttngTrace" -type d | head -1 | xargs dirname)
+              if [[ -n "${trace_root}" && "${trace_root}" != "." ]]; then
+                echo "Repacking zip: stripping prefix ${trace_root}/"
+                cd "${trace_root}"
+              fi
+              zip -qr "${RUNNER_TEMP}/pgo-data/sampling.trace.zip" .
+              cd "${RUNNER_TEMP}"
+              rm -rf "${repack_dir}"
+            fi
+          fi
+
+          if [[ -f "${RUNNER_TEMP}/pgo-data/sampling.trace.zip" ]]; then
+            echo "CPU sampling trace collected:"
+            ls -lh "${RUNNER_TEMP}/pgo-data/sampling.trace.zip"
+            echo "Zip contents:"
+            unzip -l "${RUNNER_TEMP}/pgo-data/sampling.trace.zip" | head -20
+          else
+            echo "No sampling trace found — call graph data will not be available."
+          fi
+
       - name: Set up .NET
-        if: always()
         uses: actions/setup-dotnet@v5
         with:
           cache: false
 
+      - name: Process traces with PgoTrim
+        id: pgotrim
+        shell: bash
+        run: |
+          set -euo pipefail
+          pgo_dir="${RUNNER_TEMP}/pgo-data"
+
+          # Convert sampling .trace.zip to .etlx (injects MethodDetails CTF mapping)
+          sampling_trace="${pgo_dir}/sampling.trace.zip"
+          sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
+          if [[ -f "${sampling_trace}" ]]; then
+            echo "Converting sampling trace (injecting MethodDetails CTF mapping)..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              convert-trace "${sampling_trace}" "${sampling_etlx}" || true
+
+            # Extract perf sample IPs for SPGO — placed alongside .etlx so
+            # dotnet-pgo finds it via Path.ChangeExtension(etlx, ".spgo")
+            echo "Extracting perf sample IPs for SPGO..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              extract-spgo "${sampling_trace}" "${sampling_etlx%.etlx}.spgo" || true
+          fi
+
+          # Compress .jit edge/block profiling data for runtime PGO
+          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
+          if [[ -n "${jit_file}" ]]; then
+            echo "Compressing ${jit_file} with PgoTrim..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              "${jit_file}" "${jit_gz}" --min-block 0 --min-edge 0
+            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No .jit file found — skipping edge profiling."
+          fi
+
       - name: Build dotnet-pgo from source
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -265,6 +443,59 @@ jobs:
           git clone --depth 1 --branch v10.0.5 \
             https://github.com/dotnet/runtime.git "${RUNNER_TEMP}/dotnet-runtime"
           cd "${RUNNER_TEMP}/dotnet-runtime"
+
+          # Build TraceEvent from our PerfView PR branch which has the MethodDetails
+          # CTF mapping fix. This lets dotnet-pgo read perfcollect .trace.zip directly
+          # (both LTTng CLR events AND perf CPU samples).
+          git clone --depth 1 --branch fix/add-methoddetails-ctf-mapping \
+            https://github.com/benaadams/perfview.git "${RUNNER_TEMP}/perfview"
+          # Strip SupportFiles package ref and its file copy entries (private feed).
+          # Keep Dia2Lib.dll and TraceReloggerLib.dll as compile refs from the NuGet cache.
+          python3 -c "
+          import re, sys
+          p = sys.argv[1]
+          with open(p) as f: xml = f.read()
+          xml = re.sub(r'<PackageReference Include=\"Microsoft\.Diagnostics\.Tracing\.TraceEvent\.SupportFiles\"[^/]*/>', '', xml)
+          xml = re.sub(r'<None Include=\"\\\$\(TraceEventSupportFilesBase\)[^>]*>.*?</None>', '', xml, flags=re.DOTALL)
+          with open(p, 'w') as f: f.write(xml)
+          " "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          # Copy compile-time reference DLLs from the NuGet TraceEvent 3.1.30 package
+          # (Dia2Lib.dll and TraceReloggerLib.dll provide Windows COM interop types)
+          nuget_te=$(find ~/.nuget/packages/microsoft.diagnostics.tracing.traceevent/3.1.* -name "Dia2Lib.dll" -path "*/netstandard*" 2>/dev/null | head -1 | xargs dirname)
+          if [[ -n "${nuget_te}" ]]; then
+            cp "${nuget_te}/Dia2Lib.dll" "${nuget_te}/TraceReloggerLib.dll" \
+              "${RUNNER_TEMP}/perfview/src/TraceEvent/" 2>/dev/null || true
+            # Add as compile references
+            sed -i '/<\/ItemGroup>/i\    <Reference Include="Dia2Lib"><HintPath>Dia2Lib.dll<\/HintPath><\/Reference>\n    <Reference Include="TraceReloggerLib"><HintPath>TraceReloggerLib.dll<\/HintPath><\/Reference>' \
+              "${RUNNER_TEMP}/perfview/src/TraceEvent/TraceEvent.csproj"
+          fi
+          # Replace NuGet TraceEvent reference with project reference to our patched source
+          pgo_csproj="src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
+          sed -i 's|<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="$(TraceEventVersion)" />|<ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/TraceEvent/TraceEvent.csproj" />\n    <ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/FastSerialization/FastSerialization.csproj" />|' "${pgo_csproj}"
+          # Patch dotnet-pgo to read supplementary .spgo file (perf sample IPs from PgoTrim)
+          # alongside the .etlx for SPGO block count attribution
+          pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
+          sed -i '/PrintOutput(\$"Samples outside managed code: {correlator.SamplesOutsideManagedCode}");/i\
+                        // Read supplementary perf samples from PgoTrim .spgo file\
+                        string spgoFile = Path.ChangeExtension(etlFileName, ".spgo");\
+                        if (File.Exists(spgoFile))\
+                        {\
+                            int spgoCount = 0;\
+                            foreach (string line in File.ReadLines(spgoFile))\
+                            {\
+                                if (ulong.TryParse(line.Trim(), System.Globalization.NumberStyles.HexNumber, null, out ulong ip))\
+                                {\
+                                    correlator.AttributeSamplesToIP(ip, 1);\
+                                    spgoCount++;\
+                                }\
+                            }\
+                            PrintOutput(\$"Supplementary .spgo samples loaded: {spgoCount}");\
+                        }' "${pgo_program}"
+          # Patch: FlowSmoothing.MakeGraphFeasible crashes with "Stack empty" for some
+          # methods with disconnected flow graphs. Wrap SmoothFlow in try-catch so one
+          # bad method doesn't kill the entire SPGO pass.
+          sed -i 's|pmi.Profile.SmoothFlow();|try { pmi.Profile.SmoothFlow(); } catch (Exception ex) { Console.Error.WriteLine(\$"Warning: SmoothFlow failed for method: {ex.Message}"); }|' \
+            "src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
@@ -288,7 +519,6 @@ jobs:
 
       - name: Convert traces to .mibc and merge with edge profiling
         id: convert
-        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -301,7 +531,7 @@ jobs:
           fi
 
           # Step 1: Create .mibc from EventPipe trace (method-level hot/cold)
-          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          trace_file=$(find "${pgo_dir}" -name "*.nettrace" -not -name "sampling*" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
           if [[ -z "${trace_file}" ]]; then
             echo "No .nettrace file found under: ${pgo_dir}"
             ls -laR "${pgo_dir}"
@@ -330,41 +560,71 @@ jobs:
           fi
           dotnet-pgo create-mibc "${create_mibc_args[@]}"
 
-          cp "${trace_mibc}" "${mibc_file}"
+          # Step 1b: If CPU sampling trace exists, convert and merge for call graph data
+          sampling_trace="${pgo_dir}/sampling.trace.zip"
+          if [[ -f "${sampling_trace}" ]]; then
+            echo "Converting CPU sampling trace to .mibc..."
+            sampling_mibc="${RUNNER_TEMP}/sampling.mibc"
+            # Use PgoTrim-converted .etlx (has MethodDetails) with .spgo alongside
+            # (perf sample IPs that dotnet-pgo's patched SPGO code reads)
+            sampling_etlx="${RUNNER_TEMP}/sampling-converted.etlx"
+            sampling_input="${sampling_trace}"
+            if [[ -f "${sampling_etlx}" ]]; then
+              sampling_input="${sampling_etlx}"
+              echo "Using converted .etlx with .spgo samples"
+            fi
+            sampling_args=(
+              --trace "${sampling_input}"
+              --output "${sampling_mibc}"
+            )
+            if [[ -d "${ref_dir}" ]]; then
+              for dll in "${ref_dir}"/*.dll; do
+                sampling_args+=(--reference "${dll}")
+              done
+            fi
+            dotnet-pgo create-mibc --spgo --spgo-min-samples 20 "${sampling_args[@]}" || true
 
-          echo "Generated .mibc profile:"
+            if [[ -f "${sampling_mibc}" ]]; then
+              main_size=$(stat -c%s "${trace_mibc}" 2>/dev/null || echo 0)
+              sampling_size=$(stat -c%s "${sampling_mibc}" 2>/dev/null || echo 0)
+              echo "Main .mibc: ${main_size} bytes, Sampling .mibc: ${sampling_size} bytes"
+
+              echo "Merging main + sampling .mibc profiles..."
+              dotnet-pgo merge \
+                --input "${trace_mibc}" \
+                --input "${sampling_mibc}" \
+                --output "${mibc_file}"
+              echo "Merged .mibc profile:"
+              ls -lh "${mibc_file}"
+            else
+              echo "Sampling .mibc creation failed — using main trace only."
+              cp "${trace_mibc}" "${mibc_file}"
+            fi
+          else
+            echo "No sampling trace — using main trace only."
+            cp "${trace_mibc}" "${mibc_file}"
+          fi
+
+          echo "Final .mibc profile:"
           ls -lh "${mibc_file}"
           echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
 
-          # Step 2: Trim .jit edge/block profiling data for runtime PGO
-          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
-          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
-          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
-          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
-          if [[ -n "${jit_file}" ]]; then
-            echo "Trimming ${jit_file} with PgoTrim..."
-            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
-              "${jit_file}" "${jit_gz}" --min-block 100 --min-edge 250
-            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "No .jit file found — skipping edge profiling trim."
-          fi
+          # .jit compression is handled by the "Process traces with PgoTrim" step above
 
       - name: Upload .mibc artifact
-        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-profile
           path: ${{ steps.convert.outputs.mibc_file }}
-          retention-days: 90
+          retention-days: 1
 
-      - name: Upload trimmed .jit.gz artifact
-        if: always() && steps.convert.outputs.jit_gz != ''
+      - name: Upload compressed .jit.gz artifact
+        if: steps.pgotrim.outputs.jit_gz != ''
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-jit
-          path: ${{ steps.convert.outputs.jit_gz }}
-          retention-days: 90
+          path: ${{ steps.pgotrim.outputs.jit_gz }}
+          retention-days: 1
 
       - name: Upload raw PGO data
         if: always()
@@ -373,10 +633,24 @@ jobs:
           name: nethermind-pgo-raw-data
           path: ${{ runner.temp }}/pgo-data/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 7
+
+      - name: Clean up Docker resources
+        if: always()
+        shell: bash
+        run: |
+          # Clean up this run's containers, networks, volumes, and images
+          docker ps -aq --filter "name=expb-executor-nethermind-pgo" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
+          docker network ls --filter "name=expb-executor-nethermind-pgo" -q 2>/dev/null | xargs -r docker network rm 2>/dev/null || true
+          docker volume ls -q --filter "name=expb-executor-nethermind-pgo" 2>/dev/null | xargs -r docker volume rm 2>/dev/null || true
+          # Remove this run's PGO images
+          docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' 2>/dev/null | \
+            grep "nethermindeth/nethermind:${{ env.PGO_TAG }}" | \
+            awk '{print $2}' | sort -u | \
+            xargs -r docker rmi -f 2>/dev/null || true
 
   update-pgo-profile:
-    name: Create PR to update PGO profile
+    name: Update PGO profile
     needs: collect
     runs-on: ubuntu-latest
     if: success()
@@ -392,7 +666,6 @@ jobs:
 
       - name: Download .jit.gz artifact
         uses: actions/download-artifact@v7
-        continue-on-error: true
         with:
           name: nethermind-pgo-jit
           path: src/Nethermind/Nethermind.Runner/pgo/
@@ -408,8 +681,18 @@ jobs:
             echo "PGO profile has changed."
           fi
 
-      - name: Create pull request
-        if: steps.diff.outputs.changed == 'true'
+      - name: Commit to branch (non-master)
+        if: steps.diff.outputs.changed == 'true' && github.ref != 'refs/heads/master'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
+          git commit -m "chore(pgo): update PGO profile"
+          git push
+
+      - name: Create pull request (master)
+        if: steps.diff.outputs.changed == 'true' && github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

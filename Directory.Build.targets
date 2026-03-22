@@ -3,6 +3,13 @@
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
     <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
+    <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
+         Safe because Docker images pin the framework version via base image hash.
+         The * wildcard enables inlining from all referenced modules. -->
+    <!-- Use Pettis-Hansen profile-guided method ordering to pack hot methods together
+         for better instruction cache locality. Requires .mibc call graph data. -->
+    <!-- Match file layout to method ordering so hot methods are on adjacent pages on disk. -->
+    <Crossgen2ExtraCommandLineArgs>$(Crossgen2ExtraCommandLineArgs);--opt-cross-module:*;--method-layout:pettishansen;--file-layout:methodorder</Crossgen2ExtraCommandLineArgs>
   </PropertyGroup>
 
 </Project>
