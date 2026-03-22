@@ -193,10 +193,9 @@ namespace Nethermind.Network
 
         private async Task RunPeerUpdateLoopAsync()
         {
-            await Task.Yield();
-
             try
             {
+                await Task.Yield();
                 await RunPeerUpdateLoop();
             }
             catch (Exception e) when (e is not OperationCanceledException)
@@ -507,8 +506,9 @@ namespace Nethermind.Network
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
             while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
-                // Wait for a signal or poll every 100ms.
-                await _peerUpdateRequested.WaitAsync(TimeSpan.FromMilliseconds(100), _cancellationTokenSource.Token);
+                // Poll every 100ms. Do not consume _peerUpdateRequested here — consuming the
+                // semaphore signal would starve the main peer update loop (WaitForPeerUpdateRequestAsync).
+                await Task.Delay(TimeSpan.FromMilliseconds(100), _cancellationTokenSource.Token);
             }
 
             return AvailableActivePeersCount - _pending > 0;
@@ -1154,42 +1154,42 @@ namespace Nethermind.Network
                 {
                     return;
                 }
+            }
 
-                if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.Closing);
+            if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.Closing);
 
-                if (session.State != SessionState.Disconnected)
+            if (session.State != SessionState.Disconnected)
+            {
+                ThrowInvalidOnDisconnectedState(session);
+            }
+
+            if (_logger.IsTrace) TracePeerDisconnected();
+
+            if (session.RemoteNodeId is null)
+            {
+                // this happens when we have a disconnect on incoming connection before handshake
+                if (_logger.IsTrace) TraceDisconnectWithoutRemoteNodeId();
+                return;
+            }
+
+            Peer peer = _peerPool.GetOrAdd(session.Node);
+            if (session.Direction == ConnectionDirection.Out)
+            {
+                peer.IsAwaitingConnection = false;
+            }
+
+            if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
+            {
+                //we want to update reputation always
+                _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
+                if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
                 {
-                    ThrowInvalidOnDisconnectedState(session);
-                }
-
-                if (_logger.IsTrace) TracePeerDisconnected();
-
-                if (session.RemoteNodeId is null)
-                {
-                    // this happens when we have a disconnect on incoming connection before handshake
-                    if (_logger.IsTrace) TraceDisconnectWithoutRemoteNodeId();
+                    if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
                     return;
                 }
 
-                Peer peer = _peerPool.GetOrAdd(session.Node);
-                if (session.Direction == ConnectionDirection.Out)
-                {
-                    peer.IsAwaitingConnection = false;
-                }
-
-                if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer))
-                {
-                    //we want to update reputation always
-                    _stats.ReportDisconnect(session.Node, e.DisconnectType, e.DisconnectReason);
-                    if (activePeer.InSession?.SessionId != session.SessionId && activePeer.OutSession?.SessionId != session.SessionId)
-                    {
-                        if (_logger.IsTrace) TraceIgnoringDifferentSessionDisconnect(activePeer.Node.Id);
-                        return;
-                    }
-
-                    DeactivatePeerIfDisconnected(activePeer, "session disconnected");
-                    SignalPeerUpdateNeeded();
-                }
+                DeactivatePeerIfDisconnected(activePeer, "session disconnected");
+                SignalPeerUpdateNeeded();
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1228,38 +1228,38 @@ namespace Nethermind.Network
                 {
                     return;
                 }
-
-                _stats.GetOrAdd(session.Node);
-
-                //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
-                ManageNewRemoteNodeId(session);
-
-                if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
-
-                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
-                if (session.Direction == ConnectionDirection.In)
-                {
-                    // For incoming connection, this is the entry point.
-                    ProcessIncomingConnection(session);
-                }
-                else
-                {
-                    if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
-                    {
-                        //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
-                        if (_logger.IsTrace) TraceHandshakeWithoutActivePeer();
-                        return;
-                    }
-
-                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
-                }
-
-                if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeInitialized);
-
-                [MethodImpl(MethodImplOptions.NoInlining)]
-                void TraceHandshakeWithoutActivePeer()
-                    => _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session}");
             }
+
+            _stats.GetOrAdd(session.Node);
+
+            //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
+            ManageNewRemoteNodeId(session);
+
+            if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
+
+            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
+            if (session.Direction == ConnectionDirection.In)
+            {
+                // For incoming connection, this is the entry point.
+                ProcessIncomingConnection(session);
+            }
+            else
+            {
+                if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
+                {
+                    //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
+                    if (_logger.IsTrace) TraceHandshakeWithoutActivePeer();
+                    return;
+                }
+
+                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
+            }
+
+            if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeInitialized);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void TraceHandshakeWithoutActivePeer()
+                => _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session}");
         }
 
         private void ManageNewRemoteNodeId(ISession session)

@@ -427,10 +427,37 @@ public class SessionTests
     }
 
     [Test]
-    public void Outgoing_handshake_with_unexpected_identity_is_rejected()
+    public void Outgoing_handshake_with_unexpected_identity_updates_node_id_for_discovered_peer()
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+
+        session.Handshake(TestItem.PublicKeyB);
+
+        Assert.That(session.ObsoleteRemoteNodeId, Is.EqualTo(TestItem.PublicKeyA));
+        Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+    }
+
+    [Test]
+    public void Outgoing_handshake_with_unexpected_identity_is_rejected_for_static_peer()
     {
         DisconnectReason? disconnectReason = null;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsStatic = true };
+        Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Disconnecting += (_, e) => disconnectReason = e.DisconnectReason;
+
+        session.Handshake(TestItem.PublicKeyB);
+
+        Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyA));
+        session.Init(5, _channelHandlerContext, _packetSender);
+        Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.UnexpectedIdentity));
+    }
+
+    [Test]
+    public void Outgoing_handshake_with_unexpected_identity_is_rejected_for_bootnode()
+    {
+        DisconnectReason? disconnectReason = null;
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545) { IsBootnode = true };
+        Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (_, e) => disconnectReason = e.DisconnectReason;
 
         session.Handshake(TestItem.PublicKeyB);
