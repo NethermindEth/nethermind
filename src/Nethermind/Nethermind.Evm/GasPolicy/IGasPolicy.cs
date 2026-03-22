@@ -227,6 +227,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static abstract void UpdateGasUp(ref TSelf gas, long refund);
 
     /// <summary>
+    /// Charges gas for SSTORE write operation (after cold/warm access cost).
+    /// Cost is calculated internally based on whether it's a slot creation or update.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="isSlotCreation">True if creating a new slot (original was zero).</param>
+    /// <param name="spec">The release specification for determining reset cost.</param>
+    /// <returns>True if sufficient gas available</returns>
+    static abstract bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag;
+
+    /// <summary>
     /// Refunds state gas back to the state reservoir.
     /// Pre-EIP-8037 fallback refunds into regular gas.
     /// </summary>
@@ -262,7 +274,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <returns>True if sufficient gas available</returns>
-    static abstract bool ConsumeNewAccountCreation(ref TSelf gas);
+    static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
 
     /// <summary>
     /// Charges gas for LOG emission with topic and data costs.
