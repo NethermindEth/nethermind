@@ -355,7 +355,7 @@ jobs:
             --config-file "${sampling_config}" \
             --per-payload-metrics \
             --print-logs \
-            2>&1 | tee "${RUNNER_TEMP}/expb-sampling-run.log" || true
+            2>&1 | tee "${RUNNER_TEMP}/expb-sampling-run.log"
 
           # Extract sampling trace (perfcollect produces sampling.trace.zip)
           expb_outputs="${EXPB_DATA_DIR}/outputs"
