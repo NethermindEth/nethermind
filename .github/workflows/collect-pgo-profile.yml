@@ -358,7 +358,7 @@ jobs:
               s['security_opt'] = ['seccomp=unconfined']
               s['amount'] = 10000
               env = s.get('extra_env', {}) or {}
-              env['COLLECTSEC'] = '300'
+              env['COLLECTSEC'] = '720'
               s['extra_env'] = env
           yaml.safe_dump(c, open(p, 'w'), default_flow_style=False, sort_keys=False)
           " "${sampling_config}"
