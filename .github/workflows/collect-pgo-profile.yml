@@ -147,6 +147,17 @@ jobs:
         if: always()
         shell: bash
         run: |
+          # Check if another EXPB run is in progress
+          if [[ -f /tmp/expb.lock ]]; then
+            echo "EXPB lock file exists — another run may be in progress"
+            lock_age=$(($(date +%s) - $(stat -c %Y /tmp/expb.lock 2>/dev/null || echo 0)))
+            echo "Lock age: ${lock_age}s"
+            if [[ "${lock_age}" -lt 3600 ]]; then
+              echo "Lock is less than 1 hour old — aborting to avoid interfering"
+              exit 1
+            fi
+            echo "Lock is stale (>1h) — cleaning up"
+          fi
           # Kill ALL expb containers (nethermind + Alloy + k6 + payload-server)
           # Must remove containers before networks since containers hold network refs
           docker ps -aq --filter "name=expb-executor" 2>/dev/null | xargs -r docker rm -f 2>/dev/null || true
