@@ -619,7 +619,7 @@ jobs:
             xargs -r docker rmi -f 2>/dev/null || true
           # Remove dangling images and all build cache
           docker image prune -f 2>/dev/null || true
-          docker builder prune -f 2>/dev/null || true
+          docker builder prune -f --keep-storage 4G 2>/dev/null || true
           echo "Disk usage after cleanup:"
           df -h / | tail -1
 
