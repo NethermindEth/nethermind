@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -372,12 +371,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private void ClearReadOnlyBundleCache()
     {
-        using ArrayPoolListRef<StateId> statesToRemove = new();
-        statesToRemove.AddRange(_readonlySnapshotBundleCache.Keys);
+        if (_readonlySnapshotBundleCache.IsEmpty) return;
 
-        foreach (StateId stateId in statesToRemove)
+        foreach (KeyValuePair<StateId, ReadOnlySnapshotBundle> entry in _readonlySnapshotBundleCache)
         {
-            if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            if (_readonlySnapshotBundleCache.TryRemove(entry.Key, out ReadOnlySnapshotBundle? bundle))
             {
                 bundle.Dispose();
             }
