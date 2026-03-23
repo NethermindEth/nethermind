@@ -198,6 +198,7 @@ public abstract partial class BaseEngineModuleTests
         {
             MergeConfig = mergeConfig ?? new MergeConfig();
             if (MergeConfig.TerminalTotalDifficulty is null) MergeConfig.TerminalTotalDifficulty = "0";
+            if (PseudoNethermindModule.TestUseFlat) TestTimeout = DefaultTimeout * 3;
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
