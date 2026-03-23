@@ -29,7 +29,7 @@ public class BranchProcessor(
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IStateMerkleizationMetrics? _merkleizationMetrics = stateProvider.ScopeProvider as IStateMerkleizationMetrics;
+    private readonly IStateMerkleizationMetrics _merkleizationMetrics = stateProvider.ScopeProvider as IStateMerkleizationMetrics ?? NullStateMerkleizationMetrics.Instance;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -146,8 +146,7 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    if (_merkleizationMetrics is not null)
-                        Metrics.StateMerkleizationTime = _merkleizationMetrics.StateMerkleizationTime;
+                    Metrics.StateMerkleizationTime = _merkleizationMetrics.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -171,7 +170,6 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 stateProvider.Reset();
-                _merkleizationMetrics?.ResetStateMerkleizationTime();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler

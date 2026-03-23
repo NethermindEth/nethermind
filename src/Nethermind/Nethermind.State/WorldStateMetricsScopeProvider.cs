@@ -16,6 +16,13 @@ public interface IStateMerkleizationMetrics
     void ResetStateMerkleizationTime();
 }
 
+public sealed class NullStateMerkleizationMetrics : IStateMerkleizationMetrics
+{
+    public static NullStateMerkleizationMetrics Instance { get; } = new();
+    public double StateMerkleizationTime => 0d;
+    public void ResetStateMerkleizationTime() { }
+}
+
 public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider)
     : IWorldStateScopeProvider, IStateMerkleizationMetrics
 {
@@ -29,7 +36,11 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
-        public void Dispose() => baseScope.Dispose();
+        public void Dispose()
+        {
+            baseScope.Dispose();
+            parent.ResetStateMerkleizationTime();
+        }
 
         public Hash256 RootHash => baseScope.RootHash;
 
