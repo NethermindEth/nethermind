@@ -71,6 +71,7 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
+    public const int MaxGetStorageSlots = 1024;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -198,6 +199,53 @@ public partial class EthRpcModule(
             var hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
+    }
+
+    public ResultWrapper<Dictionary<Address, byte[][]>> eth_getStorageValues(Dictionary<Address, UInt256[]> requests, BlockParameter? blockParameter = null)
+    {
+        int totalSlots = 0;
+        foreach (UInt256[] keys in requests.Values)
+        {
+            totalSlots += keys.Length;
+            if (totalSlots > MaxGetStorageSlots)
+            {
+                return ResultWrapper<Dictionary<Address, byte[][]>>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
+            }
+        }
+
+        if (totalSlots == 0)
+        {
+            return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
+        }
+
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+        {
+            return GetFailureResult<Dictionary<Address, byte[][]>, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+        }
+
+        BlockHeader header = searchResult.Object!;
+        Dictionary<Address, byte[][]> result = new(requests.Count);
+        try
+        {
+            foreach ((Address addr, UInt256[] keys) in requests)
+            {
+                byte[][] vals = new byte[keys.Length][];
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, addr, keys[i]);
+                    vals[i] = storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage.PadLeft(32);
+                }
+                result[addr] = vals;
+            }
+        }
+        catch (MissingTrieNodeException e)
+        {
+            Hash256 hash = e.Hash;
+            return ResultWrapper<Dictionary<Address, byte[][]>>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
+        }
+
+        return ResultWrapper<Dictionary<Address, byte[][]>>.Success(result);
     }
 
     public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
