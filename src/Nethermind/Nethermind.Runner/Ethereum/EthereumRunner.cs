@@ -33,18 +33,11 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
     {
         await serviceStopper.StopAllServices();
 
-        // Time-box DB disposal so PGO data can be written even if RocksDB hangs
-        // (e.g. on overlay filesystems). Will revert once snapshot disposal is fixed.
-        Task disposeTask = lifetimeScope.DisposeAsync().AsTask();
-        if (await Task.WhenAny(disposeTask, Task.Delay(15_000)) != disposeTask)
+        await lifetimeScope.DisposeAsync();
+        if (_logger.IsInfo)
         {
-            if (_logger.IsWarn) _logger.Warn("DB disposal timed out after 15s - proceeding with shutdown");
+            _logger.Info("All DBs closed");
+            _logger.Info("Ethereum runner stopped");
         }
-        else
-        {
-            if (_logger.IsInfo) _logger.Info("All DBs closed");
-        }
-
-        if (_logger.IsInfo) _logger.Info("Ethereum runner stopped");
     }
 }
