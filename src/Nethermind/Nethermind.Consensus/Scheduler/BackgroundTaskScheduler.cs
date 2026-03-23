@@ -202,7 +202,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     public async ValueTask DisposeAsync()
     {
-        if (!Interlocked.CompareExchange(ref _disposed, true, false)) return;
+        if (Interlocked.CompareExchange(ref _disposed, true, false)) return;
 
         _branchProcessor.BlocksProcessing -= BranchProcessorOnBranchesProcessing;
         _branchProcessor.BlockProcessed -= BranchProcessorOnBranchProcessed;
