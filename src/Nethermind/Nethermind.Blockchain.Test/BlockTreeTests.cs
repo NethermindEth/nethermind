@@ -2201,4 +2201,930 @@ public class BlockTreeTests
             }
         }
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_by_number_after_reorg_returns_new_canonical_with_and_without_RequireCanonical()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        // Block A at height 1 — initially canonical
+        Block blockA = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithExtraData(new byte[] { 1 })
+            .TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        // Block B at height 1 — same parent, different block (reorg)
+        Block blockB = Build.A.Block
+            .WithNumber(1)
+            .WithParent(genesis)
+            .WithExtraData(new byte[] { 2 })
+            .TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // Without RequireCanonical (old BlockParameter(long) behavior)
+        Block? withoutCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.None);
+
+        // With RequireCanonical (new BlockParameter(long) behavior after RequireCanonical-by-number behavior change)
+        Block? withCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+
+        withoutCanonical.Should().NotBeNull();
+        withCanonical.Should().NotBeNull();
+
+        withoutCanonical!.Hash.Should().Be(blockB.Hash!,
+            "FindBlock without RequireCanonical must return the current canonical block B after reorg");
+        withCanonical!.Hash.Should().Be(blockB.Hash!,
+            "FindBlock with RequireCanonical must return the current canonical block B after reorg, not the old canonical A");
+
+        withCanonical.Hash.Should().Be(withoutCanonical.Hash,
+            "RequireCanonical and non-canonical number lookups must agree on which block is canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_after_double_reorg_A_to_B_back_to_A_returns_A()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+
+        // A canonical → reorg to B → reorg back to A
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block? withoutCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.None);
+        Block? withCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+
+        withoutCanonical!.Hash.Should().Be(blockA.Hash!, "after reorg back to A, None lookup must return A");
+        withCanonical!.Hash.Should().Be(blockA.Hash!, "after reorg back to A, RequireCanonical lookup must return A");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "B must not be canonical after reorg back to A");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_after_multi_block_reorg_both_heights_updated()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        // Original chain: A1 → A2
+        Block a1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block a2 = Build.A.Block.WithNumber(2).WithParent(a1).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(a1);
+        blockTree.SuggestBlock(a2);
+        blockTree.UpdateMainChain(new[] { a1, a2 }, true);
+
+        // Reorg chain: B1 → B2
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 3 }).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).WithExtraData(new byte[] { 4 }).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.UpdateMainChain(new[] { b1, b2 }, true);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(b1.Hash!,
+            "height 1 must be B1 after reorg");
+        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(b2.Hash!,
+            "height 2 must be B2 after reorg");
+
+        blockTree.FindBlock(a1.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("A1 must not be canonical");
+        blockTree.FindBlock(a2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("A2 must not be canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_after_reorg_to_lower_height_unmarks_higher_levels()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        // Chain: A1 → A2 (head at height 2)
+        Block a1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block a2 = Build.A.Block.WithNumber(2).WithParent(a1).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(a1);
+        blockTree.SuggestBlock(a2);
+        blockTree.UpdateMainChain(new[] { a1, a2 }, true);
+
+        // Reorg to B1 at height 1 (lower than current head)
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 3 }).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.UpdateMainChain(new[] { b1 }, true);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(b1.Hash!,
+            "height 1 must be B1 after reorg to lower height");
+
+        // Height 2 must be unmarked — no canonical block there anymore
+        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "height 2 must be unmarked after reorging to height 1");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_canonical_and_non_canonical_siblings_are_both_accessible_by_hash()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // B is canonical — accessible both by hash and by number
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None)!.Hash.Should().Be(blockB.Hash!);
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockB.Hash!);
+
+        // A is not canonical — accessible by hash without RequireCanonical, null with RequireCanonical
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None)!.Hash.Should().Be(blockA.Hash!,
+            "non-canonical block A must still be accessible by hash without RequireCanonical");
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "non-canonical block A must not be returned when RequireCanonical is set");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_UpdateMainChain_called_twice_for_same_block_is_idempotent()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+        blockTree.UpdateMainChain(new[] { blockA }, true); // second call — must not corrupt state
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockA.Hash!,
+            "calling UpdateMainChain twice for the same block must not corrupt canonical state");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_canonical_state_consistent_after_reorg_to_fork_with_different_parent()
+    {
+        // Scenario matching the Gnosis node bug:
+        // P (height 1) → A (height 2, 20 txs) → canonical
+        // B (height 2, 32 txs, same parent P) → FCU makes B canonical
+        // C (height 3, child of A) → FCU makes A canonical again at height 2
+        //
+        // After this, A is correctly canonical at height 2 from Nethermind's perspective.
+        // Both RequireCanonical and None lookups must agree.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block p = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0 }).TestObject;
+        blockTree.SuggestBlock(p);
+        blockTree.UpdateMainChain(new[] { p }, true);
+
+        // A at height 2 — initially canonical (20 txs equivalent)
+        Block blockA = Build.A.Block.WithNumber(2).WithParent(p).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        // B at height 2 — sibling of A (32 txs equivalent), becomes canonical via reorg
+        Block blockB = Build.A.Block.WithNumber(2).WithParent(p).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // C at height 3 — child of A (not B), FCU to C re-canonicalizes A
+        Block blockC = Build.A.Block.WithNumber(3).WithParent(blockA).WithExtraData(new byte[] { 3 }).TestObject;
+        blockTree.SuggestBlock(blockC);
+        blockTree.UpdateMainChain(new[] { blockA, blockC }, true);
+
+        // A must now be canonical at height 2 (FCU to C forced A back)
+        Block? byNumberNoCanonical = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
+        Block? byNumberWithCanonical = blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical);
+
+        byNumberNoCanonical!.Hash.Should().Be(blockA.Hash!, "height 2 canonical must be A after FCU to C");
+        byNumberWithCanonical!.Hash.Should().Be(blockA.Hash!, "RequireCanonical lookup at height 2 must return A");
+
+        // Both lookups must agree
+        byNumberNoCanonical.Hash.Should().Be(byNumberWithCanonical!.Hash,
+            "None and RequireCanonical lookups must return the same block");
+
+        // B is no longer canonical
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "B must not be canonical after FCU re-canonicalized A");
+
+        // C is canonical at height 3
+        blockTree.FindBlock(3, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockC.Hash!,
+            "C must be canonical at height 3");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_three_siblings_third_becomes_canonical_SwapToMain_index_greater_than_one()
+    {
+        // Exercises SwapToMain with index > 1 (three blocks at the same height,
+        // the third one — index=2 — is made canonical last).
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        Block blockC = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 3 }).TestObject;
+        blockTree.SuggestBlock(blockC);
+        blockTree.UpdateMainChain(new[] { blockC }, true);
+
+        // C (the third sibling, originally at index 2) must now be canonical
+        Block? byNumber = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+        byNumber.Should().NotBeNull("RequireCanonical lookup must find C");
+        byNumber!.Hash.Should().Be(blockC.Hash!, "C is the last canonical, SwapToMain must have moved it to index 0");
+
+        // A and B must not be canonical
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "A must not be canonical after C was set");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "B must not be canonical after C was set");
+
+        // All three are still findable by hash (non-canonical lookup)
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("A findable by hash");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("B findable by hash");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("C findable by hash");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_canonical_state_survives_BlockTree_reload_from_same_db()
+    {
+        // Verifies that the canonical marker (HasBlockOnMainChain / BlockInfos[0]) is
+        // persisted to the DB and correctly restored when a fresh BlockTree is constructed
+        // over the same DB instances — i.e. a node restart preserves canonical state.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // B is canonical before reload
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockB.Hash!,
+            "B must be canonical before reload");
+
+        // Reload: new BlockTree over the same DB instances (simulates node restart)
+        BlockTree reloadedTree = Build.A.BlockTree()
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        Block? afterReload = reloadedTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+        afterReload.Should().NotBeNull("canonical block must be findable after reload");
+        afterReload!.Hash.Should().Be(blockB.Hash!,
+            "B must still be canonical after BlockTree reload from the same DB");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_gap_in_canonical_chain_height_one_not_marked_when_height_two_is()
+    {
+        // Gap scenario: UpdateMainChain is called with a block at height 2 (C),
+        // but height 1 (B, C's parent) was never made canonical.
+        // The canonical chain is therefore inconsistent: height 2 is marked,
+        // height 1 is not. This documents the current behavior so that any
+        // accidental regression (e.g. silently marking height 1) is caught.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        // Intentionally NOT calling UpdateMainChain for blockB
+
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockB).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockC);
+        blockTree.UpdateMainChain(new[] { blockC }, true);
+
+        // C is marked canonical at height 2
+        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockC.Hash!,
+            "C must be canonical at height 2");
+
+        // B was never passed to UpdateMainChain, so height 1 has no canonical marker
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "B must NOT be canonical at height 1 — it was never passed to UpdateMainChain");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void IsMainChain_returns_correct_values_after_reorg()
+    {
+        // After A→B reorg: IsMainChain(B)=true, IsMainChain(A)=false.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        blockTree.IsMainChain(blockB.Header).Should().BeTrue("B is canonical after reorg");
+        blockTree.IsMainChain(blockA.Header).Should().BeFalse("A is no longer canonical after reorg");
+        blockTree.IsMainChain(blockB.Hash!).Should().BeTrue("hash-based IsMainChain must agree for B");
+        blockTree.IsMainChain(blockA.Hash!).Should().BeFalse("hash-based IsMainChain must agree for A");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_by_hash_with_RequireCanonical_returns_null_for_non_canonical_hash()
+    {
+        // FindBlock(Hash, RequireCanonical) uses a separate code path from number-based lookup.
+        // It must return null when the hash belongs to a non-canonical block.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // B canonical: hash lookup with RequireCanonical must succeed
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull(
+            "B is canonical — hash lookup with RequireCanonical must return it");
+
+        // A non-canonical: hash lookup with RequireCanonical must return null
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "A is not canonical — hash lookup with RequireCanonical must return null");
+
+        // Without RequireCanonical both are still findable
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("A findable without RequireCanonical");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.None).Should().NotBeNull("B findable without RequireCanonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_by_number_without_RequireCanonical_uses_best_difficulty_fallback_when_no_canonical_marked()
+    {
+        // When HasBlockOnMainChain=false (no UpdateMainChain called), GetBlockHashOnMainOrBestDifficultyHash
+        // falls back to the best-TD loop using >=, so the last SuggestBlock call wins (TD=0 in PoS).
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        // Suggest two siblings but do NOT call UpdateMainChain for either
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+
+        // Neither is canonical — RequireCanonical must return null
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "no canonical block at height 1 — RequireCanonical must return null");
+
+        // Without RequireCanonical the best-difficulty fallback returns a block.
+        // With TD=0 and >= comparison, the last SuggestBlock (B) wins.
+        Block? fallback = blockTree.FindBlock(1, BlockTreeLookupOptions.None);
+        fallback.Should().NotBeNull("best-difficulty fallback must return a block when no canonical is set");
+        fallback!.Hash.Should().Be(blockB.Hash!,
+            "last SuggestBlock (B) wins the TD=0 >= fallback tie-break");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_UpdateMainChain_with_wereProcessed_false_still_marks_canonical()
+    {
+        // wereProcessed=false is used during sync to set canonical without updating Head.
+        // The canonical marker (HasBlockOnMainChain / BlockInfos[0]) must be set regardless.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+
+        // Reorg to B with wereProcessed=false (sync path)
+        blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: false);
+
+        // Canonical marker must be updated even without wereProcessed
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockB.Hash!,
+            "B must be canonical at height 1 even when UpdateMainChain was called with wereProcessed=false");
+
+        blockTree.IsMainChain(blockB.Header).Should().BeTrue("B is canonical");
+        blockTree.IsMainChain(blockA.Header).Should().BeFalse("A is no longer canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_sync_marks_descendant_canonical_then_reorg_to_sibling_decanonalizes_it()
+    {
+        // Regression test for the Gnosis canonical-mismatch bug.
+        //
+        // BlockDownloader calls UpdateMainChain(block, wereProcessed: false) to mark synced
+        // blocks canonical without updating Head. When a reorg then arrives at the same height
+        // as the stale Head (previousHeadNumber == lastNumber), the old unmark loop
+        // (previousHeadNumber > lastNumber) is skipped, leaving the orphaned descendant
+        // wrongly canonical so eth_getBlockByNumber returns the wrong block.
+        //
+        // The fix adds an else-branch that scans upward from lastNumber+1 to clear any
+        // stale canonical markers left by the sync path.
+        //
+        // Scenario:
+        //   UpdateMainChain([A], wereProcessed: true)  — FCU(A): head = A at H=1.
+        //   UpdateMainChain([C], wereProcessed: false) — sync: C canonical at H=2, head stays at A.
+        //   UpdateMainChain([B], wereProcessed: true)  — FCU(B, H=1, sibling of A):
+        //     previousHeadNumber(1) == lastNumber(1) → else-branch fires → C at H=2 decanonalized.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockA).TestObject;
+
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+        blockTree.SuggestBlock(blockC);
+
+        // FCU(A): A becomes head at H=1.
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.Head!.Hash.Should().Be(blockA.Hash!, "head must be A");
+
+        // Sync marks C canonical at H=2 without updating Head (BlockDownloader path).
+        blockTree.UpdateMainChain(new[] { blockC }, wereProcessed: false);
+        blockTree.Head!.Hash.Should().Be(blockA.Hash!, "head must stay at A — wereProcessed=false");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().NotBeNull("C must be canonical at H=2 after sync marks it");
+
+        // FCU(B): reorg to sibling at the same height as the stale Head.
+        // previousHeadNumber(1) == lastNumber(1) → old loop skipped → else-branch must clear C.
+        blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.Head!.Hash.Should().Be(blockB.Hash!, "head must be B after reorg");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "C must not be canonical — its parent A was replaced by B");
+        blockTree.FindBlock(blockB.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull(
+            "B must be canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_fcu_to_ancestor_with_stale_head_clears_all_beacon_synced_descendants()
+    {
+        // ePBS scenario: FCU can reorg to an ancestor (not just a sibling at the same height).
+        // If head is stale because beacon sync marked descendants canonical without updating Head,
+        // a subsequent FCU to an ancestor must clear ALL canonical markers above the ancestor —
+        // including beacon-synced blocks above the stale head that the IF branch cannot reach.
+        //
+        // Scenario:
+        //   genesis → b1(H=1) → b2(H=2) → b3(H=3) → b4(H=4)
+        //
+        //   UpdateMainChain([b1], wereProcessed: true)   — FCU(b1): head = b1 at H=1.
+        //   UpdateMainChain([b2], wereProcessed: false)  — beacon sync: b2 canonical, head stays at b1.
+        //   UpdateMainChain([b3], wereProcessed: false)  — beacon sync: b3 canonical, head stays at b1.
+        //   UpdateMainChain([b4], wereProcessed: false)  — beacon sync: b4 canonical, head stays at b1.
+        //   UpdateMainChain([genesis], wereProcessed: true) — ePBS FCU to ancestor at H=0:
+        //     previousHeadNumber(1) > lastNumber(0) → IF branch clears H=1 only.
+        //     b2, b3, b4 are NOT cleared — they are above the stale head and invisible to the IF branch.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+        Block b3 = Build.A.Block.WithNumber(3).WithParent(b2).TestObject;
+        Block b4 = Build.A.Block.WithNumber(4).WithParent(b3).TestObject;
+
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.SuggestBlock(b3);
+        blockTree.SuggestBlock(b4);
+
+        // FCU(b1): head = b1 at H=1.
+        blockTree.UpdateMainChain(new[] { b1 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Beacon sync: b2, b3, b4 marked canonical without updating Head.
+        blockTree.UpdateMainChain(new[] { b2 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b3 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b4 }, wereProcessed: false);
+
+        // Preconditions: head stale at b1, b2-b4 canonical via beacon sync.
+        blockTree.Head!.Hash.Should().Be(b1.Hash!, "precondition: head stale at b1");
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b2 beacon-synced canonical");
+        blockTree.FindBlock(b4.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("precondition: b4 beacon-synced canonical");
+
+        // ePBS FCU to ancestor: reorg back to genesis at H=0.
+        // The IF branch (previousHeadNumber=1 > lastNumber=0) clears b1 at H=1.
+        // b2, b3, b4 must also be cleared — they are above the stale head.
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.FindBlock(genesis.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("genesis must be canonical");
+        blockTree.FindBlock(b1.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b1 must be de-canonicalized");
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b2 must be de-canonicalized — beacon sync stale marker above stale head");
+        blockTree.FindBlock(b3.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b3 must be de-canonicalized — beacon sync stale marker above stale head");
+        blockTree.FindBlock(b4.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("b4 must be de-canonicalized — beacon sync stale marker above stale head");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_clears_stale_marker_above_head_left_by_sync()
+    {
+        // Scenario: sync (wereProcessed=false) marks C canonical at H=2 without updating Head.
+        // HealCanonicalChain(head=A) must scan upward and clear C's stale marker.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockA).TestObject;
+
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockC);
+
+        // FCU: head = A at H=1
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Sync marks C canonical at H=2 without updating Head
+        blockTree.UpdateMainChain(new[] { blockC }, wereProcessed: false);
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().NotBeNull("precondition: C is canonical before heal");
+
+        blockTree.HealCanonicalChain(blockA.Hash!, maxBlockDepth: 10);
+
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().BeNull("C must be decanonalized after heal");
+        blockTree.FindBlock(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().NotBeNull("A must remain canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_fixes_wrong_canonical_block_at_height()
+    {
+        // Scenario: A and B are siblings at H=1. B was swapped to index 0 by accident
+        // (e.g. a stale write), but the real canonical chain goes through A.
+        // HealCanonicalChain walking from A must swap A back to index 0.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+
+        // Make A canonical first, then B (leaving B at index 0, A at index 1)
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: false); // B wrongly becomes canonical
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(blockB.Hash!, "precondition: B is wrongly canonical");
+
+        blockTree.HealCanonicalChain(blockA.Hash!, maxBlockDepth: 10);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(blockA.Hash!, "A must be canonical after heal");
+        blockTree.IsMainChain(blockB.Header).Should().BeFalse("B must not be canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_does_not_alter_already_consistent_chain()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.UpdateMainChain(new[] { b1, b2 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.HealCanonicalChain(b2.Hash!, maxBlockDepth: 10);
+
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("b2 must remain canonical");
+        blockTree.FindBlock(b1.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("b1 must remain canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_does_nothing_for_unknown_start_hash()
+    {
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        // Should not throw — unknown hash is treated as a no-op.
+        blockTree.Invoking(bt => bt.HealCanonicalChain(TestItem.KeccakA, maxBlockDepth: 10))
+            .Should().NotThrow();
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_clears_multiple_stale_levels_above_head()
+    {
+        // Sync left THREE levels above head canonical — heal must clear all of them.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+        Block b3 = Build.A.Block.WithNumber(3).WithParent(b2).TestObject;
+        Block b4 = Build.A.Block.WithNumber(4).WithParent(b3).TestObject;
+
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.SuggestBlock(b3);
+        blockTree.SuggestBlock(b4);
+
+        // FCU: head = b1 at H=1
+        blockTree.UpdateMainChain(new[] { b1 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Sync marks b2, b3, b4 canonical without updating Head
+        blockTree.UpdateMainChain(new[] { b2 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b3 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { b4 }, wereProcessed: false);
+
+        blockTree.HealCanonicalChain(b1.Hash!, maxBlockDepth: 10);
+
+        blockTree.FindBlock(b2.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("H=2 stale marker must be cleared");
+        blockTree.FindBlock(b3.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("H=3 stale marker must be cleared");
+        blockTree.FindBlock(b4.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("H=4 stale marker must be cleared");
+        blockTree.FindBlock(b1.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().NotBeNull("b1 must remain canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_fixes_both_directions_in_one_pass()
+    {
+        // Combined scenario: wrong canonical at H=1 AND stale markers at H=2,3 above head.
+        // This is the realistic production scenario: FCU moved head to B at H=1,
+        // but C (child of A) was left canonical at H=2 by sync, and A is still canonical at H=1
+        // when it shouldn't be.
+        //
+        //   genesis → A(H=1) → C(H=2)   ← sync left C canonical, A at H=1
+        //           → B(H=1)             ← heal starts from B, the correct head
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockA).TestObject;
+
+        blockTree.SuggestBlock(blockA);
+        blockTree.SuggestBlock(blockB);
+        blockTree.SuggestBlock(blockC);
+
+        // FCU(A): A is canonical at H=1, B is known but not canonical.
+        // Sync marks C canonical at H=2 without updating Head.
+        // No FCU for B — the heal is told B is the correct head (e.g. via the CL reorg).
+        blockTree.UpdateMainChain(new[] { blockA }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.UpdateMainChain(new[] { blockC }, wereProcessed: false); // sync: C canonical at H=2, head stays A
+
+        // Preconditions: A canonical at H=1, C stale-canonical at H=2, B suggested but not canonical
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(blockA.Hash!, "precondition: A is canonical at H=1");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().NotBeNull("precondition: C is stale-canonical at H=2");
+
+        // Heal from B — the CL says B is the correct head.
+        // Must both: clear C at H=2 (upward scan) and swap B to index 0 at H=1 (downward walk).
+        blockTree.HealCanonicalChain(blockB.Hash!, maxBlockDepth: 10);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(blockB.Hash!, "B must be canonical at H=1 after heal");
+        blockTree.FindBlock(blockC.Hash!, BlockTreeLookupOptions.RequireCanonical)
+            .Should().BeNull("C must not be canonical — it was orphaned when B replaced A");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void HealCanonicalChain_respects_maxBlockDepth()
+    {
+        // With maxBlockDepth=1, the walk only checks the start block and one parent.
+        // A broken marker two levels below must NOT be repaired.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        Block b1Alt = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b1Alt);
+        blockTree.SuggestBlock(b2);
+
+        // b1Alt wrongly canonical at H=1, b2 canonical at H=2 (head)
+        blockTree.UpdateMainChain(new[] { b1 }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.UpdateMainChain(new[] { b2 }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.UpdateMainChain(new[] { b1Alt }, wereProcessed: false); // breaks H=1
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(b1Alt.Hash!, "precondition: H=1 is broken");
+
+        // Heal from b2 with depth=0: only checks b2, does not reach H=1
+        blockTree.HealCanonicalChain(b2.Hash!, maxBlockDepth: 0);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash
+            .Should().Be(b1Alt.Hash!, "H=1 must remain broken — it is beyond maxBlockDepth");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Canonical_chain_walk_every_ancestor_is_IsMainChain_true()
+    {
+        // Walk from canonical head back to genesis via ParentHash.
+        // Every block in the chain must satisfy IsMainChain=true.
+        // This catches the Gnosis-style bug where a child is canonical but its parent is not.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.UpdateMainChain(new[] { b1 }, true);
+
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).TestObject;
+        blockTree.SuggestBlock(b2);
+        blockTree.UpdateMainChain(new[] { b2 }, true);
+
+        Block b3 = Build.A.Block.WithNumber(3).WithParent(b2).TestObject;
+        blockTree.SuggestBlock(b3);
+        blockTree.UpdateMainChain(new[] { b3 }, true);
+
+        // Walk canonical chain from head down to genesis
+        BlockHeader? current = blockTree.FindHeader(3, BlockTreeLookupOptions.RequireCanonical);
+        current.Should().NotBeNull("canonical head must exist at height 3");
+
+        while (current!.Number > 0)
+        {
+            blockTree.IsMainChain(current).Should().BeTrue(
+                $"block at height {current.Number} (hash {current.Hash}) must be IsMainChain=true");
+            current = blockTree.FindHeader(current.ParentHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            current.Should().NotBeNull($"parent must exist when walking canonical chain");
+        }
+
+        blockTree.IsMainChain(current!).Should().BeTrue("genesis must be IsMainChain=true");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_long_branch_reorg_all_new_heights_canonical_old_height_unmarked()
+    {
+        // Head at A(1). Reorg to B(1)→C(2)→D(3).
+        // After reorg: B, C, D canonical; A unmarked; heights 2 and 3 newly marked.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        // Competing branch: B sibling of A, then C and D on top of B
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+
+        Block blockC = Build.A.Block.WithNumber(2).WithParent(blockB).TestObject;
+        blockTree.SuggestBlock(blockC);
+
+        Block blockD = Build.A.Block.WithNumber(3).WithParent(blockC).TestObject;
+        blockTree.SuggestBlock(blockD);
+
+        blockTree.UpdateMainChain(new[] { blockB, blockC, blockD }, true);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockB.Hash!, "B canonical at height 1");
+        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockC.Hash!, "C canonical at height 2");
+        blockTree.FindBlock(3, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(blockD.Hash!, "D canonical at height 3");
+        blockTree.IsMainChain(blockA.Header).Should().BeFalse("A must be unmarked after reorg to longer branch");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_reorg_to_shorter_chain_higher_levels_unmarked()
+    {
+        // Head at height 3 (A1→A2→A3). Reorg to B1 (height 1 only).
+        // Heights 2 and 3 must be unmarked; B1 must be canonical at height 1.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block a1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(a1);
+        Block a2 = Build.A.Block.WithNumber(2).WithParent(a1).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(a2);
+        Block a3 = Build.A.Block.WithNumber(3).WithParent(a2).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(a3);
+        blockTree.UpdateMainChain(new[] { a1, a2, a3 }, true);
+
+        // Reorg to a competing block at height 1 only
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.UpdateMainChain(new[] { b1 }, true);
+
+        blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical)!.Hash.Should().Be(b1.Hash!, "B1 canonical at height 1");
+        blockTree.FindBlock(2, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("height 2 must be unmarked after reorg to shorter chain");
+        blockTree.FindBlock(3, BlockTreeLookupOptions.RequireCanonical).Should().BeNull("height 3 must be unmarked after reorg to shorter chain");
+        blockTree.IsMainChain(a1.Header).Should().BeFalse("A1 no longer canonical");
+        blockTree.IsMainChain(a2.Header).Should().BeFalse("A2 no longer canonical");
+        blockTree.IsMainChain(a3.Header).Should().BeFalse("A3 no longer canonical");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindHeader_by_number_with_RequireCanonical_mirrors_FindBlock_behavior()
+    {
+        // FindHeader(long, RequireCanonical) uses GetBlockHashOnMainOrBestDifficultyHash then
+        // checks level.MainChainBlock — same logic as FindBlock but returning only the header.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block blockA = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(blockA);
+        blockTree.UpdateMainChain(new[] { blockA }, true);
+
+        Block blockB = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(blockB);
+        blockTree.UpdateMainChain(new[] { blockB }, true);
+
+        // B canonical: FindHeader with RequireCanonical must return B's header
+        BlockHeader? headerCanonical = blockTree.FindHeader(1, BlockTreeLookupOptions.RequireCanonical);
+        headerCanonical.Should().NotBeNull("canonical header must be found at height 1");
+        headerCanonical!.Hash.Should().Be(blockB.Hash!, "FindHeader(RequireCanonical) must return B after reorg");
+
+        // A non-canonical: FindHeader(hash, RequireCanonical) must return null
+        blockTree.FindHeader(blockA.Hash!, BlockTreeLookupOptions.RequireCanonical).Should().BeNull(
+            "FindHeader by A's hash with RequireCanonical must return null — A is not canonical");
+
+        // FindHeader and FindBlock must agree on canonical hash
+        Block? blockCanonical = blockTree.FindBlock(1, BlockTreeLookupOptions.RequireCanonical);
+        blockCanonical!.Hash.Should().Be(headerCanonical.Hash,
+            "FindHeader and FindBlock must return the same canonical block at height 1");
+    }
 }
