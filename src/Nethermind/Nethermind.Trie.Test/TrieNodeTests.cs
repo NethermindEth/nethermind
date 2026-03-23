@@ -522,7 +522,7 @@ public class TrieNodeTests
     public void Cannot_ask_about_validity_on_non_branch_nodes()
     {
         TrieNode leaf = new(NodeType.Leaf);
-        TrieNode extension = new(NodeType.Leaf);
+        TrieNode extension = new(NodeType.Extension);
         Assert.Throws<TrieException>(() => _ = leaf.IsValidWithOneNodeLess, "leaf");
         Assert.Throws<TrieException>(() => _ = extension.IsValidWithOneNodeLess, "extension");
     }
