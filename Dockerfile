@@ -24,10 +24,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     gzip -d -k pgo/nethermind.callchain.json.gz; \
   fi && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH -v:d 2>&1 | \
-    tee /tmp/publish.log | grep -iE "Crossgen2ExtraCommandLineArgs|callchain-profile|method-layout|hot-cold-splitting|--mibc|crossgen2.*\.dll" | head -20 || true && \
-  rm -f /tmp/publish.log && \
-  test -f /publish/nethermind || { echo "PUBLISH FAILED"; exit 1; }
+    -p:SourceRevisionId=$COMMIT_HASH
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
