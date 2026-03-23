@@ -70,7 +70,7 @@ public class TestingRpcModule(
 
     private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, byte[]? extraData)
     {
-        Address blockAuthor = payloadAttributes.SuggestedFeeRecipient;
+        Address blockAuthor = payloadAttributes.SuggestedFeeRecipient ?? Address.Zero;
         BlockHeader header = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
@@ -114,7 +114,7 @@ public class TestingRpcModule(
     {
         foreach (var txRlp in txRlps)
         {
-            yield return TxDecoder.Instance.Decode(new RlpStream(txRlp), RlpBehaviors.SkipTypedWrapping);
+            yield return TxDecoder.Instance.Decode(txRlp.AsSpan(), RlpBehaviors.SkipTypedWrapping);
         }
     }
 }
