@@ -39,11 +39,25 @@ public class TransactionJsonTest : GeneralStateTestBase
         tx.AccessList.Should().NotBeNull();
     }
 
+    [Test]
+    public void Convert_sets_AccessList_type_when_accessLists_field_present_but_empty()
+    {
+        const string json =
+            """{"accessLists": [[]], "secretKey": "0x0000000000000000000000000000000000000000000000000000000000000001", "value": ["0x00"], "gasLimit": ["0x0186a0"], "data": ["0x"]}""";
+
+        EthereumJsonSerializer serializer = new();
+        TransactionJson txJson = serializer.Deserialize<TransactionJson>(json);
+
+        Nethermind.Core.Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
+
+        tx.Type.Should().Be(TxType.AccessList,
+            "presence of accessLists field (even empty) should set Type 1");
+    }
+
     /// <summary>
     /// An AccessList transaction with an empty access list sent against Istanbul (pre-Berlin)
     /// must be rejected. The post-state root must equal the pre-state root - the invalid tx
-    /// should not mutate state. Regression test for the JsonToEthereumTest.Convert fix that
-    /// checks for the presence of the accessLists field rather than a non-empty list.
+    /// should not mutate state.
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
