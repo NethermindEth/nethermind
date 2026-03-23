@@ -15,10 +15,8 @@ namespace Nethermind.Consensus.Stateless;
 /// Works like the OverlayTriestore but add logic for capturing trie nodes accessed during
 /// execution as well as during state root recomputation.
 /// </remarks>
-public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
+public class WitnessCapturingTrieStore(IReadOnlyTrieStore baseStore) : ITrieStore
 {
-    private readonly INodeStorage _nodeStorage = new NodeStorage(keyValueStore);
-
     private readonly ConcurrentDictionary<Hash256AsKey, byte[]> _rlpCollector = new();
 
     public IEnumerable<byte[]> TouchedNodesRlp => _rlpCollector.Values;
@@ -41,13 +39,12 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
+        byte[]? rlp = baseStore.TryLoadRlp(address, in path, hash, flags);
         if (rlp is not null) _rlpCollector.TryAdd(hash, rlp);
         return rlp;
     }
 
-    public bool HasRoot(Hash256 stateRoot) =>
-        _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
+    public bool HasRoot(Hash256 stateRoot) => baseStore.HasRoot(stateRoot);
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => baseStore.BeginScope(baseBlock);
 
@@ -57,6 +54,6 @@ public class WitnessCapturingTrieStore(IKeyValueStoreWithBatching keyValueStore,
 
     public IBlockCommitter BeginBlockCommit(long blockNumber) => NullCommitter.Instance;
 
-    // Write directly to _nodeStorage, which goes to the db provider.
-    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => new RawScopedTrieStore.Committer(_nodeStorage, address, writeFlags);
+    // Read only witness capturing trie store, so we return a null committer that does nothing.
+    public ICommitter BeginCommit(Hash256? address, TrieNode? root, WriteFlags writeFlags) => NullCommitter.Instance;
 }
