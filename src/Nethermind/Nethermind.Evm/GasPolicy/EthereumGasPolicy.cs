@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -51,14 +52,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true)
+        Address? delegated)
     {
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm);
-        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated, chargeForWarm));
+        bool notOutOfGas = ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
+        return notOutOfGas && (delegated is null || ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
     }
 
     public static bool ConsumeAccountAccessGas(ref EthereumGasPolicy gas,
@@ -66,44 +66,30 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true)
+        AccountAccessKind kind = AccountAccessKind.Default)
     {
-        bool result = true;
-        if (spec.UseHotAndColdStorage)
+        if (!spec.UseHotAndColdStorage) return true;
+        if (isTracingAccess)
         {
-            if (isTracingAccess)
-            {
-                // Ensure that tracing simulates access-list behavior.
-                accessTracker.WarmUp(address);
-            }
+            // Ensure that tracing simulates access-list behavior.
+            accessTracker.WarmUp(address);
+        }
 
-            // If the account is cold (and not a precompile), charge the cold access cost.
-            if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+        bool result;
+        // If the account is cold (and not a precompile), charge the cold access cost.
+        if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
+            result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
+        else
+        {
+            result = kind switch
             {
-                result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-            }
-            else if (chargeForWarm)
-            {
-                // Otherwise, if warm access should be charged, apply the warm read cost.
-                result = UpdateGas(ref gas, GasCostOf.WarmStateRead);
-            }
+                AccountAccessKind.SelfDestructBeneficiary => true, // no warm charge
+                AccountAccessKind.Default => UpdateGas(ref gas, GasCostOf.WarmStateRead),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
+            };
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// For Ethereum, SELFDESTRUCT beneficiary access is the same as regular account access.
-    /// Arbitrum overrides this to charge cold access as full StorageAccess (no split).
-    /// </summary>
-    public static bool ConsumeSelfDestructBeneficiaryAccessGas(ref EthereumGasPolicy gas,
-        IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
-        Address address)
-    {
-        // For Ethereum, just use regular account access gas (no MultiGas tracking)
-        return ConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address, chargeForWarm: false);
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,

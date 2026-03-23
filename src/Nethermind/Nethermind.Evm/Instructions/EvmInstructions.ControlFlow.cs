@@ -229,9 +229,7 @@ internal static partial class EvmInstructions
             goto StackUnderflow;
 
         // Charge gas for SELFDESTRUCT beneficiary access; if insufficient, signal out-of-gas.
-        // Uses ConsumeSelfDestructBeneficiaryAccessGas which charges cold access as full StorageAccess
-        // (no Computation split for Arbitrum).
-        if (!TGasPolicy.ConsumeSelfDestructBeneficiaryAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor))
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vmState.AccessTracker, vm.TxTracer.IsTracingAccess, inheritor, AccountAccessKind.SelfDestructBeneficiary))
             goto OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;

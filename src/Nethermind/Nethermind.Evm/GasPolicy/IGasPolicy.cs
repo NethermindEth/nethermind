@@ -81,49 +81,33 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
     /// <param name="address">The target account address.</param>
     /// <param name="delegated">The delegated account address, if any.</param>
-    /// <param name="chargeForWarm">If true, charge even if the account is already warm.</param>
     /// <returns>True if gas was successfully charged; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGasWithDelegation(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        Address? delegated,
-        bool chargeForWarm = true);
+        Address? delegated);
 
     /// <summary>
     /// Charges gas for accessing an account based on its storage state (cold vs. warm).
     /// Precompiles are treated as exceptions to the cold/warm gas charge.
+    /// The <paramref name="kind"/> discriminator controls the multi-gas resource split
+    /// (e.g. SELFDESTRUCT beneficiary charges full cold cost to StorageAccess with no warm charge).
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="spec">The release specification governing gas costs.</param>
     /// <param name="accessTracker">The access tracker for cold/warm state.</param>
     /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
     /// <param name="address">The target account address.</param>
-    /// <param name="chargeForWarm">If true, applies the warm read gas cost even if the account is warm.</param>
+    /// <param name="kind">Discriminator that varies resource-kind accounting per calling opcode.</param>
     /// <returns>True if the gas charge was successful; otherwise false.</returns>
     static abstract bool ConsumeAccountAccessGas(ref TSelf gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
         bool isTracingAccess,
         Address address,
-        bool chargeForWarm = true);
-
-    /// <summary>
-    /// Charges gas for accessing the SELFDESTRUCT beneficiary account.
-    /// For Arbitrum, cold access is charged as FULL StorageAccess (no Computation split).
-    /// </summary>
-    /// <param name="gas">The gas state to update.</param>
-    /// <param name="spec">The release specification governing gas costs.</param>
-    /// <param name="accessTracker">The access tracker for cold/warm state.</param>
-    /// <param name="isTracingAccess">Whether access tracing is enabled.</param>
-    /// <param name="address">The beneficiary account address.</param>
-    /// <returns>True if the gas charge was successful; otherwise false.</returns>
-    static abstract bool ConsumeSelfDestructBeneficiaryAccessGas(ref TSelf gas,
-        IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
-        Address address);
+        AccountAccessKind kind = AccountAccessKind.Default);
 
     /// <summary>
     /// Charges the appropriate gas cost for accessing a storage cell, taking into account whether the access is cold or warm.
