@@ -40,26 +40,30 @@ namespace Nethermind.Network.Discovery.Test
             await _channel.CloseAsync();
         }
 
-        [Test]
-        public async Task ForwardsSentMessageToChannel()
+        [TestCase("127.0.0.1", "127.0.0.1")]
+        [TestCase("::ffff:127.0.0.1", "127.0.0.1")]
+        public async Task ForwardsSentMessageToChannel(string destinationAddress, string expectedDestinationAddress)
         {
             byte[] data = [1, 2, 3];
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
+            IPEndPoint to = new(IPAddress.Parse(destinationAddress), 10001);
+            IPEndPoint expectedTo = new(IPAddress.Parse(expectedDestinationAddress), 10001);
 
             await _handler.SendAsync(data, to);
 
             DatagramPacket packet = _channel.ReadOutbound<DatagramPacket>();
             packet.Should().NotBeNull();
             packet.Content.ReadAllBytesAsArray().Should().BeEquivalentTo(data);
-            packet.Recipient.Should().Be(to);
+            packet.Recipient.Should().Be(expectedTo);
         }
 
-        [Test]
-        public async Task ForwardsReceivedMessageToReader()
+        [TestCase("127.0.0.1", "127.0.0.1")]
+        [TestCase("::ffff:127.0.0.1", "127.0.0.1")]
+        public async Task ForwardsReceivedMessageToReader(string senderAddress, string expectedSenderAddress)
         {
             byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
+            IPEndPoint from = new(IPAddress.Parse(senderAddress), 10000);
+            IPEndPoint expectedFrom = new(IPAddress.Parse(expectedSenderAddress), 10000);
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             using var cancellationSource = new CancellationTokenSource(10_000);
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
@@ -75,7 +79,7 @@ namespace Nethermind.Network.Discovery.Test
 
             forwardedPacket.Should().NotBeNull();
             forwardedPacket.Buffer.Should().BeEquivalentTo(data);
-            forwardedPacket.RemoteEndPoint.Should().Be(from);
+            forwardedPacket.RemoteEndPoint.Should().Be(expectedFrom);
         }
 
         [TestCase(0)]

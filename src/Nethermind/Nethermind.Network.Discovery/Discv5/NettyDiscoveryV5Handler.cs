@@ -36,7 +36,8 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
+        IPEndPoint sender = NormalizeEndpoint((IPEndPoint)msg.Sender);
+        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), sender);
 
         if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsDebug)
         {
@@ -48,7 +49,8 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
     {
         if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
 
-        var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), destination);
+        IPEndPoint normalizedDestination = NormalizeEndpoint(destination);
+        DatagramPacket packet = new(Unpooled.WrappedBuffer(data), normalizedDestination);
 
         try
         {
@@ -60,6 +62,11 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
             throw;
         }
     }
+
+    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint) =>
+        endpoint.Address.IsIPv4MappedToIPv6
+            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
+            : endpoint;
 
     public IAsyncEnumerable<UdpReceiveResult> ReadMessagesAsync(CancellationToken token = default) =>
         _inboundQueue.Reader.ReadAllAsync(token);
