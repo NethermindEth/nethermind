@@ -145,16 +145,21 @@ namespace Ethereum.Test.Base
             };
             transaction.Hash = transaction.CalculateHash();
 
+            bool hasAccessListField = transactionJson.AccessLists is not null || transactionJson.AccessList is not null;
             AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.AsEnumerable().Count() != 0)
+            if (hasAccessListField)
+            {
                 transaction.Type = TxType.AccessList;
-            else
+            }
+            else if (transaction.AccessList.IsEmpty)
+            {
                 transaction.AccessList = null;
+            }
 
             if (transactionJson.MaxFeePerGas is not null)
             {
