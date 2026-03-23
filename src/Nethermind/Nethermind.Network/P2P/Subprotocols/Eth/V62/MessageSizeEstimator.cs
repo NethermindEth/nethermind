@@ -55,17 +55,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             return estimate;
         }
-
-        public static ulong EstimateSize(TxReceipt[] receipts)
-        {
-            ulong estimate = 0;
-
-            for (int i = 0; i < receipts.Length; i++)
-            {
-                estimate += EstimateSize(receipts[i]);
-            }
-
-            return estimate;
-        }
     }
 }

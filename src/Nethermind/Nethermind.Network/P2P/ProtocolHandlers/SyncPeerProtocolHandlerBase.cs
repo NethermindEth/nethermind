@@ -20,7 +20,6 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -31,7 +30,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)9_500.KB;
+        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -334,20 +333,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
-                {
-                    break;
-                }
-
                 Block block = SyncServer.Find(hashes[i]);
+                blocks.Add(block);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(block);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
-
-                blocks.Add(block);
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));
@@ -380,20 +373,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
             {
-                if (cancellationToken.IsCancellationRequested)
+                txReceipts.Add(SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]));
+                for (int j = 0; j < txReceipts[i].Length; j++)
+                {
+                    sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
+                }
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
-
-                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
-                sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
-
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
-                {
-                    break;
-                }
-
-                txReceipts.Add(blockTxReceipts);
             }
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));
