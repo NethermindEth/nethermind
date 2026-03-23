@@ -2,6 +2,7 @@
 
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
+    <NethermindCallChainProfileGz>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json.gz</NethermindCallChainProfileGz>
     <NethermindCallChainProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json</NethermindCallChainProfile>
     <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
     <!-- Inline framework methods (Dictionary, Span, Memory, etc.) into Nethermind R2R code.
@@ -17,5 +18,10 @@
     <Crossgen2ExtraCommandLineArgs Condition="Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--callchain-profile:$(NethermindCallChainProfile);--method-layout:callfrequency</Crossgen2ExtraCommandLineArgs>
     <Crossgen2ExtraCommandLineArgs Condition="!Exists('$(NethermindCallChainProfile)')">$(Crossgen2ExtraCommandLineArgs);--method-layout:pettishansen</Crossgen2ExtraCommandLineArgs>
   </PropertyGroup>
+
+  <!-- Decompress callchain profile .gz for crossgen2 (stored compressed in repo to save space) -->
+  <Target Name="DecompressCallChainProfile" BeforeTargets="Publish" Condition="Exists('$(NethermindCallChainProfileGz)') AND !Exists('$(NethermindCallChainProfile)')">
+    <Exec Command="gzip -d -k &quot;$(NethermindCallChainProfileGz)&quot;" />
+  </Target>
 
 </Project>

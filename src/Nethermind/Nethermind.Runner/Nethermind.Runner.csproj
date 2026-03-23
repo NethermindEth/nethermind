@@ -109,7 +109,7 @@
     <None Update="pgo\nethermind.jit.gz">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="pgo\nethermind.callchain.json" Condition="Exists('pgo\nethermind.callchain.json')">
+    <None Update="pgo\nethermind.callchain.json.gz" Condition="Exists('pgo\nethermind.callchain.json.gz')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="pgo\nethermind.mibc">
