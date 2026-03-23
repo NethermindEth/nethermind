@@ -22,6 +22,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
+using Nethermind.Core.Extensions;
 
 namespace Ethereum.Blockchain.Test;
 
@@ -55,7 +56,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     {
         Dictionary<Address, AccountState> preState = new()
         {
-            [TestItem.AddressA] = new() { Balance = 100 * Nethermind.Core.Unit.Ether, Nonce = UInt256.Zero },
+            [TestItem.AddressA] = new() { Balance = 100.Ether, Nonce = UInt256.Zero },
             [TestItem.AddressB] = new() { Balance = UInt256.Zero, Nonce = UInt256.Zero },
         };
 
