@@ -27,11 +27,11 @@ static class TraceConverter
             ? outputPath
             : Path.ChangeExtension(outputPath, ".etlx");
 
-        var teVersion = typeof(TraceLog).Assembly.GetName().Version;
+        Version? teVersion = typeof(TraceLog).Assembly.GetName().Version;
         Console.WriteLine($"TraceEvent version: {teVersion}");
         Console.WriteLine($"Converting {inputPath} to {etlxPath}...");
 
-        using (var ctfSource = new CtfTraceEventSource(inputPath))
+        using (CtfTraceEventSource ctfSource = new CtfTraceEventSource(inputPath))
         {
             // Register CLR parser (populates _eventMapping with known mappings)
             new ClrTraceEventParser(ctfSource);
@@ -50,7 +50,7 @@ static class TraceConverter
             // CreateFromLinuxEventSources(source, etlxPath, options)
             // This is an internal method — call via reflection
             Console.WriteLine("Processing events via CreateFromLinuxEventSources...");
-            var method = typeof(TraceLog).GetMethod("CreateFromLinuxEventSources",
+            MethodInfo? method = typeof(TraceLog).GetMethod("CreateFromLinuxEventSources",
                 BindingFlags.NonPublic | BindingFlags.Static);
 
             if (method != null)
@@ -66,13 +66,13 @@ static class TraceConverter
 
         // Verify the .etlx has the events dotnet-pgo needs
         Console.WriteLine("Verifying via OpenOrConvert (same path as dotnet-pgo)...");
-        using var traceLog = TraceLog.OpenOrConvert(etlxPath, new TraceLogOptions { KeepAllEvents = true });
+        using TraceLog traceLog = TraceLog.OpenOrConvert(etlxPath, new TraceLogOptions { KeepAllEvents = true });
         int totalMethodDetails = 0;
         int totalMethodLoad = 0;
         int totalJitStart = 0;
         int totalILToNativeMap = 0;
 
-        foreach (var process in traceLog.Processes)
+        foreach (TraceProcess process in traceLog.Processes)
         {
             int md = process.EventsInProcess.ByEventType<MethodDetailsTraceData>().Count();
             int ml = process.EventsInProcess.ByEventType<MethodLoadUnloadVerboseTraceData>().Count();
@@ -101,7 +101,7 @@ static class TraceConverter
     static void InjectCtfMapping(CtfTraceEventSource source, string eventName,
         Guid providerGuid, int opcode, int id, int version)
     {
-        var field = typeof(CtfTraceEventSource).GetField("_eventMapping",
+        FieldInfo? field = typeof(CtfTraceEventSource).GetField("_eventMapping",
             BindingFlags.NonPublic | BindingFlags.Instance);
 
         if (field?.GetValue(source) is not IDictionary dict)
@@ -110,9 +110,9 @@ static class TraceConverter
             return;
         }
 
-        var mappingType = typeof(CtfTraceEventSource).Assembly.GetTypes()
+        Type? mappingType = typeof(CtfTraceEventSource).Assembly.GetTypes()
             .FirstOrDefault(t => t.Name == "CtfEventMapping");
-        var ctor = mappingType?.GetConstructors().FirstOrDefault();
+        ConstructorInfo? ctor = mappingType?.GetConstructors().FirstOrDefault();
 
         if (ctor == null)
         {

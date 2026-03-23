@@ -472,30 +472,24 @@ jobs:
           # Replace NuGet TraceEvent reference with project reference to our patched source
           pgo_csproj="src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"
           sed -i 's|<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="$(TraceEventVersion)" />|<ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/TraceEvent/TraceEvent.csproj" />\n    <ProjectReference Include="'"${RUNNER_TEMP}"'/perfview/src/FastSerialization/FastSerialization.csproj" />|' "${pgo_csproj}"
-          # Patch dotnet-pgo to read supplementary .spgo file (perf sample IPs from PgoTrim)
-          # alongside the .etlx for SPGO block count attribution
+          # Patch dotnet-pgo with Nethermind extensions:
+          # - .spgo sample loading for SPGO block attribution
+          # - .callgraph loading for Pettis-Hansen method layout
+          # - Safe SmoothFlow wrapper for disconnected flow graph crash
+          # Copy our .cs file into the source tree (compiled as part of dotnet-pgo)
+          cp "${GITHUB_WORKSPACE}/tools/PgoTrim/dotnet-pgo-patches/NethermindPgoPatches.cs" \
+            "src/coreclr/tools/dotnet-pgo/NethermindPgoPatches.cs"
           pgo_program="src/coreclr/tools/dotnet-pgo/Program.cs"
+          # Insert calls to our patches at the right points:
+          # 1. Load .spgo samples before the "Samples outside managed code" print
           sed -i '/PrintOutput(\$"Samples outside managed code: {correlator.SamplesOutsideManagedCode}");/i\
-                        // Read supplementary perf samples from PgoTrim .spgo file\
-                        string spgoFile = Path.ChangeExtension(etlFileName, ".spgo");\
-                        if (File.Exists(spgoFile))\
-                        {\
-                            int spgoCount = 0;\
-                            foreach (string line in File.ReadLines(spgoFile))\
-                            {\
-                                if (ulong.TryParse(line.Trim(), System.Globalization.NumberStyles.HexNumber, null, out ulong ip))\
-                                {\
-                                    correlator.AttributeSamplesToIP(ip, 1);\
-                                    spgoCount++;\
-                                }\
-                            }\
-                            PrintOutput(\$"Supplementary .spgo samples loaded: {spgoCount}");\
-                        }' "${pgo_program}"
-          # Patch: FlowSmoothing.MakeGraphFeasible crashes with "Stack empty" for some
-          # methods with disconnected flow graphs. Wrap SmoothFlow in try-catch so one
-          # bad method doesn't kill the entire SPGO pass.
-          sed -i 's|pmi.Profile.SmoothFlow();|try { pmi.Profile.SmoothFlow(); } catch (Exception ex) { Console.Error.WriteLine(\$"Warning: SmoothFlow failed for method: {ex.Message}"); }|' \
-            "src/coreclr/tools/dotnet-pgo/SPGO/SampleCorrelator.cs"
+                        NethermindPgoPatches.LoadSpgoSamples(etlFileName, correlator);' "${pgo_program}"
+          # 2. Load .callgraph after the SampledProfileTraceData loop (after "}" closing the GenerateCallGraph block)
+          #    Insert right before the instrumentationDataByMethod dictionary creation
+          sed -i '/Dictionary<MethodDesc, MethodChunks> instrumentationDataByMethod/i\
+                    NethermindPgoPatches.LoadCallGraph(etlFileName, GetMethodMemMap(), callGraph, exclusiveSamples);' "${pgo_program}"
+          # 3. Replace SmoothAllProfiles with safe version
+          sed -i 's|correlator.SmoothAllProfiles();|NethermindPgoPatches.SafeSmoothAllProfiles(correlator);|' "${pgo_program}"
           # Build only dotnet-pgo (--projects bypasses subset traversal, avoids ILCompiler)
           ./build.sh -c Release \
             --projects "$(pwd)/src/coreclr/tools/dotnet-pgo/dotnet-pgo.csproj"

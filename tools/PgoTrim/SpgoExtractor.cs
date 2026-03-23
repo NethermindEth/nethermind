@@ -7,9 +7,9 @@ using System.IO.Compression;
 using System.Linq;
 
 /// <summary>
-/// Extracts CPU sample instruction pointers from perfcollect's perf.data.txt
-/// and writes them as a simple .spgo file (one hex IP per line) that a patched
-/// dotnet-pgo can read alongside the .etlx for SPGO block count attribution.
+/// Extracts CPU sample data from perfcollect's perf.data.txt:
+/// - .spgo file: one hex leaf IP per line for SPGO basic block attribution
+/// - .callgraph file: callee_ip caller_ip pairs for Pettis-Hansen method layout
 /// </summary>
 static class SpgoExtractor
 {
@@ -23,21 +23,27 @@ static class SpgoExtractor
 
         Console.WriteLine($"Extracting perf sample IPs from {traceZipPath}...");
 
-        using var zip = ZipFile.OpenRead(traceZipPath);
-        var perfEntry = zip.Entries.FirstOrDefault(e => e.Name == "perf.data.txt");
+        using ZipArchive zip = ZipFile.OpenRead(traceZipPath);
+        ZipArchiveEntry? perfEntry = zip.Entries.FirstOrDefault(e => e.Name == "perf.data.txt");
         if (perfEntry == null)
         {
             Console.Error.WriteLine("No perf.data.txt found in .trace.zip");
             return 1;
         }
 
+        string callGraphPath = Path.ChangeExtension(outputPath, ".callgraph");
+
         int sampleCount = 0;
         int frameCount = 0;
+        int edgeCount = 0;
 
-        using (var stream = perfEntry.Open())
-        using (var reader = new StreamReader(stream))
-        using (var writer = new StreamWriter(outputPath))
+        using (Stream stream = perfEntry.Open())
+        using (StreamReader reader = new StreamReader(stream))
+        using (StreamWriter spgoWriter = new StreamWriter(outputPath))
+        using (StreamWriter cgWriter = new StreamWriter(callGraphPath))
         {
+            cgWriter.WriteLine("# callee_ip caller_ip");
+
             string? line;
             while ((line = reader.ReadLine()) != null)
             {
@@ -45,31 +51,46 @@ static class SpgoExtractor
                 //     7dc812345678 MethodName+0x1a3 (/path/to/module)
                 if (line.Length > 0 && line[0] == '\t')
                 {
-                    var trimmed = line.AsSpan().TrimStart();
+                    ReadOnlySpan<char> trimmed = line.AsSpan().TrimStart();
                     int spaceIdx = trimmed.IndexOf(' ');
                     if (spaceIdx > 0 &&
                         ulong.TryParse(trimmed[..spaceIdx], NumberStyles.HexNumber, null, out _))
                     {
-                        // Write only the leaf IP (first frame of each sample)
-                        // dotnet-pgo's AttributeSamplesToIP only uses the leaf IP
-                        // for basic block attribution
                         frameCount++;
-
-                        // Only write the first frame per sample (leaf IP)
-                        // A new sample starts with a non-tab line
-                        writer.WriteLine(trimmed[..spaceIdx]);
+                        // Leaf IP for SPGO block attribution
+                        string leafIp = trimmed[..spaceIdx].ToString();
+                        spgoWriter.WriteLine(leafIp);
                         sampleCount++;
 
-                        // Skip remaining frames until next sample header
-                        while ((line = reader.ReadLine()) != null && line.Length > 0 && line[0] == '\t')
+                        // Read caller frame (second frame) for call graph
+                        line = reader.ReadLine();
+                        if (line != null && line.Length > 0 && line[0] == '\t')
+                        {
                             frameCount++;
+                            ReadOnlySpan<char> callerTrimmed = line.AsSpan().TrimStart();
+                            int callerSpace = callerTrimmed.IndexOf(' ');
+                            if (callerSpace > 0 &&
+                                ulong.TryParse(callerTrimmed[..callerSpace], NumberStyles.HexNumber, null, out _))
+                            {
+                                cgWriter.Write(leafIp);
+                                cgWriter.Write(' ');
+                                cgWriter.WriteLine(callerTrimmed[..callerSpace]);
+                                edgeCount++;
+                            }
+
+                            // Skip remaining frames until next sample header
+                            while ((line = reader.ReadLine()) != null && line.Length > 0 && line[0] == '\t')
+                                frameCount++;
+                        }
                     }
                 }
             }
         }
 
         Console.WriteLine($"  {sampleCount:N0} samples extracted ({frameCount:N0} total frames)");
+        Console.WriteLine($"  {edgeCount:N0} caller-callee edges extracted");
         Console.WriteLine($"  Output: {outputPath}");
+        Console.WriteLine($"  Output: {callGraphPath}");
 
         return sampleCount > 0 ? 0 : 1;
     }
