@@ -21,9 +21,8 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet restore --locked-mode && \
   dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH \
-    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | \
-    tee /tmp/publish.log | grep -iE "callchain|callfrequency|pettishansen|hot.cold|method-layout|mibc|crossgen2.*warning" || true && \
+    -p:SourceRevisionId=$COMMIT_HASH -v:d 2>&1 | \
+    tee /tmp/publish.log | grep -iE "Crossgen2ExtraCommandLineArgs|callchain-profile|method-layout|hot-cold-splitting|--mibc|crossgen2.*\.dll" | head -20 || true && \
   rm -f /tmp/publish.log && \
   test -f /publish/nethermind || { echo "PUBLISH FAILED"; exit 1; }
 
