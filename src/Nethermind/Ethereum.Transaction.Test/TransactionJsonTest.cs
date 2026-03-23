@@ -3,10 +3,22 @@
 
 using Ethereum.Test.Base;
 using FluentAssertions;
+using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Consensus.Processing;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test;
@@ -34,5 +46,68 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         Nethermind.Core.Transaction tx = JsonToEthereumTest.Convert(new PostStateJson { Indexes = new IndexesJson() }, txJson);
         tx.AccessList.Should().NotBeNull();
+    }
+
+    [Test]
+    public void Invalid_pre_berlin_access_list_tx_preserves_prestate_root()
+    {
+        Dictionary<Address, AccountState> preState = new()
+        {
+            [TestItem.AddressA] = new() { Balance = 100.Ether, Nonce = UInt256.Zero },
+            [TestItem.AddressB] = new() { Balance = UInt256.Zero, Nonce = UInt256.Zero },
+        };
+
+        AccessList accessList = new AccessList.Builder()
+            .AddAddress(TestItem.AddressB)
+            .AddStorage(UInt256.One)
+            .Build();
+
+        Nethermind.Core.Transaction transaction = Build.A.Transaction
+            .WithType(TxType.AccessList)
+            .WithChainId(MainnetSpecProvider.Instance.ChainId)
+            .WithAccessList(accessList)
+            .WithGasLimit(50_000)
+            .WithGasPrice(1)
+            .WithNonce(UInt256.Zero)
+            .To(TestItem.AddressB)
+            .WithValue(1)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        GeneralStateTest test = new()
+        {
+            Name = nameof(Invalid_pre_berlin_access_list_tx_preserves_prestate_root),
+            Category = "state",
+            Fork = Istanbul.Instance,
+            ForkName = Istanbul.Instance.Name,
+            CurrentCoinbase = TestItem.AddressC,
+            CurrentDifficulty = UInt256.One,
+            CurrentGasLimit = 1_000_000,
+            CurrentNumber = 1,
+            CurrentTimestamp = 0,
+            PreviousHash = Keccak.Zero,
+            Pre = preState,
+            PostHash = CalculatePreStateRoot(preState),
+            Transaction = transaction,
+        };
+
+        RunTest(test).Pass.Should().BeTrue();
+    }
+
+    private static Hash256 CalculatePreStateRoot(Dictionary<Address, AccountState> preState)
+    {
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider()))
+            .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
+            .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+            .AddSingleton(LimboLogs.Instance)
+            .Build();
+
+        IMainProcessingContext mainProcessingContext = container.Resolve<IMainProcessingContext>();
+        IWorldState stateProvider = mainProcessingContext.WorldState;
+        using IDisposable _ = stateProvider.BeginScope(null);
+
+        InitializeTestState(preState, stateProvider, MainnetSpecProvider.Instance);
+        return stateProvider.StateRoot;
     }
 }
