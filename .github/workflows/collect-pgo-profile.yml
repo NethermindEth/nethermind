@@ -421,6 +421,17 @@ jobs:
             echo "Extracting perf sample IPs for SPGO..."
             dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
               extract-spgo "${sampling_trace}" "${sampling_etlx%.etlx}.spgo" || true
+
+            # Generate CallChainProfile JSON for crossgen2 CallFrequency method layout
+            if [[ -f "${sampling_etlx}" ]]; then
+              echo "Generating call chain profile for crossgen2..."
+              callchain_json="${RUNNER_TEMP}/nethermind.callchain.json"
+              dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+                generate-callchain "${sampling_etlx}" "${callchain_json}" || true
+              if [[ -s "${callchain_json}" ]]; then
+                echo "callchain_json=${callchain_json}" >> "${GITHUB_OUTPUT}"
+              fi
+            fi
           fi
 
           # Compress .jit edge/block profiling data for runtime PGO
@@ -620,6 +631,14 @@ jobs:
           path: ${{ steps.pgotrim.outputs.jit_gz }}
           retention-days: 1
 
+      - name: Upload callchain profile
+        if: steps.pgotrim.outputs.callchain_json != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-pgo-callchain
+          path: ${{ steps.pgotrim.outputs.callchain_json }}
+          retention-days: 1
+
       - name: Upload raw PGO data
         if: always()
         uses: actions/upload-artifact@v7
@@ -664,6 +683,13 @@ jobs:
           name: nethermind-pgo-jit
           path: src/Nethermind/Nethermind.Runner/pgo/
 
+      - name: Download callchain profile
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: nethermind-pgo-callchain
+          path: src/Nethermind/Nethermind.Runner/pgo/
+
       - name: Check for changes
         id: diff
         run: |
@@ -682,6 +708,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
           git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json 2>/dev/null || true
           git commit -m "chore(pgo): update PGO profile"
           git push
 
@@ -696,6 +723,7 @@ jobs:
           git checkout -b "${branch}"
           git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
           git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json 2>/dev/null || true
           git commit -m "chore(pgo): update PGO profile from weekly collection"
           git push -u origin "${branch}"
           gh pr create \
