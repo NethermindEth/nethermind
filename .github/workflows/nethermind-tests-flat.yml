@@ -41,6 +41,7 @@ jobs:
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Merge.Plugin.Test
           - Nethermind.Runner.Test
         chunk: ['']
         include:
