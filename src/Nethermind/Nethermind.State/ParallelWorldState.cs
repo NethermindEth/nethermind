@@ -430,10 +430,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null)
     {
-        if (TracingEnabled && !blockAccessIndex.HasValue)
-            throw new ArgumentNullException(nameof(blockAccessIndex));
-
-        if (!AccountExistsInternal(address, blockAccessIndex))
+        if (!AccountExists(address, blockAccessIndex))
         {
             CreateAccount(address, balance, nonce, blockAccessIndex);
         }

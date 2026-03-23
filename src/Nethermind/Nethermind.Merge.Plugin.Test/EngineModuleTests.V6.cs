@@ -399,8 +399,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task GetPayloadBodiesHashV2_returns_correctly()
     {
-        TestSpecProvider specProvider = new(Amsterdam.Instance);
-        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
         List<Hash256> blockHashes = [];
         for (var i = 1; i < 5; i++)
@@ -426,8 +425,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task GetPayloadBodiesByRangeV2_returns_correctly()
     {
-        TestSpecProvider specProvider = new(Amsterdam.Instance);
-        using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
 
         for (var i = 1; i < 5; i++)
         {
@@ -441,6 +439,19 @@ public partial class EngineModuleTests
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(response.Data.Count, Is.EqualTo(4)); // cutoff at head
         }
+    }
+
+    [Test]
+    public virtual async Task Can_build_and_process_multiple_blocks_V6()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+
+        for (var i = 1; i < 5; i++)
+        {
+            await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
+        }
+
+        Assert.That(chain.BlockTree.Head!.Number, Is.EqualTo(4));
     }
 
     private async Task<ExecutionPayloadV4> AddNewBlockV6(IEngineRpcModule rpcModule, MergeTestBlockchain chain, int transactionCount = 0)
