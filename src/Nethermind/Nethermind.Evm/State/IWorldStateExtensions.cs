@@ -39,4 +39,7 @@ public static class WorldStateExtensions
 
     public static void AddAccountRead(this IWorldState worldState, Address address, int? blockAccessIndex)
         => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address, blockAccessIndex);
+
+    // public static bool IsParallelExecutionEnabled(this IWorldState worldState, Address address, int? blockAccessIndex)
+    //     => (worldState as IBlockAccessListBuilder)?.AddAccountRead(address, blockAccessIndex);
 }
