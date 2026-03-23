@@ -371,8 +371,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private void ClearReadOnlyBundleCache()
     {
-        if (_readonlySnapshotBundleCache.IsEmpty) return;
-
         foreach (KeyValuePair<StateId, ReadOnlySnapshotBundle> entry in _readonlySnapshotBundleCache)
         {
             if (_readonlySnapshotBundleCache.TryRemove(entry.Key, out ReadOnlySnapshotBundle? bundle))
