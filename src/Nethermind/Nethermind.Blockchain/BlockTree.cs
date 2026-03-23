@@ -767,6 +767,15 @@ namespace Nethermind.Blockchain
                 return level.BlockInfos[0].BlockHash;
             }
 
+            // Post-merge: block difficulty is 0, so TotalDifficulty never increases and all
+            // blocks at the same height share the same cumulative TD. The best-difficulty
+            // fallback below cannot distinguish canonical from orphaned — it would return
+            // a stale block after a reorg. Return null: there is no canonical block here.
+            bool isPostMerge = SpecProvider.TerminalTotalDifficulty is not null
+                && (Head?.TotalDifficulty ?? UInt256.Zero) >= SpecProvider.TerminalTotalDifficulty;
+            if (isPostMerge) return null;
+
+            // Pre-merge: the block with the highest total difficulty is canonical by PoW rule.
             UInt256 bestDifficultySoFar = UInt256.Zero;
             Hash256 bestHash = null;
             for (int i = 0; i < level.BlockInfos.Length; i++)
