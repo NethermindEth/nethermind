@@ -507,7 +507,9 @@ internal static partial class EvmInstructions
                 {
                     bool ssetOutOfGas = TEip8037.IsActive switch
                     {
-                        true => !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) || !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular),
+                        // EIP-8037: charge the regular component first so an OOG halt does not
+                        // spill state gas into gas_left and then restore it to the parent frame.
+                        true => !TGasPolicy.TryConsumeStateAndRegularGas(ref gas, GasCostOf.SSetState, GasCostOf.SSetRegular),
                         false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet),
                     };
 
