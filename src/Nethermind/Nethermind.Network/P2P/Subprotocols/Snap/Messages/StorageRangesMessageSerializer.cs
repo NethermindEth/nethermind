@@ -63,11 +63,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
 
-            ctx.ReadSequenceLength();
-
             StorageRangeMessage message = new();
+
             try
             {
+                ctx.ReadSequenceLength();
                 message.RequestId = ctx.DecodeLong();
 
                 message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
