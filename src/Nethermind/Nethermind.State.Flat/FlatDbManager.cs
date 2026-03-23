@@ -45,6 +45,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
+    private readonly Task _clearBundleCacheTask;
+
     private readonly int _compactSize;
 
     // For debugging. Do the compaction synchronously
@@ -86,6 +89,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
+        _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -351,6 +355,21 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
+    private async Task RunClearBundleCache(CancellationToken cancellationToken)
+    {
+        using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                ClearReadOnlyBundleCache();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private void ClearReadOnlyBundleCache()
     {
         using ArrayPoolListRef<StateId> statesToRemove = new();
@@ -403,6 +422,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _compactorTask;
         await _populateTrieNodeCacheTask;
         await _persistenceTask;
+        await _clearBundleCacheTask;
 
         _cancelTokenSource.Dispose();
     }
