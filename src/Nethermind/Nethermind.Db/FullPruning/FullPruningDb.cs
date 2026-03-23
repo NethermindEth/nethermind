@@ -65,9 +65,10 @@ namespace Nethermind.Db.FullPruning
         public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Span<byte> value = _currentDb.GetSpan(key, flags); // we are reading from the main DB
-            if (!value.IsNull() && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            PruningContext? pruningContext = _pruningContext;
+            if (!value.IsNull() && pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
-                Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
+                Duplicate(pruningContext.CloningDb, key, value, WriteFlags.None);
             }
 
             return value;
