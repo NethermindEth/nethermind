@@ -40,10 +40,9 @@ jobs:
             {
               "permissions": {
                 "allow": [
-                  "Bash(git merge-base:*)",
-                  "Bash(git show:*)",
-                  "Bash(gh pr diff:*)",
-                  "Bash(gh pr view:*)",
+                  "Bash(git *)",
+                  "Bash(gh:*)",
+                  "WebFetch",
                   "Agent",
                   "Skill"
                 ],
@@ -56,6 +55,8 @@ jobs:
               }
             }
           prompt: |
+            IMPORTANT: Before doing anything else, run `git fetch --deepen=100 origin` to ensure enough commit history is available for merge-base.
+
             When reviewing a pull request, use a dual-review strategy:
 
             1. **Dispatch subagent**: Use the Agent tool to launch a subagent that invokes the "review" skill via the Skill tool. The subagent should return ALL findings as structured text — this raw output will be included verbatim in the report.
