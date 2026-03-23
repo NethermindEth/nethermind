@@ -1,6 +1,10 @@
 <Project>
 
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
+    <!-- Composite R2R compiles all assemblies together, enabling cross-assembly inlining and
+         shared method layout. OptimizationPreference=Speed enables more aggressive inlining. -->
+    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+    <OptimizationPreference>Speed</OptimizationPreference>
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
     <NethermindCallChainProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json</NethermindCallChainProfile>
     <PublishReadyToRunMibcPaths Condition="Exists('$(NethermindPgoProfile)')">$(NethermindPgoProfile)</PublishReadyToRunMibcPaths>
