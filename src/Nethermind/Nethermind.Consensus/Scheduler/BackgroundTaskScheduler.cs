@@ -125,21 +125,25 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                             // and wait for block processing to finish before resuming.
                             if (DateTimeOffset.UtcNow < activity.Deadline)
                             {
-                                Interlocked.Increment(ref _queueCount);
-                                _taskQueue.Writer.TryWrite(activity);
-                                UpdateQueueCount();
-                                // Wait for block processing to complete before draining more tasks
-                                goto WaitForBlockProcessing;
+                                if (_taskQueue.Writer.TryWrite(activity))
+                                {
+                                    Interlocked.Increment(ref _queueCount);
+                                    UpdateQueueCount();
+                                    // Wait for block processing to complete before draining more tasks
+                                    goto WaitForBlockProcessing;
+                                }
+                                // Re-queue failed (channel completed during dispose) - fall through
+                                // and run with cancelled token so handler can clean up
                             }
 
-                            // Task already expired — run it with cancelled token so the handler can clean up
+                            // Task already expired or re-queue failed — run with cancelled token
                         }
 
                         await activity.Do(token);
                         Evm.Metrics.IncrementTotalBackgroundTasksExecuted();
                     }
                 }
-                catch (OperationCanceledException)
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
                 {
                 }
                 catch (Exception e)
