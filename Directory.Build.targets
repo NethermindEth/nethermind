@@ -1,8 +1,11 @@
 <Project>
 
+  <!-- Disable R2R for test projects - they don't need it and composite R2R is slow -->
+  <PropertyGroup Condition="$(MSBuildProjectName.Contains('Test'))">
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(PublishReadyToRun)' == 'true'">
-    <!-- Composite R2R compiles all assemblies together, enabling cross-assembly inlining and
-         shared method layout. OptimizationPreference=Speed enables more aggressive inlining. -->
     <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
     <OptimizationPreference>Speed</OptimizationPreference>
     <NethermindPgoProfile>$(MSBuildThisFileDirectory)src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc</NethermindPgoProfile>
