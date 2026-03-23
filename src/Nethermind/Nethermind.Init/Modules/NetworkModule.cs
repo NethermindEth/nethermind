@@ -25,7 +25,6 @@ using V65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
-using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -101,7 +100,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V63.NodeDataMessage, V63.NodeDataMessageSerializer>()
             .AddMessageSerializer<V63.ReceiptsMessage, V63.ReceiptsMessageSerializer>()
             .AddSingleton<IZeroInnerMessageSerializer<V63.ReceiptsMessage>, V63.ReceiptsMessageSerializer>() // For v66 receipt
-            .AddSingleton<IZeroInnerMessageSerializer<V63.GetReceiptsMessage>, V63.GetReceiptsMessageSerializer>() // For v70
 
             // V65
             .AddMessageSerializer<V65.GetPooledTransactionsMessage, V65.GetPooledTransactionsMessageSerializer>()
@@ -128,10 +126,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V69.ReceiptsMessage69, V69.ReceiptsMessageSerializer69>()
             .AddMessageSerializer<V69.StatusMessage69, V69.StatusMessageSerializer69>()
 
-            // V70
-            .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
-            .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
-
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
             .Add<P2PProtocolHandler>()
@@ -147,7 +141,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
-            .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
 
             ;
     }
