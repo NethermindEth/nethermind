@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using Autofac;
@@ -53,7 +55,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     {
         Dictionary<Address, AccountState> preState = new()
         {
-            [TestItem.AddressA] = new() { Balance = 100.Ether, Nonce = UInt256.Zero },
+            [TestItem.AddressA] = new() { Balance = 100 * Nethermind.Core.Unit.Ether, Nonce = UInt256.Zero },
             [TestItem.AddressB] = new() { Balance = UInt256.Zero, Nonce = UInt256.Zero },
         };
 
