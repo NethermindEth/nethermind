@@ -1018,7 +1018,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         BlockAccessList suggestedBal = new();
         suggestedBal.AddAccountRead(testAddress);
         pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
-        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
+        pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
 
         CodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
@@ -1094,7 +1094,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         BlockAccessList suggestedBal = new();
         suggestedBal.AddAccountRead(testAddress);
         pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
-        pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
+        pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
 
         CacheCodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
