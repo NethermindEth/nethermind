@@ -77,9 +77,10 @@ namespace Nethermind.Db.FullPruning
         public MemoryManager<byte>? GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             MemoryManager<byte>? memoryManager = _currentDb.GetOwnedMemory(key, flags);
-            if (memoryManager is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            PruningContext? pruningContext = _pruningContext;
+            if (memoryManager is not null && pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
-                Duplicate(_pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
+                Duplicate(pruningContext.CloningDb, key, memoryManager.GetSpan(), WriteFlags.None);
             }
 
             return memoryManager;
