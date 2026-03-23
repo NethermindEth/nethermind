@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
@@ -35,6 +36,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockAccessList[] _intermediateBlockAccessLists;
     private TransientStorageProvider[] _transientStorageProviders;
+    private ParallelBatchReadState? _parallelBatchReadState;
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
@@ -46,6 +48,9 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed)
     {
+        _parallelBatchReadState?.WaitForCompletion();
+        _parallelBatchReadState = null;
+
         if (suggestedBal is not null)
         {
             foreach (AccountChanges accountChanges in suggestedBal.AccountChanges)
@@ -53,13 +58,20 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 accountChanges.CheckWasChanged();
             }
 
+            _suggestedBlockAccessList = suggestedBal;
             if (blocksConfig.ParallelExecution)
             {
-                // Parallel execution needs pre-block state loaded synchronously
-                // because transactions read state from the BAL entries
-                LoadPreBlockState(suggestedBal);
+                if (blocksConfig.ParallelExecutionBatchRead && !IsGenesis)
+                {
+                    StartLoadPreBlockStateInParallel(suggestedBal);
+                }
+                else
+                {
+                    // Parallel execution needs pre-block state loaded before transactions
+                    // read from the BAL entries.
+                    LoadPreBlockState(suggestedBal);
+                }
             }
-            _suggestedBlockAccessList = suggestedBal;
         }
         else
         {
@@ -88,26 +100,123 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
-            accountChanges.ExistedBeforeBlock = exists;
+            LoadPreBlockState(_innerWorldState, accountChanges);
+        }
+    }
 
-            accountChanges.AddBalanceChange(new(-1, account.Balance));
-            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
+    private void StartLoadPreBlockStateInParallel(BlockAccessList blockAccessList)
+    {
+        SortedDictionary<int, List<AccountChanges>> preloadGroups = [];
+        Dictionary<Address, int> accountLoadIndexes = [];
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+        foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
+        {
+            int loadIndex = GetPreloadIndex(accountChanges);
+            accountLoadIndexes[accountChanges.Address] = loadIndex;
+
+            if (!preloadGroups.TryGetValue(loadIndex, out List<AccountChanges>? group))
             {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+                group = [];
+                preloadGroups[loadIndex] = group;
             }
 
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            group.Add(accountChanges);
+        }
+
+        if (preloadGroups.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<int, TaskCompletionSource<bool>> groupCompletions = [];
+        foreach (int loadIndex in preloadGroups.Keys)
+        {
+            groupCompletions[loadIndex] = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        ParallelBatchReadState batchReadState = new(accountLoadIndexes, groupCompletions);
+        _parallelBatchReadState = batchReadState;
+        batchReadState.PreloadTask = Task.Run(() => LoadPreBlockStateInParallel(preloadGroups, batchReadState));
+    }
+
+    private void LoadPreBlockStateInParallel(SortedDictionary<int, List<AccountChanges>> preloadGroups, ParallelBatchReadState batchReadState)
+    {
+        try
+        {
+            foreach ((int loadIndex, List<AccountChanges> accountGroup) in preloadGroups)
             {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+                ParallelUnbalancedWork.For(
+                    0,
+                    accountGroup.Count,
+                    ParallelUnbalancedWork.DefaultOptions,
+                    (_innerWorldState, accountGroup),
+                    static (i, state) =>
+                    {
+                        LoadPreBlockState(state._innerWorldState, state.accountGroup[i]);
+                        return state;
+                    });
+
+                batchReadState.CompleteGroup(loadIndex);
             }
         }
+        catch (Exception ex)
+        {
+            batchReadState.Fail(ex);
+            throw;
+        }
+    }
+
+    private static void LoadPreBlockState(IWorldState innerWorldState, AccountChanges accountChanges)
+    {
+        bool exists = innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
+        accountChanges.ExistedBeforeBlock = exists;
+
+        accountChanges.AddBalanceChange(new(-1, account.Balance));
+        accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+        accountChanges.AddCodeChange(new(-1, innerWorldState.GetCode(accountChanges.Address)));
+
+        foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+        {
+            StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+            slotChanges.AddStorageChange(new(-1, new(innerWorldState.Get(storageCell), true)));
+        }
+
+        foreach (StorageRead storageRead in accountChanges.StorageReads)
+        {
+            SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+            StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+            slotChanges.AddStorageChange(new(-1, new(innerWorldState.Get(storageCell), true)));
+        }
+    }
+
+    private static int GetPreloadIndex(AccountChanges accountChanges)
+    {
+        int loadIndex = int.MaxValue;
+
+        if (accountChanges.BalanceChanges.Count > 0)
+        {
+            loadIndex = int.Min(loadIndex, accountChanges.BalanceChanges[0].BlockAccessIndex);
+        }
+
+        if (accountChanges.NonceChanges.Count > 0)
+        {
+            loadIndex = int.Min(loadIndex, accountChanges.NonceChanges[0].BlockAccessIndex);
+        }
+
+        if (accountChanges.CodeChanges.Count > 0)
+        {
+            loadIndex = int.Min(loadIndex, accountChanges.CodeChanges[0].BlockAccessIndex);
+        }
+
+        foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+        {
+            if (slotChanges.Changes.Count > 0)
+            {
+                loadIndex = int.Min(loadIndex, slotChanges.Changes.Values[0].BlockAccessIndex);
+            }
+        }
+
+        return accountChanges.StorageReads.Count > 0 || loadIndex == int.MaxValue ? 0 : loadIndex;
     }
 
     /// <summary>
@@ -156,6 +265,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
     {
+        WaitForBatchReadCompletion();
         Console.WriteLine("[parallel] starting state change application");
 
         foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
@@ -681,6 +791,22 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             _intermediateBlockAccessLists[int.Min(blockAccessIndex!.Value, _intermediateBlockAccessLists.Length - 1)] :
             GeneratedBlockAccessList;
 
+    private void WaitForBatchRead(Address address)
+    {
+        if (ParallelExecutionEnabled && blocksConfig.ParallelExecutionBatchRead)
+        {
+            _parallelBatchReadState?.WaitForAddress(address);
+        }
+    }
+
+    private void WaitForBatchReadCompletion()
+    {
+        if (ParallelExecutionEnabled && blocksConfig.ParallelExecutionBatchRead)
+        {
+            _parallelBatchReadState?.WaitForCompletion();
+        }
+    }
+
     private UInt256 GetBalanceInternal(Address address, int? blockAccessIndex)
     {
         if (ParallelExecutionEnabled)
@@ -696,6 +822,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
             if (accountChanges is not null)
             {
+                WaitForBatchRead(address);
                 return accountChanges.GetBalance(blockAccessIndex.Value);
             }
 
@@ -722,6 +849,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
             if (accountChanges is not null)
             {
+                WaitForBatchRead(address);
                 return accountChanges.GetNonce(blockAccessIndex.Value);
             }
 
@@ -748,6 +876,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
             if (accountChanges is not null)
             {
+                WaitForBatchRead(address);
                 return accountChanges.GetCode(blockAccessIndex.Value);
             }
 
@@ -777,6 +906,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
             }
 
+            WaitForBatchRead(storageCell.Address);
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
             accountChanges.TryGetSlotChanges(storageCell.Index, out slotChanges);
 
@@ -797,6 +927,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
+            WaitForBatchRead(storageCell.Address);
             AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
             accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
@@ -828,6 +959,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
+                WaitForBatchRead(address);
                 // check if existed before current tx
                 return accountChanges.AccountExists(blockAccessIndex.Value);
             }
@@ -869,6 +1001,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 zeroedSlots.Add(slotChanges.Slot);
             }
 
+            WaitForBatchRead(address);
             accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
@@ -1018,4 +1151,36 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             c.NonceChange is null &&
             c.CodeChange is null &&
             !c.SlotChanges.GetEnumerator().MoveNext();
+
+    private sealed class ParallelBatchReadState(
+        Dictionary<Address, int> accountLoadIndexes,
+        Dictionary<int, TaskCompletionSource<bool>> groupCompletions)
+    {
+        private readonly Dictionary<Address, int> _accountLoadIndexes = accountLoadIndexes;
+        private readonly Dictionary<int, TaskCompletionSource<bool>> _groupCompletions = groupCompletions;
+
+        public Task? PreloadTask { get; set; }
+
+        public void WaitForAddress(Address address)
+        {
+            if (_accountLoadIndexes.TryGetValue(address, out int loadIndex))
+            {
+                _groupCompletions[loadIndex].Task.GetAwaiter().GetResult();
+            }
+        }
+
+        public void WaitForCompletion()
+            => PreloadTask?.GetAwaiter().GetResult();
+
+        public void CompleteGroup(int loadIndex)
+            => _groupCompletions[loadIndex].TrySetResult(true);
+
+        public void Fail(Exception ex)
+        {
+            foreach (TaskCompletionSource<bool> completion in _groupCompletions.Values)
+            {
+                completion.TrySetException(ex);
+            }
+        }
+    }
 }

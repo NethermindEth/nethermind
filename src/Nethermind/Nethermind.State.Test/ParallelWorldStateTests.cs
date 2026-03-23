@@ -6,6 +6,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -15,6 +18,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -32,10 +36,13 @@ public class ParallelWorldStateTests
 
     private static ParallelWorldState CreateStateCore(
         bool parallel,
+        bool parallelExecutionBatchRead,
         Action<ParallelWorldState>? genesisSetup,
         out BlockHeader baseBlock)
     {
-        ParallelWorldState pws = (ParallelWorldState)TestWorldStateFactory.CreateForTest(parallel: parallel);
+        ParallelWorldState pws = (ParallelWorldState)TestWorldStateFactory.CreateForTest(
+            parallel: parallel,
+            parallelExecutionBatchRead: parallelExecutionBatchRead);
         using (pws.BeginScope(IWorldState.PreGenesis))
         {
             genesisSetup?.Invoke(pws);
@@ -51,20 +58,51 @@ public class ParallelWorldStateTests
     private static (ParallelWorldState pws, IDisposable scope) CreateTracingState(
         Action<ParallelWorldState>? genesisSetup = null)
     {
-        ParallelWorldState pws = CreateStateCore(parallel: false, genesisSetup, out BlockHeader baseBlock);
+        ParallelWorldState pws = CreateStateCore(parallel: false, parallelExecutionBatchRead: false, genesisSetup, out BlockHeader baseBlock);
         return (pws, pws.BeginScope(baseBlock));
     }
 
     private static (ParallelWorldState pws, IDisposable scope) CreateParallelState(
         BlockAccessList suggestedBal,
         int txCount = 3,
+        bool parallelExecutionBatchRead = false,
         Action<ParallelWorldState>? genesisSetup = null)
     {
-        ParallelWorldState pws = CreateStateCore(parallel: true, genesisSetup, out BlockHeader baseBlock);
+        ParallelWorldState pws = CreateStateCore(parallel: true, parallelExecutionBatchRead, genesisSetup, out BlockHeader baseBlock);
         IDisposable scope = pws.BeginScope(baseBlock);
         pws.LoadSuggestedBlockAccessList(suggestedBal, 0);
         pws.SetupGeneratedAccessLists(Logger, txCount);
         return (pws, scope);
+    }
+
+    private static (ParallelWorldState pws, GatedWorldState gatedWorldState, IDisposable scope) CreateParallelBatchReadState(
+        Action<IWorldState>? genesisSetup = null)
+    {
+        (IWorldState innerWorldState, _) = TestWorldStateFactory.CreateForTestWithStateReader();
+        BlockHeader baseBlock;
+        using (innerWorldState.BeginScope(IWorldState.PreGenesis))
+        {
+            genesisSetup?.Invoke(innerWorldState);
+            innerWorldState.Commit(Spec, isGenesis: true);
+            innerWorldState.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(innerWorldState.StateRoot).WithNumber(0).TestObject;
+        }
+
+        GatedWorldState gatedWorldState = new(innerWorldState);
+        ParallelWorldState pws = new(
+            gatedWorldState,
+            MainnetSpecProvider.Instance,
+            new BlocksConfig
+            {
+                ParallelExecution = true,
+                ParallelExecutionBatchRead = true,
+            })
+        {
+            TracingEnabled = true,
+            IsGenesis = false,
+        };
+
+        return (pws, gatedWorldState, pws.BeginScope(baseBlock));
     }
 
     private static BlockAccessList BuildSuggestedBal(params Address[] addresses)
@@ -75,6 +113,56 @@ public class ParallelWorldStateTests
             bal.AddAccountRead(addr);
         }
         return bal;
+    }
+
+    private sealed class GatedWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState)
+    {
+        private readonly Dictionary<Address, Gate> _accountGates = [];
+        private readonly Dictionary<StorageCell, Gate> _storageGates = [];
+
+        public Gate GateAccount(Address address)
+        {
+            Gate gate = new();
+            _accountGates[address] = gate;
+            return gate;
+        }
+
+        public Gate GateStorage(in StorageCell storageCell)
+        {
+            Gate gate = new();
+            _storageGates[storageCell] = gate;
+            return gate;
+        }
+
+        public override bool TryGetAccount(Address address, out AccountStruct account, int? blockAccessIndex = null)
+        {
+            Wait(_accountGates, address, $"account {address}");
+            return base.TryGetAccount(address, out account, blockAccessIndex);
+        }
+
+        public override ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null)
+        {
+            Wait(_storageGates, storageCell, $"storage {storageCell}");
+            return base.Get(storageCell, blockAccessIndex);
+        }
+
+        private static void Wait<TKey>(Dictionary<TKey, Gate> gates, TKey key, string name) where TKey : notnull
+        {
+            if (gates.TryGetValue(key, out Gate? gate))
+            {
+                gate.Started.Set();
+                if (!gate.Release.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    throw new TimeoutException($"Timed out waiting to release gated {name} load.");
+                }
+            }
+        }
+
+        public sealed class Gate
+        {
+            public ManualResetEventSlim Started { get; } = new();
+            public ManualResetEventSlim Release { get; } = new();
+        }
     }
 
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
@@ -696,6 +784,79 @@ public class ParallelWorldStateTests
         {
             ReadOnlySpan<byte> value = pws.Get(cell, blockAccessIndex: 0);
             Assert.That(new UInt256(value, isBigEndian: true), Is.EqualTo((UInt256)0x42));
+        }
+    }
+
+    [Test]
+    public void ParallelExecutionBatchRead_LoadsLowerIndexesBeforeHigherOnes()
+    {
+        BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA, TestItem.AddressB);
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddBalanceChange(new(1, 150u));
+        suggested.GetAccountChanges(TestItem.AddressB)!.AddBalanceChange(new(2, 250u));
+
+        (ParallelWorldState pws, GatedWorldState gatedWorldState, IDisposable scope) = CreateParallelBatchReadState(
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 100);
+                ws.CreateAccount(TestItem.AddressB, 200);
+            });
+
+        GatedWorldState.Gate delayedSecondAccount = gatedWorldState.GateAccount(TestItem.AddressB);
+
+        using (scope)
+        {
+            pws.LoadSuggestedBlockAccessList(suggested, 0);
+            pws.SetupGeneratedAccessLists(Logger, txCount: 2);
+
+            Task<UInt256> firstTask = Task.Run(() => pws.GetBalance(TestItem.AddressA, blockAccessIndex: 1));
+            Task<UInt256> secondTask = Task.Run(() => pws.GetBalance(TestItem.AddressB, blockAccessIndex: 2));
+
+            Assert.That(delayedSecondAccount.Started.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(firstTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(secondTask.IsCompleted, Is.False);
+
+            delayedSecondAccount.Release.Set();
+
+            Assert.That(secondTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(firstTask.GetAwaiter().GetResult(), Is.EqualTo((UInt256)100));
+                Assert.That(secondTask.GetAwaiter().GetResult(), Is.EqualTo((UInt256)200));
+            }
+        }
+    }
+
+    [Test]
+    public void ParallelExecutionBatchRead_Get_WaitsForStoragePreload()
+    {
+        StorageCell cell = new(TestItem.AddressA, 7);
+        BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
+        suggested.GetAccountChanges(TestItem.AddressA)!.GetOrAddSlotChanges(cell.Index).AddStorageChange(new(1, 0x99u));
+
+        (ParallelWorldState pws, GatedWorldState gatedWorldState, IDisposable scope) = CreateParallelBatchReadState(
+            ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 0);
+                ws.Set(cell, [0x42]);
+            });
+
+        GatedWorldState.Gate delayedStorage = gatedWorldState.GateStorage(cell);
+
+        using (scope)
+        {
+            pws.LoadSuggestedBlockAccessList(suggested, 0);
+            pws.SetupGeneratedAccessLists(Logger, txCount: 1);
+
+            Task<byte[]> readTask = Task.Run(() => pws.Get(cell, blockAccessIndex: 1).ToArray());
+
+            Assert.That(delayedStorage.Started.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(readTask.IsCompleted, Is.False);
+
+            delayedStorage.Release.Set();
+
+            Assert.That(readTask.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(new UInt256(readTask.GetAwaiter().GetResult(), isBigEndian: true), Is.EqualTo((UInt256)0x42));
         }
     }
 

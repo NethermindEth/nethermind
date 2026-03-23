@@ -17,12 +17,17 @@ namespace Nethermind.Core.Test;
 
 public static class TestWorldStateFactory
 {
-    public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null, bool parallel = false)
+    public static IWorldState CreateForTest(
+        IDbProvider? dbProvider = null,
+        ILogManager? logManager = null,
+        bool parallel = false,
+        bool parallelExecutionBatchRead = false)
     {
         PruningConfig pruningConfig = new PruningConfig();
         BlocksConfig blocksConfig = new BlocksConfig()
         {
-            ParallelExecution = parallel
+            ParallelExecution = parallel,
+            ParallelExecutionBatchRead = parallelExecutionBatchRead,
         };
         TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
         dbProvider ??= TestMemDbProvider.Init();
