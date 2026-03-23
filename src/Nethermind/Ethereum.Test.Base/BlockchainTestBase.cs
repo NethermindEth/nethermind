@@ -86,10 +86,13 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-        isEngineTest ?
-        [((ForkActivation)0, test.Network)] :
-        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+        // Post-merge pyspec blockchain_test_from_state_test fixtures expect genesis to be processed
+        // under the target fork rules when the fork requires it (e.g. EIP-7928 sets BlockAccessListHash).
+        bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
+
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = isEngineTest || genesisUsesTargetFork
+            ? [((ForkActivation)0, test.Network)]
+            : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -98,9 +101,8 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
-        if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }
@@ -361,12 +363,12 @@ public abstract class BlockchainTestBase
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
 
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
             }
             catch (Exception e)
             {
-                if (testBlockJson.ExpectedException is null)
+                if (testBlockJson.ExpectException is null)
                 {
                     string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
                     Assert.That(!failOnInvalidRlp, invalidRlpMessage);

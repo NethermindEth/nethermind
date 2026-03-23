@@ -12,6 +12,8 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class HelloMessageSerializer : IZeroMessageSerializer<HelloMessage>
     {
+        private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
+
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
             (int totalLength, int innerLength) = GetLength(msg);
@@ -62,7 +64,7 @@ namespace Nethermind.Network.P2P.Messages
 
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = ctx.DecodeByte();
-            helloMessage.ClientId = ctx.DecodeString();
+            helloMessage.ClientId = ctx.DecodeString(ClientIdRlpLimit);
 
             helloMessage.Capabilities = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) =>
             {

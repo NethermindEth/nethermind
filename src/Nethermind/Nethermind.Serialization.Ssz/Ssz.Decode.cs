@@ -72,7 +72,7 @@ public static partial class Ssz
 
         ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-        result = new UInt128(s0, s1);
+        result = new UInt128(s1, s0);
     }
 
     public static void Decode(ReadOnlySpan<byte> span, out UInt256 value)
@@ -159,36 +159,18 @@ public static partial class Ssz
         result = array;
     }
 
-    public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector)
-    {
-        BitArray value = new BitArray(span.ToArray())
-        {
-            Length = vectorLength
-        };
-        vector = value;
-    }
+    public static void Decode(ReadOnlySpan<byte> span, int vectorLength, out BitArray vector) =>
+        vector = DecodeBitvector(span, vectorLength);
 
-    public static void Decode(ReadOnlySpan<byte> span, out BitArray list)
-    {
-        BitArray value = new BitArray(span.ToArray());
-        int length = value.Length - 1;
-        int lastByte = span[^1];
-        int mask = 0x80;
-        while ((lastByte & mask) == 0 && mask > 0)
-        {
-            length--;
-            mask >>= 1;
-        }
-        value.Length = length;
-        list = value;
-    }
+    public static void Decode(ReadOnlySpan<byte> span, out BitArray list) =>
+        list = DecodeBitlist(span);
 
     private static void ValidateLength(ReadOnlySpan<byte> span, int expectedLength)
     {
         if (span.Length != expectedLength)
         {
             throw new InvalidDataException(
-                 $"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
+                 $"SSZ decode expects input of length {expectedLength} and received {span.Length}");
         }
     }
 
@@ -197,7 +179,7 @@ public static partial class Ssz
         if (span.Length % itemLength != 0)
         {
             throw new InvalidDataException(
-                 $"{nameof(DecodeUShorts)} expects input in multiples of {itemLength} and received {span.Length}");
+                 $"SSZ decode expects input in multiples of {itemLength} and received {span.Length}");
         }
     }
 }

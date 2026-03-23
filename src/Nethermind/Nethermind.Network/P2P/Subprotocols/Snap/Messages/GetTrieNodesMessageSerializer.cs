@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -108,20 +111,62 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
+            GetTrieNodesMessage message = new();
+            IRlpItemList? rawPaths = null;
 
-            ctx.ReadSequenceLength();
-            long requestId = ctx.DecodeLong();
-            Hash256? rootHash = ctx.DecodeKeccak();
+            try
+            {
+                ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
+                Hash256? rootHash = ctx.DecodeKeccak();
+                message.RootHash = rootHash;
 
-            RlpPathGroupList paths = new(RlpItemList.DecodeList(ref ctx, memoryOwner));
+                rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                ValidatePathGroups(rawPaths);
+                message.Paths = new RlpPathGroupList(rawPaths);
+                rawPaths = null;
 
-            long bytes = ctx.DecodeLong();
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                message.Bytes = ctx.DecodeLong();
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
-            return new GetTrieNodesMessage { RequestId = requestId, RootHash = rootHash, Paths = paths, Bytes = bytes };
+                return message;
+            }
+            catch
+            {
+                rawPaths?.Dispose();
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
+
+        private static void ValidatePathGroups(IRlpItemList paths)
+        {
+            if (paths.Count > SnapMessageLimits.GetTrieNodesPathGroupsRlpLimit.Limit)
+            {
+                ThrowPathGroupsLimitExceeded(paths.Count);
+            }
+
+            for (int i = 0; i < paths.Count; i++)
+            {
+                using IRlpItemList group = paths.GetNestedItemList(i);
+                if (group.Count > SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit.Limit)
+                {
+                    ThrowPathsPerGroupLimitExceeded(group.Count);
+                }
+            }
+        }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPathGroupsLimitExceeded(int count)
+            => throw new RlpLimitException($"Too many trie path groups in {nameof(GetTrieNodesMessage)}: {count}, max {SnapMessageLimits.GetTrieNodesPathGroupsRlpLimit.Limit}.");
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowPathsPerGroupLimitExceeded(int count)
+            => throw new RlpLimitException($"Too many trie paths in a single {nameof(GetTrieNodesMessage)} group: {count}, max {SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit.Limit}.");
     }
 }

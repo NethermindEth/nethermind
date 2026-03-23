@@ -7,36 +7,24 @@ using Nethermind.Int256;
 namespace Ethereum.Difficulty.Test
 {
     [DebuggerDisplay("{Name}")]
-    public class DifficultyTests
+    public class DifficultyTests(
+        string fileName,
+        string name,
+        ulong parentTimestamp,
+        UInt256 parentDifficulty,
+        ulong currentTimestamp,
+        long currentBlockNumber,
+        UInt256 currentDifficulty,
+        bool parentHasUncles)
     {
-        public DifficultyTests(
-            string fileName,
-            string name,
-            ulong parentTimestamp,
-            UInt256 parentDifficulty,
-            ulong currentTimestamp,
-            long currentBlockNumber,
-            UInt256 currentDifficulty,
-            bool parentHasUncles)
-        {
-            Name = name;
-            FileName = fileName;
-            ParentTimestamp = parentTimestamp;
-            ParentDifficulty = parentDifficulty;
-            CurrentTimestamp = currentTimestamp;
-            CurrentDifficulty = currentDifficulty;
-            CurrentBlockNumber = currentBlockNumber;
-            ParentHasUncles = parentHasUncles;
-        }
-
-        public ulong ParentTimestamp { get; set; }
-        public UInt256 ParentDifficulty { get; set; }
-        public ulong CurrentTimestamp { get; set; }
-        public long CurrentBlockNumber { get; set; }
-        public bool ParentHasUncles { get; set; }
-        public UInt256 CurrentDifficulty { get; set; }
-        public string Name { get; set; }
-        public string FileName { get; set; }
+        public ulong ParentTimestamp { get; set; } = parentTimestamp;
+        public UInt256 ParentDifficulty { get; set; } = parentDifficulty;
+        public ulong CurrentTimestamp { get; set; } = currentTimestamp;
+        public long CurrentBlockNumber { get; set; } = currentBlockNumber;
+        public bool ParentHasUncles { get; set; } = parentHasUncles;
+        public UInt256 CurrentDifficulty { get; set; } = currentDifficulty;
+        public string Name { get; set; } = name;
+        public string FileName { get; set; } = fileName;
 
         public override string ToString()
         {

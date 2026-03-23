@@ -290,6 +290,19 @@ public class SnapshotRepositoryTests
         states.Dispose();
     }
 
+    [TestCase(-1)]
+    [TestCase(long.MinValue)]
+    public void GetSnapshotBeforeStateId_NegativeBlockNumber_ReturnsEmpty(long blockNumber)
+    {
+        _repository.AddStateId(CreateStateId(1));
+
+        StateId target = new(blockNumber, Keccak.EmptyTreeHash);
+        ArrayPoolList<StateId> states = _repository.GetSnapshotBeforeStateId(target);
+
+        Assert.That(states.Count, Is.EqualTo(0));
+        states.Dispose();
+    }
+
     #endregion
 
     #region AssembleSnapshotsUntil

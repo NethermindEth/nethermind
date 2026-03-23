@@ -1,21 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
+namespace Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs.Forks
+public class MuirGlacier() : NamedReleaseSpec<MuirGlacier>(Istanbul.Instance)
 {
-    public class MuirGlacier : Istanbul
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected MuirGlacier()
-        {
-            Name = "Muir Glacier";
-            DifficultyBombDelay = 9000000L;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new MuirGlacier());
+        spec.Name = "Muir Glacier";
+        spec.DifficultyBombDelay = 9000000L;
     }
 }

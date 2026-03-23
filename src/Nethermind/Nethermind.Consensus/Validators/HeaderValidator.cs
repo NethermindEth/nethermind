@@ -308,10 +308,10 @@ namespace Nethermind.Consensus.Validators
 
             if (header.TotalDifficulty is not null)
             {
-                if (header.TotalDifficulty == 0)
+                if (header.TotalDifficulty.Value.IsZero)
                 {
                     // Same as in BlockTree.SetTotalDifficulty
-                    if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
                         result = false;
@@ -383,12 +383,10 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
-        {
-            return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-        }
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
 
-        private bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
             if (spec.IsEip7928Enabled)
             {

@@ -111,7 +111,7 @@ public class SnapProtocolHandlerTests
 
                         packet.PacketType = SnapMessageCode.AccountRange;
                         SnapProtocolHandler.HandleMessage(packet);
-                        ReferenceCountUtil.Release(packet);
+                        ReferenceCountUtil.Release(packet); // releases buffer
                     });
                 return this;
             }
@@ -155,6 +155,18 @@ public class SnapProtocolHandlerTests
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
+    }
+
+    [TestCase(long.MaxValue, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes + 1, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(1_000_000L, 1_000_000L)]
+    [TestCase(1L, 1L)]
+    [TestCase(0L, 1L)]
+    [TestCase(-1L, 1L)]
+    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected)
+    {
+        Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
     }
 
     [Test]

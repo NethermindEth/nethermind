@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -136,6 +137,13 @@ internal static class ArrayPoolListCore<T>
     {
         ArgumentNullException.ThrowIfNull(comparison);
         if (count > 1) array.AsSpan(0, count).Sort(comparison);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Sort<TComparer>(T[] array, int count, TComparer comparer)
+        where TComparer : IComparer<T>
+    {
+        if (count > 1) array.AsSpan(0, count).Sort(comparer);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

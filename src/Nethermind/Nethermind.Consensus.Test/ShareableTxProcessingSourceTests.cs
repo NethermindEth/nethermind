@@ -5,24 +5,35 @@ using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
-using Nethermind.Evm.TransactionProcessing;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
 public class ShareableTxProcessingSourceTests
 {
+    private IContainer _container;
+    private IShareableTxProcessorSource _shareableSource;
+
+    [SetUp]
+    public void Setup()
+    {
+        _container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        _shareableSource = _container.Resolve<IShareableTxProcessorSource>();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _container?.Dispose();
+    }
+
     [Test]
     public void OnSubsequentBuild_GiveDifferentWorldState()
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        IShareableTxProcessorSource shareableSource = container.Resolve<IShareableTxProcessorSource>();
-
-        var scope1 = shareableSource.Build(IWorldState.PreGenesis);
-        var scope2 = shareableSource.Build(IWorldState.PreGenesis);
+        IReadOnlyTxProcessingScope scope1 = _shareableSource.Build(IWorldState.PreGenesis);
+        IReadOnlyTxProcessingScope scope2 = _shareableSource.Build(IWorldState.PreGenesis);
 
         scope1.WorldState.Should().NotBeSameAs(scope2.WorldState);
     }
@@ -30,12 +41,9 @@ public class ShareableTxProcessingSourceTests
     [Test]
     public void OnSubsequentBuild_AfterFirstScopeDispose_GiveSameWorldState()
     {
-        using IContainer container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
-        IShareableTxProcessorSource shareableSource = container.Resolve<IShareableTxProcessorSource>();
-
-        var scope1 = shareableSource.Build(IWorldState.PreGenesis);
+        IReadOnlyTxProcessingScope scope1 = _shareableSource.Build(IWorldState.PreGenesis);
         scope1.Dispose();
-        var scope2 = shareableSource.Build(IWorldState.PreGenesis);
+        IReadOnlyTxProcessingScope scope2 = _shareableSource.Build(IWorldState.PreGenesis);
 
         scope1.WorldState.Should().BeSameAs(scope2.WorldState);
     }

@@ -52,7 +52,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         int version = ctx.DecodeInt();
 
         ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> sourceAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
 
         // TODO: please note that we decode only one field for port and if the UDP is different from TCP then
         // our discovery messages will not be routed correctly (the fix will not be part of this commit)
@@ -61,7 +61,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
 
         IPEndPoint source = GetAddress(sourceAddress, tcpPort);
         ctx.ReadSequenceLength();
-        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> destinationAddress = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         IPEndPoint destination = GetAddress(destinationAddress, ctx.DecodeInt());
         ctx.DecodeInt(); // UDP port
 

@@ -10,25 +10,48 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public readonly struct BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
+public readonly struct BlockExecutionContext
 {
-    public readonly BlockHeader Header = blockHeader;
-    public readonly Address Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
-    public readonly ulong Number = (ulong)blockHeader.Number;
-    public readonly ulong GasLimit = (ulong)blockHeader.GasLimit;
-    public readonly ValueHash256 BlobBaseFee = blobBaseFee.ToValueHash();
-    public readonly IReleaseSpec Spec = spec;
+    public readonly BlockHeader Header;
+    public readonly Address Coinbase;
+    public readonly ulong Number;
+    public readonly ulong GasLimit;
+    public readonly ValueHash256 BlobBaseFee;
+    public readonly IReleaseSpec Spec;
+    public readonly ValueHash256 PrevRandao;
+    public readonly bool IsGenesis;
 
-    // Use the random value if post-merge; otherwise, use block difficulty.
-    public readonly ValueHash256 PrevRandao = blockHeader.IsPostMerge
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec)
+        : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), GetDefaultPrevRandao(blockHeader)) { }
+
+    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec, in UInt256 blobBaseFee)
+        : this(blockHeader, spec, blobBaseFee, GetDefaultPrevRandao(blockHeader)) { }
+
+    public static BlockExecutionContext WithPrevRandao(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in ValueHash256 prevRandao)
+        => new(blockHeader, spec, GetBlobBaseFee(blockHeader, spec), prevRandao);
+
+    private BlockExecutionContext(
+        BlockHeader blockHeader,
+        IReleaseSpec spec,
+        in UInt256 blobBaseFee,
+        in ValueHash256 prevRandao)
+    {
+        Header = blockHeader;
+        Coinbase = blockHeader.GasBeneficiary ?? Address.Zero;
+        Number = (ulong)blockHeader.Number;
+        GasLimit = (ulong)blockHeader.GasLimit;
+        BlobBaseFee = blobBaseFee.ToValueHash();
+        Spec = spec;
+        PrevRandao = prevRandao;
+        IsGenesis = blockHeader.IsGenesis;
+    }
+
+    private static ValueHash256 GetDefaultPrevRandao(BlockHeader blockHeader) => blockHeader.IsPostMerge
         ? (blockHeader.Random ?? Hash256.Zero).ValueHash256
         : blockHeader.Difficulty.ToValueHash();
-
-    public readonly bool IsGenesis = blockHeader.IsGenesis;
-
-    public BlockExecutionContext(BlockHeader blockHeader, IReleaseSpec spec) : this(blockHeader, spec, GetBlobBaseFee(blockHeader, spec))
-    {
-    }
 
     private static UInt256 GetBlobBaseFee(BlockHeader? blockHeader, IReleaseSpec spec) =>
         blockHeader?.ExcessBlobGas is not null
