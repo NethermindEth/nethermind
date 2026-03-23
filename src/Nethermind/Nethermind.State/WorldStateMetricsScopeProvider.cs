@@ -10,36 +10,27 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public interface IStateMerkleizationMetrics
+public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
 {
-    double StateMerkleizationTime { get; }
-    void ResetStateMerkleizationTime();
-}
-
-public sealed class NullStateMerkleizationMetrics : IStateMerkleizationMetrics
-{
-    public static NullStateMerkleizationMetrics Instance { get; } = new();
-    public double StateMerkleizationTime => 0d;
-    public void ResetStateMerkleizationTime() { }
-}
-
-public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider)
-    : IWorldStateScopeProvider, IStateMerkleizationMetrics
-{
+    private readonly IWorldStateScopeProvider _baseProvider;
+    private readonly Action<double>? _onMetricsUpdated;
     private double _stateMerkleizationTime;
 
-    public double StateMerkleizationTime => _stateMerkleizationTime;
-    public void ResetStateMerkleizationTime() => _stateMerkleizationTime = 0d;
+    public WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider, Action<double>? onMetricsUpdated = null)
+    {
+        _baseProvider = baseProvider;
+        _onMetricsUpdated = onMetricsUpdated;
+    }
 
-    public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(baseProvider.BeginScope(baseBlock), this);
+    public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new MetricsScope(_baseProvider.BeginScope(baseBlock), this);
 
     private sealed class MetricsScope(IWorldStateScopeProvider.IScope baseScope, WorldStateMetricsScopeProvider parent) : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
             baseScope.Dispose();
-            parent.ResetStateMerkleizationTime();
+            parent._stateMerkleizationTime = 0d;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -49,6 +40,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             long start = Stopwatch.GetTimestamp();
             baseScope.UpdateRootHash();
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            parent._onMetricsUpdated?.Invoke(parent._stateMerkleizationTime);
         }
 
         public Account? Get(Address address) => baseScope.Get(address);
@@ -66,6 +58,7 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+            parent._onMetricsUpdated?.Invoke(parent._stateMerkleizationTime);
         }
     }
 }

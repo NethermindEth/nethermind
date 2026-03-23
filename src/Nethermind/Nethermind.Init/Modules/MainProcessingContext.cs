@@ -37,7 +37,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
             worldState = new WorldStateScopeOperationLogger(worldStateManager.GlobalWorldState, logManager);
         }
 
-        worldState = new WorldStateMetricsScopeProvider(worldState);
+        worldState = new WorldStateMetricsScopeProvider(worldState, time => Blockchain.Metrics.StateMerkleizationTime = time);
 
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {

@@ -14,7 +14,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -29,7 +28,6 @@ public class BranchProcessor(
     : IBranchProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IStateMerkleizationMetrics _merkleizationMetrics = stateProvider.ScopeProvider as IStateMerkleizationMetrics ?? NullStateMerkleizationMetrics.Instance;
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
@@ -146,7 +144,6 @@ public class BranchProcessor(
 
                 if (notReadOnly)
                 {
-                    Metrics.StateMerkleizationTime = _merkleizationMetrics.StateMerkleizationTime;
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
