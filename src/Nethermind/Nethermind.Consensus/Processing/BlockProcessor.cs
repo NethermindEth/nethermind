@@ -323,7 +323,7 @@ public partial class BlockProcessor(
 
             if (_lastLoadedBal != suggested.Hash)
             {
-                _balBuilder.LoadSuggestedBlockAccessList(suggested.BlockAccessList, suggested.GasUsed);
+                _balBuilder.LoadSuggestedBlockAccessList(suggested, suggested.GasUsed);
             }
             _lastLoadedBal = suggested.Hash;
 
