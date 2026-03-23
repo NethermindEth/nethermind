@@ -91,6 +91,10 @@ namespace Nethermind.Config
 
         public bool BuildBlocksOnMainState { get; set; }
 
+        public bool ParallelExecution { get; set; } = true;
+
+        public bool ParallelExecutionBatchRead { get; set; } = true;
+
         public byte[] GetExtraDataBytes() => _extraDataBytes;
 
         public string GasToken { get => GasTokenTicker; set => GasTokenTicker = value; }
