@@ -13,7 +13,7 @@ internal sealed class OpcodeCountingTxTracer : TxTracer
 
     public override bool IsTracingInstructions => true;
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _opcodeCounters[(byte)opcode]++;
     }
