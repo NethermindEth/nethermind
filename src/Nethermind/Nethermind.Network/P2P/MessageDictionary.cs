@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -36,7 +37,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     public void Send(Request<T66Msg, TData> request)
     {
-        if (_requestCount >= MaxConcurrentRequest)
+        if (Volatile.Read(ref _requestCount) >= MaxConcurrentRequest)
         {
             request.Message.TryDispose();
             ThrowTooManyOutstandingRequests();
@@ -45,7 +46,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
         if (_requests.TryAdd(request.Message.RequestId, request))
         {
-            _requestCount++;
+            Interlocked.Increment(ref _requestCount);
             request.StartMeasuringTime();
             send(request.Message);
 
@@ -78,14 +79,14 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                 {
                     if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
-                        _requestCount--;
+                        Interlocked.Decrement(ref _requestCount);
                         // Unblock waiting thread.
                         request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
             }
 
-            if (_requestCount == 0) break;
+            if (Volatile.Read(ref _requestCount) == 0) break;
         }
     }
 
@@ -93,7 +94,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     {
         if (_requests.TryRemove(id, out Request<T66Msg, TData>? request))
         {
-            _requestCount--;
+            Interlocked.Decrement(ref _requestCount);
             request.ResponseSize = size;
             request.CompletionSource.TrySetResult(data);
         }

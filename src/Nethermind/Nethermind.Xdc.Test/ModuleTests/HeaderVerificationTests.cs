@@ -38,6 +38,12 @@ internal class HeaderVerificationTests
         extraConsensusDataDecoder = new();
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        xdcTestBlockchain?.Dispose();
+    }
+
     [Test]
     public void Block_With_Invalid_Qc_Fails()
     {
@@ -260,7 +266,7 @@ internal class HeaderVerificationTests
             .ToList();
         List<Signature> signatures = [];
 
-        double threshold = xdcTestBlockchain.SpecProvider.GetXdcSpec(invalidQcSignatureBlock).CertThreshold;
+        double threshold = xdcTestBlockchain.SpecProvider.GetXdcSpec(invalidQcSignatureBlock).CertificateThreshold;
 
         // Sign with only half of the valid signers to be below threshold
         foreach (var signer in validSigners.Take((int)threshold - 1))

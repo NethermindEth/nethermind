@@ -1,0 +1,34 @@
+// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Stats;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
+using Nethermind.Synchronization.StateSync;
+
+namespace Nethermind.Xdc;
+
+public class XdcStateSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<StateSyncBatch>
+{
+    private static readonly IPeerAllocationStrategy DefaultStrategy =
+        new AllocationStrategy(new BySpeedStrategy(TransferSpeedType.NodeData, true));
+
+    public XdcStateSyncAllocationStrategyFactory() : base(DefaultStrategy)
+    {
+    }
+
+    internal class AllocationStrategy : FilterPeerAllocationStrategy
+    {
+        public AllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
+        {
+        }
+
+        protected override bool Filter(PeerInfo peerInfo)
+        {
+            return peerInfo.CanGetSnapData() || peerInfo.SyncPeer.ProtocolVersion == 100;
+        }
+    }
+}
+

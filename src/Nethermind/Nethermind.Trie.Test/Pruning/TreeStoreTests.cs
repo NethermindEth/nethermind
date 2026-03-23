@@ -378,7 +378,7 @@ namespace Nethermind.Trie.Test.Pruning
             NodeStorage storage = new NodeStorage(memDb);
 
             using TrieStore fullTrieStore = CreateTrieStore(
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 kvStore: memDb,
                 persistenceStrategy: new ConstantInterval(4),
                 new PruningConfig()
@@ -410,7 +410,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new();
             NodeStorage storage = new NodeStorage(memDb);
 
-            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB()));
+            using TrieStore fullTrieStore = CreateTrieStore(pruningStrategy: new MemoryLimit(16.MB));
 
             using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(0, a))
             {
@@ -498,7 +498,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -540,7 +540,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()),
+                pruningStrategy: new MemoryLimit(16.MB),
                 persistenceStrategy: new ConstantInterval(4));
 
             using (ICommitter _ = fullTrieStore.BeginStateBlockCommit(0, null)) { }
@@ -590,7 +590,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -647,7 +647,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()),
+                pruningStrategy: new MemoryLimit(16.MB),
                 persistenceStrategy: new ConstantInterval(4));
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
@@ -721,7 +721,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(16.MB()).WhenLastPersistedBlockIsTooOld(4, 0),
+                pruningStrategy: new MemoryLimit(16.MB).WhenLastPersistedBlockIsTooOld(4, 0),
                 persistenceStrategy: new ConstantInterval(4),
                 pruningConfig: new PruningConfig()
                 {
@@ -780,7 +780,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb memDb = new();
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new MemoryLimit(10.MB()),
+                pruningStrategy: new MemoryLimit(10.MB),
                 persistenceStrategy: new ConstantInterval(10));
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
@@ -896,6 +896,104 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void HasRoot_with_block_number_rejects_pruned_state()
+        {
+            int pruningBoundary = 4;
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(shouldPrune: false);
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: No.Persistence,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = false
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Commit blocks 0..9
+            Hash256[] rootHashes = new Hash256[10];
+            for (int i = 0; i < 10; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+            }
+
+            // Persist: sets LastPersistedBlockNumber
+            testPruningStrategy.ShouldPruneEnabled = true;
+            trieStore.SyncPruneQueue();
+            testPruningStrategy.ShouldPruneEnabled = false;
+            trieStore.LastPersistedBlockNumber.Should().BeGreaterThan(0);
+
+            long lastPersisted = trieStore.LastPersistedBlockNumber;
+
+            // Block within boundary: should return true
+            trieStore.HasRoot(rootHashes[lastPersisted], lastPersisted).Should().BeTrue();
+
+            // Block outside boundary: should return false
+            long oldBlock = lastPersisted - pruningBoundary - 1;
+            if (oldBlock >= 0)
+            {
+                trieStore.HasRoot(rootHashes[oldBlock], oldBlock).Should().BeFalse();
+            }
+
+            trieStore.Dispose();
+        }
+
+        [Test]
+        public void HasRoot_with_block_number_allows_old_blocks_in_archive_mode([Values] bool trackPastKeys)
+        {
+            int pruningBoundary = 4;
+            // Archive mode: shouldPrune always true, deleteObsoleteKeys = false
+            // When TrackPastKeys is false, _deleteOldNodes is always false regardless of deleteObsoleteKeys.
+            // When TrackPastKeys is true, deleteObsoleteKeys = false still prevents node deletion.
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(shouldPrune: true, deleteObsoleteKeys: false);
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: Persist.EveryBlock,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = trackPastKeys
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Start from block 1 (not genesis) to avoid special-casing block 0
+            int startBlock = 1;
+            int blockCount = pruningBoundary * 4;
+            Hash256[] rootHashes = new Hash256[startBlock + blockCount];
+            for (int i = startBlock; i < startBlock + blockCount; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+            }
+
+            trieStore.WaitForPruning();
+            trieStore.LastPersistedBlockNumber.Should().BeGreaterThan(pruningBoundary + startBlock);
+
+            long lastPersisted = trieStore.LastPersistedBlockNumber;
+
+            // Block within boundary: should return true
+            trieStore.HasRoot(rootHashes[lastPersisted], lastPersisted).Should().BeTrue();
+
+            // Block 1 is well outside the pruning boundary but should still be accessible in archive mode
+            trieStore.HasRoot(rootHashes[startBlock], startBlock).Should().BeTrue();
+
+            trieStore.Dispose();
+        }
+
+        [Test]
         [Retry(3)]
         [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()
@@ -916,7 +1014,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -937,11 +1035,8 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
-        [Retry(3)]
-        [NonParallelizable]
-        public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
+        public void Will_Trigger_ReorgBoundaryEvent_On_Prune()
         {
-            // TODO: Check why slow
             MemDb memDb = new();
 
             using TrieStore fullTrieStore = CreateTrieStore(
@@ -962,21 +1057,23 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
                 }
 
+                // Prune() in FinishBlockCommit may be a no-op if the previous background
+                // pruning task hasn't completed yet (_pruningTask.IsCompleted == false).
+                // In that case, WaitForPruning() only waits for the previous task, and
+                // the current block's commit set is never processed. Use SyncPruneQueue()
+                // to deterministically process the queue after any background work finishes.
+                fullTrieStore.WaitForPruning();
+                fullTrieStore.SyncPruneQueue();
+
                 if (i > 4)
                 {
-                    fullTrieStore.WaitForPruning();
-                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
-                }
-                else
-                {
-                    // Pruning is done in background
-                    await Task.Delay(TimeSpan.FromMilliseconds(1000));
+                    Assert.That(reorgBoundary, Is.EqualTo(i - 3));
                 }
             }
         }
@@ -1000,7 +1097,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1091,7 +1188,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 64; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new CappedArray<byte>(new byte[2]));
                 using (ICommitter? committer = fullTrieStore.BeginStateBlockCommit(i, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1129,7 +1226,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             for (int i = 0; i < 2; i++)
             {
-                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new SpanSource(new byte[2]));
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new CappedArray<byte>(new byte[2]));
                 using (ICommitter committer = fullTrieStore.BeginStateBlockCommit(i + 1, node))
                 {
                     committer.CommitNode(ref emptyPath, node);
@@ -1367,9 +1464,11 @@ namespace Nethermind.Trie.Test.Pruning
             int pruningBoundary = 4;
 
             ManualResetEvent writeBlocker = new ManualResetEvent(true);
+            ManualResetEventSlim writeReached = new ManualResetEventSlim(false);
             TestMemDb memDb = new();
             memDb.WriteFunc = (k, v) =>
             {
+                writeReached.Set();
                 writeBlocker.WaitOne();
                 return true;
             };
@@ -1434,6 +1533,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             // Block writes
             writeBlocker.Reset();
+            writeReached.Reset();
 
             // Background pruning
             Task persistTask = Task.Run(() =>
@@ -1442,7 +1542,7 @@ namespace Nethermind.Trie.Test.Pruning
                 fullTrieStore.SyncPruneQueue();
                 testPruningStrategy.ShouldPruneEnabled = false;
             });
-            Thread.Sleep(100);
+            Assert.That(writeReached.Wait(1000), Is.True, "Pruning task did not reach database write");
 
             // Bring block 5's node to block 12
             // This is done in commit buffer.

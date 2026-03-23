@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
@@ -10,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -26,6 +28,7 @@ using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Facade.Test;
 
@@ -37,6 +40,7 @@ public class BlockchainBridgeTests
     private ITransactionProcessor _transactionProcessor;
     private ManualTimestamper _timestamper;
     private ISpecProvider _specProvider;
+    private IStateReader _stateReader;
     private IContainer _container;
 
     [SetUp]
@@ -46,6 +50,9 @@ public class BlockchainBridgeTests
         _blockTree = Substitute.For<IBlockTree>();
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _transactionProcessor = Substitute.For<ITransactionProcessor>();
+        _stateReader = Substitute.For<IStateReader>();
+
+        _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
@@ -55,6 +62,7 @@ public class BlockchainBridgeTests
             .AddSingleton(Substitute.For<ILogFinder>())
             .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
             .AddScoped(_transactionProcessor)
+            .AddSingleton(_stateReader)
             .Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
@@ -274,6 +282,36 @@ public class BlockchainBridgeTests
         _transactionProcessor.Received().CallAndRestore(
             Arg.Is<Transaction>(static tx => tx.MaxFeePerBlobGas == 1),
             Arg.Any<ITxTracer>());
+    }
+
+    private static Action<IBlockchainBridge, BlockHeader, Transaction>[] BridgeCallSources() =>
+    [
+        (bridge, header, tx) => bridge.Call(header, tx),
+        (bridge, header, tx) => bridge.EstimateGas(header, tx, 1),
+        (bridge, header, tx) => bridge.CreateAccessList(header, tx, null, default, false),
+    ];
+
+    [Test, Combinatorial]
+    public void BlobBaseFee_is_set_for_non_blob_transaction([ValueSource(nameof(BridgeCallSources))] Action<IBlockchainBridge, BlockHeader, Transaction> bridgeCall, [Values(0ul, 100ul)] ulong excessBlobGas)
+    {
+        _timestamper.UtcNow = DateTime.MaxValue;
+        BlockHeader header = Build.A.BlockHeader
+            .WithBeneficiary(TestItem.AddressB)
+            .WithExcessBlobGas(excessBlobGas)
+            .WithBlobGasUsed(0)
+            .WithNumber(long.MaxValue)
+            .WithTimestamp(ulong.MaxValue)
+            .TestObject;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        BlobGasCalculator.TryCalculateFeePerBlobGas(excessBlobGas, spec.BlobBaseFeeUpdateFraction, out UInt256 expectedBlobBaseFee);
+        ValueHash256 expectedBlobBaseFeeHash = expectedBlobBaseFee.ToValueHash();
+
+        bridgeCall(_blockchainBridge, header, tx);
+
+        _transactionProcessor.Received().SetBlockExecutionContext(
+            Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.BlobBaseFee == expectedBlobBaseFeeHash));
     }
 
     [Test]
@@ -679,5 +717,56 @@ public class BlockchainBridgeTests
         }
 
         testFactory.Received().Create();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_true_when_stateReader_returns_true()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(true);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeTrue();
+    }
+
+    [Test]
+    public void HasStateForBlock_returns_false_when_stateReader_returns_false()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(250).WithStateRoot(TestItem.KeccakA).TestObject;
+
+        _stateReader.HasStateForBlock(header).Returns(false);
+
+        _blockchainBridge.HasStateForBlock(header).Should().BeFalse();
+    }
+
+    [Test]
+    public void Simulate_adapter_uses_block_gas_used_for_budget()
+    {
+        SimulateRequestState simulateRequestState = new()
+        {
+            TotalGasLeft = 100_000,
+            BlockGasLeft = 80_000,
+            Validate = true,
+            TxsWithExplicitGas = new[] { true }
+        };
+
+        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(ci =>
+            {
+                Transaction tx = ci.Arg<Transaction>();
+                tx.SpentGas = 10_000;
+                tx.BlockGasUsed = 50_000;
+                return TransactionResult.Ok;
+            });
+
+        SimulateTransactionProcessorAdapter adapter = new(processor, simulateRequestState);
+        Transaction transaction = Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce(1)
+            .WithGasLimit(60_000).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+
+        adapter.Execute(transaction, Substitute.For<ITxTracer>());
+
+        simulateRequestState.TotalGasLeft.Should().Be(50_000);
+        simulateRequestState.BlockGasLeft.Should().Be(30_000);
     }
 }

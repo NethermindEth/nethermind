@@ -185,7 +185,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
-            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle, typeof(TReq).Name);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {
@@ -193,6 +193,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ReportIn(messageObject, message.Content.ReadableBytes);
             return messageObject;
         }
+
+        public virtual void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
 
         public abstract void Dispose();
 

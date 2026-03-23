@@ -81,5 +81,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? PragueTimestamp { get; set; }
 
         public ulong? OsakaTimestamp { get; set; }
+        public ulong? AmsterdamTimestamp { get; set; }
     }
 }

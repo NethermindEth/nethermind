@@ -9,7 +9,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Collections.Immutable;
 
 namespace Nethermind.Xdc;
 
@@ -50,7 +49,18 @@ internal static partial class XdcExtensions
         return spec;
     }
 
-    public static ImmutableArray<Address>? ExtractAddresses(this Span<byte> data)
+    public static Address[] ParseV1Masternodes(this byte[] extraData)
+    {
+        int length = (extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size;
+        if (length <= 0)
+            throw new ArgumentException($"ExtraData too short to contain masternodes: length={extraData.Length}", nameof(extraData));
+        Address[] masternodes = new Address[length];
+        for (int i = 0; i < length; i++)
+            masternodes[i] = new Address(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
+        return masternodes;
+    }
+
+    public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)
             return null;
@@ -60,11 +70,31 @@ internal static partial class XdcExtensions
         {
             addresses[i] = new Address(data.Slice(i * Address.Size, Address.Size));
         }
-        return addresses.ToImmutableArray();
+        return addresses;
     }
 
     public static bool ValidateBlockInfo(this BlockRoundInfo blockInfo, XdcBlockHeader blockHeader) =>
         (blockInfo.BlockNumber == blockHeader.Number)
         && (blockInfo.Hash == blockHeader.Hash)
         && (blockInfo.Round == blockHeader.ExtraConsensusData.BlockRound);
+
+    public static Signature DecodeSignature(this ref Rlp.ValueDecoderContext decoderContext)
+    {
+        //includes the list prefix, which is 2 bytes for a 65 byte signature
+        ReadOnlySpan<byte> sigBytes = decoderContext.PeekNextItem();
+        if (sigBytes.Length != Signature.Size + 2)
+            throw new RlpException($"Invalid signature length in '{nameof(Vote)}'");
+        Signature signature = new Signature(sigBytes.Slice(2, 64), sigBytes[66]);
+        decoderContext.SkipItem();
+        return signature;
+    }
+
+    public static Signature DecodeSignature(this RlpStream stream)
+    {
+        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        ctx.Position = stream.Position;
+        Signature signature = DecodeSignature(ref ctx);
+        stream.Position = ctx.Position;
+        return signature;
+    }
 }

@@ -12,17 +12,24 @@ namespace Nethermind.Network;
 
 // Temporary class used for removing snap capability after SnapSync finish.
 // Will be removed after implementing missing functionality - serving data via snap protocol.
-public class SnapCapabilitySwitcher
+public class SnapCapabilitySwitcher : IDisposable
 {
+    private static readonly Capability SnapCapability = new(Protocol.Snap, 1);
+
     private readonly IProtocolsManager _protocolsManager;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly ILogger _logger;
+    private volatile bool _isSubscribed;
 
     public SnapCapabilitySwitcher(IProtocolsManager? protocolsManager, ISyncModeSelector? syncModeSelector, ILogManager? logManager)
     {
-        _protocolsManager = protocolsManager ?? throw new ArgumentNullException(nameof(protocolsManager));
-        _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        ArgumentNullException.ThrowIfNull(protocolsManager);
+        ArgumentNullException.ThrowIfNull(syncModeSelector);
+        ArgumentNullException.ThrowIfNull(logManager);
+
+        _protocolsManager = protocolsManager;
+        _syncModeSelector = syncModeSelector;
+        _logger = logManager.GetClassLogger();
     }
 
     /// <summary>
@@ -30,8 +37,13 @@ public class SnapCapabilitySwitcher
     /// </summary>
     public void EnableSnapCapabilityUntilSynced()
     {
-        _protocolsManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        _syncModeSelector.Changed += OnSyncModeChanged;
+        if (!_isSubscribed)
+        {
+            _protocolsManager.AddSupportedCapability(SnapCapability);
+            _syncModeSelector.Changed += OnSyncModeChanged;
+            _isSubscribed = true;
+        }
+
         if (_logger.IsDebug) _logger.Debug("Enabled snap capability");
     }
 
@@ -39,9 +51,20 @@ public class SnapCapabilitySwitcher
     {
         if ((syncMode.Current & SyncMode.Full) != 0)
         {
-            _syncModeSelector.Changed -= OnSyncModeChanged;
-            _protocolsManager.RemoveSupportedCapability(new Capability(Protocol.Snap, 1));
+            DisableSnapCapability();
             if (_logger.IsInfo) _logger.Info("State sync finished. Disabled snap capability.");
+        }
+    }
+
+    public void Dispose() => DisableSnapCapability();
+
+    private void DisableSnapCapability()
+    {
+        if (_isSubscribed)
+        {
+            _syncModeSelector.Changed -= OnSyncModeChanged;
+            _protocolsManager.RemoveSupportedCapability(SnapCapability);
+            _isSubscribed = false;
         }
     }
 }

@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 if (body is null)
                 {
-                    stream.Encode(Rlp.OfEmptySequence);
+                    stream.Encode(Rlp.OfEmptyList);
                 }
                 else
                 {
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 length += body switch
                 {
-                    null => Rlp.OfEmptySequence.Length,
+                    null => Rlp.OfEmptyList.Length,
                     _ => Rlp.LengthOfSequence(_blockBodyDecoder.GetBodyLength(body))
                 };
             }

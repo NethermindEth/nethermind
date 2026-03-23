@@ -35,7 +35,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
     */
 
     //Taken from contract compiler output metadata
-    public const string EcRecoverCallerContractBytecode =
+    public const string ECRecoverCallerContractBytecode =
         "608060405234801561001057600080fd5b5061028b806100206000396000f3fe608060405234801561001057600080fd5b506004361061002b5760003560e01c8063c2bf17b014610030575b600080fd5b61004a6004803603810190610045919061012f565b610060565b60405161005791906101d7565b60405180910390f35b6000600185858585604051600081526020016040526040516100859493929190610210565b6020604051602081039080840390855afa1580156100a7573d6000803e3d6000fd5b505050602060405103519050949350505050565b600080fd5b6000819050919050565b6100d3816100c0565b81146100de57600080fd5b50565b6000813590506100f0816100ca565b92915050565b600060ff82169050919050565b61010c816100f6565b811461011757600080fd5b50565b60008135905061012981610103565b92915050565b60008060008060808587031215610149576101486100bb565b5b6000610157878288016100e1565b94505060206101688782880161011a565b9350506040610179878288016100e1565b925050606061018a878288016100e1565b91505092959194509250565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006101c182610196565b9050919050565b6101d1816101b6565b82525050565b60006020820190506101ec60008301846101c8565b92915050565b6101fb816100c0565b82525050565b61020a816100f6565b82525050565b600060808201905061022560008301876101f2565b6102326020830186610201565b61023f60408301856101f2565b61024c60608301846101f2565b9594505050505056fea26469706673582212204855668ab62273dde1249722b61c57ad057ef3d17384f21233e1b7bb309db7e464736f6c63430008120033";
 
 
@@ -47,7 +47,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
     {
         TestRpcBlockchain chain = await CreateChain();
 
-        //Impose Opcode instead of EcRecoverPrecompile, it returns const TestItem.AddressE address
+        //Impose Opcode instead of ECRecoverPrecompile, it returns const TestItem.AddressE address
         byte[] code = Prepare.EvmCode
             .StoreDataInMemory(0, TestItem.AddressE
                 .ToString(false, false)
@@ -61,8 +61,8 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
         // Step 2: Sign the hash
         Signature signature = chain.EthereumEcdsa.Sign(TestItem.PrivateKeyA, in messageHash);
 
-        Address contractAddress = await DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EcRecoverCallerContractBytecode);
-        byte[] transactionData = GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature);
+        Address contractAddress = await DeployECRecoverContract(chain, TestItem.PrivateKeyB, ECRecoverCallerContractBytecode);
+        byte[] transactionData = GenerateTransactionDataForECRecover(new Hash256(messageHash), signature);
 
         SystemTransaction tx = new()
         {
@@ -87,7 +87,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
                 {
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        { EcRecoverPrecompile.Address, new AccountOverride { Code = code } }
+                        { ECRecoverPrecompile.Address, new AccountOverride { Code = code } }
                     },
                     Calls = [txDetails]
                 }
@@ -107,7 +107,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
         Assert.That(resultingAddress, Is.EqualTo(TestItem.AddressE));
 
         //Check that initial VM is intact
-        Address? mainChainRpcAddress = EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        Address? mainChainRpcAddress = ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
         Assert.That(mainChainRpcAddress, Is.EqualTo(TestItem.AddressA));
     }
 }

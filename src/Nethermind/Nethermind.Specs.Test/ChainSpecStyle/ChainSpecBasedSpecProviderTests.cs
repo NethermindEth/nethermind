@@ -206,9 +206,9 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)3338477));
-            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(786432));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei()));
-            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(393216));
+            Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(786432));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.Wei));
+            Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(393216));
         }
     }
 
@@ -323,10 +323,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp - 1)) { TestName = "Before Prague" };
             yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp)) { TestName = "Prague" };
-            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.PragueTimestamp + 100000000)) { TestName = "Future" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
-            // yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp - 1)) { TestName = "Before Osaka" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp)) { TestName = "Osaka" };
+            yield return new TestCaseData((ForkActivation)(1, ChiadoSpecProvider.OsakaTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 
@@ -352,12 +351,12 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postCancunSpec = provider.GetSpec((1, ChiadoSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, ChiadoSpecProvider.PragueTimestamp));
-        // IReleaseSpec? postOsakaSpec = provider.GetSpec((1, ChiadoSpecProvider.OsakaTimestamp));
+        IReleaseSpec? postOsakaSpec = provider.GetSpec((1, ChiadoSpecProvider.OsakaTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, ChiadoSpecProvider.FeeCollector);
-        // VerifyGnosisOsakaSpecifics(postOsakaSpec, ChiadoSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(postOsakaSpec, ChiadoSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -476,9 +475,9 @@ public class ChainSpecBasedSpecProviderTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(spec.BlobBaseFeeUpdateFraction, Is.EqualTo((UInt256)1112826));
-            Assert.That(spec.GetMaxBlobGasPerBlock(), Is.EqualTo(262144));
-            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei()));
-            Assert.That(spec.GetTargetBlobGasPerBlock(), Is.EqualTo(131072));
+            Assert.That(spec.GasCosts.MaxBlobGasPerBlock, Is.EqualTo(262144));
+            Assert.That(Eip4844Constants.MinBlobGasPrice, Is.EqualTo(1.GWei));
+            Assert.That(spec.GasCosts.TargetBlobGasPerBlock, Is.EqualTo(131072));
         }
     }
 
@@ -661,6 +660,7 @@ public class ChainSpecBasedSpecProviderTests
                      // handle gnosis specific exceptions
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaxCodeSize))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.MaximumUncleCount))
+                     .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.Eip158IgnoredAccount))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip170Enabled))
                      .Where(p => !isGnosis || p.Name != nameof(IReleaseSpec.IsEip1283Enabled)))
         {
@@ -799,7 +799,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_block_number()
+    public void Max_code_size_forks_by_block_number()
     {
         ChainSpec chainSpec = new()
         {
@@ -828,7 +828,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_timestamp()
+    public void Max_code_size_forks_by_timestamp()
     {
         ChainSpec chainSpec = new()
         {
@@ -836,6 +836,7 @@ public class ChainSpecBasedSpecProviderTests
             {
                 MaxCodeSizeTransitionTimestamp = 10,
                 Eip2537TransitionTimestamp = 20,
+                Eip7954TransitionTimestamp = 30,
                 MaxCodeSize = 1
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
@@ -853,6 +854,11 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((100, 19)).IsEip2537Enabled, Is.False);
             Assert.That(provider.GetSpec((100, 20)).IsEip2537Enabled, Is.True);
             Assert.That(provider.GetSpec((100, 21)).IsEip2537Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 29)).IsEip7954Enabled, Is.False);
+            Assert.That(provider.GetSpec((100, 29)).MaxCodeSize, Is.EqualTo(1));
+            Assert.That(provider.GetSpec((100, 30)).IsEip7954Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 30)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
+            Assert.That(provider.GetSpec((100, 30)).MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
         }
     }
 

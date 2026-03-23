@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Core;
 using Nethermind.Evm.GasPolicy;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -65,7 +66,7 @@ internal static partial class EvmInstructions
         WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
