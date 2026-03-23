@@ -10,6 +10,7 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -54,9 +55,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 
     private void LoadEngine(GethGenesisJson gethGenesis, ChainSpec chainSpec)
     {
-        // Default to Ethash engine for Geth-style genesis files
-        chainSpec.SealEngineType = SealEngineType.Ethash;
-        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider();
+        chainSpec.EngineChainSpecParametersProvider = new GethGenesisEngineParametersProvider(gethGenesis.Config);
+        chainSpec.SealEngineType = chainSpec.EngineChainSpecParametersProvider.SealEngineType;
     }
 
     private static void LoadParameters(GethGenesisJson gethGenesis, ChainSpec chainSpec)
@@ -320,15 +320,246 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
 }
 
 /// <summary>
-/// Minimal engine parameters provider for Geth-style genesis files.
-/// Defaults to Ethash engine.
+/// Ethash engine parameters provider for Geth-style genesis files.
 /// </summary>
 internal sealed class GethGenesisEngineParametersProvider : IChainSpecParametersProvider
 {
+    private readonly GethEthashChainSpecEngineParameters _engineParameters;
+
+    public GethGenesisEngineParametersProvider(GethGenesisConfigJson config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+        _engineParameters = new GethEthashChainSpecEngineParameters(config);
+    }
+
     public string SealEngineType => Core.SealEngineType.Ethash;
 
-    public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters => [];
+    public IEnumerable<IChainSpecEngineParameters> AllChainSpecParameters
+    {
+        get
+        {
+            yield return _engineParameters;
+        }
+    }
 
-    public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters =>
-        throw new NotSupportedException($"Geth genesis files do not support engine-specific parameters of type {typeof(T).Name}");
+    public T GetChainSpecParameters<T>() where T : IChainSpecEngineParameters
+    {
+        if (_engineParameters is T typedParameters)
+        {
+            return typedParameters;
+        }
+
+        Type requestedType = typeof(T);
+        if (requestedType.Name != "EthashChainSpecEngineParameters")
+        {
+            throw new NotSupportedException($"Geth genesis files do not support engine-specific parameters of type {requestedType.Name}");
+        }
+
+        object target = Activator.CreateInstance(requestedType)
+            ?? throw new NotSupportedException($"Could not create engine-specific parameters of type {requestedType.Name}");
+
+        CopyPublicWritableProperties(_engineParameters, target);
+        return (T)target;
+    }
+
+    private static void CopyPublicWritableProperties(object source, object target)
+    {
+        foreach (PropertyInfo sourceProperty in source.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!sourceProperty.CanRead)
+            {
+                continue;
+            }
+
+            PropertyInfo? targetProperty = target.GetType().GetProperty(sourceProperty.Name, BindingFlags.Public | BindingFlags.Instance);
+            if (targetProperty is null || !targetProperty.CanWrite)
+            {
+                continue;
+            }
+
+            object? value = sourceProperty.GetValue(source);
+            if (value is not null && targetProperty.PropertyType.IsInstanceOfType(value))
+            {
+                targetProperty.SetValue(target, value);
+            }
+        }
+    }
+
+    private sealed class GethEthashChainSpecEngineParameters : IChainSpecEngineParameters
+    {
+        private static readonly UInt256 FiveEth = new(5_000_000_000_000_000_000ul);
+        private static readonly UInt256 ThreeEth = new(3_000_000_000_000_000_000ul);
+        private static readonly UInt256 TwoEth = new(2_000_000_000_000_000_000ul);
+        private readonly long? _arrowGlacierTransition;
+        private readonly long? _grayGlacierTransition;
+        private readonly long? _muirGlacierTransition;
+
+        public GethEthashChainSpecEngineParameters(GethGenesisConfigJson config)
+        {
+            HomesteadTransition = config.HomesteadBlock ?? 0;
+            DaoHardforkTransition = config.DaoForkSupport == false ? null : config.DaoForkBlock;
+            Eip100bTransition = config.ByzantiumBlock;
+            BlockReward = BuildBlockRewardSchedule(config);
+            DifficultyBombDelays = BuildDifficultyBombDelays(config);
+            _muirGlacierTransition = config.MuirGlacierBlock;
+            _arrowGlacierTransition = config.ArrowGlacierBlock;
+            _grayGlacierTransition = config.GrayGlacierBlock;
+        }
+
+        public string? EngineName => SealEngineType;
+        public string? SealEngineType => Core.SealEngineType.Ethash;
+        public long HomesteadTransition { get; }
+        public long? DaoHardforkTransition { get; }
+        public Address DaoHardforkBeneficiary { get; }
+        public Address[] DaoHardforkAccounts { get; } = [];
+        public long? Eip100bTransition { get; }
+        public long? FixedDifficulty { get; }
+        public long DifficultyBoundDivisor { get; } = 0x0800;
+        public long DurationLimit { get; } = 13;
+        public UInt256 MinimumDifficulty { get; } = UInt256.Zero;
+        public SortedDictionary<long, UInt256>? BlockReward { get; }
+        public IDictionary<long, long>? DifficultyBombDelays { get; }
+
+        public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
+        {
+            if (DifficultyBombDelays is not null)
+            {
+                foreach ((long blockNumber, _) in DifficultyBombDelays)
+                {
+                    blockNumbers.Add(blockNumber);
+                }
+            }
+
+            if (BlockReward is not null)
+            {
+                foreach ((long blockNumber, _) in BlockReward)
+                {
+                    blockNumbers.Add(blockNumber);
+                }
+            }
+
+            blockNumbers.Add(HomesteadTransition);
+            if (DaoHardforkTransition is not null)
+            {
+                blockNumbers.Add(DaoHardforkTransition.Value);
+            }
+
+            if (Eip100bTransition is not null)
+            {
+                blockNumbers.Add(Eip100bTransition.Value);
+            }
+        }
+
+        public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
+        {
+            if (BlockReward is not null)
+            {
+                foreach ((long blockNumber, UInt256 blockReward) in BlockReward)
+                {
+                    if (blockNumber <= startBlock)
+                    {
+                        spec.BlockReward = blockReward;
+                    }
+                }
+            }
+
+            if (DifficultyBombDelays is not null)
+            {
+                foreach ((long blockNumber, long bombDelay) in DifficultyBombDelays)
+                {
+                    if (blockNumber <= startBlock)
+                    {
+                        spec.DifficultyBombDelay += bombDelay;
+                    }
+                }
+            }
+
+            spec.IsEip2Enabled = HomesteadTransition <= startBlock;
+            spec.IsEip7Enabled = HomesteadTransition <= startBlock;
+            spec.IsEip100Enabled = (Eip100bTransition ?? 0) <= startBlock;
+            spec.DifficultyBoundDivisor = DifficultyBoundDivisor;
+            spec.FixedDifficulty = FixedDifficulty;
+        }
+
+        public void ApplyToChainSpec(ChainSpec chainSpec)
+        {
+            chainSpec.HomesteadBlockNumber = HomesteadTransition;
+            chainSpec.DaoForkBlockNumber = DaoHardforkTransition;
+            chainSpec.MuirGlacierNumber = _muirGlacierTransition;
+            chainSpec.ArrowGlacierBlockNumber = _arrowGlacierTransition;
+            chainSpec.GrayGlacierBlockNumber = _grayGlacierTransition;
+        }
+
+        private static SortedDictionary<long, UInt256> BuildBlockRewardSchedule(GethGenesisConfigJson config)
+        {
+            SortedDictionary<long, UInt256> blockReward = [];
+            long? constantinopleTransition = GetConstantinopleTransition(config);
+
+            blockReward[0] = constantinopleTransition == 0
+                ? TwoEth
+                : config.ByzantiumBlock == 0
+                    ? ThreeEth
+                    : FiveEth;
+
+            if (config.ByzantiumBlock is > 0)
+            {
+                blockReward[config.ByzantiumBlock.Value] = ThreeEth;
+            }
+
+            if (constantinopleTransition is > 0)
+            {
+                blockReward[constantinopleTransition.Value] = TwoEth;
+            }
+
+            return blockReward;
+        }
+
+        private static SortedDictionary<long, long>? BuildDifficultyBombDelays(GethGenesisConfigJson config)
+        {
+            if (config.TerminalTotalDifficulty is not null && config.TerminalTotalDifficulty.Value == UInt256.Zero)
+            {
+                return null;
+            }
+
+            SortedDictionary<long, long> bombDelays = [];
+            AddBombDelay(bombDelays, config.ByzantiumBlock, 3_000_000);
+            AddBombDelay(bombDelays, GetConstantinopleTransition(config), 2_000_000);
+            AddBombDelay(bombDelays, config.MuirGlacierBlock, 4_000_000);
+            AddBombDelay(bombDelays, config.ArrowGlacierBlock, 700_000);
+            AddBombDelay(bombDelays, config.GrayGlacierBlock, 1_000_000);
+
+            return bombDelays.Count == 0 ? null : bombDelays;
+        }
+
+        private static void AddBombDelay(SortedDictionary<long, long> bombDelays, long? transition, long delay)
+        {
+            if (transition is null)
+            {
+                return;
+            }
+
+            if (bombDelays.TryGetValue(transition.Value, out long existingDelay))
+            {
+                bombDelays[transition.Value] = existingDelay + delay;
+                return;
+            }
+
+            bombDelays[transition.Value] = delay;
+        }
+
+        private static long? GetConstantinopleTransition(GethGenesisConfigJson config)
+        {
+            if (config.ConstantinopleBlock is null)
+            {
+                return config.PetersburgBlock;
+            }
+
+            if (config.PetersburgBlock is null)
+            {
+                return config.ConstantinopleBlock;
+            }
+
+            return Math.Min(config.ConstantinopleBlock.Value, config.PetersburgBlock.Value);
+        }
+    }
 }
