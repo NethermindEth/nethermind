@@ -17,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -121,12 +122,33 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         _balBuilder?.MergeIntermediateBalsUpTo(0);
+
+        // Start BAL cache pre-warming in background to warm up trie/storage caches
+        // while transactions execute, so later state reads hit warm caches
+        CancellationTokenSource? balBackgroundCancellation = null;
+        Task? balPreLoadTask = null;
+        if (_balBuilder is not null)
+        {
+            balBackgroundCancellation = new();
+            balPreLoadTask = _balBuilder.PreLoadSuggestedBlockAccessList(balBackgroundCancellation.Token);
+        }
+
         TxReceipt[] receipts;
-        receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        try
+        {
+            receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        catch (ParallelWorldState.InvalidBlockLevelAccessListException e)
+        {
+            CancellationTokenExtensions.CancelDisposeAndClear(ref balBackgroundCancellation);
+            WaitForBalPreLoad(ref balPreLoadTask);
+            throw new InvalidBlockException(block, $"InvalidBlockLevelAccessList: {e.Message}", e);
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref balBackgroundCancellation);
 
         _stateProvider.Commit(spec, commitRoots: false);
 
@@ -166,9 +188,17 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+        WaitForBalPreLoad(ref balPreLoadTask);
+
         header.Hash = header.CalculateHash();
 
         return receipts;
+    }
+
+    private static void WaitForBalPreLoad(ref Task? task)
+    {
+        task?.GetAwaiter().GetResult();
+        task = null;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

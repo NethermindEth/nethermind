@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
@@ -20,6 +22,7 @@ public interface IBlockAccessListBuilder
     public void MergeIntermediateBalsUpTo(ushort index);
     public void AddAccountRead(Address address, int? blockAccessIndex = null);
     public void LoadSuggestedBlockAccessList(BlockAccessList? suggestedBal, long gasUsed);
+    public Task? PreLoadSuggestedBlockAccessList(CancellationToken cancellationToken = default);
     public long GasUsed();
     public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true);
     public void SetBlockAccessList(Block block, IReleaseSpec spec);

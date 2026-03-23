@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -46,7 +48,17 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (suggestedBal is not null)
         {
-            LoadPreBlockState(suggestedBal);
+            foreach (AccountChanges accountChanges in suggestedBal.AccountChanges)
+            {
+                accountChanges.CheckWasChanged();
+            }
+
+            if (blocksConfig.ParallelExecution)
+            {
+                // Parallel execution needs pre-block state loaded synchronously
+                // because transactions read state from the BAL entries
+                LoadPreBlockState(suggestedBal);
+            }
             _suggestedBlockAccessList = suggestedBal;
         }
         else
@@ -76,9 +88,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
         {
-            // check if changed before loading prestate
-            accountChanges.CheckWasChanged();
-
             bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
             accountChanges.ExistedBeforeBlock = exists;
 
@@ -97,6 +106,50 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
                 StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
                 slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+            }
+        }
+    }
+
+    /// <summary>
+    /// Warms up state caches by reading addresses and storage slots from the suggested BAL in the background.
+    /// In non-parallel execution mode, this loads pre-block state and provides cache warming during execution.
+    /// In parallel execution mode, pre-block state is already loaded synchronously so this is a no-op.
+    /// </summary>
+    public Task? PreLoadSuggestedBlockAccessList(CancellationToken cancellationToken = default)
+    {
+        BlockAccessList? bal = _suggestedBlockAccessList;
+        if (bal is null)
+        {
+            return null;
+        }
+
+        if (ParallelExecutionEnabled)
+        {
+            // Pre-block state already loaded synchronously in LoadSuggestedBlockAccessList
+            return null;
+        }
+
+        return Task.Run(() => WarmStateFromBal(bal, cancellationToken), cancellationToken);
+    }
+
+    private void WarmStateFromBal(BlockAccessList blockAccessList, CancellationToken cancellationToken)
+    {
+        foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
+        {
+            if (cancellationToken.IsCancellationRequested) return;
+
+            _innerWorldState.TryGetAccount(accountChanges.Address, out _);
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                _innerWorldState.Get(new StorageCell(accountChanges.Address, slotChanges.Slot));
+            }
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+                _innerWorldState.Get(new StorageCell(accountChanges.Address, storageRead.Key));
             }
         }
     }
