@@ -47,7 +47,7 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
+    protected readonly IWorldState _stateProvider = stateProvider;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls

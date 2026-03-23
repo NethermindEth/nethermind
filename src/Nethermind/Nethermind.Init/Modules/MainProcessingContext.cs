@@ -42,6 +42,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
             builder
                 // These are main block processing specific
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
+                .AddDecorator<IWorldStateScopeProvider>((_, provider) => new WorldStateMetricsScopeProvider(provider))
                 .AddModule(blockValidationModules)
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
                 .AddModule(mainProcessingModules)
