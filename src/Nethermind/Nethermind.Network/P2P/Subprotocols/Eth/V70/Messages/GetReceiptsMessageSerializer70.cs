@@ -3,34 +3,27 @@
 
 using DotNetty.Buffers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Serialization.Rlp;
+using GetReceiptsMessage63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 
-public class GetReceiptsMessageSerializer70(IZeroInnerMessageSerializer<GetReceiptsMessage> innerSerializer)
-    : IZeroInnerMessageSerializer<GetReceiptsMessage70>
+public class GetReceiptsMessageSerializer70(IZeroInnerMessageSerializer<GetReceiptsMessage63> innerSerializer)
+    : Eth66MessageSerializer<GetReceiptsMessage70>
 {
-    private readonly IZeroInnerMessageSerializer<GetReceiptsMessage> _innerSerializer = innerSerializer;
+    private readonly IZeroInnerMessageSerializer<GetReceiptsMessage63> _innerSerializer = innerSerializer;
 
-    public void Serialize(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
+    protected override void SerializeInternal(IByteBuffer byteBuffer, GetReceiptsMessage70 message)
     {
-        int length = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(length);
-
         NettyRlpStream stream = new(byteBuffer);
-        stream.StartSequence(contentLength);
-        stream.Encode(message.RequestId);
         stream.Encode(message.FirstBlockReceiptIndex);
-        _innerSerializer.Serialize(byteBuffer, message.EthMessage);
+        _innerSerializer.Serialize(byteBuffer, message);
     }
 
-    public GetReceiptsMessage70 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
-
-    private static GetReceiptsMessage70 Deserialize(ref Rlp.ValueDecoderContext ctx)
+    protected override GetReceiptsMessage70 DeserializeInternal(IByteBuffer byteBuffer, long requestId)
     {
-        ctx.ReadSequenceLength();
-
-        long requestId = ctx.DecodeLong();
+        Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
         long firstIndex = ctx.DecodeLong();
 
         if (firstIndex < 0)
@@ -38,19 +31,12 @@ public class GetReceiptsMessageSerializer70(IZeroInnerMessageSerializer<GetRecei
             throw new RlpException("Negative firstBlockReceiptIndex is invalid");
         }
 
-        GetReceiptsMessage ethMessage = GetReceiptsMessageSerializer.Deserialize(ref ctx);
-        return new GetReceiptsMessage70(requestId, firstIndex, ethMessage);
+        byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+        GetReceiptsMessage63 innerMessage = _innerSerializer.Deserialize(byteBuffer);
+        return new GetReceiptsMessage70(requestId, firstIndex, innerMessage);
     }
 
-    public int GetLength(GetReceiptsMessage70 message, out int contentLength)
-    {
-        int innerLength = _innerSerializer.GetLength(message.EthMessage, out _);
-
-        contentLength =
-            Rlp.LengthOf(message.RequestId) +
-            Rlp.LengthOf(message.FirstBlockReceiptIndex) +
-            innerLength;
-
-        return Rlp.LengthOfSequence(contentLength);
-    }
+    protected override int GetLengthInternal(GetReceiptsMessage70 message) =>
+        Rlp.LengthOf(message.FirstBlockReceiptIndex) +
+        _innerSerializer.GetLength(message, out _);
 }

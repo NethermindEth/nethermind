@@ -4,18 +4,29 @@
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
-public class GetPooledTransactionsMessage : Eth66Message<V65.Messages.GetPooledTransactionsMessage>, INew<IOwnedReadOnlyList<Hash256>, GetPooledTransactionsMessage>
+public class GetPooledTransactionsMessage : V65.Messages.GetPooledTransactionsMessage, IEth66Message, INew<IOwnedReadOnlyList<Hash256>, GetPooledTransactionsMessage>
 {
-    public GetPooledTransactionsMessage()
+    public long RequestId { get; set; } = MessageConstants.Random.NextLong();
+
+    public GetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes)
+        : this(MessageConstants.Random.NextLong(), hashes)
     {
     }
 
-    public GetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes) : base(MessageConstants.Random.NextLong(), new V65.Messages.GetPooledTransactionsMessage(hashes))
+    public GetPooledTransactionsMessage(long requestId, IOwnedReadOnlyList<Hash256> hashes)
+        : base(hashes)
+    {
+        RequestId = requestId;
+    }
+
+    public GetPooledTransactionsMessage(long requestId, V65.Messages.GetPooledTransactionsMessage message)
+        : this(requestId, message.Hashes)
     {
     }
 
-    public static GetPooledTransactionsMessage New(IOwnedReadOnlyList<Hash256> arg) => new(arg);
+    public new static GetPooledTransactionsMessage New(IOwnedReadOnlyList<Hash256> arg) => new(arg);
 }

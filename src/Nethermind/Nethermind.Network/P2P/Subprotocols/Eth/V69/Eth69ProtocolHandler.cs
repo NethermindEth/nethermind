@@ -143,7 +143,7 @@ public class Eth69ProtocolHandler(
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
-        return new(message.RequestId, message.EthMessage);
+        return new(message.RequestId, message.TxReceipts);
     }
 
     protected override void NotifyOfStatus(BlockHeader head)

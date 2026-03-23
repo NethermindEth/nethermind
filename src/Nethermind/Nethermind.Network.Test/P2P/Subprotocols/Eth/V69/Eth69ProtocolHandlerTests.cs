@@ -133,13 +133,13 @@ public class Eth69ProtocolHandlerTests
     public void Should_not_exceed_soft_message_size_limit_for_receipts()
     {
         const int count = 512;
-        using var msg = new GetReceiptsMessage66(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        using var msg = new GetReceiptsMessage66(1111, Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
-        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 64));
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.TxReceipts.Count == 64));
     }
 
     [Test]
@@ -150,7 +150,7 @@ public class Eth69ProtocolHandlerTests
         TxReceipt[][] receipts = Enumerable.Repeat(
             Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 10).ToArray(), count
         ).ToArray();
-        using ReceiptsMessage69 msg = new(0, new(receipts.ToPooledList()));
+        using ReceiptsMessage69 msg = new(0, receipts.ToPooledList());
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
         {
@@ -174,7 +174,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_handle_GetReceipts()
     {
-        using var msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        using var msg66 = new GetReceiptsMessage(1111, new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
@@ -184,7 +184,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
-        using var msg66 = new ReceiptsMessage(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
+        using var msg66 = new ReceiptsMessage(1111, ArrayPoolList<TxReceipt[]>.Empty());
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);

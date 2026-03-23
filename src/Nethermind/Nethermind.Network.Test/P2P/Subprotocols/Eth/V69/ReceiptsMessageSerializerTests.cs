@@ -157,10 +157,10 @@ public class ReceiptsMessageSerializerTests
     [TestCaseSource(nameof(TestData))]
     public void Roundtrip(long requestId, TxReceipt[] receipts, string expected)
     {
-        using ReceiptsMessage69 message = new(requestId, new(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(requestId, new ArrayPoolList<TxReceipt[]>(1)
         {
             receipts
-        }));
+        });
 
         var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
 
@@ -177,18 +177,18 @@ public class ReceiptsMessageSerializerTests
     [Theory]
     public void IgnoresBloom([Values(null, 255)] int? length)
     {
-        using ReceiptsMessage69 message = new(0, new(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(0, new ArrayPoolList<TxReceipt[]>(1)
         {
             new TxReceipt[]
             {
                 new EmptyTxReceipt {Bloom = Bloom.Empty}
             }
-        }));
+        });
 
         var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
-        message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
+        message.TxReceipts[0]![0].Bloom = length.HasValue
             ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
             : null;
         serializer.Serialize(message).Should().Equal(encoded);

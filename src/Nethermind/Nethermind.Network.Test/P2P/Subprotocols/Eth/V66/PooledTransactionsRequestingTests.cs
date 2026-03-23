@@ -151,7 +151,7 @@ public class PooledTransactionsRequestingTests
     {
         await Task.Delay(Timeout);
 
-        _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(1).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.Hashes.Contains(_txs[0].Hash)));
     }
 
 
@@ -162,7 +162,7 @@ public class PooledTransactionsRequestingTests
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
         await Task.Delay(Timeout);
 
-        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.Hashes.Contains(_txs[0].Hash)));
     }
 
 
@@ -172,7 +172,7 @@ public class PooledTransactionsRequestingTests
         HandleZeroMessage(_handler, new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, new PooledTransactionsMessage(_txs)), Eth65MessageCode.PooledTransactions);
         await Task.Delay(Timeout);
 
-        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Contains(_txs[0].Hash)));
+        _session2.Received(0).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.Hashes.Contains(_txs[0].Hash)));
     }
 
     private void HandleIncomingStatusMessage(Eth66ProtocolHandler handler)

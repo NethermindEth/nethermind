@@ -2,22 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Network.P2P.Messages;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroInnerMessageSerializer<TEth66Message>
-        where TEth66Message : Eth66Message<TEthMessage>, new()
-        where TEthMessage : P2PMessage
+    public abstract class Eth66MessageSerializer<TEth66Message> : IZeroInnerMessageSerializer<TEth66Message>
+        where TEth66Message : MessageBase, IEth66Message
     {
-        private readonly IZeroInnerMessageSerializer<TEthMessage> _ethMessageSerializer;
-
-        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer)
-        {
-            _ethMessageSerializer = ethMessageSerializer;
-        }
-
         public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
         {
             int length = GetLength(message, out int contentLength);
@@ -25,28 +17,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
-            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
+            SerializeInternal(byteBuffer, message);
         }
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
             Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
-            TEth66Message eth66Message = new();
             ctx.ReadSequenceLength();
-            eth66Message.RequestId = ctx.DecodeLong();
+            long requestId = ctx.DecodeLong();
             byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
-            return eth66Message;
+            return DeserializeInternal(byteBuffer, requestId);
         }
 
         public int GetLength(TEth66Message message, out int contentLength)
         {
-            int innerMessageLength = _ethMessageSerializer.GetLength(message.EthMessage, out _);
             contentLength =
                 Rlp.LengthOf(message.RequestId) +
-                innerMessageLength;
+                GetLengthInternal(message);
 
             return Rlp.LengthOfSequence(contentLength);
         }
+
+        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TEth66Message message);
+        protected abstract TEth66Message DeserializeInternal(IByteBuffer byteBuffer, long requestId);
+        protected abstract int GetLengthInternal(TEth66Message message);
     }
 }

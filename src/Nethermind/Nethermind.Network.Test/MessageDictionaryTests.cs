@@ -13,14 +13,15 @@ using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using NSubstitute;
 using NUnit.Framework;
+using Eth66GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage;
 using GetBlockHeadersMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.GetBlockHeadersMessage;
 
 namespace Nethermind.Network.Test;
 
 public class MessageDictionaryTests
 {
-    private readonly List<Eth66Message<GetBlockHeadersMessage>> _recordedRequests = new();
-    private MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>>
+    private readonly List<Eth66GetBlockHeadersMessage> _recordedRequests = new();
+    private MessageDictionary<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>
         _testMessageDictionary;
 
     [SetUp]
@@ -33,7 +34,7 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+        Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
@@ -51,7 +52,7 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive_withDifferentRequestId()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+        Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
@@ -69,8 +70,8 @@ public class MessageDictionaryTests
     [Test]
     public void Test_SendAndReceive_outOfOrder()
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> requestBefore = CreateRequest(112);
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
+        Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> requestBefore = CreateRequest(112);
+        Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request = CreateRequest(111);
 
         using IOwnedReadOnlyList<BlockHeader> response = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
 
@@ -112,11 +113,10 @@ public class MessageDictionaryTests
         response.Received().Dispose();
     }
 
-    private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)
+    private static Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)
     {
-        Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request =
-            new(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage(requestId,
-                new GetBlockHeadersMessage()));
+        Request<Eth66GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> request =
+            new(new Eth66GetBlockHeadersMessage(requestId, new GetBlockHeadersMessage()));
         return request;
     }
 }

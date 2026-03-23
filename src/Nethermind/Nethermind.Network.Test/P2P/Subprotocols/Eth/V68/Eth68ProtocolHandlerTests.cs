@@ -153,7 +153,7 @@ public class Eth68ProtocolHandlerTests
         GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
         sizes[0] += 10;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
+        using PooledTransactionsMessage txsMsg = new(1111, txs);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -169,7 +169,7 @@ public class Eth68ProtocolHandlerTests
         GenerateTxLists(4, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes, out ArrayPoolList<Transaction> txs);
         types[0]++;
         using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
-        using PooledTransactionsMessage txsMsg = new(1111, new(txs));
+        using PooledTransactionsMessage txsMsg = new(1111, txs);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -283,7 +283,7 @@ public class Eth68ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
-        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+        _session.Received(messagesCount).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.Hashes.Count == maxNumberOfTxsInOneMsg || m.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
     }
 
     private void HandleIncomingStatusMessage()

@@ -132,9 +132,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
-            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>())).Do(callInfo =>
+            _session.When((session) => session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage>())).Do(callInfo =>
             {
-                Eth66Message<GetBlockHeadersMessage> message = (Eth66Message<GetBlockHeadersMessage>)callInfo[0];
+                Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage message = (Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage)callInfo[0];
                 msg66.RequestId = message.RequestId;
             });
 
@@ -172,9 +172,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using var msg62 = new BlockBodiesMessage(Build.A.Block.TestObjectNTimes(3));
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockBodiesMessage(1111, msg62);
 
-            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockBodiesMessage>>())).Do(callInfo =>
+            _session.When((session) => session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage>())).Do(callInfo =>
             {
-                Eth66Message<GetBlockBodiesMessage> message = (Eth66Message<GetBlockBodiesMessage>)callInfo[0];
+                Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage message = (Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessage)callInfo[0];
                 msg66.RequestId = message.RequestId;
             });
 
@@ -233,9 +233,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using var msg63 = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
-            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>())).Do(callInfo =>
+            _session.When((session) => session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage>())).Do(callInfo =>
             {
-                Eth66Message<GetNodeDataMessage> message = (Eth66Message<GetNodeDataMessage>)callInfo[0];
+                Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage message = (Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage)callInfo[0];
                 msg66.RequestId = message.RequestId;
             });
 
@@ -273,9 +273,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             using var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
-            _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetReceiptsMessage>>())).Do(callInfo =>
+            _session.When((session) => session.DeliverMessage(Arg.Any<Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage>())).Do(callInfo =>
             {
-                Eth66Message<GetReceiptsMessage> message = (Eth66Message<GetReceiptsMessage>)callInfo[0];
+                Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage message = (Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage)callInfo[0];
                 msg66.RequestId = message.RequestId;
             });
 
@@ -332,8 +332,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
             _session.Received(expectedNumberOfMessages)
                 .DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m =>
-                    m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
-                    m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
+                    m.Hashes.Count == maxNumberOfTxsInOneMsg ||
+                    m.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
                 ));
         }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -89,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         ReportIn(pooledTxMsg, size);
-                        Handle(pooledTxMsg.EthMessage);
+                        Handle(pooledTxMsg);
                     }
                     else
                     {
@@ -123,14 +124,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
             using var message = getBlockHeaders;
-            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
+            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message, cancellationToken);
             return new BlockHeadersMessage(message.RequestId, ethBlockHeadersMessage);
         }
 
         private async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
             using var message = getBlockBodies;
-            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message.EthMessage, cancellationToken);
+            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message, cancellationToken);
             return new BlockBodiesMessage(message.RequestId, ethBlockBodiesMessage);
         }
 
@@ -138,41 +139,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             using var message = getPooledTransactions;
             return new PooledTransactionsMessage(message.RequestId,
-                await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken));
+                await FulfillPooledTransactionsRequest(message, cancellationToken));
         }
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
             using var message = getReceiptsMessage;
-            V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
+            V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(message, cancellationToken);
             return new ReceiptsMessage(message.RequestId, receiptsMessage);
         }
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
         {
             using var message = getNodeDataMessage;
-            V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(message.EthMessage, cancellationToken);
+            V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(message, cancellationToken);
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
         private void Handle(BlockHeadersMessage message, long size)
         {
-            _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
+            _headersRequests66.Handle(message.RequestId, message.BlockHeaders, size);
         }
 
         private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
-            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
+            _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.Bodies, size), size);
         }
 
         private void Handle(NodeDataMessage msg, int size)
         {
-            _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
+            _nodeDataRequests66.Handle(msg.RequestId, msg.Data, size);
         }
 
         protected void Handle(ReceiptsMessage msg, long size)
         {
-            _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
+            _receiptsRequests66.Handle(msg.RequestId, (msg.TxReceipts, size), size);
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
@@ -190,14 +191,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
             }
 
-            using GetBlockHeadersMessage msg66 = new();
-            msg66.EthMessage = message;
+            using GetBlockHeadersMessage msg66 = new(MessageConstants.Random.NextLong(), message);
 
             return await SendRequestGenericEth66(
                 _headersRequests66,
                 msg66,
                 TransferSpeedType.Headers,
-                static (message) => $"{nameof(GetBlockHeadersMessage)} with {message.EthMessage.MaxHeaders} max headers",
+                static (message) => $"{nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers",
                 token);
         }
 
@@ -209,13 +209,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
             }
 
-            using GetBlockBodiesMessage msg66 = new();
-            msg66.EthMessage = message;
+            using GetBlockBodiesMessage msg66 = new(MessageConstants.Random.NextLong(), message);
             return await SendRequestGenericEth66(
                 _bodiesRequests66,
                 msg66,
                 TransferSpeedType.Bodies,
-                static (message) => $"{nameof(GetBlockBodiesMessage)} with {message.EthMessage.BlockHashes.Count} block hashes",
+                static (message) => $"{nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes",
                 token);
         }
 
@@ -227,8 +226,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"Keys count: {message.Hashes.Count}");
             }
 
-            using GetNodeDataMessage msg66 = new();
-            msg66.EthMessage = message;
+            using GetNodeDataMessage msg66 = new(MessageConstants.Random.NextLong(), message);
             return await SendRequestGenericEth66(
                 _nodeDataRequests66,
                 msg66,
@@ -245,8 +243,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 Logger.Trace($"Hashes count: {message.Hashes.Count}");
             }
 
-            using GetReceiptsMessage msg66 = new();
-            msg66.EthMessage = message;
+            using GetReceiptsMessage msg66 = new(MessageConstants.Random.NextLong(), message);
             return await SendRequestGenericEth66(
                 _receiptsRequests66,
                 msg66,
