@@ -21,7 +21,11 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   dotnet restore --locked-mode && \
   dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
-    -p:SourceRevisionId=$COMMIT_HASH
+    -p:SourceRevisionId=$COMMIT_HASH \
+    -p:PublishReadyToRunShowWarnings=true -v:n 2>&1 | \
+    tee /tmp/publish.log | grep -iE "callchain|callfrequency|pettishansen|hot.cold|method-layout|mibc|crossgen2.*warning" || true && \
+  rm -f /tmp/publish.log && \
+  test -f /publish/nethermind || { echo "PUBLISH FAILED"; exit 1; }
 
 # A temporary symlink to support the old executable name
 RUN ln -sr /publish/nethermind /publish/Nethermind.Runner
