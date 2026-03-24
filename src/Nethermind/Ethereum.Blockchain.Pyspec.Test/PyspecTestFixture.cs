@@ -22,7 +22,7 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/blockchain_tests/{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("BlockchainTests")}").LoadTests<BlockchainTest>();
+            $"fixtures/blockchain_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("BlockchainTests")}").LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -38,5 +38,5 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
 
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
-            $"fixtures/state_tests/{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("StateTests")}").LoadTests<GeneralStateTest>();
+            $"fixtures/state_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("StateTests")}").LoadTests<GeneralStateTest>();
 }
