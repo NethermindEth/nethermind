@@ -98,9 +98,25 @@ namespace Ethereum.Test.Base
                 TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload = engineNewPayload.Params[0].Deserialize<TestEngineNewPayloadsJson.ParamsExecutionPayload>(EthereumJsonSerializer.JsonOptions);
                 string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
-                string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 int newPayloadVersion = int.Parse(engineNewPayload.NewPayloadVersion ?? "4");
-                yield return (CreateExecutionPayload(executionPayload, parentBeaconBlockRoot, newPayloadVersion), blobVersionedHashes, validationError, newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
+                // params[3] is executionRequests for V4+, or validationError for V3
+                string[]? executionRequests = null;
+                string[]? validationError = null;
+                if (newPayloadVersion >= 4 && engineNewPayload.Params.Length > 3)
+                {
+                    executionRequests = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
+                    validationError = engineNewPayload.Params.Length > 4 ? engineNewPayload.Params[4].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
+                }
+                else if (engineNewPayload.Params.Length > 3)
+                {
+                    validationError = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
+                }
+                ExecutionPayload payload = CreateExecutionPayload(executionPayload, parentBeaconBlockRoot, newPayloadVersion);
+                if (executionRequests is not null)
+                {
+                    payload.ExecutionRequests = [.. executionRequests.Select(x => Bytes.FromHexString(x))];
+                }
+                yield return (payload, blobVersionedHashes, validationError, newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
         }
 
