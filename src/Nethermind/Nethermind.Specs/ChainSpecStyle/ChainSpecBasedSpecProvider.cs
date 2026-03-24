@@ -31,8 +31,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         private void BuildTransitions()
         {
-            SortedSet<long> transitionBlockNumbers = new();
-            SortedSet<ulong> transitionTimestamps = new();
+            SortedSet<long> transitionBlockNumbers = [];
+            SortedSet<ulong> transitionTimestamps = [];
             transitionBlockNumbers.Add(0L);
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
@@ -144,7 +144,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             int index = 0;
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
-                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
+                IReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock);
                 transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
             }
 
@@ -181,8 +181,11 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
+            bool isPostMerge = releaseStartTimestamp is not null || chainSpec.Parameters.TerminalTotalDifficulty == 0;
+            releaseStartTimestamp ??= chainSpec.Genesis?.Timestamp ?? 0;
+
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
-            releaseSpec.MaximumUncleCount = 2;
+            releaseSpec.MaximumUncleCount = isPostMerge ? 0 : 2;
             releaseSpec.DifficultyBoundDivisor = 1;
             releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
             releaseSpec.MaximumExtraDataSize = chainSpec.Parameters.MaximumExtraDataSize;
