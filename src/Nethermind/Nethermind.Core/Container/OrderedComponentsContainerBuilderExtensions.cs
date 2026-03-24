@@ -16,6 +16,9 @@ namespace Nethermind.Core.Container;
 /// </summary>
 public static class OrderedComponentsContainerBuilderExtensions
 {
+    internal const string OrderedMarkerPrefix = "Registered OrderedComponents For ";
+    internal const string DecoratorMarkerPrefix = "Registered OrderedComponents Decorator For ";
+
     public static ContainerBuilder AddLast<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
         builder
             .EnsureOrderedComponents<T>()
@@ -24,6 +27,16 @@ public static class OrderedComponentsContainerBuilderExtensions
                 orderedComponents.AddLast(factory(ctx));
                 return orderedComponents;
             });
+
+    public static ContainerBuilder AddLast<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
+        builder
+            .EnsureOrderedComponents<T>()
+            .AddDecorator<OrderedComponents<T>>((ctx, orderedComponents) =>
+            {
+                orderedComponents.AddLast(ctx.Resolve<TImpl>());
+                return orderedComponents;
+            })
+            .Add<TImpl>();
 
     public static ContainerBuilder AddFirst<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
         builder
@@ -34,9 +47,30 @@ public static class OrderedComponentsContainerBuilderExtensions
                 return orderedComponents;
             });
 
+    public static ContainerBuilder AddFirst<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
+        builder
+            .EnsureOrderedComponents<T>()
+            .AddDecorator<OrderedComponents<T>>((ctx, orderedComponents) =>
+            {
+                orderedComponents.AddFirst(ctx.Resolve<TImpl>());
+                return orderedComponents;
+            })
+            .Add<TImpl>();
+
+    /// <summary>
+    /// Clear all previously registered ordered components for <typeparamref name="T"/>.
+    /// Useful when a plugin needs to disable all ordered policies (e.g., Hive).
+    /// </summary>
+    public static ContainerBuilder ClearOrderedComponents<T>(this ContainerBuilder builder) =>
+        builder.AddDecorator<OrderedComponents<T>>((_, orderedComponents) =>
+        {
+            orderedComponents.Clear();
+            return orderedComponents;
+        });
+
     private static ContainerBuilder EnsureOrderedComponents<T>(this ContainerBuilder builder)
     {
-        string registeredMarker = $"Registered OrderedComponents For {typeof(T).Name}";
+        string registeredMarker = OrderedMarkerPrefix + typeof(T).Name;
         if (!builder.Properties.TryAdd(registeredMarker, null))
         {
             return builder;
@@ -45,7 +79,11 @@ public static class OrderedComponentsContainerBuilderExtensions
         // Prevent registering separately which has no explicit ordering
         builder.RegisterBuildCallback(scope =>
         {
-            if (scope.ComponentRegistry.ServiceRegistrationsFor(new TypedService(typeof(T))).Any())
+            string decoratorMarker = DecoratorMarkerPrefix + typeof(T).Name;
+            bool hasDecorator = builder.Properties.ContainsKey(decoratorMarker);
+            int registrationCount = scope.ComponentRegistry.ServiceRegistrationsFor(new TypedService(typeof(T))).Count();
+            int expectedCount = hasDecorator ? 1 : 0;
+            if (registrationCount > expectedCount)
             {
                 throw new InvalidOperationException(
                     $"Service of type {typeof(T).Name} must only be registered with one of DSL in {nameof(OrderedComponentsContainerBuilderExtensions)}");

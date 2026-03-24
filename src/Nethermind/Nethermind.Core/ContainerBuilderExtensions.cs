@@ -353,7 +353,21 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddDecorator<T, TDecorator>(this ContainerBuilder builder) where T : class where TDecorator : T
     {
-        builder.RegisterDecorator<TDecorator, T>();
+        string orderedMarker = OrderedComponentsContainerBuilderExtensions.OrderedMarkerPrefix + typeof(T).Name;
+        if (builder.Properties.ContainsKey(orderedMarker))
+        {
+            // OrderedComponents mode: register TDecorator as T and AsSelf.
+            // TDecorator takes T[] from OrderedComponents via its constructor.
+            builder.Properties[OrderedComponentsContainerBuilderExtensions.DecoratorMarkerPrefix + typeof(T).Name] = null;
+            builder.RegisterType<TDecorator>()
+                .As<T>()
+                .AsSelf()
+                .SingleInstance();
+        }
+        else
+        {
+            builder.RegisterDecorator<TDecorator, T>();
+        }
 
         return builder;
     }

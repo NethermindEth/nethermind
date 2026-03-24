@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -30,9 +29,10 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompositeTxGossipPolicy txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
+        protected readonly CompositeTxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
         public async Task Execute(CancellationToken _)
         {
@@ -108,7 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.Context.Resolve<CompositeTxGossipPolicy>(),
+                _txGossipPolicy,
                 null,
                 _api.HeadTxValidator
             );

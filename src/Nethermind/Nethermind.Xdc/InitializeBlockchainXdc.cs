@@ -11,8 +11,8 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
-internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider)
-    : InitializeBlockchain(api, chainHeadInfoProvider)
+internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompositeTxGossipPolicy txGossipPolicy)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private readonly INethermindApi _api = api;
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
@@ -26,7 +26,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.Context.Resolve<CompositeTxGossipPolicy>(),
+                _txGossipPolicy,
                 new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
                 _api.HeadTxValidator,
                 true

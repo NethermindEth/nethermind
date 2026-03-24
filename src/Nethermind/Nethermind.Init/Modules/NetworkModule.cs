@@ -41,8 +41,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
-            .AddLast<ITxGossipPolicy>(ctx => new SyncedTxGossipPolicy(ctx.Resolve<ISyncModeSelector>()))
-            .AddSingleton<CompositeTxGossipPolicy>()
+            .AddLast<ITxGossipPolicy, SyncedTxGossipPolicy>()
+            .AddDecorator<ITxGossipPolicy, CompositeTxGossipPolicy>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
 
