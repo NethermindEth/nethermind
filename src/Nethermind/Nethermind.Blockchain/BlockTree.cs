@@ -764,7 +764,17 @@ namespace Nethermind.Blockchain
 
             if (level.HasBlockOnMainChain)
             {
-                return level.BlockInfos[0].BlockHash;
+                BlockInfo blockInfo = level.BlockInfos[0];
+                // A beacon-sync marker has HasBlockOnMainChain=true but WasProcessed=false.
+                // Such markers can be left above the real head when the upward-scan in
+                // UpdateMainChain races with beacon sync (scan runs before the marker is
+                // set, so it cannot clear it). Any unprocessed marker above Head is stale.
+                if (!blockInfo.WasProcessed && Head is not null && blockNumber > Head.Number)
+                {
+                    return null;
+                }
+
+                return blockInfo.BlockHash;
             }
 
             // Post-merge: block difficulty is 0, so TotalDifficulty never increases and all

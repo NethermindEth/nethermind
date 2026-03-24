@@ -3175,4 +3175,46 @@ public class BlockTreeTests
         blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash.Should().Be(b1.Hash!,
             "height 1 must return B1 after reorg");
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_by_number_returns_null_when_beacon_sync_marks_block_canonical_above_head()
+    {
+        // Simulates the race condition where beacon sync calls UpdateMainChain(wereProcessed=false)
+        // for a block above the current head, leaving a stale HasBlockOnMainChain marker.
+        // GetBlockHashOnMainOrBestDifficultyHash must detect the unprocessed marker above Head
+        // and return null rather than the stale block.
+        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
+        {
+            TerminalTotalDifficulty = UInt256.Zero
+        };
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+        BlockTree blockTree = Build.A.BlockTree(specProvider)
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        Block head = Build.A.Block.WithNumber(1).WithDifficulty(0).WithParent(genesis).TestObject;
+        blockTree.SuggestBlock(head);
+        blockTree.UpdateMainChain(new[] { head }, true); // Head = 1, WasProcessed = true
+
+        Block beaconBlock = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(head).TestObject;
+        blockTree.SuggestBlock(beaconBlock);
+        blockTree.UpdateMainChain(new[] { beaconBlock }, false); // HasBlockOnMainChain=true, WasProcessed=false
+
+        // Height 2 is a stale beacon marker — must not be returned as canonical
+        blockTree.FindBlock(2, BlockTreeLookupOptions.None).Should().BeNull(
+            "height 2 is above Head and was only beacon-synced (WasProcessed=false) — must not be returned");
+
+        // Height 1 is the real head and must still be found
+        blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash.Should().Be(head.Hash!,
+            "height 1 is the canonical head and must still be findable");
+    }
 }
