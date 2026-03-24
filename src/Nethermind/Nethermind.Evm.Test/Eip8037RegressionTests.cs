@@ -3,6 +3,8 @@
 
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -75,5 +77,38 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] returnData = tracer.ReturnValue;
         Assert.That(returnData.IsZero(), Is.True,
             "Nested CREATE should fail: child has 1175 gas but needs 1180 for code deposit (6 regular + 1174 state spill)");
+    }
+
+    /// <summary>
+    /// A child CALL that runs out of gas during SSTORE must not spill state gas into the
+    /// parent frame's reservoir. If it does, the parent can incorrectly complete its own
+    /// SSTORE with gas that should have been burned by the child halt.
+    /// </summary>
+    [Test]
+    public void Eip8037_failed_child_sstore_must_not_inflate_parent_state_reservoir()
+    {
+        byte[] childCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, childCode, SpecProvider.GenesisSpec);
+
+        byte[] parentCode = Prepare.EvmCode
+            .Call(TestItem.AddressC, 40_000)
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, 70_000, parentCode);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+            "The parent SSTORE should run out of gas once the child CALL burns its own failed SSTORE gas.");
+        Assert.That(tracer.Error, Is.EqualTo("OutOfGas"));
     }
 }

@@ -16,7 +16,6 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
-
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
     {
         _innerReader = innerReader;
