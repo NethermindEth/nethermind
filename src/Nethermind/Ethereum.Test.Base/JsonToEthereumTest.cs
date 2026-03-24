@@ -133,20 +133,18 @@ namespace Ethereum.Test.Base
             payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
 
-            // Match most-derived first: V4 extends V3, so V4 arm sets both V4 and V3 fields.
-            switch (payload)
+            // V4 extends V3, so the V3 check matches both — no need to duplicate blob gas fields.
+            if (payload is ExecutionPayloadV3 v3)
             {
-                case ExecutionPayloadV4 v4:
-                    v4.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
-                    v4.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
-                    v4.BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList);
-                    v4.SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger();
-                    v4.ExecutionRequests = [];
-                    break;
-                case ExecutionPayloadV3 v3:
-                    v3.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
-                    v3.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
-                    break;
+                v3.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
+                v3.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
+            }
+
+            if (payload is ExecutionPayloadV4 v4)
+            {
+                v4.BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList);
+                v4.SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger();
+                v4.ExecutionRequests = [];
             }
 
             return payload;
