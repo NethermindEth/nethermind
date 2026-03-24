@@ -1034,13 +1034,12 @@ namespace Nethermind.Blockchain
             for (long levelNumber = Math.Max(previousHeadNumber, lastNumber) + 1; ; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain)
+                if (level is null) break;
+                if (level.HasBlockOnMainChain)
                 {
-                    break;
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                 }
-
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
             }
 
             for (int i = 0; i < blocks.Count; i++)
@@ -1087,10 +1086,13 @@ namespace Nethermind.Blockchain
             for (long levelNumber = headNumber + 1; ; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain) break;
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
-                cleared++;
+                if (level is null) break;
+                if (level.HasBlockOnMainChain)
+                {
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                    cleared++;
+                }
             }
             return cleared;
         }
