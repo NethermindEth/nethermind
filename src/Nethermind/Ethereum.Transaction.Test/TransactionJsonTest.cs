@@ -2,12 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using System;
+using System.Linq;
+using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -52,6 +56,27 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         tx.Type.Should().Be(TxType.AccessList,
             "presence of accessLists field (even empty) should set Type 1");
+    }
+
+    [TestCase(1, typeof(ExecutionPayload))]
+    [TestCase(3, typeof(ExecutionPayloadV3))]
+    [TestCase(4, typeof(ExecutionPayloadV3))]
+    [TestCase(5, typeof(ExecutionPayloadV4))]
+    public void Convert_engine_payloads_uses_declared_payload_version(int newPayloadVersion, Type expectedPayloadType)
+    {
+        TestEngineNewPayloadsJson[] payloads =
+        [
+            new()
+            {
+                NewPayloadVersion = newPayloadVersion.ToString(),
+                ForkChoiceUpdatedVersion = "3",
+                Params = [CreatePayloadJson(newPayloadVersion)]
+            }
+        ];
+
+        var converted = JsonToEthereumTest.Convert(payloads).Single();
+
+        converted.Item1.Should().BeOfType(expectedPayloadType);
     }
 
     /// <summary>
@@ -119,5 +144,34 @@ public class TransactionJsonTest : GeneralStateTestBase
         result.StateRoot.Should().Be(test.PostHash,
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
         result.Pass.Should().BeTrue();
+    }
+
+    private static JsonElement CreatePayloadJson(int newPayloadVersion)
+    {
+        string payloadJson = $$"""
+            {
+              "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+              "feeRecipient": "0x0000000000000000000000000000000000000001",
+              "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000002",
+              "receiptsRoot": "0x0000000000000000000000000000000000000000000000000000000000000003",
+              "logsBloom": "0x{{new string('0', 512)}}",
+              "blockNumber": "0x1",
+              "gasLimit": "0x5208",
+              "gasUsed": "0x5208",
+              "timestamp": "0x1",
+              "extraData": "0x",
+              "prevRandao": "0x0000000000000000000000000000000000000000000000000000000000000004",
+              "baseFeePerGas": "0x7",
+              "blobGasUsed": "0x0",
+              "excessBlobGas": "0x0",
+              "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000005",
+              "transactions": [],
+              "withdrawals": []
+              {{(newPayloadVersion >= 5 ? ",\n  \"blockAccessList\": \"0xc0\",\n  \"slotNumber\": \"0x0\"" : string.Empty)}}
+            }
+            """;
+
+        using JsonDocument document = JsonDocument.Parse(payloadJson);
+        return document.RootElement.Clone();
     }
 }

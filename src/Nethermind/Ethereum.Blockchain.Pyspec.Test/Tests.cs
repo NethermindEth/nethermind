@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
+using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Pyspec.Test;
 

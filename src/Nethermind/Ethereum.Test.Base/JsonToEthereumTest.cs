@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayloadV4, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -99,31 +99,54 @@ namespace Ethereum.Test.Base
                 string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
                 string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
                 string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                yield return (new ExecutionPayloadV4()
-                {
-                    BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
-                    BlockHash = new(executionPayload.BlockHash),
-                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger(),
-                    ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
-                    FeeRecipient = new(executionPayload.FeeRecipient),
-                    GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
-                    GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
-                    LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom)),
-                    ParentHash = new(executionPayload.ParentHash),
-                    PrevRandao = new(executionPayload.PrevRandao),
-                    ReceiptsRoot = new(executionPayload.ReceiptsRoot),
-                    StateRoot = new(executionPayload.StateRoot),
-                    Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
-                    BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
-                    BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
-                    ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
-                    ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
-                    Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
-                    SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger(),
-                    Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
-                    ExecutionRequests = []
-                }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
+                int newPayloadVersion = int.Parse(engineNewPayload.NewPayloadVersion ?? "4");
+                yield return (CreateExecutionPayload(executionPayload, parentBeaconBlockRoot, newPayloadVersion), blobVersionedHashes, validationError, newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
+        }
+
+        private static ExecutionPayload CreateExecutionPayload(
+            TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload,
+            string? parentBeaconBlockRoot,
+            int newPayloadVersion)
+        {
+            ExecutionPayload payload = newPayloadVersion switch
+            {
+                >= 5 => new ExecutionPayloadV4(),
+                >= 3 => new ExecutionPayloadV3(),
+                _ => new ExecutionPayload(),
+            };
+
+            payload.BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger();
+            payload.BlockHash = new(executionPayload.BlockHash);
+            payload.BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger();
+            payload.ExtraData = Bytes.FromHexString(executionPayload.ExtraData);
+            payload.FeeRecipient = new(executionPayload.FeeRecipient);
+            payload.GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger();
+            payload.GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger();
+            payload.LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom));
+            payload.ParentHash = new(executionPayload.ParentHash);
+            payload.PrevRandao = new(executionPayload.PrevRandao);
+            payload.ReceiptsRoot = new(executionPayload.ReceiptsRoot);
+            payload.StateRoot = new(executionPayload.StateRoot);
+            payload.Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger();
+            payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))];
+            payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
+
+            if (payload is ExecutionPayloadV3 executionPayloadV3)
+            {
+                executionPayloadV3.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
+                executionPayloadV3.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
+                executionPayloadV3.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
+            }
+
+            if (payload is ExecutionPayloadV4 executionPayloadV4)
+            {
+                executionPayloadV4.BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList);
+                executionPayloadV4.SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger();
+                executionPayloadV4.ExecutionRequests = [];
+            }
+
+            return payload;
         }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)

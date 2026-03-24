@@ -230,7 +230,7 @@ public class BlockProcessorTests
 
         txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
 
-        stateProvider.ValidatedGasRemaining.Should().BeEquivalentTo([37_568L, 0L]);
+        stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
