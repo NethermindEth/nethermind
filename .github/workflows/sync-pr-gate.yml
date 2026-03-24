@@ -138,14 +138,6 @@ jobs:
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
 
-      - name: Build Docker image locally
-        run: |
-          docker build -t nethermind:pr-local \
-            --build-arg BUILD_CONFIG=release \
-            --build-arg CI=true \
-            --build-arg COMMIT_HASH=${{ github.sha }} \
-            .
-
       - name: Installing requirements
         run: |
           sudo apt-get update
@@ -169,6 +161,18 @@ jobs:
           cd sedge
           make compile
 
+      - name: Install Docker via Sedge
+        working-directory: sedge
+        run: ./build/sedge deps install
+
+      - name: Build Docker image locally
+        run: |
+          docker build -t nethermind:pr-local \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.sha }} \
+            .
+
       - name: Run Sedge
         working-directory: sedge
         env:
@@ -185,8 +189,6 @@ jobs:
           esac
 
           node_name="SyncPRGate-hoodi-${SYNC_MODE}-${GITHUB_RUN_ID}"
-
-          ./build/sedge deps install
 
           mkdir -p execution-data/logs/configs
           mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
