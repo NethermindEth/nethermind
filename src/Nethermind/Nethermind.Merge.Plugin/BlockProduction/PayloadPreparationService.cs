@@ -50,6 +50,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
     protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
 
+    // Tracks the per-payload linked CancellationTokenSource (shared across all improvement rounds
+    // for the same payloadId) so it can be disposed when the payload is fully retrieved or cleaned up.
+    protected readonly ConcurrentDictionary<string, CancellationTokenSource> _payloadCts = new();
+
     public PayloadPreparationService(
         IBlockProducer blockProducer,
         ITxPool txPool,
@@ -99,7 +103,11 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+            CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+            // Register before passing to ImproveBlock so the CTS is always tracked, even if
+            // ImproveBlock is overridden (e.g. Optimism NoTxPool path disposes it directly).
+            _payloadCts[payloadId] = cts;
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, cts);
         }
         else if (_logger.IsInfo)
         {
@@ -330,6 +338,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
                         context.Dispose();
+                        // Dispose the per-payload linked CTS now that no more improvements will run.
+                        // Skip Cancel(): _shutdown cancellation already propagated to this CTS via the
+                        // linked token, and calling Cancel() on an already-disposed CTS throws.
+                        if (_payloadCts.TryRemove(payload.Key, out CancellationTokenSource? payloadCts))
+                        {
+                            payloadCts.Dispose();
+                        }
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -429,6 +444,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         _timer.Stop();
         _shutdown.Cancel();
+        // Dispose all per-payload CTS instances that were not yet cleaned up by CleanupOldPayloads.
+        // _shutdown.Cancel() already cascades cancellation into these via the linked token; disposing
+        // them here releases their registrations on the shutdown token's callback list.
+        foreach (KeyValuePair<string, CancellationTokenSource> entry in _payloadCts)
+        {
+            if (_payloadCts.TryRemove(entry.Key, out CancellationTokenSource? cts))
+            {
+                cts.Dispose();
+            }
+        }
     }
 
     public void CancelBlockProduction(string payloadId)

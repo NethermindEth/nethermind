@@ -80,5 +80,8 @@ public class BlockImprovementContext : IBlockImprovementContext
         Disposed = true;
         CancellationTokenExtensions.CancelDisposeAndClear(ref _linkedCancellation);
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
+        // _improvementCancellation is shared across all improvement rounds for this payload and is
+        // owned by PayloadPreparationService, which disposes it when the payload is fully retrieved
+        // or cleaned up. It must not be disposed here.
     }
 }

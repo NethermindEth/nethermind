@@ -75,6 +75,14 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (_logger.IsDebug)
                 _logger.Debug("Skip block improvement because of NoTxPool payload attribute.");
 
+            // No improvement loop will run — remove the CTS from the base class tracking and
+            // dispose it so the linked registration on _shutdown.Token is released immediately
+            // rather than waiting for the periodic cleanup sweep.
+            if (_payloadCts.TryRemove(payloadId, out CancellationTokenSource? payloadCts))
+            {
+                payloadCts!.Dispose();
+            }
+
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId,
                 new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
