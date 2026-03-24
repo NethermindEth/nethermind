@@ -262,17 +262,20 @@ class SszType
 
     private bool HaveCompatibleUnionOptions(SszType other, HashSet<(SszType, SszType)> visited)
     {
-        SszProperty[] leftMembers = CompatibleUnionMembers?.ToArray() ?? [];
-        SszProperty[] rightMembers = other.CompatibleUnionMembers?.ToArray() ?? [];
-
-        for (int leftIndex = 0; leftIndex < leftMembers.Length; leftIndex++)
+        Dictionary<byte, SszProperty> leftBySelector = (CompatibleUnionMembers ?? [])
+            .ToDictionary(member => member.SelectorValue!.Value);
+        Dictionary<byte, SszProperty> rightBySelector = (other.CompatibleUnionMembers ?? [])
+            .ToDictionary(member => member.SelectorValue!.Value);
+        if (leftBySelector.Count != rightBySelector.Count)
         {
-            for (int rightIndex = 0; rightIndex < rightMembers.Length; rightIndex++)
+            return false;
+        }
+
+        foreach (KeyValuePair<byte, SszProperty> entry in leftBySelector)
+        {
+            if (!rightBySelector.TryGetValue(entry.Key, out SszProperty? rightMember) || !entry.Value.IsCompatibleWith(rightMember, visited))
             {
-                if (!leftMembers[leftIndex].IsCompatibleWith(rightMembers[rightIndex], visited))
-                {
-                    return false;
-                }
+                return false;
             }
         }
 

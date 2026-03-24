@@ -254,6 +254,16 @@ public class EncodingTest
     }
 
     [Test]
+    public void Decode_rejects_offsets_that_are_out_of_order()
+    {
+        byte[] encoded = [8, 0, 0, 0, 7, 0, 0, 0];
+
+        Assert.That(
+            () => SszEncoding.Decode(encoded, out DoubleListContainer _),
+            Throws.InstanceOf<InvalidDataException>());
+    }
+
+    [Test]
     public void Decode_rejects_offsets_that_point_past_the_end()
     {
         VariableC valid = new() { Fixed1 = 1, Fixed2 = [10, 20] };
@@ -335,8 +345,14 @@ public class EncodingTest
             return;
         }
 
-        int rightCount = (int)Math.Min((ulong)chunks.Length, numLeaves);
-        MerkleizeProgressiveSpec(chunks[rightCount..], out UInt256 left, numLeaves * 4);
+        int rightCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        ReadOnlySpan<UInt256> leftChunks = chunks[rightCount..];
+        UInt256 left = UInt256.Zero;
+        if (!leftChunks.IsEmpty)
+        {
+            MerkleizeProgressiveSpec(leftChunks, out left, checked(numLeaves * 4));
+        }
+
         Merkle.Merkleize(out UInt256 right, chunks[..rightCount], numLeaves);
         root = HashConcat(left, right);
     }

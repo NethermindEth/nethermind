@@ -18,7 +18,7 @@ public class SszContainerAttribute(bool isCollectionItself = false) : Attribute
 }
 
 /// <summary>
-/// Marks a type as an SSZ compatible union as defined by EIP-8016.
+/// Marks a type as an SSZ compatible union as defined by EIP-7916.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public class SszCompatibleUnionAttribute : Attribute;

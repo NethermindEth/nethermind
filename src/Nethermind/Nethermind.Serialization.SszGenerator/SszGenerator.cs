@@ -59,6 +59,7 @@ public partial class SszGenerator : IIncrementalGenerator
             or "Nethermind.Serialization.Ssz.SszCompatibleUnionAttribute";
 
     const string Whitespace = "/**/";
+    private const int UnboundedBitlistLimit = 0;
     static readonly Regex OpeningWhiteSpaceRegex = new("{/(\\n\\s+)+\\n/");
     static readonly Regex ClosingWhiteSpaceRegex = new("/(\\s+\\n)+    }/");
     public static string FixWhitespace(string data) => OpeningWhiteSpaceRegex.Replace(
@@ -425,7 +426,7 @@ public partial class SszEncoding
         }
         else if (property.Kind == Kind.ProgressiveBitList)
         {
-            arguments += ", 0";
+            arguments += $", {UnboundedBitlistLimit}"; // Progressive bitlists are intentionally unbounded.
         }
 
         return $"{(property.HandledByStd ? "SszLib.Encode" : "Encode")}({arguments});";
