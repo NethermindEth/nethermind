@@ -215,9 +215,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="stateGasCost">State gas component.</param>
     /// <param name="regularGasCost">Regular gas component.</param>
     /// <returns><c>true</c> if both deductions succeeded; otherwise, <c>false</c>.</returns>
-    static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost) =>
-        (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost)) &&
-        (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost));
+    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost);
 
     /// <summary>
     /// Refunds gas by adding the specified amount back to the available gas.
