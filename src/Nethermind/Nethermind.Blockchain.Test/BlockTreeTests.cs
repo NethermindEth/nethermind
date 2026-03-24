@@ -3127,4 +3127,52 @@ public class BlockTreeTests
         blockCanonical!.Hash.Should().Be(headerCanonical.Hash,
             "FindHeader and FindBlock must return the same canonical block at height 1");
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindBlock_by_number_after_reorg_returns_null_not_orphaned_block_in_pos()
+    {
+        // In PoS all blocks share the same cumulative TotalDifficulty (difficulty=0 per block).
+        // The PoW-era "best difficulty" fallback in GetBlockHashOnMainOrBestDifficultyHash
+        // fires when HasBlockOnMainChain=false and returns whichever block it finds first —
+        // which after a reorg is the now-orphaned block. FindBlock(height, None) must return
+        // null for a decanonized height in PoS, not the orphaned block.
+        CustomSpecProvider specProvider = new(((ForkActivation)0, London.Instance))
+        {
+            TerminalTotalDifficulty = UInt256.Zero  // pure PoS from genesis (e.g. Gnosis)
+        };
+
+        _blocksDb = new TestMemDb();
+        _headersDb = new TestMemDb();
+        _blocksInfosDb = new TestMemDb();
+        BlockTree blockTree = Build.A.BlockTree(specProvider)
+            .WithBlocksDb(_blocksDb)
+            .WithHeadersDb(_headersDb)
+            .WithBlockInfoDb(_blocksInfosDb)
+            .WithoutSettingHead
+            .TestObject;
+
+        Block genesis = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, true);
+
+        // Old chain: genesis → A1 → A2 (head at height 2)
+        Block a1 = Build.A.Block.WithNumber(1).WithDifficulty(0).WithParent(genesis).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(a1);
+        Block a2 = Build.A.Block.WithNumber(2).WithDifficulty(0).WithParent(a1).WithExtraData(new byte[] { 1 }).TestObject;
+        blockTree.SuggestBlock(a2);
+        blockTree.UpdateMainChain(new[] { a1, a2 }, true);
+
+        // Reorg: genesis → B1 (head drops from height 2 to height 1, different block)
+        Block b1 = Build.A.Block.WithNumber(1).WithDifficulty(0).WithParent(genesis).WithExtraData(new byte[] { 2 }).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.UpdateMainChain(new[] { b1 }, true);
+
+        // Height 2 was orphaned: must return null, not the stale A2
+        blockTree.FindBlock(2, BlockTreeLookupOptions.None).Should().BeNull(
+            "orphaned height 2 must return null after reorg in PoS — not the stale A2 block");
+
+        // Height 1 must return the new canonical B1
+        blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash.Should().Be(b1.Hash!,
+            "height 1 must return B1 after reorg");
+    }
 }
