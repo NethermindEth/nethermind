@@ -329,7 +329,7 @@ public abstract class BlockchainTestBase
             }
             if (newPayloadVersion >= 4)
             {
-                newPayloadParams.Add(executionPayload.ExecutionRequests);
+                newPayloadParams.Add(executionPayload.ExecutionRequests ?? []);
             }
 
             res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
