@@ -2715,6 +2715,80 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_beacon_sync_multiple_descendants_then_reorg_to_sibling_clears_all()
+    {
+        // Exact reproduction of the stale canonical markers bug from the Engine API test generator.
+        //
+        // Beacon sync marks H+1, H+2, H+3 canonical without updating Head (wereProcessed: false).
+        // FCU reorgs to a sibling of Head at the SAME height H.
+        //   previousHeadNumber == lastNumber → downward unmark skipped entirely.
+        //   Upward scan must clear all three orphaned levels.
+        //
+        // This differs from the single-descendant test above: with multiple levels, the bounded
+        // scan (not break-on-first-gap) is critical — a concurrent MoveToMain could create a gap.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Chain: genesis → headBlock(H=1) → d1(H=2) → d2(H=3) → d3(H=4)
+        Block headBlock = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0xAA }).TestObject;
+        Block d1 = Build.A.Block.WithNumber(2).WithParent(headBlock).TestObject;
+        Block d2 = Build.A.Block.WithNumber(3).WithParent(d1).TestObject;
+        Block d3 = Build.A.Block.WithNumber(4).WithParent(d2).TestObject;
+
+        blockTree.SuggestBlock(headBlock);
+        blockTree.SuggestBlock(d1);
+        blockTree.SuggestBlock(d2);
+        blockTree.SuggestBlock(d3);
+
+        // FCU sets Head to headBlock at H=1
+        blockTree.UpdateMainChain(new[] { headBlock }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.Head!.Hash.Should().Be(headBlock.Hash!);
+
+        // Beacon sync: d1, d2, d3 marked canonical without advancing Head
+        blockTree.UpdateMainChain(new[] { d1 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { d2 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { d3 }, wereProcessed: false);
+
+        // Step 2: verify stale Head
+        blockTree.Head!.Number.Should().Be(1, "Head must stay at H=1 — wereProcessed=false");
+        blockTree.IsMainChain(d1.Header).Should().BeTrue("precondition: d1 canonical via beacon sync");
+        blockTree.IsMainChain(d2.Header).Should().BeTrue("precondition: d2 canonical via beacon sync");
+        blockTree.IsMainChain(d3.Header).Should().BeTrue("precondition: d3 canonical via beacon sync");
+
+        // Step 3: FCU reorg to sibling at same height H=1
+        Block sibling = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0xBB }).TestObject;
+        blockTree.SuggestBlock(sibling);
+        blockTree.UpdateMainChain(new[] { sibling }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Step 4: verify reorg correctness
+        blockTree.Head!.Number.Should().Be(1);
+        blockTree.Head!.Hash.Should().Be(sibling.Hash!);
+        blockTree.IsMainChain(sibling.Header).Should().BeTrue("sibling must be canonical");
+        blockTree.IsMainChain(d1.Header).Should().BeFalse("d1 must be de-canonicalized after reorg");
+        blockTree.IsMainChain(d2.Header).Should().BeFalse("d2 must be de-canonicalized after reorg");
+        blockTree.IsMainChain(d3.Header).Should().BeFalse("d3 must be de-canonicalized after reorg");
+
+        // Step 5: verify user-visible impact — FindCanonicalBlockInfo must return null
+        blockTree.FindCanonicalBlockInfo(2).Should().BeNull("H+1 must return null — orphaned after reorg");
+        blockTree.FindCanonicalBlockInfo(3).Should().BeNull("H+2 must return null — orphaned after reorg");
+        blockTree.FindCanonicalBlockInfo(4).Should().BeNull("H+3 must return null — orphaned after reorg");
+
+        // Step 6: verify block hashes — canonical lookup returns correct hash at H=1
+        BlockInfo? infoAt1 = blockTree.FindCanonicalBlockInfo(1);
+        infoAt1.Should().NotBeNull();
+        infoAt1!.BlockHash.Should().Be(sibling.Hash!, "H=1 must return sibling's hash, not old headBlock");
+        infoAt1.BlockHash.Should().NotBe(headBlock.Hash!, "H=1 must NOT return old headBlock's hash");
+
+        // Orphaned heights must not return old block hashes via canonical lookup
+        blockTree.FindCanonicalBlockInfo(2)?.BlockHash.Should().NotBe(d1.Hash!, "H+1 canonical hash must not be d1");
+        blockTree.FindCanonicalBlockInfo(3)?.BlockHash.Should().NotBe(d2.Hash!, "H+2 canonical hash must not be d2");
+        blockTree.FindCanonicalBlockInfo(4)?.BlockHash.Should().NotBe(d3.Hash!, "H+3 canonical hash must not be d3");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void UpdateMainChain_fcu_to_ancestor_with_stale_head_clears_all_beacon_synced_descendants()
     {
         // ePBS scenario: FCU can reorg to an ancestor (not just a sibling at the same height).
