@@ -317,10 +317,7 @@ public class BlockProcessorTests
         {
         }
 
-        public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed)
-        {
-            _gasUsed = gasUsed;
-        }
+        public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed) => _gasUsed = gasUsed;
 
         public long GasUsed()
             => _gasUsed;
@@ -328,8 +325,6 @@ public class BlockProcessorTests
         public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
             => ValidatedGasRemaining.Add(gasRemaining);
 
-        public void SetBlockAccessList(Block block, IReleaseSpec spec)
-        {
-        }
+        public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
     }
 }

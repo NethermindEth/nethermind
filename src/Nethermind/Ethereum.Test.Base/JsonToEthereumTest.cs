@@ -14,6 +14,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -142,16 +143,12 @@ namespace Ethereum.Test.Base
             string? parentBeaconBlockRoot,
             int newPayloadVersion)
         {
-            // Version-to-type mapping mirrors engine API method signatures:
-            // engine_newPayloadV1/V2 -> ExecutionPayload
-            // engine_newPayloadV3/V4 -> ExecutionPayloadV3
-            // engine_newPayloadV5    -> ExecutionPayloadV4
-            ExecutionPayload payload = newPayloadVersion switch
-            {
-                >= 5 => new ExecutionPayloadV4(),
-                >= 3 => new ExecutionPayloadV3(),
-                _ => new ExecutionPayload(),
-            };
+            // Derive the payload type from the engine API method signature via reflection
+            Type payloadType = typeof(IEngineRpcModule)
+                .GetMethod($"engine_newPayloadV{newPayloadVersion}")!
+                .GetParameters()[0]
+                .ParameterType;
+            ExecutionPayload payload = (ExecutionPayload)Activator.CreateInstance(payloadType)!;
 
             payload.BaseFeePerGas = HexToNumber<ulong>(executionPayload.BaseFeePerGas);
             payload.BlockHash = new(executionPayload.BlockHash);
@@ -169,8 +166,7 @@ namespace Ethereum.Test.Base
             payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(ParseWithdrawal)];
             payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
-
-            // V4 extends V3, so the V3 check matches both — no need to duplicate blob gas fields.
+            // V4 extends V3, so the V3 check matches both - no need to duplicate blob gas fields.
             if (payload is ExecutionPayloadV3 v3)
             {
                 v3.BlobGasUsed = HexToNullableNumber<ulong>(executionPayload.BlobGasUsed);
@@ -191,19 +187,14 @@ namespace Ethereum.Test.Base
             => (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
 
         private static T? HexToNullableNumber<T>(string? hex) where T : struct, IConvertible
-            => hex is null ? null : (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
+            => hex is null ? null : HexToNumber<T>(hex);
 
-        private static Withdrawal ParseWithdrawal(System.Text.Json.JsonElement element)
-        {
+        private static Withdrawal ParseWithdrawal(System.Text.Json.JsonElement element) =>
             // Engine API format: JSON object with index, validatorIndex, address, amount
-            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
-            {
-                return element.Deserialize<Withdrawal>(EthereumJsonSerializer.JsonOptions)!;
-            }
-
-            // Legacy format: RLP-encoded hex string
-            return Rlp.Decode<Withdrawal>(Bytes.FromHexString(element.GetString()!));
-        }
+            element.ValueKind == System.Text.Json.JsonValueKind.Object
+                ? element.Deserialize<Withdrawal>(EthereumJsonSerializer.JsonOptions)!
+                // Legacy format: RLP-encoded hex string
+                : Rlp.Decode<Withdrawal>(Bytes.FromHexString(element.GetString()!));
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {

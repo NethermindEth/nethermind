@@ -74,9 +74,9 @@ public class TransactionJsonTest : GeneralStateTestBase
             }
         ];
 
-        var converted = JsonToEthereumTest.Convert(payloads).Single();
+        (ExecutionPayload executionPayload, _, _, _, _) = JsonToEthereumTest.Convert(payloads).Single();
 
-        converted.Item1.Should().BeOfType(expectedPayloadType);
+        executionPayload.Should().BeOfType(expectedPayloadType);
     }
 
     [Test]
@@ -93,9 +93,9 @@ public class TransactionJsonTest : GeneralStateTestBase
             }
         ];
 
-        var converted = JsonToEthereumTest.Convert(payloads).Single();
+        (_, _, string validationError, _, _) = JsonToEthereumTest.Convert(payloads).Single();
 
-        converted.Item3.Should().Be("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED");
+        validationError.Should().Be("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED");
     }
 
     /// <summary>
