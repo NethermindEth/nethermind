@@ -308,7 +308,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
                     // balance could have gone back to pre-tx value
                     // so would already be empty
-                    accountChanges.PopBalanceChange(change.BlockAccessIndex, out _); // todo: this index must be the same?
+                    accountChanges.PopBalanceChange(change.BlockAccessIndex, out _);
                     if (previousBalance is not null)
                     {
                         accountChanges.AddBalanceChange(previousBalance.Value);

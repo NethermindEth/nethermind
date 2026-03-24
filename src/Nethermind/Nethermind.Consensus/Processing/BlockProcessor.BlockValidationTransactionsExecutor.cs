@@ -87,6 +87,7 @@ namespace Nethermind.Consensus.Processing
                 TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
                 for (int i = 0; i < len; i++)
                 {
+                    // todo: look into reusing / reducing allocation
                     VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                     TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
                     ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
