@@ -155,6 +155,8 @@ namespace Nethermind.Consensus.Processing
                         (long? blockGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                         if (ex is not null)
                             ExceptionDispatchInfo.Capture(ex).Throw();
+                        
+                        //trigger event
 
                         totalGas += blockGasUsed.Value;
                         gasRemaining -= blockGasUsed.Value;
@@ -174,6 +176,7 @@ namespace Nethermind.Consensus.Processing
 
             private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
             {
+                // need multiple loops?
                 TxReceipt[] result = new TxReceipt[len];
                 for (int i = 0; i < len; i++)
                 {

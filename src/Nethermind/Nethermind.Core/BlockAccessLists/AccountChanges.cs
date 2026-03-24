@@ -237,25 +237,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         return sb.ToString();
     }
 
-    private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
-    {
-        change = default;
-
-        if (changes.Count == 0)
-            return false;
-
-        KeyValuePair<int, T> lastChange = changes.Last();
-
-        if (lastChange.Key == index)
-        {
-            changes.RemoveAt(changes.Count - 1);
-            change = lastChange.Value;
-            return true;
-        }
-
-        return false;
-    }
-
     public UInt256 GetNonce(int blockAccessIndex)
     {
         UInt256 lastNonce = UInt256.MaxValue;
@@ -373,4 +354,24 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore]
     public bool AccountChanged => _wasChanged;
     private bool _wasChanged = false;
+
+    private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
+    {
+        change = default;
+
+        if (changes.Count == 0)
+            return false;
+
+        KeyValuePair<int, T> lastChange = changes.Last();
+
+        if (lastChange.Key == index)
+        {
+            changes.RemoveAt(changes.Count - 1);
+            change = lastChange.Value;
+            return true;
+        }
+
+        return false;
+    }
+
 }
