@@ -33,6 +33,18 @@ Detailed rules live in [`.agents/rules/`](./.agents/rules/). **You MUST read the
 
 ---
 
+## Subsystem References
+
+Contextual knowledge for specific modules. These are NOT loaded unconditionally — load ONLY when working in that area. They contain "things you'll get wrong if you don't know them" for each subsystem.
+
+- [trie.md](./.agents/references/trie.md) — Load when working with Patricia trie, pruning, or trie store. Covers TreePath management, pruning modes, KeccakCache tiers.
+- [evm.md](./.agents/references/evm.md) — Load when working with EVM instructions, gas calculation, or precompiles. Covers operand indexing, memory limits, gas policy architecture.
+- [state.md](./.agents/references/state.md) — Load when working with world state, storage providers, or flat state. Covers StackList pooling, Transaction field sync, block access lists.
+- [rpc.md](./.agents/references/rpc.md) — Load when working with JSON-RPC modules. Covers state validation, parameter ordering, simulation headers, L2 serialization.
+- [network.md](./.agents/references/network.md) — Load when working with P2P, sync, or discovery. Covers message limits, CTS lifecycle, peer management, sync feeds.
+
+---
+
 ## Project structure
 
 The codebase in [src/Nethermind](./src/Nethermind/) is organized into three independent solutions:
