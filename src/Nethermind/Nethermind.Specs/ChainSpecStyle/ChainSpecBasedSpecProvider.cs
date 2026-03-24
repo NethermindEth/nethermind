@@ -181,7 +181,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         protected virtual ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
         {
-            bool isPostMerge = releaseStartTimestamp is not null || chainSpec.Parameters.TerminalTotalDifficulty == 0;
+            UInt256? terminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
+            bool isPostMerge = terminalTotalDifficulty is not null && (releaseStartTimestamp is not null || terminalTotalDifficulty.Value.IsZero);
             releaseStartTimestamp ??= chainSpec.Genesis?.Timestamp ?? 0;
 
             ReleaseSpec releaseSpec = CreateEmptyReleaseSpec();
