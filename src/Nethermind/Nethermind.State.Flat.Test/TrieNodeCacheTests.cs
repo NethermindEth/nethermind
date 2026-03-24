@@ -29,6 +29,12 @@ public class TrieNodeCacheTests
         _resourcePool = new ResourcePool(_config);
     }
 
+    [TearDown]
+    public void TearDown()
+    {
+        _cache.Dispose();
+    }
+
     [Test]
     public void TryGet_ReturnsNotFound_WhenCacheEmpty()
     {
@@ -60,14 +66,14 @@ public class TrieNodeCacheTests
     public void Constructor_WithZeroMemoryTarget_DoesNotThrow()
     {
         FlatDbConfig config = new FlatDbConfig { TrieCacheMemoryBudget = 0 };
-        Assert.DoesNotThrow(() => new TrieNodeCache(config, LimboLogs.Instance));
+        using TrieNodeCache cache = new TrieNodeCache(config, LimboLogs.Instance);
     }
 
     [Test]
     public void Constructor_WithSmallMemoryTarget_UseMinimumBucketSize()
     {
         FlatDbConfig config = new FlatDbConfig { TrieCacheMemoryBudget = 1 };
-        Assert.DoesNotThrow(() => new TrieNodeCache(config, LimboLogs.Instance));
+        using TrieNodeCache cache = new TrieNodeCache(config, LimboLogs.Instance);
     }
 
     [Test]
@@ -111,7 +117,7 @@ public class TrieNodeCacheTests
     public void Add_WithZeroMemoryTarget_DoesNotCacheNodes()
     {
         FlatDbConfig zeroConfig = new FlatDbConfig { TrieCacheMemoryBudget = 0 };
-        TrieNodeCache zeroCache = new TrieNodeCache(zeroConfig, LimboLogs.Instance);
+        using TrieNodeCache zeroCache = new TrieNodeCache(zeroConfig, LimboLogs.Instance);
         ResourcePool zeroResourcePool = new ResourcePool(zeroConfig);
 
         TreePath path = TreePath.FromHexString("abcd");
@@ -216,7 +222,7 @@ public class TrieNodeCacheTests
     }
 
     [Test]
-    public void Sharding_DifferentFirstBytes_GoToDifferentShards()
+    public void DifferentPaths_AreIndependentlyRetrievable()
     {
         TreePath path1 = TreePath.FromHexString("1000");
         TreePath path2 = TreePath.FromHexString("2000");
@@ -235,7 +241,7 @@ public class TrieNodeCacheTests
     }
 
     [Test]
-    public void Sharding_StorageNodes_ShardByAddressFirstByte()
+    public void DifferentStorageAddresses_AreIndependentlyRetrievable()
     {
         Hash256 address1 = new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000");
         Hash256 address2 = new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000");

@@ -12,9 +12,9 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// A specialized RLP cache storing trie node bytes inline in fixed-size value-type entries.
+/// A specialized RLP cache storing trie node bytes inline in a single flat pinned array.
 /// Uses a seqlock per entry so readers are lock-free while writers use a CAS-based lock.
-/// The 256-shard design groups entries by tree path, enabling coherent shard eviction.
+/// On Linux, the backing memory is MADVISE'd for Transparent Huge Pages.
 /// </summary>
 public sealed class TrieNodeCache : ITrieNodeCache
 {
@@ -27,29 +27,35 @@ public sealed class TrieNodeCache : ITrieNodeCache
     private const long SeqLockSeqMask = 0x0000_0000_0001_FFFE;
     private const long SeqLockSeqInc = 0x0000_0000_0000_0002;
 
-    // Approximate bytes per inline CacheEntry (long + Hash256 ref + TrieNodeRlp).
-    // Used only for bucket-count sizing; actual memory is the pre-allocated array.
-    private const int EstimatedBytesPerEntry = 572;
+    // Approximate bytes per inline CacheEntry (long + ValueHash256 + TrieNodeRlp).
+    // Used only for capacity sizing; actual memory is the pre-allocated array.
+    private const int EstimatedBytesPerEntry = 592;
 
-    private const int ShardCount = 256;
+    // Linux THP constants
+    private const int MADV_HUGEPAGE = 14;
+    private const nuint HugePageSize = 2 * 1024 * 1024; // 2MB
+
+    [DllImport("libc", EntryPoint = "madvise", SetLastError = true)]
+    private static extern unsafe int Madvise(void* addr, nuint length, int advice);
 
     private readonly ILogger _logger;
 
     /// <summary>
-    /// Entry stored inline in the shard array. No heap allocation per cached node.
+    /// Entry stored inline in the cache array. Pure value type — no managed references,
+    /// so the array can be pinned for THP madvise.
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     private struct CacheEntry
     {
-        public long SeqLock;   // seqlock header
-        public Hash256? Hash;  // node hash for collision detection (reference, already live on heap)
+        public long SeqLock;        // seqlock header
+        public ValueHash256 Hash;   // node hash for collision detection (inline value type)
         public TrieNodeRlp Rlp;
     }
 
-    private readonly CacheEntry[][] _cacheShards;
-    private readonly int _bucketSize;
-    private readonly int _bucketMask;
+    private readonly CacheEntry[] _cache;
+    private readonly int _totalMask;
     private readonly long _maxCacheMemoryThreshold;
+    private GCHandle _gcHandle;
 
     public TrieNodeCache(IFlatDbConfig flatDbConfig, ILogManager logManager)
     {
@@ -57,51 +63,50 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         _maxCacheMemoryThreshold = flatDbConfig.TrieCacheMemoryBudget;
 
-        // Size the arrays so that pre-allocated memory ≈ TrieCacheMemoryBudget.
-        int targetBucketSize = _maxCacheMemoryThreshold > 0
-            ? (int)(_maxCacheMemoryThreshold / EstimatedBytesPerEntry / ShardCount)
+        int targetSize = _maxCacheMemoryThreshold > 0
+            ? (int)(_maxCacheMemoryThreshold / EstimatedBytesPerEntry)
             : 0;
-        _bucketSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetBucketSize));
-        _bucketMask = _bucketSize - 1;
+        int totalSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, targetSize));
+        _totalMask = totalSize - 1;
 
-        _cacheShards = new CacheEntry[ShardCount][];
-        for (int i = 0; i < ShardCount; i++)
+        // Allocate pinned so GC won't relocate — required for madvise and THP.
+        // CacheEntry is pure value type (no managed refs) so pinning is safe.
+        _cache = GC.AllocateUninitializedArray<CacheEntry>(totalSize, pinned: true);
+        Array.Clear(_cache); // zero-init since uninitialized
+
+        // Pin to get the address for madvise.
+        _gcHandle = GCHandle.Alloc(_cache, GCHandleType.Pinned);
+
+        // Hint the kernel to back with huge pages on Linux.
+        if (OperatingSystem.IsLinux())
         {
-            _cacheShards[i] = new CacheEntry[_bucketSize];
+            nuint byteSize = (nuint)((long)totalSize * Unsafe.SizeOf<CacheEntry>());
+            if (byteSize >= HugePageSize)
+            {
+                unsafe
+                {
+                    Madvise((void*)_gcHandle.AddrOfPinnedObject(), byteSize, MADV_HUGEPAGE);
+                }
+            }
         }
 
-        // Report constant memory footprint (arrays are pre-allocated).
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = (long)_bucketSize * ShardCount * EstimatedBytesPerEntry;
+        // Report constant memory footprint (array is pre-allocated).
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = (long)totalSize * EstimatedBytesPerEntry;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static (int shardIdx, int hashCode) GetShardAndHashCode(Hash256? address, in TreePath path)
+    private static int GetIndex(Hash256? address, in TreePath path)
     {
-        int shardIdx = path.Path.Bytes[0];
-        int h1;
-
-        if (address is not null)
-        {
-            shardIdx = (shardIdx + address.Bytes[0]) % 256;
-            h1 = address.GetHashCode();
-        }
-        else
-        {
-            h1 = 0;
-        }
-
+        int h1 = address is not null ? address.GetHashCode() : 0;
         int h2 = path.GetHashCode();
-        int hashCode = (h1 ^ h2) & int.MaxValue;
-
-        return (shardIdx, hashCode);
+        return (h1 ^ h2) & int.MaxValue;
     }
 
     public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, ref TrieNodeRlp rlp)
     {
-        (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
-        int bucketIdx = hashCode & _bucketMask;
+        int bucketIdx = GetIndex(address, in path) & _totalMask;
 
-        ref CacheEntry entry = ref _cacheShards[shardIdx][bucketIdx];
+        ref CacheEntry entry = ref _cache[bucketIdx];
 
         long h1 = Volatile.Read(ref entry.SeqLock);
         // Skip if locked (write in progress) or slot is empty.
@@ -109,7 +114,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         // Seqlock read: acquire barrier before reading payload.
         Thread.MemoryBarrier();
-        Hash256? storedHash = entry.Hash;
+        ValueHash256 storedHash = entry.Hash;
         rlp = entry.Rlp;
         // Release barrier before re-reading the header.
         Thread.MemoryBarrier();
@@ -122,7 +127,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return false;
         }
 
-        if (storedHash is null || storedHash != hash)
+        if (storedHash != hash)
         {
             rlp.Length = 0;
             return false;
@@ -135,40 +140,37 @@ public sealed class TrieNodeCache : ITrieNodeCache
     {
         if (_maxCacheMemoryThreshold == 0) return;
 
-        Parallel.For(0, ShardCount, (i) =>
+        ChildCache.ChildEntry[] childEntries = transientResource.Nodes.InternalEntries;
+        Parallel.For(0, childEntries.Length, (j) =>
         {
-            ChildCache.ChildEntry[] shard = transientResource.Nodes.InternalShards[i];
-            for (int j = 0; j < shard.Length; j++)
-            {
-                ref ChildCache.ChildEntry childEntry = ref shard[j];
+            ref ChildCache.ChildEntry childEntry = ref childEntries[j];
 
-                // Quick check: skip if locked or empty before doing the full seqlock read.
-                long h1 = Volatile.Read(ref childEntry.SeqLock);
-                if (h1 < 0 || (h1 & SeqLockOccupied) == 0) continue;
+            // Quick check: skip if locked or empty before doing the full seqlock read.
+            long h1 = Volatile.Read(ref childEntry.SeqLock);
+            if (h1 < 0 || (h1 & SeqLockOccupied) == 0) return;
 
-                Thread.MemoryBarrier();
-                int childHashCode = childEntry.HashCode;
-                Hash256? nodeHash = childEntry.Hash;
-                TrieNodeRlp tempRlp = childEntry.Rlp;
-                Thread.MemoryBarrier();
+            Thread.MemoryBarrier();
+            int childHashCode = childEntry.HashCode;
+            ValueHash256 nodeHash = childEntry.Hash;
+            TrieNodeRlp tempRlp = childEntry.Rlp;
+            Thread.MemoryBarrier();
 
-                long h2 = Volatile.Read(ref childEntry.SeqLock);
-                if (h1 != h2 || nodeHash is null || tempRlp.Length == 0) continue;
+            long h2 = Volatile.Read(ref childEntry.SeqLock);
+            if (h1 != h2 || tempRlp.Length == 0) return;
 
-                int bucketIdx = childHashCode & _bucketMask;
-                WriteMainEntry(i, bucketIdx, nodeHash, ref tempRlp);
-            }
+            int bucketIdx = childHashCode & _totalMask;
+            WriteMainEntry(bucketIdx, nodeHash, ref tempRlp);
         });
 
         if (_logger.IsTrace) _logger.Trace("Trie node cache updated from transient resource");
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = (long)_bucketSize * ShardCount * EstimatedBytesPerEntry;
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = (long)(_totalMask + 1) * EstimatedBytesPerEntry;
     }
 
-    private void WriteMainEntry(int shardIdx, int bucketIdx, Hash256 hash, ref TrieNodeRlp rlp)
+    private void WriteMainEntry(int bucketIdx, ValueHash256 hash, ref TrieNodeRlp rlp)
     {
         if (rlp.Length == 0 || rlp.Length > TrieNodeRlp.MaxRlpLength) return;
 
-        ref CacheEntry entry = ref _cacheShards[shardIdx][bucketIdx];
+        ref CacheEntry entry = ref _cache[bucketIdx];
         long existing = Volatile.Read(ref entry.SeqLock);
         if (existing < 0) return; // locked by another writer, skip
 
@@ -185,79 +187,69 @@ public sealed class TrieNodeCache : ITrieNodeCache
         Volatile.Write(ref entry.SeqLock, newSeq | SeqLockOccupied);
     }
 
-    /// <summary>Clears all cached RLP entries by zeroing all shard arrays.</summary>
+    /// <summary>Clears all cached RLP entries by zeroing the cache array.</summary>
     public void Clear()
     {
-        for (int i = 0; i < ShardCount; i++)
-        {
-            Array.Clear(_cacheShards[i]);
-        }
-
+        Array.Clear(_cache);
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = 0;
+    }
+
+    public void Dispose()
+    {
+        if (_gcHandle.IsAllocated)
+            _gcHandle.Free();
     }
 
     /// <summary>
     /// Small transient cache for use in <see cref="TransientResource"/>.
-    /// Sharded the same way as <see cref="TrieNodeCache"/> so that <see cref="Add"/> can
-    /// flush each shard in parallel.
+    /// Flat array like <see cref="TrieNodeCache"/> so that <see cref="Add"/> can
+    /// flush entries in parallel.
     /// </summary>
     public class ChildCache
     {
         // Seqlock layout: same constants as outer class (accessible as nested class).
         // [Lock:1][...][Seq:16][Occ:1]
 
-        /// <summary>Entry stored inline in the shard array.</summary>
+        /// <summary>Entry stored inline in the array.</summary>
         [StructLayout(LayoutKind.Sequential)]
         internal struct ChildEntry
         {
-            public long SeqLock;     // seqlock header
-            public int HashCode;     // combined path+address hash for bucket placement
-            public Hash256? Hash;    // node keccak for collision detection
+            public long SeqLock;        // seqlock header
+            public int HashCode;        // combined path+address hash for bucket placement
+            public ValueHash256 Hash;   // node hash for collision detection (inline value type)
             public TrieNodeRlp Rlp;
         }
 
-        private readonly ChildEntry[][] _shards;
-        private int _count = 0;
+        private ChildEntry[] _entries;
+        private int _count;
         private int _mask;
-        private int _shardSize;
 
         public int Count => _count;
-        public int Capacity => _shards.Length * _shardSize;
+        public int Capacity => _entries.Length;
 
-        /// <summary>Exposes shard arrays for parallel iteration in <see cref="TrieNodeCache.Add"/>.</summary>
-        internal ChildEntry[][] InternalShards => _shards;
+        /// <summary>Exposes entry array for parallel iteration in <see cref="TrieNodeCache.Add"/>.</summary>
+        internal ChildEntry[] InternalEntries => _entries;
 
         public ChildCache(int size)
         {
-            int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(size + ShardCount - 1) / ShardCount);
-            _shards = new ChildEntry[ShardCount][];
-            _mask = powerOfTwoSize - 1;
-            _shardSize = powerOfTwoSize;
-            AllocateShards(_shardSize);
-        }
-
-        private void AllocateShards(int size)
-        {
-            for (int i = 0; i < ShardCount; i++) _shards[i] = new ChildEntry[size];
+            int totalSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, size));
+            _entries = new ChildEntry[totalSize];
+            _mask = totalSize - 1;
         }
 
         public void Reset()
         {
-            // Grow backing arrays if utilization exceeded capacity since last reset.
-            if (_count / 0.25 > ShardCount * _shardSize)
+            // Grow backing array if utilization exceeded capacity since last reset.
+            if (_count / 0.25 > _entries.Length)
             {
                 int newTarget = (int)(_count / 0.25);
-                int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(newTarget + ShardCount - 1) / ShardCount);
-                _shardSize = powerOfTwoSize;
-                _mask = powerOfTwoSize - 1;
-                AllocateShards(_shardSize);
+                int totalSize = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(16, newTarget));
+                _entries = new ChildEntry[totalSize];
+                _mask = totalSize - 1;
             }
             else
             {
-                for (int i = 0; i < ShardCount; i++)
-                {
-                    Array.Clear(_shards[i], 0, _shards[i].Length);
-                }
+                Array.Clear(_entries, 0, _entries.Length);
             }
 
             _count = 0;
@@ -265,17 +257,17 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public bool TryGet(Hash256? address, in TreePath path, Hash256 hash, ref TrieNodeRlp rlp)
         {
-            (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
+            int hashCode = GetIndex(address, path);
             int idx = hashCode & _mask;
 
-            ref ChildEntry entry = ref _shards[shardIdx][idx];
+            ref ChildEntry entry = ref _entries[idx];
 
             long h1 = Volatile.Read(ref entry.SeqLock);
             if (h1 < 0 || (h1 & SeqLockOccupied) == 0) return false;
 
             Thread.MemoryBarrier();
             int storedHashCode = entry.HashCode;
-            Hash256? storedHash = entry.Hash;
+            ValueHash256 storedHash = entry.Hash;
             rlp = entry.Rlp;
             Thread.MemoryBarrier();
 
@@ -286,7 +278,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 return false;
             }
 
-            if (storedHashCode != hashCode || storedHash is null || storedHash != hash)
+            if (storedHashCode != hashCode || storedHash != hash)
             {
                 rlp.Length = 0;
                 return false;
@@ -299,10 +291,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
         {
             if (rlp.Length == 0 || rlp.Length > TrieNodeRlp.MaxRlpLength) return;
 
-            (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
+            int hashCode = GetIndex(address, path);
             int idx = hashCode & _mask;
 
-            ref ChildEntry entry = ref _shards[shardIdx][idx];
+            ref ChildEntry entry = ref _entries[idx];
             long existing = Volatile.Read(ref entry.SeqLock);
             if (existing < 0) return; // locked, skip
 
@@ -312,7 +304,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             if (Interlocked.CompareExchange(ref entry.SeqLock, locked, existing) != existing) return;
 
             entry.HashCode = hashCode;
-            entry.Hash = hash;
+            entry.Hash = hash.ValueHash256;
             entry.Rlp.Set(rlp);
 
             Volatile.Write(ref entry.SeqLock, newSeq | SeqLockOccupied);

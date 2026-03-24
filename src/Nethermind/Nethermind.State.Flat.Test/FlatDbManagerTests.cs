@@ -45,6 +45,7 @@ public class FlatDbManagerTests
     {
         _cts.Cancel();
         _cts.Dispose();
+        _trieNodeCache.Dispose();
     }
 
     private FlatDbManager CreateManager() => new(

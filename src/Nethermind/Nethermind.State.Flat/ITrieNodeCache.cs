@@ -6,7 +6,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
-public interface ITrieNodeCache
+public interface ITrieNodeCache : IDisposable
 {
     bool TryGet(Hash256? address, in TreePath path, Hash256 hash, ref TrieNodeRlp rlp);
     void Add(TransientResource transientResource);
