@@ -65,6 +65,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return true;
     }
 
+    public static bool TryConsumeStateAndRegularGas(ref EthereumGasPolicy gas, long stateGasCost, long regularGasCost) =>
+        (regularGasCost <= 0 || UpdateGas(ref gas, regularGasCost)) &&
+        (stateGasCost <= 0 || ConsumeStateGas(ref gas, stateGasCost));
+
     public static bool ConsumeSelfDestructGas(ref EthereumGasPolicy gas)
         => UpdateGas(ref gas, GasCostOf.SelfDestructEip150);
 
@@ -204,8 +208,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         if (!TIsSlotCreation.IsActive) return UpdateGas(ref gas, spec.GasCosts.SStoreResetCost);
         return TEip8037.IsActive switch
         {
-            true => ConsumeStateGas(ref gas, GasCostOf.SSetState) && UpdateGas(ref gas, GasCostOf.SSetRegular),
-            false => UpdateGas(ref gas, GasCostOf.SSet)
+            // EIP-8037: charge the regular component first so an OOG halt does not
+            // spill state gas into gas_left and then restore it to the parent frame.
+            true => TryConsumeStateAndRegularGas(ref gas, GasCostOf.SSetState, GasCostOf.SSetRegular),
+            false => UpdateGas(ref gas, GasCostOf.SSet),
         };
     }
 
