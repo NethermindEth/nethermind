@@ -109,6 +109,10 @@ namespace Ethereum.Test.Base
             string? parentBeaconBlockRoot,
             int newPayloadVersion)
         {
+            // Version-to-type mapping mirrors engine API method signatures:
+            // engine_newPayloadV1/V2 -> ExecutionPayload
+            // engine_newPayloadV3/V4 -> ExecutionPayloadV3
+            // engine_newPayloadV5    -> ExecutionPayloadV4
             ExecutionPayload payload = newPayloadVersion switch
             {
                 >= 5 => new ExecutionPayloadV4(),
@@ -116,19 +120,19 @@ namespace Ethereum.Test.Base
                 _ => new ExecutionPayload(),
             };
 
-            payload.BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger();
+            payload.BaseFeePerGas = HexToNumber<ulong>(executionPayload.BaseFeePerGas);
             payload.BlockHash = new(executionPayload.BlockHash);
-            payload.BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger();
+            payload.BlockNumber = HexToNumber<long>(executionPayload.BlockNumber);
             payload.ExtraData = Bytes.FromHexString(executionPayload.ExtraData);
             payload.FeeRecipient = new(executionPayload.FeeRecipient);
-            payload.GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger();
-            payload.GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger();
+            payload.GasLimit = HexToNumber<long>(executionPayload.GasLimit);
+            payload.GasUsed = HexToNumber<long>(executionPayload.GasUsed);
             payload.LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom));
             payload.ParentHash = new(executionPayload.ParentHash);
             payload.PrevRandao = new(executionPayload.PrevRandao);
             payload.ReceiptsRoot = new(executionPayload.ReceiptsRoot);
             payload.StateRoot = new(executionPayload.StateRoot);
-            payload.Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger();
+            payload.Timestamp = HexToNumber<ulong>(executionPayload.Timestamp);
             payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))];
             payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
@@ -136,19 +140,25 @@ namespace Ethereum.Test.Base
             // V4 extends V3, so the V3 check matches both — no need to duplicate blob gas fields.
             if (payload is ExecutionPayloadV3 v3)
             {
-                v3.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
-                v3.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
+                v3.BlobGasUsed = HexToNullableNumber<ulong>(executionPayload.BlobGasUsed);
+                v3.ExcessBlobGas = HexToNullableNumber<ulong>(executionPayload.ExcessBlobGas);
             }
 
             if (payload is ExecutionPayloadV4 v4)
             {
                 v4.BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList);
-                v4.SlotNumber = executionPayload.SlotNumber is null ? null : (ulong)Bytes.FromHexString(executionPayload.SlotNumber).ToUnsignedBigInteger();
+                v4.SlotNumber = HexToNullableNumber<ulong>(executionPayload.SlotNumber);
                 v4.ExecutionRequests = [];
             }
 
             return payload;
         }
+
+        private static T HexToNumber<T>(string hex) where T : IConvertible
+            => (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
+
+        private static T? HexToNullableNumber<T>(string? hex) where T : struct, IConvertible
+            => hex is null ? null : (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
