@@ -208,7 +208,7 @@ public abstract class BlockchainTestBase
             {
                 // engine test
                 IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
-                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
+                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule, parentHeader.Hash!);
             }
             else
             {
@@ -311,9 +311,20 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule, Hash256 initialHeadHash)
     {
         (ExecutionPayload, string[]?, string?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+
+        if (payloads.Length > 0)
+        {
+            int initialFcuVersion = payloads[0].Item5;
+            ForkchoiceStateV1 initialFcuState = new(initialHeadHash, initialHeadHash, initialHeadHash);
+            MethodInfo initialFcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{initialFcuVersion}");
+            ResultWrapper<ForkchoiceUpdatedV1Result> initialFcuResult =
+                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)initialFcuMethod.Invoke(engineRpcModule, [initialFcuState, null]);
+
+            Assert.That(initialFcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), initialFcuResult.Result.Error);
+        }
 
         // blockchain test engine
         foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string? validationError, int newPayloadVersion, int fcuVersion) in payloads)

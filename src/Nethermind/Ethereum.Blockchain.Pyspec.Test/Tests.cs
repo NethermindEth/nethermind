@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -44,7 +46,21 @@ public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<Pari
 
 public class ShanghaiEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiEngineBlockchainTests>;
 
-public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>;
+public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>
+{
+    [Test]
+    public async Task Engine_from_state_test_on_top_of_genesis_should_not_sync()
+    {
+        BlockchainTest test = new TestsSourceLoader(
+                new LoadPyspecTestsStrategy(),
+                "fixtures/blockchain_tests_engine/for_cancun")
+            .LoadTests<BlockchainTest>()
+            .Single(static t => t.Name ==
+                "test_run_until_out_of_gas[fork_Cancun-tx_gas_limit_0x07270e00-blockchain_test_engine_from_state_test-tstore]");
+
+        Assert.That((await RunTest(test)).Pass, Is.True);
+    }
+}
 
 public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
 
