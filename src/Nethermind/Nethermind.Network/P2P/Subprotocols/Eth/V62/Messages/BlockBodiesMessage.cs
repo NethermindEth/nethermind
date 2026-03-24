@@ -34,6 +34,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             Bodies = new OwnedBlockBodies(bodies);
         }
 
+        public override void Dispose()
+        {
+            base.Dispose();
+            Bodies?.Dispose();
+        }
+
         public override string ToString() => $"{nameof(BlockBodiesMessage)}({Bodies?.Bodies?.Length ?? 0})";
     }
 }
