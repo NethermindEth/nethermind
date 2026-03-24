@@ -44,7 +44,7 @@ public class SnapMessageLimitsTests
             accounts.Add(new PathWithAccount(TestItem.KeccakA, Build.An.Account.WithBalance(1).TestObject));
         }
 
-        AccountRangeMessage msg = new()
+        using AccountRangeMessage msg = new()
         {
             RequestId = 1,
             PathsWithAccounts = accounts,
@@ -52,7 +52,7 @@ public class SnapMessageLimitsTests
         };
 
         byte[] serialized = serializer.Serialize(msg);
-        AccountRangeMessage deserialized = serializer.Deserialize(serialized);
+        using AccountRangeMessage deserialized = serializer.Deserialize(serialized);
 
         deserialized.PathsWithAccounts.Count.Should().Be(count);
     }
@@ -63,10 +63,11 @@ public class SnapMessageLimitsTests
         const int slotCount = 50_000;
         StorageRangesMessageSerializer serializer = new();
 
+        byte[] encodedSlot = Rlp.Encode(new byte[] { 0x01 }).Bytes;
         ArrayPoolList<PathWithStorageSlot> slots = new(slotCount);
         for (int i = 0; i < slotCount; i++)
         {
-            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, Rlp.Encode(new byte[] { 0x01 }).Bytes));
+            slots.Add(new PathWithStorageSlot(TestItem.KeccakA, encodedSlot));
         }
 
         using StorageRangeMessage msg = new()
