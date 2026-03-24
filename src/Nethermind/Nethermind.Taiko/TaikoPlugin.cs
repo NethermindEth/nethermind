@@ -62,6 +62,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
         InitializeL1SloadIfEnabled();
+        InitializeL1StaticCallIfEnabled();
 
         return Task.CompletedTask;
     }
@@ -96,6 +97,38 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         L1SloadPrecompile.L1StorageProvider = storageProvider;
         L1SloadPrecompile.Logger = _api.Context.Resolve<ILogManager>().GetClassLogger<L1SloadPrecompile>();
         if (logger.IsInfo) logger.Info("L1SLOAD: precompile fully initialized");
+    }
+
+    private void InitializeL1StaticCallIfEnabled()
+    {
+        ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
+
+        TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
+        ILogger logger = _api.Context.Resolve<ILogManager>().GetClassLogger<TaikoPlugin>();
+
+        if (!taikoSpec.IsL1StaticCallEnabled)
+        {
+            if (logger.IsInfo) logger.Info("L1STATICCALL is disabled in chainspec");
+            return;
+        }
+
+        if (logger.IsInfo) logger.Info("L1STATICCALL is enabled in chainspec");
+
+        ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
+
+        if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1STATICCALL precompile");
+
+        if (logger.IsInfo) logger.Info($"L1STATICCALL: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
+
+        JsonRpcL1CallProvider callProvider = new(
+            surgeConfig.L1EthApiEndpoint,
+            _api.Context.Resolve<IJsonSerializer>(),
+            _api.Context.Resolve<ILogManager>());
+
+        L1StaticCallPrecompile.L1CallProvider = callProvider;
+        L1StaticCallPrecompile.Logger = _api.Context.Resolve<ILogManager>().GetClassLogger<L1StaticCallPrecompile>();
+        if (logger.IsInfo) logger.Info("L1STATICCALL: precompile fully initialized");
     }
 
     public bool MustInitialize => true;
