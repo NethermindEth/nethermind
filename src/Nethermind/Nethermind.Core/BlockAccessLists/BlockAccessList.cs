@@ -403,6 +403,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         IList<BalanceChange> balanceChanges = accountChanges.BalanceChanges;
         int count = balanceChanges.Count;
 
+        // todo: these methods will also change with new generatingBAL structure
         if (count == 0)
         {
             // first balance change of block
