@@ -280,13 +280,24 @@ public abstract class BlockchainTestBase
             Assert.That(expectedResult.Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
             bool expectsException = expectedResult.ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
-            if (blockValidator.ValidateSuggestedBlock(expectedResult.Block, parentHeader, out string? validationError))
+            bool validationPassed;
+            string? validationError;
+            try
+            {
+                // Validate block structure first (mimics SyncServer validation)
+                validationPassed = blockValidator.ValidateSuggestedBlock(expectedResult.Block, parentHeader, out validationError);
+            }
+            catch (Exception e)
+            {
+                // Validation itself threw (e.g. null parent reference) — treat as validation failure
+                Assert.That(expectsException, $"Unexpected exception validating block {expectedResult.Block.Hash}: {e}");
+                continue;
+            }
+
+            if (validationPassed)
             {
                 try
                 {
-                    // Validation passed, suggest the block for processing -
-                    // if expectException is present should still fail the processing
                     blockTree.SuggestBlock(expectedResult.Block);
                     if (expectsException)
                     {
