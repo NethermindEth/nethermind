@@ -23,7 +23,7 @@ namespace Nethermind.Core.Test.Builders
         {
             foreach (UInt256 key in keys)
             {
-                TestObjectInternal.AddStorageRead(key);
+                TestObjectInternal.AddStorageRead(new(key));
             }
             return this;
         }
@@ -31,10 +31,9 @@ namespace Nethermind.Core.Test.Builders
 
         public AccountChangesBuilder WithStorageChanges(UInt256 key, params StorageChange[] storageChanges)
         {
-            SlotChanges slotChanges = TestObjectInternal.GetOrAddSlotChanges(key);
             foreach (StorageChange storageChange in storageChanges)
             {
-                slotChanges.Changes.Add(storageChange.BlockAccessIndex, storageChange);
+                TestObjectInternal.AddStorageChange(key, storageChange);
             }
             return this;
         }

@@ -6,9 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -94,25 +94,6 @@ public class AccountChanges : IEquatable<AccountChanges>
     public static bool operator !=(AccountChanges left, AccountChanges right) =>
         !(left == right);
 
-    public void Merge(AccountChanges other)
-    {
-        foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
-        {
-            if (_storageChanges.TryGetValue(kv.Key, out SlotChanges? existing))
-            {
-                existing.Merge(kv.Value);
-            }
-            else
-            {
-                _storageChanges.Add(kv.Key, kv.Value);
-            }
-        }
-        _storageReads.AddRange(other._storageReads);
-        _balanceChanges.AddRange(other._balanceChanges);
-        _nonceChanges.AddRange(other._nonceChanges);
-        _codeChanges.AddRange(other._codeChanges);
-    }
-
     // n.b. implies that length of changes is zero
     public bool HasStorageChange(UInt256 key)
         => _storageChanges.ContainsKey(key);
@@ -129,17 +110,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
     }
 
-    public SlotChanges GetOrAddSlotChanges(UInt256 key)
-    {
-        if (!_storageChanges.TryGetValue(key, out SlotChanges? existing))
-        {
-            SlotChanges slotChanges = new(key);
-            _storageChanges.Add(key, slotChanges);
-            return slotChanges;
-        }
-        return existing;
-    }
-
     public IEnumerable<SlotChanges> SlotChangesAtIndex(int index)
     {
         foreach (SlotChanges slotChanges in StorageChanges)
@@ -151,71 +121,11 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
     }
 
-    public void AddStorageRead(UInt256 key)
-        => _storageReads.Add(new(key));
-
-    public void RemoveStorageRead(UInt256 key)
-        => _storageReads.Remove(new(key));
-
-    public void SelfDestruct()
-    {
-        foreach (UInt256 key in _storageChanges.Keys)
-        {
-            AddStorageRead(key);
-        }
-
-        _storageChanges.Clear();
-        _nonceChanges.Clear();
-        _codeChanges.Clear();
-    }
-
-    public void AddBalanceChange(BalanceChange balanceChange)
-        => _balanceChanges[balanceChange.BlockAccessIndex] = balanceChange;
-
-    public bool PopBalanceChange(int index, [NotNullWhen(true)] out BalanceChange? balanceChange)
-    {
-        balanceChange = null;
-        if (PopChange(_balanceChanges, index, out BalanceChange change))
-        {
-            balanceChange = change;
-            return true;
-        }
-        return false;
-    }
-
     public BalanceChange? BalanceChangeAtIndex(ushort index)
         => _balanceChanges.TryGetValue(index, out BalanceChange balanceChange) ? balanceChange : null;
 
-    public void AddNonceChange(NonceChange nonceChange)
-        => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
-
-    public bool PopNonceChange(int index, [NotNullWhen(true)] out NonceChange? nonceChange)
-    {
-        nonceChange = null;
-        if (PopChange(_nonceChanges, index, out NonceChange change))
-        {
-            nonceChange = change;
-            return true;
-        }
-        return false;
-    }
-
     public NonceChange? NonceChangeAtIndex(ushort index)
         => _nonceChanges.TryGetValue(index, out NonceChange nonceChange) ? nonceChange : null;
-
-    public void AddCodeChange(CodeChange codeChange)
-        => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
-
-    public bool PopCodeChange(int index, [NotNullWhen(true)] out CodeChange? codeChange)
-    {
-        codeChange = null;
-        if (PopChange(_codeChanges, index, out CodeChange change))
-        {
-            codeChange = change;
-            return true;
-        }
-        return false;
-    }
 
     public CodeChange? CodeChangeAtIndex(int index)
         => _codeChanges.TryGetValue(index, out CodeChange codeChange) ? codeChange : null;
@@ -345,6 +255,16 @@ public class AccountChanges : IEquatable<AccountChanges>
         return false;
     }
 
+    public void LoadPreBlockState(UInt256 balance, ulong nonce, byte[] code)
+    {
+        _balanceChanges.Add(-1, new(-1, balance));
+        _nonceChanges.Add(-1, new(-1, nonce));
+        _codeChanges.Add(-1, new(-1, code));
+    }
+
+    public void LoadPreBlockState(StorageCell storageCell, ReadOnlySpan<byte> value)
+        => GetOrAddSlotChanges(storageCell.Index).AddStorageChange(new(-1, new(value, true)));
+
     // assumes prestate not loaded
     public void CheckWasChanged()
     {
@@ -355,23 +275,29 @@ public class AccountChanges : IEquatable<AccountChanges>
     public bool AccountChanged => _wasChanged;
     private bool _wasChanged = false;
 
-    private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
+    internal void AddBalanceChange(BalanceChange balanceChange)
+        => _balanceChanges.Add(balanceChange.BlockAccessIndex, balanceChange);
+
+    internal void AddNonceChange(NonceChange nonceChange)
+        => _nonceChanges.Add(nonceChange.BlockAccessIndex, nonceChange);
+
+    internal void AddCodeChange(CodeChange codeChange)
+        => _codeChanges.Add(codeChange.BlockAccessIndex, codeChange);
+
+    internal void AddStorageChange(UInt256 key, StorageChange storageChange)
+        => GetOrAddSlotChanges(key).AddStorageChange(storageChange);
+
+    internal void AddStorageRead(StorageRead storageRead)
+        => _storageReads.Add(storageRead);
+
+    private SlotChanges GetOrAddSlotChanges(UInt256 key)
     {
-        change = default;
-
-        if (changes.Count == 0)
-            return false;
-
-        KeyValuePair<int, T> lastChange = changes.Last();
-
-        if (lastChange.Key == index)
+        if (!_storageChanges.TryGetValue(key, out SlotChanges? existing))
         {
-            changes.RemoveAt(changes.Count - 1);
-            change = lastChange.Value;
-            return true;
+            SlotChanges slotChanges = new(key);
+            _storageChanges.Add(key, slotChanges);
+            return slotChanges;
         }
-
-        return false;
+        return existing;
     }
-
 }

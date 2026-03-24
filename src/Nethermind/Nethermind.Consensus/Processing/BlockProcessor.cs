@@ -65,7 +65,7 @@ public partial class BlockProcessor(
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
+            // _balBuilder.GeneratedBlockAccessList.Clear();
             SetupBlockAccessLists(spec, suggestedBlock);
         }
 
