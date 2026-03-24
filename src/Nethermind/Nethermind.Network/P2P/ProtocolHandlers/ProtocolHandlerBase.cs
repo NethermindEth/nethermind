@@ -133,6 +133,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 using CancellationTokenSource delayCancellation = new();
                 Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
 
+                // Guard: receivedInitMsgTask won the race means init completed; otherwise the
+                // delay won, meaning no init message arrived within InitTimeout.  Without
+                // TrySetCanceled the TCS stays pending forever, keeping its continuation
+                // chain alive as a memory/handle leak for the lifetime of the node.
                 if (firstTask != receivedInitMsgTask)
                 {
                     if (Logger.IsTrace)
@@ -140,6 +144,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                     }
 
+                    _initCompletionSource.TrySetCanceled();
                     Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
                 }
                 else
