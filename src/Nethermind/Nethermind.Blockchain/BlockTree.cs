@@ -1026,21 +1026,21 @@ namespace Nethermind.Blockchain
             }
 
             // Upward scan: clear any stale canonical markers above max(previousHead, lastNumber).
-            // Beacon sync (wereProcessed=false) marks blocks canonical without updating Head,
-            // leaving stale markers the downward loop cannot reach. This covers two cases:
-            //   - FCU at same/higher height (previousHeadNumber <= lastNumber): scans from lastNumber+1.
-            //   - ePBS FCU to ancestor with stale head: scans from previousHeadNumber+1, clearing
-            //     beacon-synced markers above the stale head that the downward loop misses.
-            for (long levelNumber = Math.Max(previousHeadNumber, lastNumber) + 1; ; levelNumber++)
+            // Uses BestKnownNumber as the upper bound instead of breaking on the first gap.
+            // A gap-breaking scan is unsafe because concurrent MoveToMain calls from
+            // BlockchainProcessor can re-mark a single level after the scan passes it,
+            // creating a non-contiguous pattern (e.g., H+2 marked, H+3 unmarked, H+4 marked)
+            // that a break-on-first-gap loop would miss entirely.
+            long scanStart = Math.Max(previousHeadNumber, lastNumber) + 1;
+            long scanEnd = Math.Max(BestKnownNumber, Math.Max(BestKnownBeaconNumber, previousHeadNumber));
+            for (long levelNumber = scanStart; levelNumber <= scanEnd; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain)
+                if (level is not null && level.HasBlockOnMainChain)
                 {
-                    break;
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                 }
-
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
             }
 
             for (int i = 0; i < blocks.Count; i++)
@@ -1084,13 +1084,16 @@ namespace Nethermind.Blockchain
         private long ClearStaleMarkersAbove(long headNumber, BatchWrite batch)
         {
             long cleared = 0L;
-            for (long levelNumber = headNumber + 1; ; levelNumber++)
+            long scanEnd = Math.Max(BestKnownNumber, BestKnownBeaconNumber);
+            for (long levelNumber = headNumber + 1; levelNumber <= scanEnd; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain) break;
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
-                cleared++;
+                if (level is not null && level.HasBlockOnMainChain)
+                {
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                    cleared++;
+                }
             }
             return cleared;
         }
