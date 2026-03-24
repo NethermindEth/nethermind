@@ -133,7 +133,7 @@ namespace Ethereum.Test.Base
             payload.ReceiptsRoot = new(executionPayload.ReceiptsRoot);
             payload.StateRoot = new(executionPayload.StateRoot);
             payload.Timestamp = HexToNumber<ulong>(executionPayload.Timestamp);
-            payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))];
+            payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(ParseWithdrawal)];
             payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
             payload.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
 
@@ -159,6 +159,18 @@ namespace Ethereum.Test.Base
 
         private static T? HexToNullableNumber<T>(string? hex) where T : struct, IConvertible
             => hex is null ? null : (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
+
+        private static Withdrawal ParseWithdrawal(System.Text.Json.JsonElement element)
+        {
+            // Engine API format: JSON object with index, validatorIndex, address, amount
+            if (element.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                return element.Deserialize<Withdrawal>(EthereumJsonSerializer.JsonOptions)!;
+            }
+
+            // Legacy format: RLP-encoded hex string
+            return Rlp.Decode<Withdrawal>(Bytes.FromHexString(element.GetString()!));
+        }
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {

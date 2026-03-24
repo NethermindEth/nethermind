@@ -29,7 +29,7 @@ namespace Ethereum.Test.Base
             public string ExcessBlobGas { get; set; }
             public string BlockHash { get; set; }
             public string[] Transactions { get; set; }
-            public string[]? Withdrawals { get; set; }
+            public JsonElement[]? Withdrawals { get; set; }
             public string? BlockAccessList { get; set; }
             public string? SlotNumber { get; set; }
         }
