@@ -126,10 +126,11 @@ public class ShutterBlockHandler : IShutterBlockHandler
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
         lock (_syncObject)
         {
+            // Dispose each BlockWaitTask fully (TimeoutSource CTS + both registrations)
+            // rather than only the registrations, to prevent CTS leaks on shutdown.
             _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
             {
-                waitTask.Value.CancellationRegistration.Dispose();
-                waitTask.Value.TimeoutCancellationRegistration.Dispose();
+                waitTask.Value.Dispose();
             }));
         }
     }
@@ -151,8 +152,9 @@ public class ShutterBlockHandler : IShutterBlockHandler
                         waitTask.Tcs.SetException(new OperationCanceledException());
                     }
 
-                    waitTask.CancellationRegistration.Dispose();
-                    waitTask.TimeoutCancellationRegistration.Dispose();
+                    // Dispose the full BlockWaitTask (TimeoutSource CTS + both registrations)
+                    // so the timeout CTS is not leaked on cancel/timeout paths.
+                    waitTask.Dispose();
                 }
 
                 slotWaitTasks.Remove(taskId);

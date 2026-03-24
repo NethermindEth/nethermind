@@ -12,6 +12,9 @@ namespace Nethermind.Merge.Plugin
     public class MergeFinalizationManager : IManualBlockFinalizationManager
     {
         protected readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
+        // Stored so we can unsubscribe TerminalBlockReached in Dispose; the parameter is not
+        // otherwise retained by the constructor caller.
+        private readonly IPoSSwitcher _poSSwitcher;
         protected bool IsPostMerge { get; set; }
 
         public event EventHandler<FinalizeEventArgs>? BlocksFinalized;
@@ -20,6 +23,7 @@ namespace Nethermind.Merge.Plugin
             IBlockFinalizationManager? blockFinalizationManager, IPoSSwitcher poSSwitcher)
         {
             _manualBlockFinalizationManager = manualBlockFinalizationManager;
+            _poSSwitcher = poSSwitcher;
 
             poSSwitcher.TerminalBlockReached += OnSwitchHappened;
             if (poSSwitcher.HasEverReachedTerminalBlock())
@@ -60,6 +64,10 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public virtual void Dispose() { }
+        public virtual void Dispose()
+        {
+            _poSSwitcher.TerminalBlockReached -= OnSwitchHappened;
+            _manualBlockFinalizationManager.BlocksFinalized -= OnBlockFinalized;
+        }
     }
 }
