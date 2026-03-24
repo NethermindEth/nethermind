@@ -3249,4 +3249,73 @@ public class BlockTreeTests
         blockTree.FindBlock(1, BlockTreeLookupOptions.None)!.Hash.Should().Be(b1.Hash!,
             "height 1 must return B1 after reorg");
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_beacon_sync_gap_in_stale_markers_leaves_orphan_after_reorg()
+    {
+        // Reproduces the race-condition gap scenario on top of the beacon sync path:
+        //
+        //   genesis → headBlock(H=1) → d1(H=2) → d2(H=3) → d3(H=4)
+        //
+        //   1. FCU(headBlock): Head = headBlock at H=1.
+        //   2. Beacon sync marks d1, d2, d3 canonical (wereProcessed=false, Head stays at H=1).
+        //   3. Concurrent MoveToMain clears d2's HasBlockOnMainChain → gap at H=3.
+        //   4. FCU(sibling) at H=1: previousHeadNumber==lastNumber==1 → Phase 1 skips.
+        //      Phase 2 upward scan: clears d1(H=2), hits gap at d2(H=3), breaks.
+        //      d3(H=4) remains stale canonical — BUG.
+        //
+        // This test FAILS on canonical-fix (break-on-first-gap) and PASSES on bounded-scan.
+        BlockTree blockTree = BuildBlockTree();
+
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        blockTree.SuggestBlock(genesis);
+        blockTree.UpdateMainChain(new[] { genesis }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        Block headBlock = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0xAA }).TestObject;
+        Block d1 = Build.A.Block.WithNumber(2).WithParent(headBlock).TestObject;
+        Block d2 = Build.A.Block.WithNumber(3).WithParent(d1).TestObject;
+        Block d3 = Build.A.Block.WithNumber(4).WithParent(d2).TestObject;
+
+        blockTree.SuggestBlock(headBlock);
+        blockTree.SuggestBlock(d1);
+        blockTree.SuggestBlock(d2);
+        blockTree.SuggestBlock(d3);
+
+        // FCU(headBlock): head = headBlock at H=1
+        blockTree.UpdateMainChain(new[] { headBlock }, wereProcessed: true, forceUpdateHeadBlock: true);
+        blockTree.Head!.Hash.Should().Be(headBlock.Hash!);
+
+        // Beacon sync: d1, d2, d3 marked canonical, Head stays at H=1
+        blockTree.UpdateMainChain(new[] { d1 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { d2 }, wereProcessed: false);
+        blockTree.UpdateMainChain(new[] { d3 }, wereProcessed: false);
+
+        blockTree.Head!.Number.Should().Be(1, "Head must stay at H=1 — wereProcessed=false");
+        blockTree.IsMainChain(d1.Header).Should().BeTrue("precondition: d1 canonical via beacon sync");
+        blockTree.IsMainChain(d2.Header).Should().BeTrue("precondition: d2 canonical via beacon sync");
+        blockTree.IsMainChain(d3.Header).Should().BeTrue("precondition: d3 canonical via beacon sync");
+
+        // Simulate race: concurrent MoveToMain clears d2's marker, creating a gap at H=3
+        ChainLevelInfo? levelD2 = blockTree.FindLevel(d2.Number);
+        levelD2!.HasBlockOnMainChain = false;
+
+        // Precondition: gap exists
+        blockTree.IsMainChain(d2.Header).Should().BeFalse("precondition: d2 gap — cleared by simulated race");
+        blockTree.IsMainChain(d3.Header).Should().BeTrue("precondition: d3 still stale canonical past the gap");
+
+        // FCU(sibling) at H=1: reorg to sibling, previousHeadNumber==lastNumber==1
+        Block sibling = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData(new byte[] { 0xBB }).TestObject;
+        blockTree.SuggestBlock(sibling);
+        blockTree.UpdateMainChain(new[] { sibling }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.Head!.Hash.Should().Be(sibling.Hash!);
+        blockTree.IsMainChain(sibling.Header).Should().BeTrue("sibling must be canonical");
+        blockTree.IsMainChain(d1.Header).Should().BeFalse("d1 must be de-canonicalized after reorg");
+        blockTree.IsMainChain(d2.Header).Should().BeFalse("d2 must stay non-canonical (gap)");
+        blockTree.IsMainChain(d3.Header).Should().BeFalse("d3 must be de-canonicalized — bounded scan must reach past the gap");
+
+        blockTree.FindCanonicalBlockInfo(2).Should().BeNull("H+1 must be null — orphaned after reorg");
+        blockTree.FindCanonicalBlockInfo(3).Should().BeNull("H+2 must be null — gap, non-canonical");
+        blockTree.FindCanonicalBlockInfo(4).Should().BeNull("H+3 must be null — orphaned, must not survive the gap");
+    }
 }
