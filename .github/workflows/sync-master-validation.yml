@@ -10,10 +10,6 @@ on:
     types:
       - completed
 
-  # TODO: Remove this push trigger after testing - only for validation
-  push:
-    branches: [feature/sync-ci-strategy]
-
   workflow_dispatch:
     inputs:
       nethermind_image:
