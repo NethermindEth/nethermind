@@ -114,6 +114,20 @@ Before creating a pull request:
 
 See [global.json](./global.json) for the required .NET SDK version.
 
+## Windows .NET commands for codex, chatgpt, openai
+
+If running on Windows, before `dotnet restore`, `dotnet build`, or `dotnet test`, use repo-local .NET state:
+
+```powershell
+. .\codex-dotnet.ps1
+```
+
+When possible on Windows, prefer single-node execution:
+
+- `dotnet restore ... -m:1`
+- `dotnet build ... -m:1`
+- `dotnet test ... -m:1`
+
 ## Reproducible Benchmark Workflow Guidance
 
 This repository contains a dedicated workflow for reproducible payload benchmarks:

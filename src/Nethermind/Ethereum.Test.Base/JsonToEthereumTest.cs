@@ -86,7 +86,7 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayload, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static IEnumerable<(ExecutionPayload, string[]?, string?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
         {
             if (executionPayloadsJson is null)
             {
@@ -101,23 +101,40 @@ namespace Ethereum.Test.Base
                 int newPayloadVersion = int.Parse(engineNewPayload.NewPayloadVersion ?? "4");
                 // params[3] is executionRequests for V4+, or validationError for V3
                 string[]? executionRequests = null;
-                string[]? validationError = null;
                 if (newPayloadVersion >= 4 && engineNewPayload.Params.Length > 3)
                 {
                     executionRequests = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
-                    validationError = engineNewPayload.Params.Length > 4 ? engineNewPayload.Params[4].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                }
-                else if (engineNewPayload.Params.Length > 3)
-                {
-                    validationError = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
                 }
                 ExecutionPayload payload = CreateExecutionPayload(executionPayload, parentBeaconBlockRoot, newPayloadVersion);
                 if (executionRequests is not null)
                 {
                     payload.ExecutionRequests = [.. executionRequests.Select(x => Bytes.FromHexString(x))];
                 }
-                yield return (payload, blobVersionedHashes, validationError, newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
+                yield return (payload, blobVersionedHashes, ParseValidationError(engineNewPayload, newPayloadVersion), newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
             }
+        }
+
+        private static string? ParseValidationError(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion)
+        {
+            if (engineNewPayload.ValidationError is not null)
+            {
+                return engineNewPayload.ValidationError;
+            }
+
+            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            if (engineNewPayload.Params.Length <= validationErrorParamIndex)
+            {
+                return null;
+            }
+
+            JsonElement validationError = engineNewPayload.Params[validationErrorParamIndex];
+            return validationError.ValueKind switch
+            {
+                JsonValueKind.Null => null,
+                JsonValueKind.String => validationError.Deserialize<string>(EthereumJsonSerializer.JsonOptions),
+                JsonValueKind.Array => string.Join("|", validationError.Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) ?? []),
+                _ => null,
+            };
         }
 
         private static ExecutionPayload CreateExecutionPayload(

@@ -10,6 +10,7 @@ namespace Ethereum.Test.Base
         public JsonElement[] Params { get; set; }
         public string? NewPayloadVersion { get; set; }
         public string? ForkChoiceUpdatedVersion { get; set; }
+        public string? ValidationError { get; set; }
 
         public class ParamsExecutionPayload
         {

@@ -90,7 +90,7 @@ public abstract class BlockchainTestBase
         // under the target fork rules when the fork requires it (e.g. EIP-7928 sets BlockAccessListHash).
         bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = isEngineTest || genesisUsesTargetFork
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = genesisUsesTargetFork
             ? [((ForkActivation)0, test.Network)]
             : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
@@ -313,10 +313,10 @@ public abstract class BlockchainTestBase
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
-        (ExecutionPayload, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        (ExecutionPayload, string[]?, string?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
         // blockchain test engine
-        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)
+        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string? validationError, int newPayloadVersion, int fcuVersion) in payloads)
         {
             ResultWrapper<PayloadStatusV1> res;
             byte[]?[] hashes = blobVersionedHashes is null ? [] : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
@@ -334,7 +334,14 @@ public abstract class BlockchainTestBase
 
             res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
 
-            if (res.Result.ResultType == ResultType.Success)
+            Assert.That(res.Result.ResultType, Is.EqualTo(ResultType.Success), res.Result.Error);
+            Assert.That(res.Data, Is.Not.Null, "engine_newPayload returned success without payload status");
+
+            string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+            Assert.That(res.Data!.Status, Is.EqualTo(expectedStatus),
+                $"engine_newPayloadV{newPayloadVersion} returned unexpected status for {executionPayload.BlockHash}. Validation error: {res.Data.ValidationError}");
+
+            if (res.Data.Status == PayloadStatus.Valid)
             {
                 ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
                 MethodInfo fcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{fcuVersion}");

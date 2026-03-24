@@ -79,6 +79,25 @@ public class TransactionJsonTest : GeneralStateTestBase
         converted.Item1.Should().BeOfType(expectedPayloadType);
     }
 
+    [Test]
+    public void Convert_engine_payloads_reads_top_level_validation_error()
+    {
+        TestEngineNewPayloadsJson[] payloads =
+        [
+            new()
+            {
+                NewPayloadVersion = "5",
+                ForkChoiceUpdatedVersion = "4",
+                ValidationError = "BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED",
+                Params = [CreatePayloadJson(5), JsonDocument.Parse("[]").RootElement.Clone(), JsonDocument.Parse("\"0x0000000000000000000000000000000000000000000000000000000000000000\"").RootElement.Clone(), JsonDocument.Parse("[]").RootElement.Clone()]
+            }
+        ];
+
+        var converted = JsonToEthereumTest.Convert(payloads).Single();
+
+        converted.Item3.Should().Be("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED");
+    }
+
     /// <summary>
     /// An AccessList transaction with an empty access list sent against Istanbul (pre-Berlin)
     /// must be rejected. The post-state root must equal the pre-state root - the invalid tx
