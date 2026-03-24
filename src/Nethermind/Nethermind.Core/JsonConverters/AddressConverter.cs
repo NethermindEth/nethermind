@@ -42,11 +42,6 @@ public class AddressConverter : JsonConverter<Address>
         writer.WritePropertyName(addressBytes);
     }
 
-    public override Address ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
-        if (bytes is null)
-            throw new JsonException("Invalid address property name");
-        return new Address(bytes);
-    }
+    public override Address ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        new Address(ByteArrayConverter.Convert(ref reader) ?? throw new JsonException("Invalid address property name"));
 }
