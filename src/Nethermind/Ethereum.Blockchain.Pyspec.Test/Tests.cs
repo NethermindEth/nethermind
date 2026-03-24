@@ -27,6 +27,28 @@ public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchai
 
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 
+// Engine blockchain tests - directory derived from class name by convention (strip "EngineBlockchainTests", lowercase)
+
+public class FrontierEngineBlockchainTests : PyspecEngineBlockchainTestFixture<FrontierEngineBlockchainTests>;
+
+public class HomesteadEngineBlockchainTests : PyspecEngineBlockchainTestFixture<HomesteadEngineBlockchainTests>;
+
+public class ByzantiumEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ByzantiumEngineBlockchainTests>;
+
+public class IstanbulEngineBlockchainTests : PyspecEngineBlockchainTestFixture<IstanbulEngineBlockchainTests>;
+
+public class BerlinEngineBlockchainTests : PyspecEngineBlockchainTestFixture<BerlinEngineBlockchainTests>;
+
+public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisEngineBlockchainTests>;
+
+public class ShanghaiEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiEngineBlockchainTests>;
+
+public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>;
+
+public class PragueEngineBlockchainTests : PyspecEngineBlockchainTestFixture<PragueEngineBlockchainTests>;
+
+public class OsakaEngineBlockchainTests : PyspecEngineBlockchainTestFixture<OsakaEngineBlockchainTests>;
+
 // State tests - directory derived from class name by convention (strip "StateTests", lowercase)
 
 public class FrontierStateTests : PyspecStateTestFixture<FrontierStateTests>;

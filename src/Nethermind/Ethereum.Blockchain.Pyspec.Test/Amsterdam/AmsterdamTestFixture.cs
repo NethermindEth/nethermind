@@ -30,6 +30,25 @@ public abstract class AmsterdamBlockChainTestFixture<TSelf> : BlockchainTestBase
 }
 
 /// <summary>
+/// Generic base for Amsterdam EIP engine blockchain tests.
+/// Wildcard is read from <see cref="EipWildcardAttribute"/> on <typeparamref name="TSelf"/>.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public abstract class AmsterdamEngineBlockChainTestFixture<TSelf> : BlockchainTestBase
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test) => await RunTest(test);
+
+    public static IEnumerable<BlockchainTest> LoadTests() =>
+        new TestsSourceLoader(new LoadPyspecTestsStrategy
+        {
+            ArchiveVersion = Constants.BalArchiveVersion,
+            ArchiveName = Constants.BalArchiveName
+        }, "fixtures/blockchain_tests_engine/for_amsterdam", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<BlockchainTest>();
+}
+
+/// <summary>
 /// Generic base for Amsterdam EIP state tests.
 /// Wildcard is read from <see cref="EipWildcardAttribute"/> on <typeparamref name="TSelf"/>.
 /// </summary>

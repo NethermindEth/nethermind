@@ -26,6 +26,22 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 }
 
 /// <summary>
+/// Generic base for pyspec engine blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
+/// Directory is derived by convention: strip "EngineBlockchainTests" suffix, lowercase.
+/// </summary>
+[TestFixture]
+[Parallelizable(ParallelScope.All)]
+public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestBase
+{
+    [TestCaseSource(nameof(LoadTests))]
+    public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
+
+    public static IEnumerable<BlockchainTest> LoadTests() =>
+        new TestsSourceLoader(new LoadPyspecTestsStrategy(),
+            $"fixtures/blockchain_tests_engine/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("EngineBlockchainTests")}").LoadTests<BlockchainTest>();
+}
+
+/// <summary>
 /// Generic base for pyspec state tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "StateTests" suffix, lowercase.
 /// </summary>
