@@ -17,7 +17,6 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
     private readonly INethermindApi _api = api;
     protected override ITxPool CreateTxPool(IChainHeadInfoProvider chainHeadInfoProvider)
     {
-        _api.TxGossipPolicy.Policies.Add(new XdcTxGossipPolicy(_api.SpecProvider, chainHeadInfoProvider));
         ISnapshotManager snapshotManager = _api.Context.Resolve<ISnapshotManager>();
 
         Nethermind.TxPool.TxPool txPool = new(_api.EthereumEcdsa!,
@@ -27,7 +26,7 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy,
+                _api.Context.Resolve<CompositeTxGossipPolicy>(),
                 new SignTransactionFilter(snapshotManager, _api.BlockTree, _api.SpecProvider),
                 _api.HeadTxValidator,
                 true

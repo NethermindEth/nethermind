@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -14,19 +12,16 @@ public interface ITxGossipPolicy
     bool ShouldGossipTransaction(Transaction tx) => true;
 }
 
-public class CompositeTxGossipPolicy : ITxGossipPolicy
+public class CompositeTxGossipPolicy(params ITxGossipPolicy[] policies) : ITxGossipPolicy
 {
-    public List<ITxGossipPolicy> Policies { get; } = new();
     public bool ShouldListenToGossipedTransactions
     {
         get
         {
-            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            for (int i = 0; i < policies.Length; i++)
             {
-                if (!policy.ShouldListenToGossipedTransactions)
-                {
+                if (!policies[i].ShouldListenToGossipedTransactions)
                     return false;
-                }
             }
             return true;
         }
@@ -36,12 +31,10 @@ public class CompositeTxGossipPolicy : ITxGossipPolicy
     {
         get
         {
-            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            for (int i = 0; i < policies.Length; i++)
             {
-                if (!policy.CanGossipTransactions)
-                {
+                if (!policies[i].CanGossipTransactions)
                     return false;
-                }
             }
             return true;
         }
@@ -49,12 +42,10 @@ public class CompositeTxGossipPolicy : ITxGossipPolicy
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+        for (int i = 0; i < policies.Length; i++)
         {
-            if (!policy.ShouldGossipTransaction(tx))
-            {
+            if (!policies[i].ShouldGossipTransaction(tx))
                 return false;
-            }
         }
         return true;
     }

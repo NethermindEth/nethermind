@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
@@ -51,8 +52,6 @@ namespace Nethermind.Init.Steps
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
                 blocksConfig.ExtraData :
                 "- binary data -");
-
-            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
@@ -109,7 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy,
+                _api.Context.Resolve<CompositeTxGossipPolicy>(),
                 null,
                 _api.HeadTxValidator
             );

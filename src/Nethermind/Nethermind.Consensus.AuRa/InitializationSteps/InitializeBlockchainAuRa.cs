@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Data;
 using Nethermind.Consensus.AuRa.Config;
@@ -98,7 +99,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             api.TxValidator!,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-            api.TxGossipPolicy,
+            api.Context.Resolve<CompositeTxGossipPolicy>(),
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
             api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);

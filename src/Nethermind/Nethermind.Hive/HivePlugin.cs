@@ -6,6 +6,7 @@ using Autofac.Core;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Core;
+using Nethermind.TxPool;
 
 namespace Nethermind.Hive;
 
@@ -26,5 +27,6 @@ public class HiveModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<HiveRunner>()
-        .AddStep(typeof(HiveStep));
+        .AddStep(typeof(HiveStep))
+        .AddSingleton<CompositeTxGossipPolicy>(_ => new CompositeTxGossipPolicy());
 }
