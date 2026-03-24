@@ -68,14 +68,15 @@ public class ParallelWorldStateTests
     }
 
     private static BlockAccessList BuildSuggestedBal(params Address[] addresses)
-    {
-        BlockAccessList bal = new();
-        foreach (Address addr in addresses)
-        {
-            bal.AddAccountRead(addr);
-        }
-        return bal;
-    }
+        => Build.A.BlockAccessList.WithAccountChanges([.. addresses.Select(a => new AccountChanges(a))]).TestObject;
+    // {
+    //     BlockAccessList bal = new();
+    //     foreach (Address addr in addresses)
+    //     {
+    //         bal.AddAccountRead(addr);
+    //     }
+    //     return bal;
+    // }
 
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
@@ -556,7 +557,7 @@ public class ParallelWorldStateTests
         StorageCell cell, ParallelScenario scenario, int txIndex, uint genesisValue, uint expectedValue)
     {
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell);
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index));
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested,
             genesisSetup: ws =>
@@ -571,9 +572,7 @@ public class ParallelWorldStateTests
             {
                 case ParallelScenario.PriorTxChange:
                     {
-                        SlotChanges sc = suggested.GetAccountChanges(TestItem.AddressA)!
-                            .GetOrAddSlotChanges(cell.Index);
-                        sc.AddStorageChange(new StorageChange(0, expectedValue));
+                        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageChange(cell.Index, new StorageChange(0, expectedValue));
                         break;
                     }
                 case ParallelScenario.CurrentTxChange:
@@ -684,7 +683,7 @@ public class ParallelWorldStateTests
     {
         StorageCell cell = new(TestItem.AddressA, 7);
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell); // causes LoadPreBlockState to load slot
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index)); // causes LoadPreBlockState to load slot
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested,
             genesisSetup: ws =>
@@ -812,9 +811,7 @@ public class ParallelWorldStateTests
         // Register the slot directly in StorageChanges. LoadPreBlockState's StorageChanges
         // loop will snapshot it at index –1; do NOT also call AddStorageRead or both loops
         // would try to insert the –1 sentinel for the same slot.
-        SlotChanges slotChanges = suggested.GetAccountChanges(TestItem.AddressA)!
-            .GetOrAddSlotChanges(cell.Index);
-        slotChanges.AddStorageChange(new(0, 0xABu));
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageChange(cell.Index, new(0, 0xABu));
 
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested, genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
@@ -877,7 +874,7 @@ public class ParallelWorldStateTests
                 break;
             case ValidateScenario.SuggestedHasSurplus:
                 // AddressB appears in suggested with a tx-level change but is never touched by generated.
-                suggested.AddAccountRead(TestItem.AddressB);
+                suggested.AddAccountChanges([new(TestItem.AddressB)]);
                 suggested.GetAccountChanges(TestItem.AddressB)!
                     .AddBalanceChange(new(txIndex, 50u));
                 break;
@@ -933,7 +930,7 @@ public class ParallelWorldStateTests
         const ushort txIndex = 0;
         StorageCell cell = new(TestItem.AddressA, 9);
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell); // 1 surplus read vs generated (which has none)
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index)); // 1 surplus read vs generated (which has none)
 
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested, genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));

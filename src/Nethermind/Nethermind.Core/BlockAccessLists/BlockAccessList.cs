@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Core.BlockAccessLists;
 

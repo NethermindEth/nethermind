@@ -6,12 +6,14 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
+
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 
 namespace Nethermind.Core.BlockAccessLists;
 

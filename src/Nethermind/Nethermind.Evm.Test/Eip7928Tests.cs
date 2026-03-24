@@ -1016,7 +1016,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         pws.IsGenesis = false;
 
         BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(testAddress);
+        suggestedBal.AddAccountChanges([new(testAddress)]);
         pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
         pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
 
@@ -1092,7 +1092,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         // Load suggested BAL — LoadPreBlockState reads code from inner state into the BAL entry
         BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(testAddress);
+        suggestedBal.AddAccountChanges([new(testAddress)]);
         pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
         pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
 
