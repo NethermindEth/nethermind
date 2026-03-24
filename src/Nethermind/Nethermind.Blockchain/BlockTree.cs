@@ -764,17 +764,7 @@ namespace Nethermind.Blockchain
 
             if (level.HasBlockOnMainChain)
             {
-                BlockInfo blockInfo = level.BlockInfos[0];
-                // A beacon-sync marker has HasBlockOnMainChain=true but WasProcessed=false.
-                // Such markers can be left above the real head when the upward-scan in
-                // UpdateMainChain races with beacon sync (scan runs before the marker is
-                // set, so it cannot clear it). Any unprocessed marker above Head is stale.
-                if (!blockInfo.WasProcessed && Head is not null && blockNumber > Head.Number)
-                {
-                    return null;
-                }
-
-                return blockInfo.BlockHash;
+                return level.BlockInfos[0].BlockHash;
             }
 
             // Post-merge: block difficulty is 0, so TotalDifficulty never increases and all
@@ -1044,13 +1034,12 @@ namespace Nethermind.Blockchain
             for (long levelNumber = Math.Max(previousHeadNumber, lastNumber) + 1; ; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain)
+                if (level is null) break;
+                if (level.HasBlockOnMainChain)
                 {
-                    break;
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                 }
-
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
             }
 
             for (int i = 0; i < blocks.Count; i++)
@@ -1097,10 +1086,13 @@ namespace Nethermind.Blockchain
             for (long levelNumber = headNumber + 1; ; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null || !level.HasBlockOnMainChain) break;
-                level.HasBlockOnMainChain = false;
-                _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
-                cleared++;
+                if (level is null) break;
+                if (level.HasBlockOnMainChain)
+                {
+                    level.HasBlockOnMainChain = false;
+                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
+                    cleared++;
+                }
             }
             return cleared;
         }
