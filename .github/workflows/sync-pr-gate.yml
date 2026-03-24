@@ -219,7 +219,9 @@ jobs:
             --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}" \
             --checkpoint-sync-url=${CHECKPOINT_URL}
 
-          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
+          # Use docker compose directly instead of `sedge run` because sedge run
+          # does `docker compose pull` which fails for the locally-built image.
+          docker compose up -d
 
       - name: Wait for hoodi to sync
         env:
