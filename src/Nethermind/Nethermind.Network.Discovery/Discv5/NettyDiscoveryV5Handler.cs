@@ -36,8 +36,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket msg)
     {
-        IPEndPoint sender = NormalizeEndpoint((IPEndPoint)msg.Sender);
-        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), sender);
+        UdpReceiveResult udpPacket = new(msg.Content.ReadAllBytesAsArray(), (IPEndPoint)msg.Sender);
 
         if (!_inboundQueue.Writer.TryWrite(udpPacket) && _logger.IsDebug)
         {
@@ -49,8 +48,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
     {
         if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
 
-        IPEndPoint normalizedDestination = NormalizeEndpoint(destination);
-        DatagramPacket packet = new(Unpooled.WrappedBuffer(data), normalizedDestination);
+        DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
 
         try
         {
@@ -58,15 +56,10 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
         }
         catch (SocketException exception)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error sending data", exception);
+            if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error sending discovery v5 payload ({data.Length} bytes) to {destination}", exception);
             throw;
         }
     }
-
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint) =>
-        endpoint.Address.IsIPv4MappedToIPv6
-            ? new IPEndPoint(endpoint.Address.MapToIPv4(), endpoint.Port)
-            : endpoint;
 
     public IAsyncEnumerable<UdpReceiveResult> ReadMessagesAsync(CancellationToken token = default) =>
         _inboundQueue.Reader.ReadAllAsync(token);
