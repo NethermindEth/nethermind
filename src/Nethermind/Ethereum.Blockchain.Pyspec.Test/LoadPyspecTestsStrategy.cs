@@ -30,8 +30,41 @@ public class LoadPyspecTestsStrategy : ITestLoadStrategy
         }
 
         IEnumerable<string> testDirs = !string.IsNullOrEmpty(testsDir)
-            ? Directory.EnumerateDirectories(Path.Combine(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
+            ? Directory.EnumerateDirectories(ResolveTestsDirectory(testsDirectoryName, testsDir), "*", new EnumerationOptions { RecurseSubdirectories = true })
             : Directory.EnumerateDirectories(testsDirectoryName, "*", new EnumerationOptions { RecurseSubdirectories = true });
         return testDirs.SelectMany(td => TestLoadStrategy.LoadTestsFromDirectory(td, wildcard, testType));
+    }
+
+    private static string ResolveTestsDirectory(string testsDirectoryName, string testsDir)
+    {
+        string requestedDirectory = Path.Combine(testsDirectoryName, testsDir);
+        if (Directory.Exists(requestedDirectory))
+        {
+            return requestedDirectory;
+        }
+
+        string[] parts = testsDir.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
+        bool hadForkPrefix = false;
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (!parts[i].StartsWith("for_", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            parts[i] = parts[i]["for_".Length..];
+            hadForkPrefix = true;
+        }
+
+        if (hadForkPrefix)
+        {
+            string legacyDirectory = Path.Combine(testsDirectoryName, Path.Combine(parts));
+            if (Directory.Exists(legacyDirectory))
+            {
+                return legacyDirectory;
+            }
+        }
+
+        return requestedDirectory;
     }
 }

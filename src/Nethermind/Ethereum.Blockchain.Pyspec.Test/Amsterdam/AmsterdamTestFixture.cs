@@ -26,7 +26,7 @@ public abstract class AmsterdamBlockChainTestFixture<TSelf> : BlockchainTestBase
         {
             ArchiveVersion = Constants.BalArchiveVersion,
             ArchiveName = Constants.BalArchiveName
-        }, "fixtures/blockchain_tests", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<BlockchainTest>();
+        }, "fixtures/blockchain_tests/for_amsterdam", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<BlockchainTest>();
 }
 
 /// <summary>
@@ -45,5 +45,5 @@ public abstract class AmsterdamStateTestFixture<TSelf> : GeneralStateTestBase
         {
             ArchiveVersion = Constants.BalArchiveVersion,
             ArchiveName = Constants.BalArchiveName
-        }, "fixtures/state_tests", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<GeneralStateTest>();
+        }, "fixtures/state_tests/for_amsterdam", typeof(TSelf).GetCustomAttribute<EipWildcardAttribute>()!.Wildcard).LoadTests<GeneralStateTest>();
 }
