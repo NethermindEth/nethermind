@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Processing
                     gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>();
                 }
 
-                Task incrementalValidationTask = Task.Run(() => IncrementalValidation(block, gasResults), token);
+                Task incrementalValidationTask = Task.Run(() => IncrementalValidation(block, gasResults, receiptsTracers), token);
 
                 ParallelUnbalancedWork.For(
                     0,
@@ -140,7 +140,7 @@ namespace Nethermind.Consensus.Processing
                 return CombineReceipts(receiptsTracers, len, block);
             }
 
-            private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults)
+            private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers)
             {
                 int len = block.Transactions.Length;
                 long gasRemaining = _balBuilder.GasUsed();
@@ -155,8 +155,8 @@ namespace Nethermind.Consensus.Processing
                         (long? blockGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                         if (ex is not null)
                             ExceptionDispatchInfo.Capture(ex).Throw();
-                        
-                        //trigger event
+
+                        transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                         totalGas += blockGasUsed.Value;
                         gasRemaining -= blockGasUsed.Value;
@@ -176,27 +176,19 @@ namespace Nethermind.Consensus.Processing
 
             private static TxReceipt[] CombineReceipts(BlockReceiptsTracer[] receiptsTracers, int len, Block block)
             {
-                // need multiple loops?
                 TxReceipt[] result = new TxReceipt[len];
+                long cumulativeGas = 0;
+                Bloom blockBloom = new();
                 for (int i = 0; i < len; i++)
                 {
                     result[i] = receiptsTracers[i].TxReceipts[0];
                     result[i].Index = i;
-                }
-
-                long cumulativeGas = 0;
-                for (int i = 0; i < len; i++)
-                {
                     cumulativeGas += result[i].GasUsed;
                     result[i].GasUsedTotal = cumulativeGas;
-                }
-
-                Bloom blockBloom = new();
-                for (int i = 0; i < len; i++)
-                {
                     result[i].CalculateBloom();
                     blockBloom.Accumulate(result[i].Bloom!);
                 }
+
                 block.Header.Bloom = blockBloom;
 
                 return result;

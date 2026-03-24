@@ -26,6 +26,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
     private readonly Stack<Change> _changes = new();
 
@@ -53,6 +54,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public static bool operator !=(BlockAccessList left, BlockAccessList right) =>
         !(left == right);
 
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void Merge(BlockAccessList other)
     {
         foreach (AccountChanges otherAccountChange in other.AccountChanges)
@@ -70,6 +72,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
+    // todo: these methods will be removed, only needed for sequential
     public void IncrementBlockAccessIndex()
     {
         _changes.Clear();
@@ -207,6 +210,8 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public void DeleteAccount(Address address, UInt256 oldBalance)
     {
         AccountChanges accountChanges = GetOrAddAccountChanges(address);
+
+        // todo: this will be optimized when bal structure changes, no need to iterate list
 
         // Push revertible changes for each storage change that will be cleared.
         // Push ALL changes per slot in reverse order so they restore in correct order (LIFO).
