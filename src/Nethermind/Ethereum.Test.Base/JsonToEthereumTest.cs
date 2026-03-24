@@ -146,7 +146,6 @@ namespace Ethereum.Test.Base
                 case ExecutionPayloadV3 v3:
                     v3.BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger();
                     v3.ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger();
-                    v3.ExecutionRequests = [];
                     break;
             }
 
