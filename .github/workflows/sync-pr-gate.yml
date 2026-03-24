@@ -256,19 +256,6 @@ jobs:
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
 
-      - name: Destroy VM
-        if: always()
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
-        with:
-          linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
-          action: "destroy-machine-async"
-          runner_label: ${{ matrix.config.runner_label }}
-          search_phrase: ${{ matrix.config.runner_label }}
-          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          organization: "NethermindEth"
-          repo_name: "nethermind"
-
   destroy_runner:
     needs: [setup-matrix, create_a_runner, sync-hoodi]
     if: always()
