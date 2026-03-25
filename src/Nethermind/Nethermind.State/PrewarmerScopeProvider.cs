@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -57,9 +54,9 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
-        // Pending cross-block storage cache updates, promoted only on successful CommitTree.
-        // ConcurrentQueue because storage batches may run in parallel (UpdateRootHashesMultiThread).
-        private ConcurrentQueue<(StorageCell Key, byte[] Value)>? _pendingStorageUpdates;
+        // Set to true after successful commit; used in Dispose to rollback stale direct writes.
+        private bool _committed;
+        // Set if any storage Clear() was observed (CREATE/SELFDESTRUCT); triggers epoch-bump on commit.
         private volatile bool _pendingStorageClear;
 
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches, BlockHeader? baseBlock)
@@ -88,6 +85,13 @@ public class PrewarmerScopeProvider(
 
         public void Dispose()
         {
+            // If commit didn't happen (e.g., block was invalid), epoch-bump to invalidate
+            // any entries written directly to the cross-block cache during this scope.
+            if (!_committed && crossBlockCaches is not null)
+            {
+                crossBlockCaches.StorageCache.Clear();
+            }
+
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -111,12 +115,11 @@ public class PrewarmerScopeProvider(
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
 
-            // Buffer writes for the cross-block caches. Promotion happens in Commit()
-            // (called from CommitTree after successful block processing), so a failed block
-            // never pollutes the cross-block caches.
+            // Wrap write batch to write storage updates directly to the cross-block cache.
+            // On block failure, Dispose epoch-bumps to rollback stale entries.
             if (crossBlockCaches is not null)
             {
-                batch = new CacheUpdatingWriteBatch(batch, this);
+                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
             }
 
             if (!_measureMetric) return batch;
@@ -128,12 +131,6 @@ public class PrewarmerScopeProvider(
                 _metricObserver,
                 sw,
                 populatePreBlockCache);
-        }
-
-        internal void BufferStorageUpdate(in StorageCell cell, byte[] value)
-        {
-            ConcurrentQueue<(StorageCell, byte[])> queue = LazyInitializer.EnsureInitialized(ref _pendingStorageUpdates)!;
-            queue.Enqueue((cell, value));
         }
 
         internal void BufferStorageClear()
@@ -157,11 +154,10 @@ public class PrewarmerScopeProvider(
         }
 
         /// <summary>
-        /// Flushes buffered writes to the cross-block caches. Called only after successful
-        /// CommitTree, so speculative entries from failed/invalid blocks are never promoted.
-        /// If any storage Clear() was seen (CREATE/SELFDESTRUCT), the storage cache is
-        /// epoch-bumped first, then all committed values are re-written so the cache ends
-        /// up with only correct post-block values.
+        /// Finalizes cross-block cache state after successful commit. Storage values are
+        /// written directly to the cross-block cache during the write batch phase and seeded
+        /// from trie reads, so this only handles epoch-bumps from storage Clear() and sets
+        /// the committed flag for reorg detection.
         /// </summary>
         private void PromoteToCrossBlockCaches(long blockNumber)
         {
@@ -170,20 +166,12 @@ public class PrewarmerScopeProvider(
             if (_pendingStorageClear)
             {
                 // A CREATE or SELFDESTRUCT cleared storage for at least one address.
-                // Epoch-bump invalidates all cross-block storage entries, then we
-                // re-seed with the correct committed values from this block.
+                // Epoch-bump invalidates all cross-block storage entries. The cache will
+                // be re-seeded organically from trie reads on subsequent blocks.
                 crossBlockCaches.StorageCache.Clear();
             }
 
-            if (_pendingStorageUpdates is not null)
-            {
-                SeqlockCache<StorageCell, byte[]> storageCacheRef = crossBlockCaches.StorageCache;
-                while (_pendingStorageUpdates.TryDequeue(out (StorageCell Key, byte[] Value) entry))
-                {
-                    storageCacheRef.Set(in entry.Key, entry.Value);
-                }
-            }
-
+            _committed = true;
             crossBlockCaches.LastCommittedBlockNumber = blockNumber;
         }
 
@@ -315,6 +303,9 @@ public class PrewarmerScopeProvider(
                 else
                 {
                     value = LoadFromTreeStorage(in storageCell);
+                    // Seed cross-block cache from trie reads — hot slots that are read but
+                    // not written (SLOAD-only) are captured for subsequent blocks.
+                    crossBlockStorageCache?.Set(in storageCell, value);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetMiss);
                 }
                 return value;
@@ -359,14 +350,13 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>
-    /// Wraps write batch to buffer storage updates for cross-block cache promotion.
-    /// Writes are NOT applied to the cross-block caches immediately — they are buffered on the
-    /// <see cref="ScopeWrapper"/> and promoted only during <see cref="ScopeWrapper.Commit"/>,
-    /// which is called from CommitTree after successful block processing.
+    /// Wraps write batch to write storage updates directly to the cross-block cache.
+    /// On block failure, the ScopeWrapper's Dispose epoch-bumps the cache to rollback.
     /// </summary>
     private sealed class CacheUpdatingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
-        ScopeWrapper scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[]> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public void Dispose() => baseBatch.Dispose();
 
@@ -381,33 +371,31 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
             IWorldStateScopeProvider.IStorageWriteBatch baseBatchStorage = baseBatch.CreateStorageWriteBatch(key, estimatedEntries);
-            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, scope, key);
+            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, scope, crossBlockStorageCache, key);
         }
     }
 
     /// <summary>
-    /// Wraps storage write batch to buffer storage slot updates for cross-block cache promotion.
-    /// On <see cref="Clear"/> (CREATE/SELFDESTRUCT), sets a flag so the promotion step
-    /// epoch-bumps the cross-block storage cache before re-seeding with correct values.
+    /// Wraps storage write batch to write slot updates directly to the cross-block cache.
+    /// On <see cref="Clear"/> (CREATE/SELFDESTRUCT), sets a flag so the commit step
+    /// epoch-bumps the cross-block storage cache.
     /// </summary>
     private sealed class CacheUpdatingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
         ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[]> crossBlockStorageCache,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
         {
             baseBatch.Set(in index, value);
             StorageCell cell = new(address, in index);
-            scope.BufferStorageUpdate(in cell, value);
+            crossBlockStorageCache.Set(in cell, value);
         }
 
         public void Clear()
         {
             baseBatch.Clear();
-            // Signal that a storage clear happened. The promotion step will
-            // epoch-bump the cross-block storage cache, then re-seed with
-            // the correct committed values from the buffer.
             scope.BufferStorageClear();
         }
 
