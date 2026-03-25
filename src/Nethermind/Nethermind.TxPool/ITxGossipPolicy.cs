@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -12,15 +13,19 @@ public interface ITxGossipPolicy
     bool ShouldGossipTransaction(Transaction tx) => true;
 }
 
-public class CompositeTxGossipPolicy(params ITxGossipPolicy[] policies) : ITxGossipPolicy
+// Lazy: resolving ITxGossipPolicy[] eagerly pulls in the sync infrastructure
+// (SyncedTxGossipPolicy → ISyncModeSelector → ...) which depends on services
+// not yet available during init step construction.
+public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGossipPolicy
 {
     public bool ShouldListenToGossipedTransactions
     {
         get
         {
-            for (int i = 0; i < policies.Length; i++)
+            ITxGossipPolicy[] p = policies.Value;
+            for (int i = 0; i < p.Length; i++)
             {
-                if (!policies[i].ShouldListenToGossipedTransactions)
+                if (!p[i].ShouldListenToGossipedTransactions)
                     return false;
             }
             return true;
@@ -31,9 +36,10 @@ public class CompositeTxGossipPolicy(params ITxGossipPolicy[] policies) : ITxGos
     {
         get
         {
-            for (int i = 0; i < policies.Length; i++)
+            ITxGossipPolicy[] p = policies.Value;
+            for (int i = 0; i < p.Length; i++)
             {
-                if (!policies[i].CanGossipTransactions)
+                if (!p[i].CanGossipTransactions)
                     return false;
             }
             return true;
@@ -42,9 +48,10 @@ public class CompositeTxGossipPolicy(params ITxGossipPolicy[] policies) : ITxGos
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        for (int i = 0; i < policies.Length; i++)
+        ITxGossipPolicy[] p = policies.Value;
+        for (int i = 0; i < p.Length; i++)
         {
-            if (!policies[i].ShouldGossipTransaction(tx))
+            if (!p[i].ShouldGossipTransaction(tx))
                 return false;
         }
         return true;

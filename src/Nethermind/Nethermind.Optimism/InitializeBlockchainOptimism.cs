@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Consensus.Producers;
@@ -14,7 +13,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, Lazy<ITxGossipPolicy> txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+public class InitializeBlockchainOptimism(OptimismNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     protected override async Task InitBlockchain()
     {

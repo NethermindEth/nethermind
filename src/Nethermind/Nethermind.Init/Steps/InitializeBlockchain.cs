@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -30,12 +29,10 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    // Lazy: resolving ITxGossipPolicy eagerly pulls in the sync infrastructure (SyncedTxGossipPolicy → ISyncModeSelector → ...)
-    // which depends on IBackgroundTaskScheduler that this step creates during Execute.
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, Lazy<ITxGossipPolicy> txGossipPolicy) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
-        protected ITxGossipPolicy TxGossipPolicy => txGossipPolicy.Value;
+        protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
         public async Task Execute(CancellationToken _)
         {
@@ -111,7 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                TxGossipPolicy,
+                _txGossipPolicy,
                 null,
                 _api.HeadTxValidator
             );
