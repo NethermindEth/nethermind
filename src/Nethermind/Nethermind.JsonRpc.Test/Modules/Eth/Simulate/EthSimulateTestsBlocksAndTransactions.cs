@@ -190,6 +190,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         SimulateBlockResult<SimulateCallResult> blockResult = data.Last();
         blockResult.Calls.Select(static c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+        blockResult.Calls.Should().OnlyContain(static c => c.MaxUsedGas.HasValue && c.GasUsed.HasValue && c.MaxUsedGas.Value >= c.GasUsed.Value);
 
     }
 
@@ -346,6 +347,11 @@ public class EthSimulateTestsBlocksAndTransactions
 
         SimulateCallResult callResult = result.Data.First().Calls.First();
         Assert.That(callResult.Status, Is.EqualTo((ulong)ResultType.Success));
+        Assert.That(callResult.MaxUsedGas, Is.Not.Null);
+        Assert.That(callResult.GasUsed, Is.Not.Null);
+        ulong maxUsedGas = callResult.MaxUsedGas ?? 0;
+        ulong gasUsed = callResult.GasUsed ?? 0;
+        Assert.That(maxUsedGas, Is.GreaterThanOrEqualTo(gasUsed));
 
         UInt256 gasAvailable = new(callResult.ReturnData!, isBigEndian: true);
         Assert.That(gasAvailable, Is.LessThan((UInt256)gasCap));

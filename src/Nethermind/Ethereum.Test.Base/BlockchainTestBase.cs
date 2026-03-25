@@ -90,10 +90,9 @@ public abstract class BlockchainTestBase
         // under the target fork rules when the fork requires it (e.g. EIP-7928 sets BlockAccessListHash).
         bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-        isEngineTest || genesisUsesTargetFork ?
-        [((ForkActivation)0, test.Network)] :
-        [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = isEngineTest || genesisUsesTargetFork
+            ? [((ForkActivation)0, test.Network)]
+            : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -103,7 +102,7 @@ public abstract class BlockchainTestBase
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
 
-        if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }
