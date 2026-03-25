@@ -41,7 +41,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = await executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
         Assert.That(data, Has.Count.EqualTo(7));
 
@@ -75,7 +75,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
 
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
-            await executor.Execute(payload, BlockParameter.Latest);
+            executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<TTrace>> data = result.Data;
 
         Assert.That(data, Has.Count.EqualTo(9));
@@ -111,7 +111,7 @@ public abstract class TracedSimulateTestsBase<TTrace>
         SimulateTxExecutor<TTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), CreateTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> result =
-            await executor.Execute(payload, BlockParameter.Latest);
+            executor.Execute(payload, BlockParameter.Latest);
         Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
     }
 }

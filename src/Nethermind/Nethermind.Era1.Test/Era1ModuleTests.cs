@@ -160,7 +160,7 @@ public class Era1ModuleTests
                 .WithParent(blocks[i]).TestObject);
         }
 
-        blocks = (await testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer())).ToList();
+        blocks = testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation | ProcessingOptions.StoreReceipts, new BlockReceiptsTracer()).ToList();
         {
             using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
 
@@ -263,13 +263,13 @@ public class Era1ModuleTests
                 .WithGasLimit(30_000_000).TestObject);
         }
 
-        await testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
+        testBlockchain.BranchProcessor.Process(genesis.Header!, blocks, ProcessingOptions.NoValidation, new BlockReceiptsTracer());
 
         {
-            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
-            foreach (Block block in blocks)
+            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
+            foreach (var block in blocks)
             {
-                foreach (Transaction item in block.Transactions)
+                foreach (var item in block.Transactions)
                 {
                     item.SenderAddress = null;
                     item.SpentGas = 0;
@@ -284,7 +284,7 @@ public class Era1ModuleTests
 
         using EraReader iterator = new EraReader(tmpFile.Path);
 
-        await using IAsyncEnumerator<(Block, TxReceipt[])> enu = iterator.GetAsyncEnumerator();
+        await using var enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks; i++)
         {
             Assert.That(await enu.MoveNextAsync(), Is.True, $"Expected block {i} from the iterator, but it returned false.");

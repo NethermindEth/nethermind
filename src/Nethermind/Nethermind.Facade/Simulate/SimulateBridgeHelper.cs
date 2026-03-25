@@ -21,7 +21,6 @@ using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
-using System.Threading.Tasks;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -53,7 +52,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         stateProvider.CommitTree(blockNumber);
     }
 
-    public Task<SimulateOutput<TTrace>> TrySimulate<TTrace>(
+    public SimulateOutput<TTrace> TrySimulate<TTrace>(
         BlockHeader parent,
         SimulatePayload<TransactionWithSourceDetails> payload,
         IBlockTracer<TTrace> tracer,
@@ -91,7 +90,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.Error = ex.Message;
         }
 
-        return Task.FromResult(result);
+        return result;
     }
 
     private void Simulate<TTrace>(BlockHeader parent,

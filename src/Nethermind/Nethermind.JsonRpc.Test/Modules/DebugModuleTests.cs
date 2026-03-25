@@ -212,7 +212,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_test()
+    public void Debug_traceCall_test()
     {
         GethTxTraceEntry entry = new()
         {
@@ -248,7 +248,7 @@ public class DebugModuleTests
         _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<GethLikeTxTrace> debugTraceCall = await rpcModule.debug_traceCall(TransactionForRpc.FromTransaction(transaction), null, gtOptions);
+        ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(TransactionForRpc.FromTransaction(transaction), null, gtOptions);
         var expected = ResultWrapper<GethLikeTxTrace>.Success(
             new GethLikeTxTrace
             {
@@ -309,7 +309,7 @@ public class DebugModuleTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task StandardTraceBlockToFile(bool isBadBlock)
+    public void StandardTraceBlockToFile(bool isBadBlock)
     {
         Hash256 blockHash = Keccak.EmptyTreeHash;
 
@@ -334,25 +334,25 @@ public class DebugModuleTests
         }
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash));
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
         actual.Should().BeEquivalentTo(ResultWrapper<IEnumerable<string>>.Success(GetFileNames(blockHash)));
     }
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task StandardTraceBlockToFile_returns_error_when_missing_block(bool isBadBlock)
+    public void StandardTraceBlockToFile_returns_error_when_missing_block(bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
 
         _blockFinder.FindHeader(blockHash).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash));
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
         actual.Result.ResultType.Should().Be(ResultType.Failure);
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceNotFound);
@@ -361,7 +361,7 @@ public class DebugModuleTests
 
     [TestCase(false)]
     [TestCase(true)]
-    public async Task StandardTraceBlockToFile_returns_error_when_state_unavailable(bool isBadBlock)
+    public void StandardTraceBlockToFile_returns_error_when_state_unavailable(bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
@@ -370,9 +370,9 @@ public class DebugModuleTests
         _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        ResultWrapper<IEnumerable<string>> actual = await (isBadBlock
+        ResultWrapper<IEnumerable<string>> actual = isBadBlock
             ? rpcModule.debug_standardTraceBadBlockToFile(blockHash)
-            : rpcModule.debug_standardTraceBlockToFile(blockHash));
+            : rpcModule.debug_standardTraceBlockToFile(blockHash);
 
         actual.Result.ResultType.Should().Be(ResultType.Failure);
         actual.ErrorCode.Should().Be(ErrorCodes.ResourceUnavailable);

@@ -22,7 +22,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
-using System.Runtime.CompilerServices;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -114,9 +113,8 @@ public class DebugBridge : IDebugBridge
         _receiptStorage.Insert(block, txReceipts);
     }
 
-    public GethLikeTxTrace? GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+    public GethLikeTxTrace GetTransactionTrace(Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
-
     public TxReceipt[]? GetReceiptsForBlock(BlockParameter blockParam)
     {
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(blockParam);
@@ -144,16 +142,16 @@ public class DebugBridge : IDebugBridge
         return block?.Transactions[txReceipt.Index];
     }
 
-    public GethLikeTxTrace? GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+    public GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockNumber, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
     public GethLikeTxTrace GetTransactionTrace(Hash256 blockHash, int index, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
-    public GethLikeTxTrace? GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+    public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Hash256 transactionHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
-    public GethLikeTxTrace? GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
+    public GethLikeTxTrace GetTransactionTrace(Block block, Hash256 txHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.Trace(block, txHash, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
     public GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
@@ -213,18 +211,16 @@ public class DebugBridge : IDebugBridge
 
     public Hash256? GetTransactionBlockHash(Hash256 transactionHash) => _receiptStorage.FindBlockHash(transactionHash);
 
-    public async IAsyncEnumerable<IAsyncEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, [EnumeratorCancellation] CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
+    public IEnumerable<IEnumerable<GethLikeTxTrace>> GetBundleTraces(TransactionBundle[] bundles, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null)
     {
-        await Task.CompletedTask;
         foreach (TransactionBundle bundle in bundles)
         {
             yield return GetBundleTrace(bundle, blockParameter, cancellationToken, gethTraceOptions);
         }
     }
 
-    private async IAsyncEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, [EnumeratorCancellation] CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
+    private IEnumerable<GethLikeTxTrace> GetBundleTrace(TransactionBundle bundle, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions)
     {
-        await Task.CompletedTask;
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
             GethLikeTxTrace? trace;
