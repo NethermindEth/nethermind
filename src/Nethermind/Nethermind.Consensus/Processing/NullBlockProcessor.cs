@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.Processing
         public static IBlockProcessor Instance { get; } = new NullBlockProcessor();
 
         public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token) =>
-            [.. suggestedBlocks];
+            suggestedBlocks.ToArray();
 
         public event Action? TransactionsExecuted
         {

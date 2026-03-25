@@ -32,6 +32,7 @@ public class AuraMainProcessingModule(
 
     private IAuRaValidator CreateAuRaValidator(AuRaNethermindApi api, IWorldState worldState, ITransactionProcessor transactionProcessor)
     {
+
         IAuRaValidator validator = new AuRaValidatorFactory(
                 abiEncoder,
                 worldState,

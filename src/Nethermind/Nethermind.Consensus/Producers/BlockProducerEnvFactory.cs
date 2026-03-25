@@ -3,7 +3,6 @@
 
 using Autofac;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Withdrawals;
@@ -11,7 +10,6 @@ using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
-using Nethermind.State.Healing;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -19,7 +17,6 @@ namespace Nethermind.Consensus.Producers
         ILifetimeScope rootLifetime,
         IWorldStateManager worldStateManager,
         IBlockProducerTxSourceFactory txSourceFactory
-    // IBlocksConfig blocksConfig
     ) : IBlockProducerEnvFactory
     {
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder

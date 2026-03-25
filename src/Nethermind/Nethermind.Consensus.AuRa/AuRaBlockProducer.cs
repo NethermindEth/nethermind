@@ -63,9 +63,9 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override (Block?, string?) ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            (Block? processedBlock, string? error) = base.ProcessPreparedBlock(block, blockTracer, token);
+            Block? processedBlock = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {
@@ -79,12 +79,12 @@ namespace Nethermind.Consensus.AuRa
                     else
                     {
                         if (Logger.IsDebug) Logger.Debug($"Skip seal block {block.Number}, no transactions pending.");
-                        return (null, error);
+                        return null;
                     }
                 }
             }
 
-            return (processedBlock, error);
+            return processedBlock;
         }
 
         protected override Task<Block> SealBlock(Block block, BlockHeader parent, CancellationToken token)

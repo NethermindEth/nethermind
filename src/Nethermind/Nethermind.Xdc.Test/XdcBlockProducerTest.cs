@@ -55,7 +55,7 @@ internal class XdcBlockProducerTest
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
 
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
-        processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>()).Returns(args => (args.ArgAt<Block>(0), null));
+        processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>()).Returns(args => args.ArgAt<Block>(0));
 
         XdcBlockProducer producer = new XdcBlockProducer(
             epochManager,
