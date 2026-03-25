@@ -407,7 +407,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_payloadStorage.TryGetValue(payloadId, out PayloadEntry entry))
         {
             IBlockImprovementContext blockContext = entry.Context;
-            try
+            using (blockContext)
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
@@ -437,10 +437,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
 
                 return blockContext;
-            }
-            finally
-            {
-                entry.Dispose();
             }
         }
 
