@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
@@ -273,6 +274,41 @@ public class AccountChanges : IEquatable<AccountChanges>
     public void CheckWasChanged()
     {
         _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
+    }
+
+    public void Merge(GeneratingAccountChanges other)
+    {
+        foreach (SlotChanges slotChanges in other.StorageChanges)
+        {
+            if (_storageChanges.TryGetValue(slotChanges.Slot, out SlotChanges? existing))
+            {
+                existing.Merge(slotChanges);
+            }
+            else
+            {
+                _storageChanges.Add(slotChanges.Slot, slotChanges);
+            }
+        }
+
+        foreach (StorageRead storageRead in other.StorageReads)
+        {
+            _storageReads.Add(storageRead);
+        }
+
+        if (other.BalanceChange is not null)
+        {
+            _balanceChanges.Add(other.BalanceChange.Value.BlockAccessIndex, other.BalanceChange.Value);
+        }
+
+        if (other.NonceChange is not null)
+        {
+            _nonceChanges.Add(other.NonceChange.Value.BlockAccessIndex, other.NonceChange.Value);
+        }
+
+        if (other.CodeChange is not null)
+        {
+            _codeChanges.Add(other.CodeChange.Value.BlockAccessIndex, other.CodeChange.Value);
+        }
     }
 
     [JsonIgnore]

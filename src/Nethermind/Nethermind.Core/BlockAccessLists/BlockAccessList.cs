@@ -83,6 +83,23 @@ public class BlockAccessList : IEquatable<BlockAccessList>
         return sb.ToString();
     }
 
+    public void Merge(GeneratingBlockAccessList other)
+    {
+        foreach (KeyValuePair<Address, GeneratingAccountChanges> otherAccountChange in other.AccountChanges)
+        {
+            if (_accountChanges.TryGetValue(otherAccountChange.Key, out AccountChanges? accountChange))
+            {
+                accountChange.Merge(otherAccountChange.Value);
+            }
+            else
+            {
+                AccountChanges newAccountChanges = new(otherAccountChange.Key);
+                newAccountChanges.Merge(otherAccountChange.Value);
+                _accountChanges.Add(otherAccountChange.Key, newAccountChanges);
+            }
+        }
+    }
+
     // for testing
     internal void AddAccountChanges(params AccountChanges[] accountChanges)
     {

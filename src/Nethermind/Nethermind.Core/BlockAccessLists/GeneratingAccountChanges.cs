@@ -11,6 +11,7 @@ namespace Nethermind.Core.BlockAccessLists;
 public class GeneratingAccountChanges 
 {
     public IList<SlotChanges> StorageChanges => _storageChanges.Values;
+    public IReadOnlyCollection<StorageRead> StorageReads => _storageReads;
     public BalanceChange? BalanceChange { get; private set; }
     public NonceChange? NonceChange { get; private set; }
     public CodeChange? CodeChange { get; private set; }

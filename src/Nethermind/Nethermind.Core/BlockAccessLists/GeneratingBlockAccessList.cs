@@ -23,6 +23,7 @@ public class GeneratingBlockAccessList : IJournal<int>
     [JsonIgnore]
     public int ItemCount { get; set; }
 
+    public IDictionary<Address, GeneratingAccountChanges> AccountChanges => _accountChanges;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     private readonly SortedDictionary<Address, GeneratingAccountChanges> _accountChanges = [];

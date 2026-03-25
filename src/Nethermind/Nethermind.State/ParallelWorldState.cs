@@ -141,16 +141,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             return;
         }
 
-        // todo: fix merge
-
-        // if (index == 0)
-        // {
-        //     GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
-        // }
-        // else
-        // {
-        //     GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
-        // }
+        GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
     }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
