@@ -78,7 +78,7 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
-                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                // _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -104,7 +104,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    // _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -114,7 +114,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        _balBuilder?.GeneratedBlockAccessList.RollbackCurrentIndex();
+                        // _balBuilder?.GeneratedBlockAccessList.RollbackCurrentIndex();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }

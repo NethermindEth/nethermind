@@ -65,7 +65,7 @@ public partial class BlockProcessor(
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
+            // _balBuilder.GeneratedBlockAccessList.Clear();
             SetupBlockAccessLists(spec, suggestedBlock);
         }
 
@@ -327,14 +327,7 @@ public partial class BlockProcessor(
             }
             _lastLoadedBal = suggested.Hash;
 
-            if (_balBuilder.ParallelExecutionEnabled)
-            {
-                _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
-            }
-            else
-            {
-                _balBuilder.GeneratedBlockAccessList = new();
-            }
+            _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
         }
     }
 }

@@ -33,7 +33,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
-    private BlockAccessList[] _intermediateBlockAccessLists; // todo: this will change to different structure
+    private GeneratingBlockAccessList[] _intermediateBlockAccessLists;
     private TransientStorageProvider[] _transientStorageProviders;
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
@@ -62,12 +62,12 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     public void SetupGeneratedAccessLists(ILogManager logManager, int txCount)
     {
-        _intermediateBlockAccessLists = new BlockAccessList[txCount + 2];
+        _intermediateBlockAccessLists = new GeneratingBlockAccessList[txCount + 2];
         _transientStorageProviders = new TransientStorageProvider[txCount + 2];
 
         for (int i = 0; i < txCount + 2; i++)
         {
-            BlockAccessList bal = new()
+            GeneratingBlockAccessList bal = new()
             {
                 Index = i
             };
@@ -135,21 +135,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void MergeIntermediateBalsUpTo(ushort index)
-    {
-        if (!ParallelExecutionEnabled)
-        {
-            return;
-        }
-
-        if (index == 0)
-        {
-            GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
-        }
-        else
-        {
-            GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
-        }
-    }
+        => GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
@@ -693,10 +679,8 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             throw new ArgumentNullException(nameof(blockAccessIndex));
     }
 
-    private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
-        ParallelExecutionEnabled ?
-            _intermediateBlockAccessLists[int.Min(blockAccessIndex!.Value, _intermediateBlockAccessLists.Length - 1)] :
-            GeneratedBlockAccessList;
+    private GeneratingBlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
+        _intermediateBlockAccessLists[int.Min(blockAccessIndex.Value, _intermediateBlockAccessLists.Length - 1)];
 
     // todo: run in parallel like prewarmer
     private void LoadPreBlockState(BlockAccessList blockAccessList)
@@ -709,21 +693,24 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
             bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
             accountChanges.ExistedBeforeBlock = exists;
 
-            accountChanges.AddBalanceChange(new(-1, account.Balance));
-            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
+            // accountChanges.AddBalanceChange(new(-1, account.Balance));
+            // accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            // accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
+            accountChanges.LoadPreBlockState(account.Balance, (ulong)account.Nonce, _innerWorldState.GetCode(accountChanges.Address));
 
             foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+                // slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+                accountChanges.LoadPreBlockState(storageCell, _innerWorldState.Get(storageCell));
             }
 
             foreach (StorageRead storageRead in accountChanges.StorageReads)
             {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+                // SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
                 StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+                accountChanges.LoadPreBlockState(storageCell, _innerWorldState.Get(storageCell));
+                // slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
             }
         }
     }
@@ -732,13 +719,13 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-            if (accountChanges is not null && accountChanges.BalanceChanges.Count == 1)
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
+            if (generatingAccountChanges is not null && generatingAccountChanges.BalanceChange is not null)
             {
-                return accountChanges.BalanceChanges.First().PostBalance;
+                return generatingAccountChanges.BalanceChange.Value.PostBalance;
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
             if (accountChanges is not null)
             {
@@ -757,13 +744,13 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-            if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
+            if (generatingAccountChanges is not null && generatingAccountChanges.NonceChange is not null)
             {
-                return accountChanges.NonceChanges.First().NewNonce;
+                return generatingAccountChanges.NonceChange.Value.NewNonce;
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
             if (accountChanges is not null)
             {
@@ -782,13 +769,13 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-            if (accountChanges is not null && accountChanges.CodeChanges.Count == 1)
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
+            if (generatingAccountChanges is not null && generatingAccountChanges.CodeChange is not null)
             {
-                return accountChanges.CodeChanges.First().NewCode;
+                return generatingAccountChanges.CodeChange.Value.NewCode;
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
 
             if (accountChanges is not null)
             {
@@ -812,15 +799,15 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(storageCell.Address);
-            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(storageCell.Address);
+            generatingAccountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
             if (slotChanges is not null && slotChanges.Changes.Count == 1)
             {
                 return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
             accountChanges.TryGetSlotChanges(storageCell.Index, out slotChanges);
 
             if (slotChanges is not null)
@@ -860,15 +847,15 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-            if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
+            if (generatingAccountChanges is not null && generatingAccountChanges.NonceChange is not null)
             {
                 // if nonce is changed in this tx must exist
                 // could have been created this tx
                 return true;
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
                 // check if existed before current tx
@@ -901,9 +888,9 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     {
         if (ParallelExecutionEnabled)
         {
-            AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
+            GeneratingAccountChanges? generatingAccountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
             HashSet<UInt256> zeroedSlots = [];
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            foreach (SlotChanges slotChanges in generatingAccountChanges.StorageChanges)
             {
                 if (slotChanges.Changes.Last().Value.NewValue != 0)
                 {
@@ -912,7 +899,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 zeroedSlots.Add(slotChanges.Slot);
             }
 
-            accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+            AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
             if (accountChanges is not null)
             {
                 HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex.Value);

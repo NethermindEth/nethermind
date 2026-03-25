@@ -52,6 +52,7 @@ public class ParallelWorldStateTests
         Action<ParallelWorldState>? genesisSetup = null)
     {
         ParallelWorldState pws = CreateStateCore(parallel: false, genesisSetup, out BlockHeader baseBlock);
+        pws.SetupGeneratedAccessLists(Logger, 1);
         return (pws, pws.BeginScope(baseBlock));
     }
 
@@ -68,14 +69,15 @@ public class ParallelWorldStateTests
     }
 
     private static BlockAccessList BuildSuggestedBal(params Address[] addresses)
-    {
-        BlockAccessList bal = new();
-        foreach (Address addr in addresses)
-        {
-            bal.AddAccountRead(addr);
-        }
-        return bal;
-    }
+        => Build.A.BlockAccessList.WithAccountChanges([.. addresses.Select(a => new AccountChanges(a))]).TestObject;
+    // {
+    //     BlockAccessList bal = new();
+    //     foreach (Address addr in addresses)
+    //     {
+    //         bal.AddAccountRead(addr);
+    //     }
+    //     return bal;
+    // }
 
     [TestCase(true, 50u, 100u, 150u, TestName = "AddToBalance")]
     [TestCase(false, 30u, 100u, 70u, TestName = "SubtractFromBalance")]
@@ -94,6 +96,8 @@ public class ParallelWorldStateTests
             {
                 pws.SubtractFromBalance(TestItem.AddressA, delta, Spec, blockAccessIndex: 0);
             }
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -123,6 +127,8 @@ public class ParallelWorldStateTests
                 pws.SetNonce(TestItem.AddressA, value, blockAccessIndex: 0);
             }
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -144,6 +150,8 @@ public class ParallelWorldStateTests
             ValueHash256 codeHash = ValueKeccak.Compute(code);
             pws.InsertCode(TestItem.AddressA, codeHash, code, Spec, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -163,6 +171,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.Set(cell, [0x01], blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -190,6 +200,8 @@ public class ParallelWorldStateTests
                 _ = pws.GetOriginal(cell, blockAccessIndex: 0);
             }
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
@@ -205,6 +217,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             UInt256 balance = pws.GetBalance(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -225,6 +239,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             UInt256 nonce = pws.GetNonce(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -247,6 +263,8 @@ public class ParallelWorldStateTests
         {
             byte[]? retrieved = pws.GetCode(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retrieved, Is.EquivalentTo(code));
@@ -267,6 +285,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             ValueHash256 hash = pws.GetCodeHash(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -289,6 +309,8 @@ public class ParallelWorldStateTests
         {
             bool isContract = pws.IsContract(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(isContract, Is.True);
@@ -309,6 +331,8 @@ public class ParallelWorldStateTests
                 ? pws.IsDeadAccount(TestItem.AddressA, blockAccessIndex: 0)
                 : pws.AccountExists(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.True);
@@ -325,6 +349,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             bool found = pws.TryGetAccount(TestItem.AddressA, out AccountStruct account, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -344,6 +370,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.CreateAccount(TestItem.AddressA, balance, nonce, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -373,6 +401,8 @@ public class ParallelWorldStateTests
         {
             pws.DeleteAccount(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             using (Assert.EnterMultipleScope())
@@ -391,6 +421,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.AddAccountRead(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             Assert.That(pws.GeneratedBlockAccessList.HasAccount(TestItem.AddressA), Is.True);
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
@@ -412,10 +444,14 @@ public class ParallelWorldStateTests
             Snapshot snap = pws.TakeSnapshot(blockAccessIndex: 0);
             pws.AddToBalance(TestItem.AddressA, 50, Spec, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA)!
                 .BalanceChanges, Has.Count.EqualTo(1));
 
+            pws.GeneratedBlockAccessList = new();
             pws.Restore(snap, blockAccessIndex: 0);
+            pws.MergeIntermediateBalsUpTo(0);
 
             // Balance change must be rolled back by the snapshot restore.
             Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA)!
@@ -556,7 +592,7 @@ public class ParallelWorldStateTests
         StorageCell cell, ParallelScenario scenario, int txIndex, uint genesisValue, uint expectedValue)
     {
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell);
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index));
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested,
             genesisSetup: ws =>
@@ -571,9 +607,7 @@ public class ParallelWorldStateTests
             {
                 case ParallelScenario.PriorTxChange:
                     {
-                        SlotChanges sc = suggested.GetAccountChanges(TestItem.AddressA)!
-                            .GetOrAddSlotChanges(cell.Index);
-                        sc.AddStorageChange(new StorageChange(0, expectedValue));
+                        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageChange(cell.Index, new StorageChange(0, expectedValue));
                         break;
                     }
                 case ParallelScenario.CurrentTxChange:
@@ -684,7 +718,7 @@ public class ParallelWorldStateTests
     {
         StorageCell cell = new(TestItem.AddressA, 7);
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell); // causes LoadPreBlockState to load slot
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index)); // causes LoadPreBlockState to load slot
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested,
             genesisSetup: ws =>
@@ -812,9 +846,7 @@ public class ParallelWorldStateTests
         // Register the slot directly in StorageChanges. LoadPreBlockState's StorageChanges
         // loop will snapshot it at index –1; do NOT also call AddStorageRead or both loops
         // would try to insert the –1 sentinel for the same slot.
-        SlotChanges slotChanges = suggested.GetAccountChanges(TestItem.AddressA)!
-            .GetOrAddSlotChanges(cell.Index);
-        slotChanges.AddStorageChange(new(0, 0xABu));
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageChange(cell.Index, new(0, 0xABu));
 
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested, genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
@@ -877,7 +909,7 @@ public class ParallelWorldStateTests
                 break;
             case ValidateScenario.SuggestedHasSurplus:
                 // AddressB appears in suggested with a tx-level change but is never touched by generated.
-                suggested.AddAccountRead(TestItem.AddressB);
+                suggested.AddAccountChanges([new(TestItem.AddressB)]);
                 suggested.GetAccountChanges(TestItem.AddressB)!
                     .AddBalanceChange(new(txIndex, 50u));
                 break;
@@ -933,7 +965,7 @@ public class ParallelWorldStateTests
         const ushort txIndex = 0;
         StorageCell cell = new(TestItem.AddressA, 9);
         BlockAccessList suggested = BuildSuggestedBal(TestItem.AddressA);
-        suggested.AddStorageRead(cell); // 1 surplus read vs generated (which has none)
+        suggested.GetAccountChanges(TestItem.AddressA)!.AddStorageRead(new(cell.Index)); // 1 surplus read vs generated (which has none)
 
         (ParallelWorldState pws, IDisposable scope) = CreateParallelState(
             suggested, genesisSetup: ws => ws.CreateAccount(TestItem.AddressA, 0));
