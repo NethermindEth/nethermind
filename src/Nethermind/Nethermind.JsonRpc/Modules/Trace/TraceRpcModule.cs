@@ -113,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
-                Transaction tx = _txDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                Transaction tx = _txDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
                 tx.CapGasLimit(jsonRpcConfig.GasCap);
                 return TraceTx(tx, traceTypes, BlockParameter.Latest);
             }

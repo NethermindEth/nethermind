@@ -33,21 +33,69 @@ namespace Nethermind.Serialization.Rlp
 
     public static class RlpValueDecoderExtensions
     {
-        public static T Decode<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        extension<T>(IRlpValueDecoder<T> decoder)
         {
-            Rlp.ValueDecoderContext context = new(bytes);
-            return decoder.Decode(ref context, rlpBehaviors);
+            public T Decode(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                Rlp.ValueDecoderContext context = new(bytes);
+                return decoder.Decode(ref context, rlpBehaviors);
+            }
+
+            /// <summary>
+            /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
+            /// and verifies that the end of the stream has been reached.
+            /// </summary>
+            public T DecodeComplete(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                T value = decoder.Decode(ref context, rlpBehaviors);
+                context.CheckEnd();
+                return value;
+            }
+
+            /// <summary>
+            /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
+            /// and verifies that the end of the stream has been reached.
+            /// </summary>
+            public T DecodeComplete(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                Rlp.ValueDecoderContext context = new(bytes);
+                return decoder.DecodeComplete(ref context, rlpBehaviors);
+            }
         }
 
-        public static T DecodeGuardNotNull<T>(this IRlpValueDecoder<T> decoder, ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            where T : class
-            => decoder.Decode(ref context, rlpBehaviors) ?? ThrowNullDecodedValue<T>();
-
-        public static T DecodeGuardNotNull<T>(this IRlpValueDecoder<T> decoder, ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            where T : class
+        extension<T>(IRlpValueDecoder<T> decoder) where T : class
         {
-            Rlp.ValueDecoderContext context = new(bytes);
-            return decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
+            public T DecodeGuardNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+                decoder.Decode(ref context, rlpBehaviors) ?? ThrowNullDecodedValue<T>();
+
+            public T DecodeGuardNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                Rlp.ValueDecoderContext context = new(bytes);
+                return decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
+            }
+
+            /// <summary>
+            /// Decodes instance of <typeparamref name="T"/> from <paramref name="context"/>
+            /// and verifies that the end of the stream has been reached.
+            /// Throws if decoded value is <c>null</c>.
+            /// </summary>
+            public T DecodeCompleteNotNull(ref Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                T value = decoder.DecodeGuardNotNull(ref context, rlpBehaviors);
+                context.CheckEnd();
+                return value;
+            }
+
+            /// <summary>
+            /// Decodes instance of <typeparamref name="T"/> from <paramref name="bytes"/>
+            /// and verifies that the end of the stream has been reached.
+            /// Throws if decoded value is <c>null</c>.
+            /// </summary>
+            public T DecodeCompleteNotNull(ReadOnlySpan<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                Rlp.ValueDecoderContext context = new(bytes);
+                return decoder.DecodeCompleteNotNull(ref context, rlpBehaviors);
+            }
         }
 
         [DoesNotReturn]
@@ -81,6 +129,13 @@ namespace Nethermind.Serialization.Rlp
                 ThrowRlpException(e);
                 return default;
             }
+        }
+
+        public T DecodeComplete(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            T result = Decode(ref decoderContext, rlpBehaviors);
+            decoderContext.CheckEnd();
+            return result;
         }
 
         protected abstract T DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);

@@ -17,6 +17,8 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
 using Handshake = Nethermind.Network.Rlpx.Handshake;
 using P2P = Nethermind.Network.P2P.Messages;
 using V62 = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -38,6 +40,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddLast<ITxGossipPolicy, SyncedTxGossipPolicy>()
+            .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
 

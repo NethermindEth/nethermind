@@ -133,7 +133,7 @@ namespace Nethermind.Api
         public IDisposableStack DisposeStack => Context.Resolve<IDisposableStack>();
         public IReadOnlyList<INethermindPlugin> Plugins => _dependencies.Plugins;
         public IProcessExitSource ProcessExit => _dependencies.ProcessExitSource;
-        public CompositeTxGossipPolicy TxGossipPolicy { get; } = new();
+
         public ILifetimeScope Context => _dependencies.Context;
     }
 }

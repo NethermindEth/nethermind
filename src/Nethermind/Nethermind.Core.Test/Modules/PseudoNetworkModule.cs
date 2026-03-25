@@ -30,7 +30,6 @@ public class PseudoNetworkModule() : Module
 
             .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-            .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
             // TODO: LastNStateRootTracker
             .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)

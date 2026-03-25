@@ -189,12 +189,14 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
+            IRlpValueDecoder<T> rlpDecoder = GetValueDecoder<T>() ??
+                throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
-            int length = decoderContext.Length;
-            T? result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
-            if (shouldCheckStream)
-                decoderContext.Check(length);
+            T? result = shouldCheckStream
+                ? rlpDecoder.DecodeComplete(ref decoderContext, rlpBehaviors)
+                : rlpDecoder.Decode(ref decoderContext, rlpBehaviors);
+
             return result;
         }
 
@@ -689,6 +691,14 @@ namespace Nethermind.Serialization.Rlp
                 if (Position != nextCheck)
                 {
                     throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
+                }
+            }
+
+            public readonly void CheckEnd()
+            {
+                if (Position != Length)
+                {
+                    throw new RlpException($"Data checkpoint failed. Expected to reach the end of the sequence, but is at {Position}");
                 }
             }
 

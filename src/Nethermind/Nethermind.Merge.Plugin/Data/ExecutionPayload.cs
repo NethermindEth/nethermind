@@ -216,7 +216,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
             for (i = 0; i < transactions.Length; i++)
             {
                 Rlp.ValueDecoderContext ctx = new(txData[i]);
-                transactions[i] = rlpDecoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
+                transactions[i] = rlpDecoder.DecodeCompleteNotNull(ref ctx, RlpBehaviors.SkipTypedWrapping);
             }
 
             return new TransactionDecodingResult(_transactions = transactions);
