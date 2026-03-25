@@ -47,7 +47,14 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     private readonly TimeSpan _cleanupOldPayloadDelay;
     private readonly TimeSpan _timePerSlot;
 
-    // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
+    // Payload lifecycle:
+    //   1. StartPreparingPayload — creates entry (context + linked CTS) and starts improvement loop
+    //   2. GetPayload — reads entry, disposes the context (stops improvements), but keeps the
+    //      entry in the dictionary because the CL spec allows multiple GetPayload calls for the
+    //      same payloadId. The shared CTS is NOT disposed here — subsequent calls and the
+    //      improvement loop's ContinueWith still reference it.
+    //   3. CleanupOldPayloads (timer) — removes stale entries and calls entry.Dispose(), which
+    //      disposes both the context and the CTS. This is the only path that disposes the CTS.
     protected readonly ConcurrentDictionary<string, PayloadEntry> _payloadStorage = new();
 
     /// <summary>
@@ -407,6 +414,9 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_payloadStorage.TryGetValue(payloadId, out PayloadEntry entry))
         {
             IBlockImprovementContext blockContext = entry.Context;
+            // Dispose only the context, not the shared per-payload CTS — GetPayload doesn't remove
+            // the entry, so the CTS must stay alive for repeated calls and background improvement
+            // tasks. The CTS is disposed by CleanupOldPayloads when the entry is finally removed.
             using (blockContext)
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
