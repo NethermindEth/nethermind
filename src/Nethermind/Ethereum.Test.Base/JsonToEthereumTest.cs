@@ -87,34 +87,6 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayload, string[]?, string?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
-        {
-            if (executionPayloadsJson is null)
-            {
-                throw new InvalidDataException("Execution payloads JSON was null when constructing test.");
-            }
-
-            foreach (TestEngineNewPayloadsJson engineNewPayload in executionPayloadsJson)
-            {
-                TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload = engineNewPayload.Params[0].Deserialize<TestEngineNewPayloadsJson.ParamsExecutionPayload>(EthereumJsonSerializer.JsonOptions);
-                string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
-                int newPayloadVersion = int.Parse(engineNewPayload.NewPayloadVersion ?? "4");
-                // params[3] is executionRequests for V4+, or validationError for V3
-                string[]? executionRequests = null;
-                if (newPayloadVersion >= 4 && engineNewPayload.Params.Length > 3)
-                {
-                    executionRequests = engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions);
-                }
-                ExecutionPayload payload = CreateExecutionPayload(executionPayload, parentBeaconBlockRoot, newPayloadVersion);
-                if (executionRequests is not null)
-                {
-                    payload.ExecutionRequests = [.. executionRequests.Select(x => Bytes.FromHexString(x))];
-                }
-                yield return (payload, blobVersionedHashes, ParseValidationError(engineNewPayload, newPayloadVersion), newPayloadVersion, int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
-            }
-        }
-
         public static string? ParseValidationError(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion)
         {
             if (engineNewPayload.ValidationError is not null)
@@ -138,63 +110,6 @@ namespace Ethereum.Test.Base
             };
         }
 
-        private static ExecutionPayload CreateExecutionPayload(
-            TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload,
-            string? parentBeaconBlockRoot,
-            int newPayloadVersion)
-        {
-            // Derive the payload type from the engine API method signature via reflection
-            Type payloadType = typeof(IEngineRpcModule)
-                .GetMethod($"engine_newPayloadV{newPayloadVersion}")!
-                .GetParameters()[0]
-                .ParameterType;
-            ExecutionPayload payload = (ExecutionPayload)Activator.CreateInstance(payloadType)!;
-
-            payload.BaseFeePerGas = HexToNumber<ulong>(executionPayload.BaseFeePerGas);
-            payload.BlockHash = new(executionPayload.BlockHash);
-            payload.BlockNumber = HexToNumber<long>(executionPayload.BlockNumber);
-            payload.ExtraData = Bytes.FromHexString(executionPayload.ExtraData);
-            payload.FeeRecipient = new(executionPayload.FeeRecipient);
-            payload.GasLimit = HexToNumber<long>(executionPayload.GasLimit);
-            payload.GasUsed = HexToNumber<long>(executionPayload.GasUsed);
-            payload.LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom));
-            payload.ParentHash = new(executionPayload.ParentHash);
-            payload.PrevRandao = new(executionPayload.PrevRandao);
-            payload.ReceiptsRoot = new(executionPayload.ReceiptsRoot);
-            payload.StateRoot = new(executionPayload.StateRoot);
-            payload.Timestamp = HexToNumber<ulong>(executionPayload.Timestamp);
-            payload.Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(ParseWithdrawal)];
-            payload.Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))];
-            payload.ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot);
-            // V4 extends V3, so the V3 check matches both - no need to duplicate blob gas fields.
-            if (payload is ExecutionPayloadV3 v3)
-            {
-                v3.BlobGasUsed = HexToNullableNumber<ulong>(executionPayload.BlobGasUsed);
-                v3.ExcessBlobGas = HexToNullableNumber<ulong>(executionPayload.ExcessBlobGas);
-            }
-
-            if (payload is ExecutionPayloadV4 v4)
-            {
-                v4.BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList);
-                v4.SlotNumber = HexToNullableNumber<ulong>(executionPayload.SlotNumber);
-                v4.ExecutionRequests = [];
-            }
-
-            return payload;
-        }
-
-        private static T HexToNumber<T>(string hex) where T : IConvertible
-            => (T)System.Convert.ChangeType((ulong)Bytes.FromHexString(hex).ToUnsignedBigInteger(), typeof(T));
-
-        private static T? HexToNullableNumber<T>(string? hex) where T : struct, IConvertible
-            => hex is null ? null : HexToNumber<T>(hex);
-
-        private static Withdrawal ParseWithdrawal(System.Text.Json.JsonElement element) =>
-            // Engine API format: JSON object with index, validatorIndex, address, amount
-            element.ValueKind == System.Text.Json.JsonValueKind.Object
-                ? element.Deserialize<Withdrawal>(EthereumJsonSerializer.JsonOptions)!
-                // Legacy format: RLP-encoded hex string
-                : Rlp.Decode<Withdrawal>(Bytes.FromHexString(element.GetString()!));
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {

@@ -53,13 +53,7 @@ public abstract class BlockchainTestBase
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
-    }
-
-    [SetUp]
-    public void Setup()
-    {
     }
 
     private class DifficultyCalculatorWrapper : IDifficultyCalculator
@@ -158,7 +152,6 @@ public abstract class BlockchainTestBase
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
 
-        // Register tracer if provided for blocktest tracing
         if (tracer is not null)
         {
             blockchainProcessor.Tracers.Add(tracer);
@@ -213,7 +206,6 @@ public abstract class BlockchainTestBase
                     blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
                 }
 
-                // Dispose genesis block's AccountChanges
                 genesisBlock.DisposeAccountChanges();
             }
 
@@ -331,6 +323,10 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
+    private static readonly Dictionary<int, int> s_newPayloadParamCounts = Enumerable
+        .Range(1, EngineApiVersions.NewPayload.Latest)
+        .ToDictionary(v => v, v => typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")!.GetParameters().Length);
+
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
         if (newPayloads is null || newPayloads.Length == 0) return;
@@ -344,10 +340,7 @@ public abstract class BlockchainTestBase
             int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            // Get param count from the engine method signature via reflection (excludes trailing validation error)
-            int paramCount = typeof(IEngineRpcModule)
-                .GetMethod($"engine_newPayloadV{newPayloadVersion}")!
-                .GetParameters().Length;
+            int paramCount = s_newPayloadParamCounts[newPayloadVersion];
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,

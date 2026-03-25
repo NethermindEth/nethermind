@@ -23,7 +23,7 @@ public abstract class AmsterdamBlockChainTestFixture<TSelf> : BlockchainTestBase
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => await RunTest(test);
+    public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy
@@ -46,7 +46,7 @@ public abstract class AmsterdamEngineBlockChainTestFixture<TSelf> : BlockchainTe
     public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
-    public async Task Test(BlockchainTest test) => await RunTest(test);
+    public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
     public static IEnumerable<BlockchainTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy
