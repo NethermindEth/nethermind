@@ -34,8 +34,7 @@ Audit all non-test code in `src/Nethermind/`. This is the exhaustive mode — us
 Read these — they define conventions and inform what counts as a leak:
 
 1. **All rule files** in `.agents/rules/` — always list the directory rather than relying on a fixed list
-2. **All reference files** in `.agents/references/` for relevant subsystems
-3. **`CONTRIBUTING.md`** and **`.editorconfig`**
+2. **`CONTRIBUTING.md`** and **`.editorconfig`**
 
 ## Methodology — Two-Phase Audit with Reviewer Gate
 
