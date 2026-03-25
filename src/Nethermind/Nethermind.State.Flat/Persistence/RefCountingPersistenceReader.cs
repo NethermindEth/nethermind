@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,6 +17,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
+    private readonly CancellationTokenSource _cts = new();
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
     {
         _innerReader = innerReader;
@@ -24,13 +26,17 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         {
             // Reader should be re-created every block unless something holds it for very long.
             // It prevent database compaction, so this need to be closed eventually.
-            while (true)
+            try
             {
-                await Task.Delay(60_000);
-                if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
-                if (logger.IsWarn)
-                    logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
+                while (true)
+                {
+                    await Task.Delay(60_000, _cts.Token);
+                    if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
+                    if (logger.IsWarn)
+                        logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
+                }
             }
+            catch (OperationCanceledException) { }
         });
     }
 
@@ -62,7 +68,12 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public bool IsPreimageMode => _innerReader.IsPreimageMode;
 
-    protected override void CleanUp() => _innerReader.Dispose();
+    protected override void CleanUp()
+    {
+        _cts.Cancel();
+        _cts.Dispose();
+        _innerReader.Dispose();
+    }
 
     public bool TryAcquire() => TryAcquireLease();
 }

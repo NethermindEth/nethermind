@@ -583,7 +583,14 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            await Task.Delay(pruneDelayMs);
+            try
+            {
+                await Task.Delay(pruneDelayMs, _pruningTaskCancellationTokenSource.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
         }
 
         using (_pruningLock.EnterScope())

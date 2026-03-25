@@ -19,6 +19,7 @@ namespace Nethermind.Grpc.Clients
         private Channel _channel;
         private NethermindService.NethermindServiceClient _client;
         private readonly string _address;
+        private readonly CancellationTokenSource _cts = new();
 
         public GrpcClient(string host, int port, int reconnectionInterval, ILogManager logManager)
         {
@@ -63,7 +64,7 @@ namespace Nethermind.Grpc.Clients
             _client = new NethermindService.NethermindServiceClient(_channel);
             while (_channel.State != ChannelState.Ready)
             {
-                await Task.Delay(_reconnectionInterval);
+                await Task.Delay(_reconnectionInterval, _cts.Token);
             }
 
             if (_logger.IsInfo) _logger.Info($"Connected gRPC client to: '{_address}'");
@@ -73,6 +74,7 @@ namespace Nethermind.Grpc.Clients
         public Task StopAsync()
         {
             _connected = false;
+            _cts.Cancel();
             return _channel?.ShutdownAsync() ?? Task.CompletedTask;
         }
 
@@ -138,7 +140,9 @@ namespace Nethermind.Grpc.Clients
             await StopAsync();
             _retry++;
             if (_logger.IsWarn) _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
-            await Task.Delay(_reconnectionInterval);
+            // Use CancellationToken.None: _cts is already cancelled by StopAsync, and this delay
+            // represents backoff time before the next connection attempt.
+            await Task.Delay(_reconnectionInterval, CancellationToken.None);
             await StartAsync();
         }
     }

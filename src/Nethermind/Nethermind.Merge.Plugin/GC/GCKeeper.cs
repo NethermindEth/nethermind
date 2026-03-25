@@ -12,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
 
-public class GCKeeper
+public class GCKeeper : IDisposable
 {
     private static ulong _forcedGcCount = 0;
     private readonly Lock _lock = new();
@@ -22,6 +22,7 @@ public class GCKeeper
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
+    private readonly CancellationTokenSource _shutdownCts = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
@@ -29,6 +30,12 @@ public class GCKeeper
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
         _logger = logManager.GetClassLogger<GCKeeper>();
         _tryStartNoGCRegionFunc = TryStartNoGCRegion;
+    }
+
+    public void Dispose()
+    {
+        _shutdownCts.Cancel();
+        _shutdownCts.Dispose();
     }
 
     public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
@@ -165,7 +172,14 @@ public class GCKeeper
             }
             else
             {
-                await Task.Delay(postBlockDelayMs);
+                try
+                {
+                    await Task.Delay(postBlockDelayMs, _shutdownCts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
