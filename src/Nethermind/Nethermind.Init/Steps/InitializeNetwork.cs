@@ -121,8 +121,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
