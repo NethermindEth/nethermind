@@ -583,8 +583,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(pruneDelayMs, _pruningTaskCancellationTokenSource.Token);
-            if (_pruningTaskCancellationTokenSource.IsCancellationRequested) return;
+            if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(pruneDelayMs, _pruningTaskCancellationTokenSource.Token)) return;
         }
 
         using (_pruningLock.EnterScope())

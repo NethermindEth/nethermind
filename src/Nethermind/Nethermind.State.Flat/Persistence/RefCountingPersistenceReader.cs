@@ -29,8 +29,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
             // It prevents database compaction, so this needs to be closed eventually.
             while (true)
             {
-                await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(60_000, _cts.Token);
-                if (_cts.IsCancellationRequested) return;
+                if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(60_000, _cts.Token)) return;
                 if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
                 if (logger.IsWarn)
                     logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");

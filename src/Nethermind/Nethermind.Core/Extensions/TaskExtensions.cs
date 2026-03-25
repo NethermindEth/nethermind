@@ -12,11 +12,12 @@ public static class TaskExtensions
 {
     /// <summary>
     /// Delay that returns immediately when cancelled instead of throwing <see cref="OperationCanceledException"/>.
+    /// Returns <c>true</c> if the delay completed normally, <c>false</c> if cancelled.
     /// </summary>
-    public static async Task DelaySafe(int millisecondsDelay, CancellationToken cancellationToken)
+    public static async Task<bool> DelaySafe(int millisecondsDelay, CancellationToken cancellationToken)
     {
-        try { await Task.Delay(millisecondsDelay, cancellationToken); }
-        catch (OperationCanceledException) { }
+        try { await Task.Delay(millisecondsDelay, cancellationToken); return true; }
+        catch (OperationCanceledException) { return false; }
     }
 
     public static bool IsFailedButNotCanceled(this Task? task)

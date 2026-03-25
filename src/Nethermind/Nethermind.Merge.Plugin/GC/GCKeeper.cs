@@ -175,8 +175,7 @@ public class GCKeeper : IDisposable
             }
             else
             {
-                await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts.Token);
-                if (_shutdownCts.IsCancellationRequested) return;
+                if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts.Token)) return;
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)
