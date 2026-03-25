@@ -16,8 +16,8 @@ namespace Nethermind.Core.Container;
 /// </summary>
 public static class OrderedComponentsContainerBuilderExtensions
 {
-    internal const string OrderedMarkerPrefix = "Registered OrderedComponents For ";
-    internal const string CompositeMarkerPrefix = "Registered OrderedComponents Decorator For ";
+    private const string OrderedMarkerPrefix = "Registered OrderedComponents For ";
+    private const string CompositeMarkerPrefix = "Registered OrderedComponents Composite For ";
 
     public static ContainerBuilder AddLast<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
         builder
@@ -30,12 +30,7 @@ public static class OrderedComponentsContainerBuilderExtensions
 
     public static ContainerBuilder AddLast<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
         builder
-            .EnsureOrderedComponents<T>()
-            .AddDecorator<OrderedComponents<T>>((ctx, orderedComponents) =>
-            {
-                orderedComponents.AddLast(ctx.Resolve<TImpl>());
-                return orderedComponents;
-            })
+            .AddLast<T>(ctx => ctx.Resolve<TImpl>())
             .Add<TImpl>();
 
     public static ContainerBuilder AddFirst<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
@@ -49,13 +44,31 @@ public static class OrderedComponentsContainerBuilderExtensions
 
     public static ContainerBuilder AddFirst<T, TImpl>(this ContainerBuilder builder) where TImpl : class, T =>
         builder
-            .EnsureOrderedComponents<T>()
-            .AddDecorator<OrderedComponents<T>>((ctx, orderedComponents) =>
-            {
-                orderedComponents.AddFirst(ctx.Resolve<TImpl>());
-                return orderedComponents;
-            })
+            .AddFirst<T>(ctx => ctx.Resolve<TImpl>())
             .Add<TImpl>();
+
+    /// <summary>
+    /// Register a composite type that wraps the ordered components into a single <typeparamref name="T"/> service.
+    /// Unlike <see cref="ContainerBuilderExtensions.AddComposite{T, TComposite}"/> which uses Autofac's
+    /// <c>RegisterComposite</c> (collecting direct <typeparamref name="T"/> registrations),
+    /// this method registers <typeparamref name="TComposite"/> via <c>RegisterType</c> so it receives
+    /// <c>T[]</c> from <see cref="OrderedComponents{T}"/>. It also relaxes the ordered components
+    /// safety check to allow this single <typeparamref name="T"/> registration.
+    /// </summary>
+    public static ContainerBuilder AddCompositeOrderedComponents<T, TComposite>(this ContainerBuilder builder) where T : class where TComposite : class, T
+    {
+        builder.EnsureOrderedComponents<T>();
+
+        string compositeMarker = CompositeMarkerPrefix + typeof(T).Name;
+        if (!builder.Properties.TryAdd(compositeMarker, null))
+            return builder;
+
+        builder.RegisterType<TComposite>()
+            .As<T>()
+            .AsSelf();
+
+        return builder;
+    }
 
     /// <summary>
     /// Clear all previously registered ordered components for <typeparamref name="T"/>.

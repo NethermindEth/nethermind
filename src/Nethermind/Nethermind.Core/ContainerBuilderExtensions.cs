@@ -346,25 +346,7 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddComposite<T, TComposite>(this ContainerBuilder builder) where T : class where TComposite : T
     {
-        string orderedMarker = OrderedComponentsContainerBuilderExtensions.OrderedMarkerPrefix + typeof(T).Name;
-        string compositeMarker = OrderedComponentsContainerBuilderExtensions.CompositeMarkerPrefix + typeof(T).Name;
-        if (builder.Properties.ContainsKey(orderedMarker))
-        {
-            // OrderedComponents mode: register TComposite as T and AsSelf.
-            // TComposite takes T[] from OrderedComponents via its constructor.
-            // Guard against double registration.
-            if (!builder.Properties.TryAdd(compositeMarker, null))
-                return builder;
-
-            builder.RegisterType<TComposite>()
-                .As<T>()
-                .AsSelf()
-                .SingleInstance();
-        }
-        else
-        {
-            builder.RegisterComposite<TComposite, T>();
-        }
+        builder.RegisterComposite<TComposite, T>();
 
         return builder;
     }
