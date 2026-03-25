@@ -25,7 +25,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
-using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Consensus.Processing;
 

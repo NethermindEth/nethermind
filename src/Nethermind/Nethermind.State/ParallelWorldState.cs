@@ -29,6 +29,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public bool IsGenesis { get; set; } = true;
     public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
 
+    // todo: generated will be sorted, suggested will use hash maps to optimize reading
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     private BlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
@@ -132,6 +133,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         }
     }
 
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void MergeIntermediateBalsUpTo(ushort index)
     {
         if (!ParallelExecutionEnabled)
@@ -573,6 +575,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     public long GasUsed()
         => _gasUsed;
 
+    // todo: optimize early validation
     public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true)
     {
         if (_suggestedBlockAccessList is null)
@@ -662,7 +665,6 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
         if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
-            Console.WriteLine($"Remaining: {gasRemaining}, SuggestedReads: {suggestedReads}, GeneratedReads: {generatedReads}");
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }
     }
@@ -696,6 +698,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     private GeneratingBlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
             _intermediateBlockAccessLists[int.Min(blockAccessIndex.Value, _intermediateBlockAccessLists.Length - 1)];
 
+    // todo: run in parallel like prewarmer
     private void LoadPreBlockState(BlockAccessList blockAccessList)
     {
         foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
@@ -942,5 +945,4 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     // for testing
     internal IWorldState Inner => _innerWorldState;
-
 }

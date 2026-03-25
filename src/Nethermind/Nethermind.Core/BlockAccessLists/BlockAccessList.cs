@@ -23,6 +23,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>
     public IEnumerable<AccountChanges> AccountChanges => _accountChanges.Values;
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
+    // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
 
     public BlockAccessList()
