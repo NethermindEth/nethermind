@@ -283,7 +283,11 @@ public sealed class BlockCachePreWarmer(
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
-        public void Wait() => _doneEvent.Wait();
+        public void Wait()
+        {
+            _doneEvent.Wait();
+            _doneEvent.Dispose();
+        }
 
         private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
         {

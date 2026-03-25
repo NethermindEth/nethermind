@@ -320,6 +320,42 @@ public class SyncDispatcherTests
         await executorTask;
     }
 
+    [Test]
+    public async Task DisposeAsync_unsubscribes_StateChanged_handler()
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        await dispatcher.DisposeAsync();
+
+        // After dispose, changing feed state should not throw or interact with
+        // the dispatcher. If the handler were still subscribed, it would try to
+        // update internal state on a disposed object.
+        Assert.DoesNotThrow(() => syncFeed.Activate());
+    }
+
+    [Test]
+    public async Task DisposeAsync_double_dispose_does_not_throw()
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        await dispatcher.DisposeAsync();
+        await dispatcher.DisposeAsync();
+    }
+
     [Retry(tryCount: 5)]
     [TestCase(false, 1, 1, 8)]
     [TestCase(true, 1, 1, 24)]
