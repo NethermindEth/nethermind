@@ -20,20 +20,18 @@ namespace Nethermind.Core.Collections;
 ///   breaking correlation between ways ("power of two choices"). Keys that collide
 ///   in way 0 scatter to different sets in way 1, virtually eliminating conflict misses.
 ///
-/// Hash bit partitioning (64-bit hash):
-///   Bits  0-13: way 0 set index (14 bits)
-///   Bits 22-41: hash signature stored in header (20 bits)
-///   Bits 42-55: way 1 set index (14 bits, independent from way 0)
+/// Default size: 16384 sets × 2 ways = 32768 entries.
+/// Configurable via constructor parameter (setsLog2).
 ///
 /// Header layout (64-bit):
 /// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
 /// - Lock (bit 63): set during writes - readers retry/miss
 /// - Epoch (bits 37-62): global epoch tag - changes on Clear()
-/// - Hash  (bits 17-36): per-bucket hash signature (20 bits)
+/// - Hash  (bits 17-36): per-bucket hash signature (20 bits) — reduces false tag matches
 /// - Seq   (bits  1-16): per-entry sequence counter (16 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
-/// Array layout: [way0_set0..way0_set16383, way1_set0..way1_set16383] (split, not interleaved).
+/// Array layout: [way0_set0..way0_setN, way1_set0..way1_setN] (split, not interleaved).
 /// </summary>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The value type (reference type, nullable allowed)</typeparam>
@@ -41,14 +39,7 @@ public sealed class SeqlockCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
 {
-    /// <summary>
-    /// Number of sets. Must be a power of 2 for mask operations.
-    /// 16384 sets × 2 ways = 32768 total entries.
-    /// </summary>
-    private const int Sets = 1 << 14; // 16384
-    private const int SetMask = Sets - 1;
-
-    // Header bit layout:
+    // Header bit layout (fixed regardless of cache size):
     // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
 
     private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
@@ -69,12 +60,26 @@ public sealed class SeqlockCache<TKey, TValue>
     // Mask for checking if an entry is live in the current epoch.
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
-    // With 14-bit set index (bits 0-13) for way 0, hash signature needs independent bits.
-    // HashShift=5 maps header bits 17-36 to original bits 22-41, avoiding overlap with both ways.
-    private const int HashShift = 5;
+    /// <summary>
+    /// Number of sets (power of 2). Configurable via constructor.
+    /// </summary>
+    private readonly int _sets;
+    private readonly int _setMask;
 
-    // Way 1 uses bits 42-55 of the original hash (completely independent from way 0's bits 0-13).
-    private const int Way1Shift = 42;
+    /// <summary>
+    /// Hash-to-set-index shift for way 0 hash signature. Must place hash bits
+    /// above way 0's index bits and below the header hash field.
+    /// hashShift = setsLog2 - (17 - setsLog2) rounded to produce non-overlapping bits.
+    /// We use a simple formula: max(1, setsLog2 - 13) so that at default 14 bits
+    /// the shift is 5 (same as original) and at larger sizes it grows proportionally.
+    /// </summary>
+    private readonly int _hashShift;
+
+    /// <summary>
+    /// Way 1 index is extracted from bits [way1Shift .. way1Shift+setsLog2-1] of the 64-bit hash.
+    /// Must be independent from way 0 (bits 0..setsLog2-1). We pick the top region of the hash.
+    /// </summary>
+    private readonly int _way1Shift;
 
     /// <summary>
     /// Array of entries: [way0_set0..way0_setN, way1_set0..way1_setN].
@@ -93,9 +98,38 @@ public sealed class SeqlockCache<TKey, TValue>
     /// </summary>
     private long _shiftedEpoch;
 
-    public SeqlockCache()
+    /// <summary>
+    /// Creates a cache with the default size (16384 sets × 2 ways = 32768 entries).
+    /// </summary>
+    public SeqlockCache() : this(14)
     {
-        _entries = new Entry[Sets << 1]; // Sets * 2
+    }
+
+    /// <summary>
+    /// Creates a cache with a configurable number of sets.
+    /// </summary>
+    /// <param name="setsLog2">Log2 of the number of sets. Must be between 10 and 20.
+    /// Total entries = 2^(setsLog2+1). Examples: 14 = 32K entries, 18 = 512K entries, 20 = 2M entries.</param>
+    public SeqlockCache(int setsLog2)
+    {
+        if (setsLog2 < 10 || setsLog2 > 20)
+            throw new ArgumentOutOfRangeException(nameof(setsLog2), setsLog2, "Must be between 10 and 20.");
+
+        _sets = 1 << setsLog2;
+        _setMask = _sets - 1;
+
+        // Hash signature in the header occupies bits 17-36 (fixed). We need to map from
+        // hash64 bits that don't overlap with way 0's index bits (0..setsLog2-1).
+        // HashShift controls which hash64 bits land in the header's hash field.
+        // Original: setsLog2=14, hashShift=5 → header hash reads hash64 bits 22-41.
+        // Formula: hashShift = setsLog2 - 12, clamped to [1, 8].
+        _hashShift = Math.Clamp(setsLog2 - 12, 1, 8);
+
+        // Way 1 uses high bits of hash64, independent from way 0.
+        // Place it as high as possible: 64 - setsLog2.
+        _way1Shift = 64 - setsLog2;
+
+        _entries = new Entry[_sets << 1]; // Sets * 2
         _epoch = 0;
         _shiftedEpoch = 0;
     }
@@ -109,11 +143,11 @@ public sealed class SeqlockCache<TKey, TValue>
     public unsafe bool TryGetValue(in TKey key, out TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> _way1Shift) & _setMask);
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode >> _hashShift) & HashMask;
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -198,9 +232,9 @@ public sealed class SeqlockCache<TKey, TValue>
     public TValue? GetOrAdd<TState>(in TKey key, TState state, ValueFactory<TState> valueFactory)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> _way1Shift) & _setMask);
+        long hashPart = (hashCode >> _hashShift) & HashMask;
 
         if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
         {
@@ -358,9 +392,9 @@ public sealed class SeqlockCache<TKey, TValue>
     public void Set(in TKey key, TValue? value)
     {
         long hashCode = key.GetHashCode64();
-        int idx0 = (int)hashCode & SetMask;
-        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        int idx0 = (int)hashCode & _setMask;
+        int idx1 = _sets + ((int)(hashCode >> _way1Shift) & _setMask);
+        long hashPart = (hashCode >> _hashShift) & HashMask;
 
         SetCore(in key, value, idx0, idx1, hashPart);
     }
