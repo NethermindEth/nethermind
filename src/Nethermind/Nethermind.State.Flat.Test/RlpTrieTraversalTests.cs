@@ -47,11 +47,12 @@ public class RlpTrieTraversalTests
     /// <summary>
     /// Builds a NodeLoader that loads RLP from the state trie store, wraps it in a RefCountingTrieNode.
     /// </summary>
-    private NodeLoader MakeStateLoader() => (TreePath path, Hash256 hash) =>
+    private NodeLoader MakeStateLoader() => (TreePath path, in ValueHash256 hash) =>
     {
-        byte[]? data = _trieStore.TryLoadRlp(path, hash);
+        Hash256 h = hash.ToCommitment();
+        byte[]? data = _trieStore.TryLoadRlp(path, h);
         if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
-        Assert.That(Keccak.Compute(data), Is.EqualTo(hash), $"RLP hash mismatch at path {path}");
+        Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
         return _pool.Rent(hash, data);
     };
 
@@ -61,11 +62,12 @@ public class RlpTrieTraversalTests
     private NodeLoader MakeStorageLoader(Hash256 addressHash)
     {
         IScopedTrieStore storageStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(addressHash);
-        return (TreePath path, Hash256 hash) =>
+        return (TreePath path, in ValueHash256 hash) =>
         {
-            byte[]? data = storageStore.TryLoadRlp(path, hash);
+            Hash256 h = hash.ToCommitment();
+            byte[]? data = storageStore.TryLoadRlp(path, h);
             if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
-            Assert.That(Keccak.Compute(data), Is.EqualTo(hash), $"RLP hash mismatch at path {path}");
+            Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
             return _pool.Rent(hash, data);
         };
     }

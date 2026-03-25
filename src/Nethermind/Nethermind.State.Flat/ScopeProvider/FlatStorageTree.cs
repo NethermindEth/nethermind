@@ -120,7 +120,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         Hash256AsKey addressHash = _addressHash;
 
-        RefCountingTrieNode? StorageLoader(TreePath p, Hash256 h) =>
+        RefCountingTrieNode? StorageLoader(TreePath p, in ValueHash256 h) =>
             _bundle.LoadAndCacheStorageNodeForWarmer(addressHash, p, h);
 
         RlpTrieTraversal.WarmUpPath(StorageLoader, rootHash, key.BytesAsSpan);

@@ -13,7 +13,7 @@ namespace Nethermind.State.Flat;
 /// Delegate for loading a trie node identified by its path and hash.
 /// Returns a leased <see cref="RefCountingTrieNode"/> (caller must dispose) or <c>null</c> on miss.
 /// </summary>
-internal delegate RefCountingTrieNode? NodeLoader(TreePath path, Hash256 hash);
+internal delegate RefCountingTrieNode? NodeLoader(TreePath path, in ValueHash256 hash);
 
 /// <summary>
 /// Traverses a Merkle Patricia Trie using <see cref="RefCountingTrieNode"/> with pre-parsed metadata.
@@ -30,7 +30,7 @@ internal static class RlpTrieTraversal
     /// </summary>
     public static void WarmUpPath(
         NodeLoader nodeLoader,
-        Hash256 rootHash,
+        ValueHash256 rootHash,
         ReadOnlySpan<byte> rawKey)
     {
         TryRead(nodeLoader, rootHash, rawKey, out _, readValue: false);
@@ -42,7 +42,7 @@ internal static class RlpTrieTraversal
     /// </summary>
     public static bool TryRead(
         NodeLoader nodeLoader,
-        Hash256 rootHash,
+        ValueHash256 rootHash,
         ReadOnlySpan<byte> rawKey,
         out byte[]? value,
         bool readValue = true)
@@ -70,14 +70,14 @@ internal static class RlpTrieTraversal
     private static bool TryReadHashedNode(
         NodeLoader nodeLoader,
         ref TreePath path,
-        Hash256 hash,
+        ValueHash256 hash,
         Span<byte> remainingNibbles,
         bool readValue,
         out byte[]? value)
     {
         value = null;
 
-        if (hash == Keccak.EmptyTreeHash) return false;
+        if (hash == ValueKeccak.EmptyTreeHash) return false;
 
         // Iterative loop for hash-referenced nodes; recurse only for inline nodes.
         while (true)
@@ -87,17 +87,17 @@ internal static class RlpTrieTraversal
 
             try
             {
-                bool continueLoop = TraverseNode(nodeLoader, ref path, node, remainingNibbles, readValue, out Hash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
+                bool continueLoop = TraverseNode(nodeLoader, ref path, node, remainingNibbles, readValue, out ValueHash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
                 if (!continueLoop)
                 {
                     value = leafValue;
                     return leafValue is not null;
                 }
 
-                if (nextHash is null) return false;
+                if (nextHash is not { } next) return false;
 
                 remainingNibbles = remainingNibbles[nibblesConsumed..];
-                hash = nextHash;
+                hash = next;
             }
             finally
             {
@@ -116,7 +116,7 @@ internal static class RlpTrieTraversal
         RefCountingTrieNode node,
         Span<byte> remainingNibbles,
         bool readValue,
-        out Hash256? nextHash,
+        out ValueHash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
     {
@@ -138,7 +138,7 @@ internal static class RlpTrieTraversal
         ref TreePath path,
         RefCountingTrieNode node,
         Span<byte> remainingNibbles,
-        out Hash256? nextHash,
+        out ValueHash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
     {
@@ -166,7 +166,7 @@ internal static class RlpTrieTraversal
         RefCountingTrieNode node,
         Span<byte> remainingNibbles,
         bool readValue,
-        out Hash256? nextHash,
+        out ValueHash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
     {
@@ -303,7 +303,7 @@ internal static class RlpTrieTraversal
         int offset,
         Span<byte> remainingNibbles,
         bool readValue,
-        out Hash256? nextHash,
+        out ValueHash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
     {
@@ -324,7 +324,7 @@ internal static class RlpTrieTraversal
         {
             // Hash reference (0xA0 = 0x80 + 32)
             if (offset + 33 > rlp.Length) return false;
-            nextHash = new Hash256(rlp.Slice(offset + 1, 32));
+            nextHash = new ValueHash256(rlp.Slice(offset + 1, 32));
             return true;
         }
 
@@ -335,7 +335,7 @@ internal static class RlpTrieTraversal
             int inlineLen = ctx.PeekNextRlpLength();
             ReadOnlySpan<byte> inlineRlp = rlp.Slice(offset, inlineLen);
             TraverseInlineNode(nodeLoader, ref path, inlineRlp, remainingNibbles, readValue, out nextHash, out nibblesConsumed, out leafValue);
-            return nextHash is not null;
+            return nextHash is not null;  // ValueHash256? pattern match
         }
 
         return false;
@@ -351,7 +351,7 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> rlp,
         Span<byte> remainingNibbles,
         bool readValue,
-        out Hash256? nextHash,
+        out ValueHash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
     {

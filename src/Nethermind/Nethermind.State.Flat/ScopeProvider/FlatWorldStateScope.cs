@@ -132,7 +132,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         // this is just for warming up
         long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
 
-        RefCountingTrieNode? StateLoader(TreePath p, Hash256 h) =>
+        RefCountingTrieNode? StateLoader(TreePath p, in ValueHash256 h) =>
             _snapshotBundle.LoadAndCacheStateNodeForWarmer(p, h);
 
         RlpTrieTraversal.WarmUpPath(StateLoader, rootHash, address.ToAccountPath.Bytes);

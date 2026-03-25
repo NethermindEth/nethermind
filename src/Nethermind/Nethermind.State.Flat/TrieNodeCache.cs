@@ -88,7 +88,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return (shardIdx, hashCode);
     }
 
-    public RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, Hash256 hash)
+    public RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         (int shardIdx, int hashCode) = GetShardAndHashCode(address, in path);
         int bucketIdx = hashCode & _bucketMask;
@@ -270,7 +270,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             _count = 0;
         }
 
-        public RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, Hash256 hash)
+        public RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, in ValueHash256 hash)
         {
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
@@ -285,7 +285,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             return null;
         }
 
-        public RefCountingTrieNode SetAndLease(Hash256? address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp)
+        public RefCountingTrieNode SetAndLease(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
         {
             if (rlp.Length > TrieNodeRlp.MaxRlpLength)
                 throw new ArgumentException($"RLP too large: {rlp.Length} > {TrieNodeRlp.MaxRlpLength}");

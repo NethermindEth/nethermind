@@ -12,7 +12,7 @@ public interface ITrieNodeCache
     /// Returns a leased <see cref="RefCountingTrieNode"/> for the given path and hash.
     /// Caller must dispose the returned node to release the lease. Returns <c>null</c> on miss.
     /// </summary>
-    RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, Hash256 hash);
+    RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, in ValueHash256 hash);
     void Add(TransientResource transientResource);
     void Clear();
 

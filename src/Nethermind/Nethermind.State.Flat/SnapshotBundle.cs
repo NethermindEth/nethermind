@@ -286,7 +286,7 @@ public sealed class SnapshotBundle : IDisposable
     /// Loads and caches a state trie node for the warmer path. Returns a leased <see cref="RefCountingTrieNode"/>
     /// or <c>null</c> on miss. Checks transient cache -> main cache -> snapshots -> disk.
     /// </summary>
-    public RefCountingTrieNode? LoadAndCacheStateNodeForWarmer(TreePath path, Hash256 hash)
+    public RefCountingTrieNode? LoadAndCacheStateNodeForWarmer(TreePath path, in ValueHash256 hash)
     {
         // Check transient child cache
         RefCountingTrieNode? node = _transientResource.TryGetStateNode(path, hash);
@@ -319,7 +319,8 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
-        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out TrieNode? roNode))
+        Hash256 hashCommitment = hash.ToCommitment();
+        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hashCommitment, out TrieNode? roNode))
         {
             if (roNode.Keccak != hash)
                 throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
@@ -328,7 +329,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, ReadFlags.None);
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hashCommitment, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
             return _transientResource.SetAndLeaseStateNode(path, hash, rlp);
@@ -341,7 +342,7 @@ public sealed class SnapshotBundle : IDisposable
     /// Loads and caches a storage trie node for the warmer path. Returns a leased <see cref="RefCountingTrieNode"/>
     /// or <c>null</c> on miss. Checks transient cache -> main cache -> snapshots -> disk.
     /// </summary>
-    public RefCountingTrieNode? LoadAndCacheStorageNodeForWarmer(Hash256AsKey addressHash, TreePath path, Hash256 hash)
+    public RefCountingTrieNode? LoadAndCacheStorageNodeForWarmer(Hash256AsKey addressHash, TreePath path, in ValueHash256 hash)
     {
         RefCountingTrieNode? node = _transientResource.TryGetStorageNode(addressHash, path, hash);
         if (node is not null)
@@ -379,7 +380,8 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
-        if (_readOnlySnapshotBundle.TryFindStorageNodes(addressHash, path, hash, out TrieNode? roNode))
+        Hash256 hashCommitment = hash.ToCommitment();
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(addressHash, path, hashCommitment, out TrieNode? roNode))
         {
             if (roNode.Keccak != hash)
                 throw new NodeHashMismatchException($"Storage node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
@@ -388,7 +390,7 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hash, ReadFlags.None);
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hashCommitment, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
             return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, rlp);
@@ -398,7 +400,7 @@ public sealed class SnapshotBundle : IDisposable
     }
 
     private bool TryRentFromTrieNode(
-        ConcurrentDictionary<TreePath, TrieNode> dict, in TreePath path, Hash256 hash,
+        ConcurrentDictionary<TreePath, TrieNode> dict, in TreePath path, in ValueHash256 hash,
         [NotNullWhen(true)] out RefCountingTrieNode? node)
     {
         node = null;
