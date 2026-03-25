@@ -133,7 +133,7 @@ public class BranchProcessor(
                     }
                 }
 
-                (Block processedBlock, TxReceipt[] receipts) = await blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);

@@ -148,7 +148,7 @@ public class BlockProcessorTests
 
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task TransactionsExecuted_event_fires_during_ProcessOne()
+    public void TransactionsExecuted_event_fires_during_ProcessOne()
     {
         (BlockProcessor processor, _, IWorldState stateProvider) = CreateProcessorAndBranch();
 
@@ -160,7 +160,7 @@ public class BlockProcessorTests
         Block block = Build.A.Block.WithHeader(header).TestObject;
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block.Header);
 
-        await processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+        processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         eventFired.Should().BeTrue("TransactionsExecuted should fire after ProcessTransactions completes");
     }
@@ -208,7 +208,7 @@ public class BlockProcessorTests
         using IDisposable scope = stateProvider.BeginScope(null);
         Block block2 = Build.A.Block.WithHeader(Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject).TestObject;
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
-        await processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+        processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
         externalHandlerCallCount.Should().Be(1, "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
     }

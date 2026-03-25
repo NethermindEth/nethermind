@@ -23,13 +23,13 @@ public sealed class BlockchainProcessorFacade(
     CompositeBlockPreprocessorStep preprocessorStep
 )
 {
-    public async Task<Block?> Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
+    public Task<Block?> Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
         preprocessorStep.RecoverData(block);
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
-        (Block? processedBlock, TxReceipt[] _) = await blockProcessor.ProcessOne(block, options, tracer, spec, token);
-        return processedBlock;
+        (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
+        return Task.FromResult(processedBlock);
     }
 }

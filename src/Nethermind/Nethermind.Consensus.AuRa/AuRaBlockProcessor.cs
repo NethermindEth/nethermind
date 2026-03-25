@@ -82,12 +82,12 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override async Task<TxReceipt[]> ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             ValidateAuRa(block);
             RewriteContracts(block, spec);
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = await base.ProcessBlock(block, blockTracer, options, spec, token);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
@@ -109,7 +109,7 @@ namespace Nethermind.Consensus.AuRa
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected Task<TxReceipt[]> PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
             _balBuilder.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
