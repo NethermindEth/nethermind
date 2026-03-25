@@ -250,7 +250,7 @@ internal static partial class EvmInstructions
             snapshot: in snapshot);
     None:
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
