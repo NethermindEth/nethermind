@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -56,9 +58,10 @@ public class PrewarmerScopeProvider(
         private readonly PrewarmerGetTimeLabels _labels;
 
         // Pending cross-block cache updates, promoted only on successful CommitTree.
-        private List<(AddressAsKey Key, Account? Value)>? _pendingStateUpdates;
-        private List<(StorageCell Key, byte[] Value)>? _pendingStorageUpdates;
-        private bool _pendingStorageClear;
+        // ConcurrentQueue because storage batches may run in parallel (UpdateRootHashesMultiThread).
+        private ConcurrentQueue<(AddressAsKey Key, Account? Value)>? _pendingStateUpdates;
+        private ConcurrentQueue<(StorageCell Key, byte[] Value)>? _pendingStorageUpdates;
+        private volatile bool _pendingStorageClear;
 
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches)
         {
@@ -128,14 +131,14 @@ public class PrewarmerScopeProvider(
 
         internal void BufferStateUpdate(AddressAsKey key, Account? account)
         {
-            _pendingStateUpdates ??= new();
-            _pendingStateUpdates.Add((key, account));
+            ConcurrentQueue<(AddressAsKey, Account?)> queue = LazyInitializer.EnsureInitialized(ref _pendingStateUpdates)!;
+            queue.Enqueue((key, account));
         }
 
         internal void BufferStorageUpdate(in StorageCell cell, byte[] value)
         {
-            _pendingStorageUpdates ??= new();
-            _pendingStorageUpdates.Add((cell, value));
+            ConcurrentQueue<(StorageCell, byte[])> queue = LazyInitializer.EnsureInitialized(ref _pendingStorageUpdates)!;
+            queue.Enqueue((cell, value));
         }
 
         internal void BufferStorageClear()
@@ -172,9 +175,9 @@ public class PrewarmerScopeProvider(
             if (_pendingStateUpdates is not null)
             {
                 SeqlockCache<AddressAsKey, Account> stateCache = crossBlockCaches.StateCache;
-                foreach ((AddressAsKey key, Account? value) in _pendingStateUpdates)
+                while (_pendingStateUpdates.TryDequeue(out (AddressAsKey Key, Account? Value) entry))
                 {
-                    stateCache.Set(in key, value);
+                    stateCache.Set(in entry.Key, entry.Value);
                 }
             }
 
@@ -189,9 +192,9 @@ public class PrewarmerScopeProvider(
             if (_pendingStorageUpdates is not null)
             {
                 SeqlockCache<StorageCell, byte[]> storageCacheRef = crossBlockCaches.StorageCache;
-                foreach ((StorageCell key, byte[] value) in _pendingStorageUpdates)
+                while (_pendingStorageUpdates.TryDequeue(out (StorageCell Key, byte[] Value) entry))
                 {
-                    storageCacheRef.Set(in key, value);
+                    storageCacheRef.Set(in entry.Key, entry.Value);
                 }
             }
         }
