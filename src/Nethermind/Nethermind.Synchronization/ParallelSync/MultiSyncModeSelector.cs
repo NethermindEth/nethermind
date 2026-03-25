@@ -697,7 +697,11 @@ namespace Nethermind.Synchronization.ParallelSync
             return (maxPeerDifficulty, number);
         }
 
-        public void Dispose() => _cancellation.Dispose();
+        public void Dispose()
+        {
+            _cancellation.Cancel();
+            _cancellation.Dispose();
+        }
 
         private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
         {
