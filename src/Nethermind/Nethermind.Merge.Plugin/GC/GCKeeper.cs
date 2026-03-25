@@ -34,7 +34,7 @@ public class GCKeeper : IDisposable
 
     public void Dispose()
     {
-        _shutdownCts.Cancel();
+        try { _shutdownCts.Cancel(); } catch (ObjectDisposedException) { }
         _shutdownCts.Dispose();
     }
 
