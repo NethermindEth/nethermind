@@ -30,6 +30,7 @@ namespace Ethereum.HexPrefix.Test
             Assert.That(resultHex, Is.EqualTo(test.Output));
 
             (byte[] key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
+            Assert.That(isLeaf, Is.EqualTo(test.IsTerm));
             byte[] checkBytes = Nethermind.Trie.HexPrefix.ToBytes(key, isLeaf);
             string checkHex = checkBytes.ToHexString(false);
             Assert.That(checkHex, Is.EqualTo(test.Output));
@@ -42,20 +43,12 @@ namespace Ethereum.HexPrefix.Test
             public string Out { get; set; }
         }
 
-        public class HexPrefixTest
+        public class HexPrefixTest(string name, byte[] sequence, bool isTerm, string output)
         {
-            public HexPrefixTest(string name, byte[] sequence, bool isTerm, string output)
-            {
-                Name = name;
-                Sequence = sequence;
-                IsTerm = isTerm;
-                Output = output;
-            }
-
-            public string Name { get; }
-            public byte[] Sequence { get; }
-            public bool IsTerm { get; }
-            public string Output { get; }
+            public string Name { get; } = name;
+            public byte[] Sequence { get; } = sequence;
+            public bool IsTerm { get; } = isTerm;
+            public string Output { get; } = output;
 
             public override string ToString()
             {

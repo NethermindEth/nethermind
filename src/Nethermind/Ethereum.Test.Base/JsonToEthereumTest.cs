@@ -13,7 +13,6 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
@@ -146,16 +145,21 @@ namespace Ethereum.Test.Base
             };
             transaction.Hash = transaction.CalculateHash();
 
+            bool hasAccessListField = transactionJson.AccessLists is not null || transactionJson.AccessList is not null;
             AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.AsEnumerable().Count() != 0)
+            if (hasAccessListField)
+            {
                 transaction.Type = TxType.AccessList;
-            else
+            }
+            else if (transaction.AccessList.IsEmpty)
+            {
                 transaction.AccessList = null;
+            }
 
             if (transactionJson.MaxFeePerGas is not null)
             {
@@ -280,6 +284,7 @@ namespace Ethereum.Test.Base
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,
                         CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot,
                         CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas,
+                        CurrentSlotNumber = testJson.Env.SlotNumber,
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),
@@ -335,66 +340,6 @@ namespace Ethereum.Test.Base
         }
 
         private static readonly EthereumJsonSerializer _serializer = new();
-
-        public static IEnumerable<EofTest> ConvertToEofTests(string json)
-        {
-            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
-            List<EofTest> tests = [];
-            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
-            {
-                (string name, string category) = GetNameAndCategory(namedTest.Key);
-                GetTestMetaData(namedTest, out string? description, out string? url, out string? spec);
-
-                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
-                {
-                    VectorTestJson vectorJson = pair.Value;
-                    VectorTest vector = new()
-                    {
-                        Code = Bytes.FromHexString(vectorJson.Code),
-                        ContainerKind = ParseContainerKind(vectorJson.ContainerKind)
-                    };
-
-                    foreach (KeyValuePair<string, TestResultJson> result in vectorJson.Results)
-                    {
-                        EofTest test = new()
-                        {
-                            Name = $"{name}",
-                            Category = $"{category} [{result.Key}]",
-                            Url = url,
-                            Description = description,
-                            Spec = spec,
-                            Vector = vector,
-                            Result = result.ToTestResult()
-                        };
-                        tests.Add(test);
-                    }
-                }
-            }
-
-            return tests;
-
-            static ValidationStrategy ParseContainerKind(string containerKind)
-                => "INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode;
-
-            static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
-            {
-                description = null;
-                url = null;
-                spec = null;
-                GeneralStateTestInfoJson info = namedTest.Value?.Info;
-                if (info is not null)
-                {
-                    description = info.Description;
-                    url = info.Url;
-                    spec = info.Spec;
-                }
-            }
-        }
-
-        private static Result ToTestResult(this KeyValuePair<string, TestResultJson> result)
-            => result.Value.Result ?
-                new Result { Fork = result.Key, Success = true } :
-                new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
 
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {

@@ -439,10 +439,11 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -504,12 +505,12 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: true, spec))
-                        goto OutOfGas;
+                    bool ssetOutOfGas = !TGasPolicy.ConsumeStorageWrite<TEip8037, OnFlag>(ref gas, spec);
+                    if (ssetOutOfGas) goto OutOfGas;
                 }
                 else
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: false, spec))
+                    if (!TGasPolicy.ConsumeStorageWrite<TEip8037, OffFlag>(ref gas, spec))
                         goto OutOfGas;
 
                     if (newIsZero)
@@ -548,9 +549,7 @@ internal static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = originalIsZero
-                        ? gasCosts.SetReversalRefund
-                        : gasCosts.ClearReversalRefund;
+                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)

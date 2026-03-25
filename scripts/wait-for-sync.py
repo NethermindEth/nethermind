@@ -3,10 +3,19 @@ import subprocess
 import sys
 
 network = os.getenv("NETWORK")
+sync_mode = os.getenv("SYNC_MODE", "HalfPath")
 
-bad_logs = {"Exception": 1, "Verification failed": 1}
-good_logs = {"Processed": 0, "Verification complete.": 0, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 0}
-required_count = {"Processed": 20, "Verification complete.": 1, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 1}
+if sync_mode.lower() == "flat":
+    bad_logs = {"Exception": 1, "Verification failed": 1}
+    good_logs = {"Processed": 0, "Verification complete.": 0, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 0}
+    required_count = {"Processed": 20, "Verification complete.": 1, "MismatchedAccounts=0, MismatchedSlots=0, MissingInFlat=0, MissingInTrie=0": 1}
+elif sync_mode.lower() == "halfpath":
+    bad_logs = {"Exception": 1, "Missing node found!": 1}
+    good_logs = {"Processed": 0, "Stats after finishing state": 0}
+    required_count = {"Processed": 20, "Stats after finishing state": 1}
+else:
+    print(f"Unsupported sync mode: {sync_mode}")
+    sys.exit(1)
 
 if network not in {"joc-mainnet", "joc-testnet", "linea-mainnet", "linea-sepolia", "energyweb", "volta"}:
     good_logs["Synced Chain Head"] = 0

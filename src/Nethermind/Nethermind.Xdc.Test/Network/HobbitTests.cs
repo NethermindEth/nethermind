@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.P2P;
@@ -26,9 +25,10 @@ namespace Nethermind.Xdc.Test.Network
             msg.Timeout = XdcTestHelper.BuildSignedTimeout(Build.A.PrivateKey.TestObject, 123, 400);
 
             MessageSerializationService service = new(SerializerInfo.Create(new TimeoutMsgSerializer()));
-            IByteBuffer dataBuffer = service.ZeroSerialize(msg);
+            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
 
-            Run(dataBuffer, msg, inbound, outbound, framingEnabled);
+            Run(packet, inbound, outbound, framingEnabled);
         }
 
         [Test]
@@ -40,9 +40,10 @@ namespace Nethermind.Xdc.Test.Network
                 new BlockRoundInfo(Hash256.Zero, 123, 100), 400, Build.A.PrivateKey.TestObject);
 
             MessageSerializationService service = new(SerializerInfo.Create(new VoteMsgSerializer()));
-            IByteBuffer dataBuffer = service.ZeroSerialize(msg);
+            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
 
-            Run(dataBuffer, msg, inbound, outbound, framingEnabled);
+            Run(packet, inbound, outbound, framingEnabled);
         }
 
         [Test]
@@ -53,22 +54,10 @@ namespace Nethermind.Xdc.Test.Network
             msg.SyncInfo = XdcTestHelper.BuildSyncInfo(Build.A.PrivateKey.TestObject, 123, 400);
 
             MessageSerializationService service = new(SerializerInfo.Create(new SyncInfoMsgSerializer()));
-            IByteBuffer dataBuffer = service.ZeroSerialize(msg);
+            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
 
-            Run(dataBuffer, msg, inbound, outbound, framingEnabled);
-        }
-
-        private void Run<T>(IByteBuffer dataBuffer, T msg, StackType inbound, StackType outbound, bool framingEnabled) where T : P2PMessage
-        {
-            try
-            {
-                Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
-                Run(packet, inbound, outbound, framingEnabled);
-            }
-            finally
-            {
-                dataBuffer.Release();
-            }
+            Run(packet, inbound, outbound, framingEnabled);
         }
     }
 }
