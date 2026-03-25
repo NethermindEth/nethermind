@@ -15,8 +15,6 @@ internal static class ProcessHelper
     /// Run external process and return the console output.
     /// In the case of any exception, null will be returned.
     /// </summary>
-    private const int TimeoutMs = 5_000;
-
     internal static string? RunAndReadOutput(string fileName, string arguments = "")
     {
         var processStartInfo = new ProcessStartInfo
@@ -40,15 +38,9 @@ internal static class ProcessHelper
             {
                 return null;
             }
-
-            if (!process.WaitForExit(TimeoutMs))
-            {
-                try { process.Kill(); } catch { }
-                return null;
-            }
-
-            // Read after WaitForExit to ensure stdout is fully flushed
-            return process.StandardOutput.ReadToEnd();
+            string output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit();
+            return output;
         }
     }
 }

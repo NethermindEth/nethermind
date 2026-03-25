@@ -133,14 +133,16 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        blocksConfig.PreWarmStateConcurrency = 0;
+        blocksConfig.PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
             .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
-            .AddSingleton<ITxPool>(NullTxPool.Instance)
-            .Intercept<IBlocksConfig>(cfg => cfg.PreWarmStateConcurrency = 0);
+            .AddSingleton<ITxPool>(NullTxPool.Instance);
 
         if (isEngineTest)
         {
