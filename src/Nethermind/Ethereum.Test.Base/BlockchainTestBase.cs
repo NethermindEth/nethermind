@@ -84,8 +84,9 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
-        // Post-merge pyspec blockchain_test_from_state_test fixtures expect genesis to be processed
-        // under the target fork rules when the fork requires it (e.g. EIP-7928 sets BlockAccessListHash).
+        // EIP-7928 introduces BlockAccessListHash in the block header, which must be computed
+        // during genesis processing. Without target fork rules at genesis, the hash field is missing
+        // and the genesis block header doesn't match the pyspec fixture expectation.
         bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
 
         List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = genesisUsesTargetFork
@@ -325,7 +326,8 @@ public abstract class BlockchainTestBase
 
     private static readonly Dictionary<int, int> s_newPayloadParamCounts = Enumerable
         .Range(1, EngineApiVersions.NewPayload.Latest)
-        .ToDictionary(v => v, v => typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")!.GetParameters().Length);
+        .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
+            ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
 
     private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
