@@ -158,6 +158,11 @@ public class BatchedTrieVisitor<TNodeContext>
         }
     }
 
+    /// <summary>
+    /// Pops items from a partition stack and returns them as a new batch.
+    /// Returns null when all jobs are complete or a failure has occurred.
+    /// The caller owns the returned list and must dispose it.
+    /// </summary>
     ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? GetNextBatch()
     {
         CompactStack<Job>? theStack;
@@ -305,6 +310,7 @@ public class BatchedTrieVisitor<TNodeContext>
             using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
             TreePath emptyPath = TreePath.Empty;
             while (GetNextBatch() is { } currentBatch)
+            using (currentBatch)
             {
                 // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
                 // but the path ordering is important for read amplification
@@ -369,8 +375,6 @@ public class BatchedTrieVisitor<TNodeContext>
                     AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
                     QueueNextNodes(ref nextToProcesses);
                 }
-
-                currentBatch.Dispose();
             }
         }
         finally
