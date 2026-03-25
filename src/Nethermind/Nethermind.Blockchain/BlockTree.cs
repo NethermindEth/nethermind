@@ -1083,7 +1083,7 @@ namespace Nethermind.Blockchain
             long blocksWalked = 0L;
             BlockHeader? current = start;
 
-            while (current is not null && blocksWalked < maxBlockDepth)
+            while (current is not null && blocksWalked <= maxBlockDepth)
             {
                 ChainLevelInfo? level = LoadLevel(current.Number);
                 if (level is not null)

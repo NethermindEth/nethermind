@@ -2272,24 +2272,13 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void UpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_DecanonalizesDescendant()
+    public void UpdateMainChain_WhenBeaconSyncMarksThenReorgsToSibling_DecanonicalizesDescendant()
     {
         // Regression test for the Gnosis canonical-mismatch bug.
         //
-        // BlockDownloader calls UpdateMainChain(block, wereProcessed: false) to mark synced
-        // blocks canonical without updating Head. When a reorg then arrives at the same height
-        // as the stale Head (previousHeadNumber == lastNumber), the old unmark loop
-        // (previousHeadNumber > lastNumber) is skipped, leaving the orphaned descendant
-        // wrongly canonical so eth_getBlockByNumber returns the wrong block.
-        //
-        // The fix adds an else-branch that scans upward from lastNumber+1 to clear any
-        // stale canonical markers left by the sync path.
-        //
-        // Scenario:
-        //   UpdateMainChain([A], wereProcessed: true)  — FCU(A): head = A at H=1.
-        //   UpdateMainChain([C], wereProcessed: false) — sync: C canonical at H=2, head stays at A.
-        //   UpdateMainChain([B], wereProcessed: true)  — FCU(B, H=1, sibling of A):
-        //     previousHeadNumber(1) == lastNumber(1) → else-branch fires → C at H=2 decanonalized.
+        // Beacon sync marks C canonical at H=2 (wereProcessed=false, Head stays at H=1).
+        // FCU reorgs to sibling B at H=1: previousHeadNumber == lastNumber, so the downward
+        // unmark loop is skipped. The unconditional upward scan clears C at H=2.
         BlockTree blockTree = BuildBlockTree();
 
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
@@ -2315,7 +2304,7 @@ public class BlockTreeTests
             .Should().NotBeNull("C must be canonical at H=2 after sync marks it");
 
         // FCU(B): reorg to sibling at the same height as the stale Head.
-        // previousHeadNumber(1) == lastNumber(1) → old loop skipped → else-branch must clear C.
+        // previousHeadNumber(1) == lastNumber(1) → downward loop skipped → upward scan clears C.
         blockTree.UpdateMainChain(new[] { blockB }, wereProcessed: true, forceUpdateHeadBlock: true);
 
         blockTree.Head!.Hash.Should().Be(blockB.Hash!, "head must be B after reorg");
@@ -2644,8 +2633,8 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void HealCanonicalChain_WhenDepthExceedsMaxBlockDepth_StopsAtLimit()
     {
-        // With maxBlockDepth=1, the walk only checks the start block and one parent.
-        // A broken marker two levels below must NOT be repaired.
+        // maxBlockDepth=0 repairs only the start block; maxBlockDepth=N repairs start + N parents.
+        // A broken marker one level below start must NOT be repaired when maxBlockDepth=0.
         BlockTree blockTree = BuildBlockTree();
 
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
