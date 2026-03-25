@@ -98,7 +98,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {
-            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs));
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
