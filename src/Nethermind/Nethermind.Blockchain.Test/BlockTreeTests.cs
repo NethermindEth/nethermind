@@ -2737,7 +2737,6 @@ public class BlockTreeTests
         //      Phase 2 upward scan: clears d1(H=2), hits gap at d2(H=3), breaks.
         //      d3(H=4) remains stale canonical — BUG.
         //
-        // This test FAILS on canonical-fix (break-on-first-gap) and PASSES on bounded-scan.
         BlockTree blockTree = BuildBlockTree();
 
         Block genesis = Build.A.Block.WithNumber(0).TestObject;
