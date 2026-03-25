@@ -30,27 +30,25 @@ namespace Nethermind.Init.Steps
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            if (initConfig.HealCanonicalChainOnStartup)
-            {
-                Hash256? startHash = blockTree.Head?.Hash;
-                if (startHash is not null)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
-                    blockTree.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
-                }
-                else
-                {
-                    if (_logger.IsWarn) _logger.Warn("HealCanonicalChainOnStartup requested but no head block found — skipping.");
-                }
-            }
+            HealCanonicalChainIfEnabled();
+            return initConfig.ProcessingEnabled
+                ? RunBlockTreeInitTasks(cancellationToken)
+                : Task.CompletedTask;
+        }
 
-            if (initConfig.ProcessingEnabled)
+        private void HealCanonicalChainIfEnabled()
+        {
+            if (!initConfig.HealCanonicalChain) return;
+
+            Hash256? startHash = blockTree.Head?.Hash;
+            if (startHash is not null)
             {
-                return RunBlockTreeInitTasks(cancellationToken);
+                if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
+                blockTree.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
             }
             else
             {
-                return Task.CompletedTask;
+                if (_logger.IsWarn) _logger.Warn("HealCanonicalChain requested but no head block found — skipping.");
             }
         }
 

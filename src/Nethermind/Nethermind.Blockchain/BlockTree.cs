@@ -767,13 +767,12 @@ namespace Nethermind.Blockchain
                 return level.BlockInfos[0].BlockHash;
             }
 
-            // Post-merge: block difficulty is 0, so TotalDifficulty never increases and all
-            // blocks at the same height share the same cumulative TD. The best-difficulty
-            // fallback below cannot distinguish canonical from orphaned — it would return
-            // a stale block after a reorg. Return null: there is no canonical block here.
-            bool isPostMerge = SpecProvider.TerminalTotalDifficulty is not null
-                && (Head?.TotalDifficulty ?? UInt256.Zero) >= SpecProvider.TerminalTotalDifficulty;
-            if (isPostMerge) return null;
+            // Post-merge: TD never increases, so the best-TD fallback cannot distinguish canonical from orphaned.
+            if (SpecProvider.TerminalTotalDifficulty is not null
+                && (Head?.TotalDifficulty ?? UInt256.Zero) >= SpecProvider.TerminalTotalDifficulty)
+            {
+                return null;
+            }
 
             // Pre-merge: the block with the highest total difficulty is canonical by PoW rule.
             UInt256 bestDifficultySoFar = UInt256.Zero;
@@ -1008,8 +1007,6 @@ namespace Nethermind.Blockchain
             long lastNumber = ascendingOrder ? blocks[^1].Number : blocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
-            // Downward unmark: clear levels from previousHead down to lastNumber+1.
-            // Handles the normal reorg case where the new chain is shorter than the old head.
             if (previousHeadNumber > lastNumber)
             {
                 for (long i = 0; i < previousHeadNumber - lastNumber; i++)
@@ -1025,22 +1022,9 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            // Upward scan: clear any stale canonical markers above max(previousHead, lastNumber).
-            // Beacon sync (wereProcessed=false) marks blocks canonical without updating Head,
-            // leaving stale markers the downward loop cannot reach. This covers two cases:
-            //   - FCU at same/higher height (previousHeadNumber <= lastNumber): scans from lastNumber+1.
-            //   - ePBS FCU to ancestor with stale head: scans from previousHeadNumber+1, clearing
-            //     beacon-synced markers above the stale head that the downward loop misses.
-            for (long levelNumber = Math.Max(previousHeadNumber, lastNumber) + 1; ; levelNumber++)
-            {
-                ChainLevelInfo? level = LoadLevel(levelNumber);
-                if (level is null) break;
-                if (level.HasBlockOnMainChain)
-                {
-                    level.HasBlockOnMainChain = false;
-                    _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
-                }
-            }
+            // Clear stale canonical markers above the new head left by beacon sync.
+            // Covers both same-height FCU (previousHeadNumber <= lastNumber) and ePBS FCU to ancestor.
+            ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
             for (int i = 0; i < blocks.Count; i++)
             {
@@ -1068,22 +1052,18 @@ namespace Nethermind.Blockchain
             BlockHeader? start = FindHeader(startHash, BlockTreeLookupOptions.None);
             if (start is null) return;
 
-            // BatchWrite is a write-buffered, deferred batch: PersistLevel only enqueues writes
-            // and nothing is flushed to the underlying DB until Dispose(). Both phases therefore
-            // commit atomically — a crash before Dispose leaves the DB unchanged.
             using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
 
             long repairedAbove = ClearStaleMarkersAbove(start.Number, batch);
             long repairedBelow = RepairMarkersBelow(start, maxBlockDepth, batch);
-            long repaired = repairedAbove + repairedBelow;
 
-            if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repaired} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
+            if (Logger.IsInfo) Logger.Info($"Canonical chain heal complete: {repairedAbove + repairedBelow} level(s) repaired ({repairedAbove} stale above head cleared, {repairedBelow} incorrect markers fixed).");
         }
 
-        private long ClearStaleMarkersAbove(long headNumber, BatchWrite batch)
+        private long ClearStaleMarkersAbove(long fromExclusive, BatchWrite batch)
         {
             long cleared = 0L;
-            for (long levelNumber = headNumber + 1; ; levelNumber++)
+            for (long levelNumber = fromExclusive + 1; ; levelNumber++)
             {
                 ChainLevelInfo? level = LoadLevel(levelNumber);
                 if (level is null) break;
@@ -1115,15 +1095,14 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    bool needsPersist = index.Value != 0 || !level.HasBlockOnMainChain;
+                    bool needsRepair = index.Value != 0 || !level.HasBlockOnMainChain;
 
                     if (index.Value != 0)
                         level.SwapToMain(index.Value);
 
-                    if (!level.HasBlockOnMainChain)
-                        level.HasBlockOnMainChain = true;
+                    level.HasBlockOnMainChain = true;
 
-                    if (needsPersist)
+                    if (needsRepair)
                     {
                         _chainLevelInfoRepository.PersistLevel(current.Number, level, batch);
                         repairedCount++;

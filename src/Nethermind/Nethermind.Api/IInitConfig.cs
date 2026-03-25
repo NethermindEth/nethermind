@@ -105,7 +105,7 @@ public interface IInitConfig : IConfig
                       "the beacon-sync path. Also clears stale canonical markers above the head. " +
                       "Use this flag once after observing a canonical-mismatch (wrong `eth_getBlockByNumber` results).",
         DefaultValue = "false")]
-    bool HealCanonicalChainOnStartup { get; set; }
+    bool HealCanonicalChain { get; set; }
 
     [ConfigItem(
         Description = "Number of blocks to walk back from the head when `HealCanonicalChain` is enabled.",
