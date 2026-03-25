@@ -28,93 +28,20 @@ env:
   TERM: xterm
 
 jobs:
-  setup-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-    steps:
-      - name: Determine sync modes
-        id: set-matrix
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MODE_INPUT: ${{ github.event.inputs.mode }}
-        run: |
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            requested_mode="${MODE_INPUT}"
-          else
-            requested_mode="Both"
-          fi
-
-          case "$requested_mode" in
-            Both)
-              modes='["HalfPath","Flat"]'
-              ;;
-            HalfPath)
-              modes='["HalfPath"]'
-              ;;
-            Flat)
-              modes='["Flat"]'
-              ;;
-          esac
-
-          matrix=$(echo "$modes" | jq -c --arg run_id "$GITHUB_RUN_ID" '[.[] as $mode | {
-            network: "hoodi",
-            cl: "lodestar",
-            cl_image: "chainsafe/lodestar:latest",
-            checkpoint_sync_url: "https://checkpoint-sync.hoodi.ethpandaops.io",
-            timeout: 180,
-            agent: "g6-standard-6",
-            mode: $mode,
-            runner_label: (
-              (if $mode == "Flat" then "f-" else "hp-" end)
-              + $run_id + "-pr-hoodi"
-            )
-          }]')
-
-          echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
-
-  create_a_runner:
-    needs: [setup-matrix]
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install sshpass
-        run: sudo apt-get update && sudo apt-get install -y sshpass
-
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Create a Runner
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
-        with:
-          linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ steps.gh-app.outputs.token }}"
-          action: "create"
-          runner_label: ${{ matrix.config.runner_label }}
-          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          machine_type: "${{ matrix.config.agent }}"
-          image: "linode/ubuntu24.04"
-          tags: "core, self-hosted, dynamic"
-          organization: "NethermindEth"
-          repo_name: "nethermind"
-          blocked_ports: "8545,8546,8547,8551,8552,8553"
-
   sync-hoodi:
-    needs: [setup-matrix, create_a_runner]
+    name: "Sync hoodi (${{ matrix.mode }})"
+    runs-on: ubuntu-arm64-8-core
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    name: "Sync hoodi (${{ matrix.config.mode }})"
-    runs-on: ${{ matrix.config.runner_label }}
-    timeout-minutes: ${{ matrix.config.timeout }}
+        mode: [HalfPath, Flat]
+        include:
+          - mode: HalfPath
+            flatdb: false
+          - mode: Flat
+            flatdb: true
+
     steps:
       - name: Authenticate App
         id: gh-app
@@ -127,7 +54,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          clean: true
           ref: ${{ github.event.inputs.ref || github.sha }}
 
       - name: Checkout tests repository
@@ -138,10 +64,11 @@ jobs:
           token: ${{ steps.gh-app.outputs.token }}
           clean: true
 
-      - name: Installing requirements
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio zip
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: make build-essential jq zip
+          version: 1.0
 
       - name: Setup Go environment
         uses: actions/setup-go@v6
@@ -155,15 +82,19 @@ jobs:
         with:
           python-version: "3.X"
 
-      - name: Install Sedge environment
+      - name: Cache Sedge binary
+        id: cache-sedge
+        uses: actions/cache@v4
+        with:
+          path: sedge/build/sedge
+          key: sedge-core-${{ runner.arch }}
+
+      - name: Install Sedge
+        if: steps.cache-sedge.outputs.cache-hit != 'true'
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
           make compile
-
-      - name: Install Docker via Sedge
-        working-directory: sedge
-        run: ./build/sedge deps install
 
       - name: Build Docker image locally
         run: |
@@ -173,22 +104,17 @@ jobs:
             --build-arg COMMIT_HASH=${{ github.sha }} \
             .
 
-      - name: Run Sedge
+      - name: Generate and run Sedge
         working-directory: sedge
         env:
-          SYNC_MODE: ${{ matrix.config.mode }}
-          CL_CLIENT: ${{ matrix.config.cl }}
-          CL_IMAGE: ${{ matrix.config.cl_image }}
-          CHECKPOINT_URL: ${{ matrix.config.checkpoint_sync_url }}
+          SYNC_MODE: ${{ matrix.mode }}
+          FLATDB: ${{ matrix.flatdb }}
           SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
           GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
-          case "${SYNC_MODE,,}" in
-            halfpath) flatdb_enabled=false ;;
-            flat)     flatdb_enabled=true ;;
-          esac
-
           node_name="SyncPRGate-hoodi-${SYNC_MODE}-${GITHUB_RUN_ID}"
+
+          ./build/sedge deps install
 
           mkdir -p execution-data/logs/configs
           mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
@@ -197,13 +123,13 @@ jobs:
             --logging none \
             -p $GITHUB_WORKSPACE/sedge \
             full-node \
-            -c ${CL_CLIENT}:${CL_IMAGE} \
+            -c lodestar:chainsafe/lodestar:latest \
             -e nethermind:nethermind:pr-local \
             --map-all \
             --no-mev-boost \
             --no-validator \
             --network hoodi \
-            --el-extra-flag FlatDb.Enabled=$flatdb_enabled \
+            --el-extra-flag FlatDb.Enabled=$FLATDB \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -217,7 +143,7 @@ jobs:
             --el-extra-flag Seq.MinLevel=Info \
             --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
             --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}" \
-            --checkpoint-sync-url=${CHECKPOINT_URL}
+            --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
 
           # Use docker compose directly instead of `sedge run` because sedge run
           # does `docker compose pull` which fails for the locally-built image.
@@ -226,7 +152,7 @@ jobs:
       - name: Wait for hoodi to sync
         env:
           NETWORK: hoodi
-          SYNC_MODE: ${{ matrix.config.mode }}
+          SYNC_MODE: ${{ matrix.mode }}
         run: python scripts/wait-for-sync.py
 
       - name: Get Nethermind Debug Logs
@@ -235,7 +161,8 @@ jobs:
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
           cd "$target_dir/logs"
           log_file=$(find . -type f -name "*.log" | head -n 1)
-          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.config.mode }}-${{ github.run_id }}
+          echo "Found log file: $log_file"
+          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.mode }}-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
@@ -255,44 +182,3 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
-
-  destroy_runner:
-    needs: [setup-matrix, create_a_runner, sync-hoodi]
-    if: always()
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJson(needs.setup-matrix.outputs.matrix) }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Authenticate App
-        id: gh-app
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.ADMIN_APP_ID }}
-          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
-
-      - name: Destroy VM (make sure is removed)
-        continue-on-error: true
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
-        with:
-          linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ steps.gh-app.outputs.token }}"
-          action: "destroy-machine"
-          runner_label: ${{ matrix.config.runner_label }}
-          search_phrase: ${{ matrix.config.runner_label }}
-          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          organization: "NethermindEth"
-          repo_name: "nethermind"
-
-      - name: Destroy Runner
-        uses: kamilchodola/linode-github-runner/.github/actions/linode-machine-manager@main
-        with:
-          linode_token: ${{ secrets.LINODE_TOKEN }}
-          github_token: "${{ steps.gh-app.outputs.token }}"
-          action: "destroy-runner"
-          runner_label: ${{ matrix.config.runner_label }}
-          search_phrase: ${{ matrix.config.runner_label }}
-          root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
-          organization: "NethermindEth"
-          repo_name: "nethermind"
