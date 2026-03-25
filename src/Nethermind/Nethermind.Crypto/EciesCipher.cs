@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Org.BouncyCastle.Crypto;
@@ -21,26 +20,11 @@ public class EciesCipher : IEciesCipher
     private const int KeySize = 128;
     private readonly ICryptoRandom _cryptoRandom;
     private readonly PrivateKeyGenerator _keyGenerator;
-    private readonly ArrayPool<byte>? _arrayPool;
 
     public EciesCipher(ICryptoRandom cryptoRandom)
     {
         _cryptoRandom = cryptoRandom;
         _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
-    }
-
-    /// <summary>
-    /// Initializes a new instance with an injectable array pool for the underlying IES engine.
-    /// Used for testing to detect buffer leaks via a tracking pool.
-    /// </summary>
-    /// <param name="cryptoRandom">The cryptographic random number generator.</param>
-    /// <param name="arrayPool">
-    /// The array pool passed to <see cref="EthereumIesEngine"/> for temporary buffer rentals.
-    /// If null, the engine uses <see cref="ArrayPool{T}.Shared"/>.
-    /// </param>
-    internal EciesCipher(ICryptoRandom cryptoRandom, ArrayPool<byte>? arrayPool) : this(cryptoRandom)
-    {
-        _arrayPool = arrayPool;
     }
 
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
@@ -64,7 +48,7 @@ public class EciesCipher : IEciesCipher
     {
         byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
         PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
-        EthereumIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv, _arrayPool);
+        EthereumIesEngine iesEngine = MakeIesEngine(true, recipientPublicKey, ephemeralPrivateKey, iv);
         byte[] cipher = iesEngine.ProcessBlock(plainText, macData);
 
         byte[] prefixedBytes = ephemeralPrivateKey.PublicKey.PrefixedBytes;
@@ -83,23 +67,22 @@ public class EciesCipher : IEciesCipher
         return outputArray;
     }
 
-    private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
+    private static byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
     {
-        EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv, _arrayPool);
+        EthereumIesEngine iesEngine = MakeIesEngine(false, ephemeralPublicKey, privateKey, iv);
         return iesEngine.ProcessBlock(ciphertextBody, macData);
     }
 
     private static readonly IesWithCipherParameters _iesParameters = new IesWithCipherParameters([], [], KeySize, KeySize);
 
-    private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv, ArrayPool<byte>? arrayPool = null)
+    private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
     {
         IBlockCipher aesFastEngine = AesUtilities.CreateEngine();
 
         EthereumIesEngine iesEngine = new(
             new HMac(new Sha256Digest()),
             new Sha256Digest(),
-            new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)),
-            arrayPool);
+            new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
         byte[] secret = SecP256k1.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
         iesEngine.Init(isEncrypt, OptimizedKdf.Derive(secret), _iesParameters, iv);
