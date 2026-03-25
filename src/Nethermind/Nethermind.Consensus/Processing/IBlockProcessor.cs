@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event Action? TransactionsExecuted;
 
-        public Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(
+        public (Block Block, TxReceipt[] Receipts) ProcessOne(
             Block suggestedBlock,
             ProcessingOptions options,
             IBlockTracer blockTracer,

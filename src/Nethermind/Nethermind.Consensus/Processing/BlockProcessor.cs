@@ -58,7 +58,7 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
-    public async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -71,7 +71,7 @@ public partial class BlockProcessor(
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options, spec, token);
+        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -100,7 +100,7 @@ public partial class BlockProcessor(
     protected virtual BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec) =>
         new(header, spec);
 
-    protected virtual async Task<TxReceipt[]> ProcessBlock(
+    protected virtual TxReceipt[] ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options,
