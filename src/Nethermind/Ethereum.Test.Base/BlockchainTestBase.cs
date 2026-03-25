@@ -172,9 +172,8 @@ public abstract class BlockchainTestBase
                 Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
-                ManualResetEvent genesisProcessed = new(false);
-
-                blockTree.NewHeadBlock += (_, args) =>
+                using ManualResetEvent genesisProcessed = new(false);
+                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
                 {
                     if (args.Block.Number == 0)
                     {
@@ -182,8 +181,7 @@ public abstract class BlockchainTestBase
                         genesisProcessed.Set();
                     }
                 };
-
-                blockchainProcessor.BlockRemoved += (_, args) =>
+                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
@@ -192,9 +190,21 @@ public abstract class BlockchainTestBase
                     }
                 };
 
-                blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
-                parentHeader = genesisBlock.Header;
+                blockTree.NewHeadBlock += onNewHeadBlock;
+                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
+
+                try
+                {
+                    blockTree.SuggestBlock(genesisBlock);
+                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                        "Timed out waiting for genesis block processing.");
+                    parentHeader = genesisBlock.Header;
+                }
+                finally
+                {
+                    blockTree.NewHeadBlock -= onNewHeadBlock;
+                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+                }
 
                 // Dispose genesis block's AccountChanges
                 genesisBlock.DisposeAccountChanges();
