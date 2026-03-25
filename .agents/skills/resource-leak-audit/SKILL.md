@@ -100,13 +100,19 @@ For each category (see @references/pattern-categories.md):
    - If ownership transfers, does the receiver clean it up?
    - On error/exception paths, is the resource still cleaned up?
 
-4. **Record findings quickly** — file, line(s), one-sentence description, category, severity, frequency, ownership note, error-path note. Do NOT trace call graphs or search GitHub yet. Move fast.
+4. **Impact assessment (mandatory for every candidate before recording).** Before assigning severity, answer:
+   - **What accumulates or degrades?** Name the concrete resource: bytes, kernel handles, native allocations, file descriptors, pool slots, registrations. Read what the cleanup method actually releases — if it releases nothing for this specific instance, state that.
+   - **How much, how fast?** Quantify: bytes per occurrence, occurrences per hour/day. If the answer is "once at shutdown" or "zero bytes," severity cannot be above COSMETIC.
+   - **Is this path actually hit?** Check input domain bounds (e.g., size thresholds that gate allocation paths), config defaults, whether the code is reachable from any caller.
+   - **Does the runtime already handle this?** Check DI container disposal, GC finalization, eviction/TTL mechanisms, bounded caches. If another mechanism already cleans this up, state which one and classify accordingly.
 
-5. **Mandatory sibling expansion.** After each confirmed finding: identify the structural pattern, search for every instance. Run `git log --oneline -10 -- <file>` to check for sibling fixes.
+5. **Record findings** — file, line(s), one-sentence description, category, severity, frequency, impact assessment answers, ownership note, error-path note. Do NOT trace call graphs or search GitHub yet. Move fast.
 
-6. **After exhausting a category**, reflect: "What patterns suggest similar leaks I haven't searched for?"
+6. **Mandatory sibling expansion.** After each confirmed finding: identify the structural pattern, search for every instance. Run `git log --oneline -10 -- <file>` to check for sibling fixes.
 
-7. **Stop ONLY when** all categories are covered AND reflection produces no new actionable patterns.
+7. **After exhausting a category**, reflect: "What patterns suggest similar leaks I haven't searched for?"
+
+8. **Stop ONLY when** all categories are covered AND reflection produces no new actionable patterns.
 
 ### Phase 1 Convergence Checkpoint
 
@@ -117,7 +123,9 @@ After all categories return:
 
 **The convergence step is where the best findings come from — a leak in class A often implies the same leak in B, C, D.**
 
-### Phase 2: Deep Validation (CRITICAL/HIGH Only)
+### Phase 2: Validation
+
+**CRITICAL/HIGH findings** — full deep validation is mandatory.
 
 For each CRITICAL/HIGH candidate:
 
@@ -133,20 +141,27 @@ For each CRITICAL/HIGH candidate:
 
 **F. Test strategy (TESTABLE only):** Failing test -> passing test after fix. What injection needed? What assertion proves the leak?
 
+**MEDIUM/LOW findings** — present Phase 1 findings with their impact assessments to the user and ask:
+
+> *"Phase 1 produced N MEDIUM and M LOW findings with impact assessments but without deep validation (call graph tracing, existing-work checks, triggerability proofs). Some may be false positives. Would you like me to run deep validation on MEDIUM/LOW findings to filter those out? This will take additional time."*
+
+If the user declines, output MEDIUM/LOW findings clearly marked: **"Phase 1 only — impact assessed but not deeply validated."**
+
 ---
 
-## Self-Critique (After Each Category)
+## Self-Critique (Every Finding)
 
-For each CRITICAL/HIGH finding, argue against yourself:
+Before recording any finding at any severity, argue against yourself:
 
-1. **"Is the caller actually concurrent?"** — Prove it, don't assume from type signature.
-2. **"Is the trigger actually reachable?"** — Is the config default on? Are there tests for this path?
-3. **"Does the leak actually accumulate?"** — Is there eviction, TTL, or GC?
-4. **"Am I confusing poor style with a real bug?"** — Singleton at shutdown = low priority. Per-peer for days = real.
+1. **"Does anything actually accumulate or degrade?"** — Read what the cleanup method releases for this specific instance. If the answer is "nothing" or "only a managed object GC already handles," it's COSMETIC.
+2. **"Is the caller actually concurrent?"** — Prove it, don't assume from type signature.
+3. **"Is the trigger actually reachable?"** — Check input domain bounds, size thresholds, config defaults. Dead code is not a leak.
+4. **"Does the leak actually accumulate?"** — Is there eviction, TTL, GC, DI container disposal, or a finite bound?
+5. **"Am I confusing poor style with a real bug?"** — If the quantified runtime impact is zero, classify as COSMETIC. State what best practice it violates and why the impact is zero. The user decides whether to fix cosmetic issues.
 
 ## Final Review Pass
 
-1. **Severity calibration** — consistent across all CRITICAL/HIGH
+1. **Severity calibration** — consistent across all severities, not just CRITICAL/HIGH
 2. **Duplicate detection** — merge same root cause from different angles
 3. **False positive sweep** — if trigger can't be stated in one concrete sentence, downgrade
 4. **Missing context** — every CRITICAL/HIGH needs all mandatory fields
@@ -161,12 +176,15 @@ For each CRITICAL/HIGH finding, argue against yourself:
 - **Line(s)**: [line numbers]
 - **What leaks**: [precise description]
 - **Category**: [from pattern list]
-- **Severity**: CRITICAL | HIGH | MEDIUM | LOW
+- **Severity**: CRITICAL | HIGH | MEDIUM | LOW | COSMETIC
 - **Frequency**: [per-peer, per-block, per-request, per-shutdown, once, etc.]
+- **Impact**: [quantified — bytes/handles per occurrence, accumulation rate, or "zero — [reason]"]
 - **Ownership analysis**: [Who creates, who should clean up, why missing]
 - **Error-path analysis**: [If applicable]
 - **Fix complexity**: [SIMPLE (1-5 lines) | MEDIUM (10-30 lines) | HARD (refactor)]
 ```
+
+COSMETIC means: technically violates a best practice but has zero quantified runtime impact. Include what practice it violates and why the impact is zero.
 
 ### Phase 2 additions (CRITICAL/HIGH — append)
 
@@ -192,6 +210,7 @@ For each CRITICAL/HIGH finding, argue against yourself:
 3. **Test plan summary** — one-line per TESTABLE finding
 4. **Potentially missed** — suspected patterns needing more investigation
 5. **Confidence assessment** — coverage estimate per category
+6. **COSMETIC findings** — separate section, with one sentence each explaining what practice is violated and why runtime impact is zero
 
 ## Rules
 
@@ -201,12 +220,12 @@ For each CRITICAL/HIGH finding, argue against yourself:
 - **Config-gated is NOT dead** — report with config dependency noted
 - **Check GitHub before reporting** — prevent duplicate work
 - **Ownership transfers are not leaks** — verify the receiver cleans up
-- **GC finalization is not proper disposal** — still report
+- **GC finalization is not proper disposal** — still report, but quantify the actual impact (finalizer queue pressure vs. zero impact)
 - **`using` declarations (C# 8+)** are valid disposal
-- **Process-lifetime singletons are borderline** — low priority unless per-peer/block/request
-- **Cancel() is NOT Dispose()** — most common pattern. Always verify Dispose follows Cancel
-- **Interfaces severing disposal chains** — report the interface as root cause
+- **Process-lifetime singletons**: Check DI registration. If both the object and its event publishers are singletons with matching lifetimes, event unsubscription and disposal have zero runtime effect — classify as COSMETIC and state why.
+- **Cancel() is NOT Dispose()** — but impact depends on what the CTS holds internally. After finding a CTS that is cancelled but not disposed, check: was it created with a timeout constructor? Was `CancelAfter()` called? Was its token passed to `Task.Delay()` or `CreateLinkedTokenSource()`? These create internal Timer handles or parent-token registrations that only `Dispose()` releases. A plain `new CancellationTokenSource()` that was cancelled with none of the above holds no unmanaged resources — classify as COSMETIC and state why.
+- **Interfaces severing disposal chains** — before reporting, check if the DI container manages the concrete type's disposal. If the container tracks it, the interface gap has no runtime effect — classify as COSMETIC.
 - **Override methods discarding parameters** — derived class ignoring disposable = leak
-- **Double-dispose is worse than no-dispose** — corrupts shared state
+- **Double-dispose is worse than no-dispose** — corrupts shared state. But verify Dispose() is actually called from multiple threads before reporting a race — check all callers.
 - **Empty Dispose() is a red flag** — check constructor for resources
 - Codebase uses .NET 10, C# 14, Autofac for DI
