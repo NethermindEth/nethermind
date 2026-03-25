@@ -5,11 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.BlockAccessLists;
 
-public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Changes)
+public record SlotChanges(UInt256 Slot, SortedList<int, StorageChange> Changes)
 {
     public SlotChanges(UInt256 slot) : this(slot, []) { }
 
@@ -23,7 +24,19 @@ public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Change
 
     public override string ToString() => $"{Slot}:[{string.Join(", ", Changes.Values)}]";
 
-    public bool TryPopStorageChange(ushort index, [NotNullWhen(true)] out StorageChange? storageChange)
+
+    public void Merge(SlotChanges other)
+    {
+        foreach (KeyValuePair<int, StorageChange> kv in other.Changes)
+        {
+            Changes[kv.Key] = kv.Value;
+        }
+    }
+
+    public void AddStorageChange(StorageChange storageChange)
+        => Changes.Add(storageChange.BlockAccessIndex, storageChange);
+
+    public bool TryPopStorageChange(int index, [NotNullWhen(true)] out StorageChange? storageChange)
     {
         storageChange = null;
 
@@ -40,5 +53,19 @@ public record SlotChanges(UInt256 Slot, SortedList<ushort, StorageChange> Change
         }
 
         return false;
+    }
+
+    public byte[] Get(int blockAccessIndex)
+    {
+        UInt256 lastValue = 0;
+        foreach (KeyValuePair<int, StorageChange> change in Changes)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
+            }
+            lastValue = change.Value.NewValue;
+        }
+        return [.. lastValue.ToBigEndian().WithoutLeadingZeros()];
     }
 }

@@ -208,6 +208,9 @@ namespace Nethermind.Core
 
         protected int? _size = null;
 
+        [JsonIgnore]
+        public int BlockAccessIndex { get; set; }
+
         /// <summary>
         /// Encoded transaction length
         /// </summary>

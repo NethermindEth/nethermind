@@ -16,7 +16,7 @@ namespace Nethermind.State
     /// <summary>
     /// Contains common code for both Persistent and Transient storage providers
     /// </summary>
-    internal abstract class PartialStorageProviderBase
+    public abstract class PartialStorageProviderBase
     {
         protected readonly Dictionary<StorageCell, StackList<int>> _intraBlockCache = new();
         protected readonly ILogger _logger;

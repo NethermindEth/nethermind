@@ -36,6 +36,7 @@ public sealed class BlockCachePreWarmer(
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
+    private readonly bool _parallelExecutionEnabled;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -50,11 +51,12 @@ public sealed class BlockCachePreWarmer(
         preBlockCaches,
         logManager)
     {
+        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (preBlockCaches is not null)
+        if (preBlockCaches is not null && !(_parallelExecutionEnabled && spec.BlockLevelAccessListsEnabled))
         {
             CacheType result = preBlockCaches.ClearCaches();
             nodeStorageCache.ClearCaches();

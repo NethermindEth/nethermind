@@ -270,7 +270,12 @@ public class Era1ModuleTests
             foreach (var block in blocks)
             {
                 foreach (var item in block.Transactions)
+                {
                     item.SenderAddress = null;
+                    item.SpentGas = 0;
+                    item.BlockGasUsed = 0;
+                    item.BlockAccessIndex = 0;
+                }
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }
 

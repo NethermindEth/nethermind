@@ -18,6 +18,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Config;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -50,8 +51,17 @@ public class WitnessGeneratingBlockProcessingEnv(
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
         WitnessGeneratingWorldState state = new(baseWorldState, stateReader, witnessCapturingTrieStore, witnessGenHeaderFinder);
         TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
+        BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGenHeaderFinder, logManager), state, logManager);
+        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
         IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
-            new ExecuteTransactionProcessorAdapter(txProcessor), state);
+            state,
+            new ExecuteTransactionProcessorAdapter(txProcessor),
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            blockhashProvider,
+            codeInfoRepository,
+            logManager,
+            new BlocksConfig());
 
         IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

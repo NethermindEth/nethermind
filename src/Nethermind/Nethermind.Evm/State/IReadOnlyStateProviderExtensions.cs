@@ -22,11 +22,12 @@ namespace Nethermind.Evm.State
             this IReadOnlyStateProvider stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<Address, bool>? isDelegatedCode = null) =>
+            Func<Address, bool>? isDelegatedCode = null,
+            int? blockAccessIndex = null) =>
             spec.IsEip3607Enabled
-            && stateProvider.HasCode(sender)
+            && stateProvider.HasCode(sender, blockAccessIndex)
             && (!spec.IsEip7702Enabled
-                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
+                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender, blockAccessIndex))));
 
         /// <summary>
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
@@ -41,12 +42,13 @@ namespace Nethermind.Evm.State
             this IWorldState stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<Address, bool>? isDelegatedCode = null)
+            Func<Address, bool>? isDelegatedCode = null,
+            int? blockAccessIndex = null)
         {
             return spec.IsEip3607Enabled
-            && stateProvider.IsContract(sender)
+            && stateProvider.IsContract(sender, blockAccessIndex)
             && (!spec.IsEip7702Enabled
-                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
+                || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender, blockAccessIndex))));
         }
     }
 

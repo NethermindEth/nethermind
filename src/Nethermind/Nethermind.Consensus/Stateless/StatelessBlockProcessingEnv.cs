@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -46,10 +47,17 @@ public class StatelessBlockProcessingEnv(
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
-        IBlockProcessor.IBlockTransactionsExecutor txExecutor =
-            new BlockProcessor.BlockValidationTransactionsExecutor(
-                new ExecuteTransactionProcessorAdapter(txProcessor),
-                WorldState);
+        BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
+        ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(WorldState);
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
+            WorldState,
+            new ExecuteTransactionProcessorAdapter(txProcessor),
+            BlobBaseFeeCalculator.Instance,
+            specProvider,
+            blockhashProvider,
+            codeInfoRepository,
+            logManager,
+            new BlocksConfig());
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

@@ -174,7 +174,7 @@ public unsafe class EvmOpcodesBenchmark
             0,
             0);
         _vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec, UInt256.Zero));
-        _vm.SetTxExecutionContext(new TxExecutionContext(address, codeInfoRepository, null, 0));
+        _vm.SetTxExecutionContext(new TxExecutionContext(address, codeInfoRepository, null, 0, -1));
         _vm.SetExecutionDependencies(_stateProvider, codeInfoRepository);
 
         // Create bytecode buffer for PUSH instructions (64 bytes of data after the opcode)

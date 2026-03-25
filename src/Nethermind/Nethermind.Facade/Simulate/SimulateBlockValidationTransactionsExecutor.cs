@@ -5,6 +5,8 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.Proofs;
 
@@ -15,6 +17,8 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
+    public BlockAccessList GeneratedBlockAccessList { get => throw new System.NotImplementedException(); set => throw new System.NotImplementedException(); }
+
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         if (simulateState.BlobBaseFeeOverride is null)
@@ -55,5 +59,10 @@ public class SimulateBlockValidationTransactionsExecutor(
         block.Header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
 
         return result;
+    }
+
+    public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    {
+        throw new System.NotImplementedException();
     }
 }

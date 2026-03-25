@@ -5,6 +5,7 @@ using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -15,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -24,7 +26,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
@@ -46,8 +47,9 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    // protected readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
+    // private Hash256 _lastLoadedBal;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -61,11 +63,11 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        if (spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis)
         {
-            _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            // _balBuilder.TracingEnabled = true;
+            blockTransactionsExecutor.GeneratedBlockAccessList.Clear();
+            SetupBlockAccessLists(spec, suggestedBlock);
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -112,12 +114,14 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
+        bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
+        // _balBuilder?.MergeIntermediateBalsUpTo(0);
         TxReceipt[] receipts;
         receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
@@ -145,7 +149,7 @@ public partial class BlockProcessor(
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        _balBuilder?.SetBlockAccessList(block, spec);
+        blockTransactionsExecutor.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -157,12 +161,11 @@ public partial class BlockProcessor(
             block.AccountChanges = _stateProvider.GetAccountChanges();
         }
 
-        if (ShouldComputeStateRoot(header))
+        if (shouldComputeStateRoot)
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
         }
-
 
         header.Hash = header.CalculateHash();
 
@@ -311,4 +314,56 @@ public partial class BlockProcessor(
             }
         }
     }
+
+    private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    {
+        foreach (AccountChanges accountChanges in suggested.BlockAccessList.AccountChanges)
+        {
+            // check if changed before loading prestate
+            accountChanges.CheckWasChanged();
+
+            bool exists = _stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.ExistedBeforeBlock = exists;
+
+            accountChanges.AddBalanceChange(new(-1, account.Balance));
+            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(-1, _stateProvider.GetCode(accountChanges.Address)));
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                slotChanges.AddStorageChange(new(-1, new(_stateProvider.Get(storageCell), true)));
+            }
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            {
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                slotChanges.AddStorageChange(new(-1, new(_stateProvider.Get(storageCell), true)));
+            }
+        }
+    }
+    // private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    // {
+    //     if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+    //     {
+    //         _balBuilder.TracingEnabled = true;
+    //         _balBuilder.IsGenesis = suggested.IsGenesis;
+
+    //         if (_lastLoadedBal != suggested.Hash)
+    //         {
+    //             _balBuilder.LoadSuggestedBlockAccessList(suggested, suggested.GasUsed);
+    //         }
+    //         _lastLoadedBal = suggested.Hash;
+
+    //         if (_balBuilder.ParallelExecutionEnabled)
+    //         {
+    //             _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
+    //         }
+    //         else
+    //         {
+    //             _balBuilder.GeneratedBlockAccessList = new();
+    //         }
+    //     }
+    // }
 }

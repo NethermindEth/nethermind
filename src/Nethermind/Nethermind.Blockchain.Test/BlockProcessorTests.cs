@@ -35,6 +35,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -45,12 +46,20 @@ public class BlockProcessorTests
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: true);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(
+                    stateProvider,
+                    new ExecuteTransactionProcessorAdapter(transactionProcessor),
+                    new BlobBaseFeeCalculator(),
+                    HoodiSpecProvider.Instance,
+                    Substitute.For<IBlockhashProvider>(),
+                    Substitute.For<ICodeInfoRepository>(),
+                    LimboLogs.Instance,
+                    new BlocksConfig()),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),

@@ -9,7 +9,9 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -189,14 +191,23 @@ namespace Nethermind.AuRa.Test
 
         private (BranchProcessor Processor, IWorldState StateProvider, IBlockTree blockTree) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+            IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: true);
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
+                new AuRaChainSpecEngineParameters(),
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                 new BlockProcessor.BlockValidationTransactionsExecutor(
+                    stateProvider,
+                    new ExecuteTransactionProcessorAdapter(transactionProcessor),
+                    new BlobBaseFeeCalculator(),
+                    HoodiSpecProvider.Instance,
+                    Substitute.For<IBlockhashProvider>(),
+                    Substitute.For<ICodeInfoRepository>(),
+                    LimboLogs.Instance,
+                    new BlocksConfig()),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
