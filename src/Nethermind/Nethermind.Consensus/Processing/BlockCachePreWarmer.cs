@@ -91,25 +91,27 @@ public sealed class BlockCachePreWarmer(
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
-        try
+        using (addressWarmer)
         {
-            if (cancellationToken.IsCancellationRequested) return;
+            try
+            {
+                if (cancellationToken.IsCancellationRequested) return;
 
-            if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
+                if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-            WarmupTransactions(blockState, parallelOptions);
-            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+                WarmupTransactions(blockState, parallelOptions);
+                WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
 
-            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
-        }
-        catch (Exception ex)
-        {
-            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
-        }
-        finally
-        {
-            // Don't compete the task until address warmer is also done.
-            addressWarmer.Wait();
+                if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
+            }
+            finally
+            {
+                addressWarmer.Wait();
+            }
         }
     }
 
@@ -276,18 +278,16 @@ public sealed class BlockCachePreWarmer(
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
-        : IThreadPoolWorkItem
+        : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
-        public void Wait()
-        {
-            _doneEvent.Wait();
-            _doneEvent.Dispose();
-        }
+        public void Wait() => _doneEvent.Wait();
+
+        public void Dispose() => _doneEvent.Dispose();
 
         private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
         {
