@@ -48,7 +48,21 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     private readonly TimeSpan _timePerSlot;
 
     // first ExecutionPayloadV1 is empty (without txs), second one is the ideal one
-    protected readonly ConcurrentDictionary<string, IBlockImprovementContext> _payloadStorage = new();
+    protected readonly ConcurrentDictionary<string, PayloadEntry> _payloadStorage = new();
+
+    /// <summary>
+    /// Bundles a block improvement context with the per-payload CancellationTokenSource that
+    /// controls its improvement loop. The CTS is shared across sequential improvement contexts
+    /// for the same payload and must only be disposed when the payload is finally removed.
+    /// </summary>
+    protected readonly record struct PayloadEntry(IBlockImprovementContext Context, CancellationTokenSource? Cts) : IDisposable
+    {
+        public void Dispose()
+        {
+            Context.Dispose();
+            Cts?.Dispose();
+        }
+    }
 
 
     public PayloadPreparationService(
@@ -140,32 +154,33 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
         _payloadStorage.AddOrUpdate(payloadId,
-            id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
-            (id, currentContext) =>
+            id => new PayloadEntry(CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts), cts),
+            (id, current) =>
             {
                 if (cts.IsCancellationRequested)
                 {
                     // If cancelled, return previous
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
-                    return currentContext;
+                    return current;
                 }
-                if (!currentContext.ImprovementTask.IsCompleted)
+                if (!current.Context.ImprovementTask.IsCompleted)
                 {
                     // If there is payload improvement and its not yet finished leave it be
                     if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
-                    return currentContext;
+                    return current;
                 }
 
-                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
+                IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, current.Context.BlockFees, cts);
                 if (!cts.IsCancellationRequested)
                 {
-                    currentContext.Dispose();
-                    return newContext;
+                    current.Context.Dispose();
+                    // Keep the shared CTS — only dispose it when the payload is removed entirely
+                    return current with { Context = newContext };
                 }
                 else
                 {
                     newContext.Dispose();
-                    return currentContext;
+                    return current;
                 }
             });
 
@@ -322,16 +337,16 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         try
         {
             if (_logger.IsTrace) _logger.Trace("Started old payloads cleanup");
-            foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+            foreach (KeyValuePair<string, PayloadEntry> payload in _payloadStorage)
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
+                if (payload.Value.Context.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Context.CurrentBestBlock?.Timestamp}");
 
-                    if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+                    if (_payloadStorage.TryRemove(payload.Key, out PayloadEntry entry))
                     {
-                        context.Dispose();
+                        entry.Dispose();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -389,9 +404,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
     public async ValueTask<IBlockProductionContext?> GetPayload(string payloadId, bool skipCancel = false)
     {
-        if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
+        if (_payloadStorage.TryGetValue(payloadId, out PayloadEntry entry))
         {
-            using (blockContext)
+            IBlockImprovementContext blockContext = entry.Context;
+            try
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
@@ -421,6 +437,10 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
 
                 return blockContext;
+            }
+            finally
+            {
+                entry.Dispose();
             }
         }
 
