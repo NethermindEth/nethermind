@@ -14,13 +14,8 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public class CrossBlockCaches
 {
-    // setsLog2=20 → 2M entries. StorageCell key ~52 bytes + byte[32] value ≈ 170 MB.
-    // Storage is the hottest cross-block cache — SLOAD-heavy blocks reuse the same contract slots.
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new(setsLog2: 20);
-
-    // setsLog2=18 → 512K entries. AddressAsKey ~20 bytes + Account ~100 bytes ≈ 60 MB.
-    // Fewer unique accounts than storage slots per block, so smaller is fine.
-    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new(setsLog2: 18);
+    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
     private long _lastCommittedBlockNumber = -1;
 
     public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;

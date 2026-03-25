@@ -13,8 +13,7 @@ public sealed class NodeStorageCache
     // so stale entries are impossible — the same hash always maps to the same RLP.
     // This cache is never cleared between blocks, only evicted naturally by the
     // set-associative replacement policy.
-    // setsLog2=20 → 1M sets × 2 ways = 2M entries. At ~200 bytes avg RLP per node ≈ 400 MB of cached data.
-    private readonly SeqlockCache<NodeKey, byte[]> _crossBlockCache = new(setsLog2: 20);
+    private readonly SeqlockCache<NodeKey, byte[]> _crossBlockCache = new();
 
     private volatile bool _enabled = false;
 
