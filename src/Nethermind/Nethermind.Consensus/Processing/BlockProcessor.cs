@@ -47,7 +47,7 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    // protected readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     // private Hash256 _lastLoadedBal;
 
@@ -63,9 +63,9 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        if (spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis)
         {
-            _balBuilder.TracingEnabled = true;
+            // _balBuilder.TracingEnabled = true;
             blockTransactionsExecutor.GeneratedBlockAccessList.Clear();
             SetupBlockAccessLists(spec, suggestedBlock);
         }

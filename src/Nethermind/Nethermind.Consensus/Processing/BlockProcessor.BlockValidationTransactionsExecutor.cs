@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Processing
             : IBlockProcessor.IBlockTransactionsExecutor
         {
             public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+            // private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
             private BlockAccessList[] _intermediateBlockAccessLists;
@@ -62,7 +62,7 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                return (_balBuilder is not null && _balBuilder.ParallelExecutionEnabled) ?
+                return blocksConfig.ParallelExecution && !block.IsGenesis ?
                     ProcessTransactionsParallel(block, processingOptions, token) :
                     ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
             }

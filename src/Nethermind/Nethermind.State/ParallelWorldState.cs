@@ -34,9 +34,10 @@ public class ParallelWorldState(
     TransientStorageProvider transientStorageProvider) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
     public int BlockAccessIndex { get; } = blockAccessIndex;
-    public bool TracingEnabled { get; set; } = false;
+    public bool TracingEnabled { get; set; } = specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled;
     public bool IsGenesis { get; set; } = true;
-    public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
+    // public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
+    public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis;
 
     // todo: generated will be sorted, suggested will use hash maps to optimize reading
     // public BlockAccessList GeneratedBlockAccessList { get; set; } = new();

@@ -112,7 +112,8 @@ namespace Nethermind.Consensus.AuRa
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
-            _balBuilder.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            // _balBuilder.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            // move to block validator
             return base.ProcessBlock(block, blockTracer, options, spec, token);
         }
 
