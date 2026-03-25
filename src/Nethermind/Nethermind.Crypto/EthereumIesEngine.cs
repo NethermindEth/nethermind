@@ -115,7 +115,6 @@ public sealed class EthereumIesEngine
             ThrowOutputBufferTooSmall();
         }
 
-        // Rent temporary buffers from pool; using declarations ensure return on all exit paths.
         using ArrayPoolSpan<byte> cipherOutputBuffer = new(_arrayPool, cipherOutputSize);
         Span<byte> c = cipherOutputBuffer;
 
@@ -188,8 +187,6 @@ public sealed class EthereumIesEngine
         ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
         _hash.BlockUpdate(k2);
 
-        // Rent temporary buffers; using declarations ensure return on all exit paths,
-        // including the ThrowInvalidMac() early-exit on MAC validation failure.
         using ArrayPoolSpan<byte> k2ASpan = new(_arrayPool, digestSize);
         Span<byte> k2A = k2ASpan;
         _hash.DoFinal(k2A);
