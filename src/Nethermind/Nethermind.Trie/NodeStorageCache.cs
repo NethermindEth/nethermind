@@ -9,12 +9,6 @@ public sealed class NodeStorageCache
 {
     private readonly SeqlockCache<NodeKey, byte[]> _cache = new();
 
-    // Cross-block trie node cache. Trie nodes are content-addressed (keyed by hash),
-    // so stale entries are impossible — the same hash always maps to the same RLP.
-    // This cache is never cleared between blocks, only evicted naturally by the
-    // set-associative replacement policy.
-    private readonly SeqlockCache<NodeKey, byte[]> _crossBlockCache = new();
-
     private volatile bool _enabled = false;
 
     public bool Enabled
@@ -27,39 +21,9 @@ public sealed class NodeStorageCache
     {
         if (!_enabled)
         {
-            // Main processing path (per-block cache disabled). Still check cross-block cache.
-            if (_crossBlockCache.TryGetValue(in nodeKey, out byte[]? cached))
-            {
-                return cached;
-            }
-
-            byte[]? value = tryLoadRlp(in nodeKey);
-            if (value is not null)
-            {
-                _crossBlockCache.Set(in nodeKey, value);
-            }
-            return value;
+            return tryLoadRlp(in nodeKey);
         }
-
-        // Prewarmer path: check per-block cache first, then cross-block, then disk.
-        if (_cache.TryGetValue(in nodeKey, out byte[]? perBlock))
-        {
-            return perBlock;
-        }
-
-        if (_crossBlockCache.TryGetValue(in nodeKey, out byte[]? crossBlock))
-        {
-            _cache.Set(in nodeKey, crossBlock);
-            return crossBlock;
-        }
-
-        byte[]? loaded = tryLoadRlp(in nodeKey);
-        if (loaded is not null)
-        {
-            _cache.Set(in nodeKey, loaded);
-            _crossBlockCache.Set(in nodeKey, loaded);
-        }
-        return loaded;
+        return _cache.GetOrAdd(in nodeKey, tryLoadRlp);
     }
 
     public bool ClearCaches()
@@ -67,8 +31,6 @@ public sealed class NodeStorageCache
         bool wasEnabled = _enabled;
         _enabled = false;
         _cache.Clear();
-        // Cross-block cache is NOT cleared — trie nodes are content-addressed,
-        // so entries are always valid regardless of reorgs.
         return wasEnabled;
     }
 }
