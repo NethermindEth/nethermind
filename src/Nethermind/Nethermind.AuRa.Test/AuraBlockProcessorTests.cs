@@ -9,6 +9,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.ExecutionRequests;
@@ -205,7 +206,8 @@ namespace Nethermind.AuRa.Test
                     HoodiSpecProvider.Instance,
                     Substitute.For<IBlockhashProvider>(),
                     Substitute.For<ICodeInfoRepository>(),
-                    LimboLogs.Instance),
+                    LimboLogs.Instance,
+                    new BlocksConfig()),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),

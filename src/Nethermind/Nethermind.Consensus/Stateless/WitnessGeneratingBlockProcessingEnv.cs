@@ -18,6 +18,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Config;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -59,7 +60,8 @@ public class WitnessGeneratingBlockProcessingEnv(
             specProvider,
             blockhashProvider,
             codeInfoRepository,
-            logManager);
+            logManager,
+            new BlocksConfig());
 
         IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

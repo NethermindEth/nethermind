@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -38,6 +39,8 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
+            void SetBlockAccessList(Block block, IReleaseSpec spec);
+            BlockAccessList GeneratedBlockAccessList { get; set; }
         }
     }
 }

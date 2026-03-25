@@ -6,7 +6,9 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
@@ -16,6 +18,8 @@ namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IWorldState worldState) : IBlockProcessor.IBlockTransactionsExecutor
 {
+    public BlockAccessList GeneratedBlockAccessList { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => txProcessor.SetBlockExecutionContext(in blockExecutionContext);
@@ -72,5 +76,10 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
 
         block.TrySetTransactions([.. correctTransactions]);
         return [.. receiptsTracer.TxReceipts];
+    }
+
+    public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    {
+        throw new NotImplementedException();
     }
 }

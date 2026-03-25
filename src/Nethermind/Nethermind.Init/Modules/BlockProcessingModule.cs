@@ -51,7 +51,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
-            .AddScoped<IWorldState, IWorldStateScopeProvider, ISpecProvider, IBlocksConfig, ILogManager>((scope, specProvider, blocksConfig, logManager) => new ParallelWorldState(new WorldState(scope, logManager), specProvider, blocksConfig))
+            // .AddScoped<IWorldState, IWorldStateScopeProvider, ISpecProvider, IBlocksConfig, ILogManager>((scope, specProvider, blocksConfig, logManager) => new ParallelWorldState(new WorldState(scope, logManager), specProvider, blocksConfig))
             .AddScoped<IVirtualMachine, EthereumVirtualMachine>()
             .AddScoped<IBlockhashProvider, BlockhashProvider>()
             .AddSingleton<IBlockhashCache, BlockhashCache>()

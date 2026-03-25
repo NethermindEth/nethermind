@@ -16,6 +16,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -48,7 +49,7 @@ public partial class BlockProcessor(
     private readonly ILogger _logger = logManager.GetClassLogger();
     protected readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
-    private Hash256 _lastLoadedBal;
+    // private Hash256 _lastLoadedBal;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -65,7 +66,7 @@ public partial class BlockProcessor(
         if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
         {
             _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
+            blockTransactionsExecutor.GeneratedBlockAccessList.Clear();
             SetupBlockAccessLists(spec, suggestedBlock);
         }
 
@@ -120,7 +121,7 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        _balBuilder?.MergeIntermediateBalsUpTo(0);
+        // _balBuilder?.MergeIntermediateBalsUpTo(0);
         TxReceipt[] receipts;
         receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
@@ -148,7 +149,7 @@ public partial class BlockProcessor(
 
         executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        _balBuilder?.SetBlockAccessList(block, spec);
+        blockTransactionsExecutor.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -316,25 +317,53 @@ public partial class BlockProcessor(
 
     private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
     {
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        foreach (AccountChanges accountChanges in suggested.BlockAccessList.AccountChanges)
         {
-            _balBuilder.TracingEnabled = true;
-            _balBuilder.IsGenesis = suggested.IsGenesis;
+            // check if changed before loading prestate
+            accountChanges.CheckWasChanged();
 
-            if (_lastLoadedBal != suggested.Hash)
-            {
-                _balBuilder.LoadSuggestedBlockAccessList(suggested, suggested.GasUsed);
-            }
-            _lastLoadedBal = suggested.Hash;
+            bool exists = _stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.ExistedBeforeBlock = exists;
 
-            if (_balBuilder.ParallelExecutionEnabled)
+            accountChanges.AddBalanceChange(new(-1, account.Balance));
+            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(-1, _stateProvider.GetCode(accountChanges.Address)));
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                slotChanges.AddStorageChange(new(-1, new(_stateProvider.Get(storageCell), true)));
             }
-            else
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
             {
-                _balBuilder.GeneratedBlockAccessList = new();
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                slotChanges.AddStorageChange(new(-1, new(_stateProvider.Get(storageCell), true)));
             }
         }
     }
+    // private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    // {
+    //     if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+    //     {
+    //         _balBuilder.TracingEnabled = true;
+    //         _balBuilder.IsGenesis = suggested.IsGenesis;
+
+    //         if (_lastLoadedBal != suggested.Hash)
+    //         {
+    //             _balBuilder.LoadSuggestedBlockAccessList(suggested, suggested.GasUsed);
+    //         }
+    //         _lastLoadedBal = suggested.Hash;
+
+    //         if (_balBuilder.ParallelExecutionEnabled)
+    //         {
+    //             _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
+    //         }
+    //         else
+    //         {
+    //             _balBuilder.GeneratedBlockAccessList = new();
+    //         }
+    //     }
+    // }
 }

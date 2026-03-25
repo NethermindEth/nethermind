@@ -2,21 +2,31 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
+using static Nethermind.State.ParallelWorldState;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -31,12 +41,15 @@ namespace Nethermind.Consensus.Processing
             IBlockhashProvider blockHashProvider,
             ICodeInfoRepository codeInfoRepository,
             ILogManager logManager,
+            IBlocksConfig blocksConfig,
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
             : IBlockProcessor.IBlockTransactionsExecutor
         {
+            public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
+            private BlockAccessList[] _intermediateBlockAccessLists;
             private const int GasValidationChunkSize = 8;
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -56,25 +69,32 @@ namespace Nethermind.Consensus.Processing
 
             private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
-                long? gasRemaining = _balBuilder?.GasUsed();
+                // todo: add parallel to _transactionprocessor
+                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager));
+                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
+                transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+
+                long? gasRemaining = block.GasUsed;
                 if (gasRemaining is not null)
                 {
-                    _balBuilder?.ValidateBlockAccessList(block.Header, 0, gasRemaining.Value);
+                    ValidateBlockAccessList(block, 0, gasRemaining.Value);
                 }
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(transactionProcessorAdapter, block, currentTx, i, receiptsTracer, processingOptions);
 
                     if (gasRemaining is not null)
                     {
                         gasRemaining -= currentTx.SpentGas;
-                        _balBuilder?.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
+                        ValidateBlockAccessList(block, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }
-                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 return [.. receiptsTracer.TxReceipts];
             }
@@ -83,13 +103,27 @@ namespace Nethermind.Consensus.Processing
             {
                 int len = block.Transactions.Length;
                 ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
+                _intermediateBlockAccessLists = new BlockAccessList[len + 2];
+                TransientStorageProvider[] transientStorageProviders = new TransientStorageProvider[len + 2];
                 BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
                 TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
+
+                for (int i = 0; i < len + 2; i++)
+                {
+                    BlockAccessList bal = new()
+                    {
+                        Index = i
+                    };
+                    _intermediateBlockAccessLists[i] = bal;
+                    transientStorageProviders[i] = new(logManager);
+                }
+
                 for (int i = 0; i < len; i++)
                 {
                     // todo: look into reusing / reducing allocation
                     VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                    TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, stateProvider, virtualMachine, codeInfoRepository, logManager);
+                    ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1]);
+                    TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                     ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                     transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
                     transactionProcessors[i] = transactionProcessorAdapter;
@@ -111,7 +145,8 @@ namespace Nethermind.Consensus.Processing
                     {
                         if (i == 0)
                         {
-                            (state.stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                            // (state.stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                            ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                             return state;
                         }
 
@@ -144,8 +179,8 @@ namespace Nethermind.Consensus.Processing
             private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers)
             {
                 int len = block.Transactions.Length;
-                long gasRemaining = _balBuilder.GasUsed();
-                _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining);
+                long gasRemaining = block.GasUsed;
+                ValidateBlockAccessList(block, 0, gasRemaining);
 
                 long totalGas = 0;
                 for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -163,8 +198,8 @@ namespace Nethermind.Consensus.Processing
                         gasRemaining -= blockGasUsed.Value;
 
                         bool validateStorageReads = j == chunkEnd - 1;
-                        _balBuilder.MergeIntermediateBalsUpTo((ushort)(j + 1));
-                        _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(j + 1), gasRemaining, validateStorageReads);
+                        MergeIntermediateBalsUpTo((ushort)(j + 1), _intermediateBlockAccessLists);
+                        ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
                     }
 
                     if (totalGas > block.Header.GasLimit)
@@ -195,10 +230,10 @@ namespace Nethermind.Consensus.Processing
                 return result;
             }
 
-            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected virtual void ProcessTransaction(ITransactionProcessorAdapter transactionProcessor, Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 currentTx.BlockAccessIndex = index + 1;
-                TransactionResult result = _transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
@@ -229,6 +264,185 @@ namespace Nethermind.Consensus.Processing
             public interface ITransactionProcessedEventHandler
             {
                 void OnTransactionProcessed(TxProcessedEventArgs txProcessedEventArgs);
+            }
+
+            private static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
+            {
+                foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
+                {
+                    if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
+                    {
+                        stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                        UInt256 oldBalance = accountChanges.GetBalance(0);
+                        UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
+                        if (newBalance > oldBalance)
+                        {
+                            stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+                        }
+                        else
+                        {
+                            stateProvider.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+                        }
+                    }
+
+                    if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges.Last().BlockAccessIndex != -1)
+                    {
+                        stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+                        stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
+                    }
+
+                    if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges.Last().BlockAccessIndex != -1)
+                    {
+                        stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
+                    }
+
+                    foreach (SlotChanges slotChange in accountChanges.StorageChanges)
+                    {
+                        StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
+                        // could be empty since prestate loaded
+                        if (slotChange.Changes.Count > 0 && slotChange.Changes.Last().Key != -1)
+                        {
+                            stateProvider.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
+                        }
+                    }
+                }
+                stateProvider.Commit(spec);
+                if (shouldComputeStateRoot)
+                {
+                    stateProvider.RecalculateStateRoot();
+                }
+            }
+
+            public void SetBlockAccessList(Block block, IReleaseSpec spec)
+            {
+                if (!spec.BlockLevelAccessListsEnabled)
+                {
+                    return;
+                }
+
+                if (block.IsGenesis)
+                {
+                    block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+                }
+                else
+                {
+                    MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1), _intermediateBlockAccessLists);
+                    block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+                    block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+                    block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+                }
+            }
+
+            public void ValidateBlockAccessList(Block block, ushort index, long gasRemaining, bool validateStorageReads = true)
+            {
+                if (block.BlockAccessList is null)
+                {
+                    return;
+                }
+
+                IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+                IEnumerator<ChangeAtIndex> suggestedChanges = block.BlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+
+                ChangeAtIndex? generatedHead;
+                ChangeAtIndex? suggestedHead;
+
+                int generatedReads = 0;
+                int suggestedReads = 0;
+
+                void AdvanceGenerated()
+                {
+                    generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+                    if (generatedHead is not null) generatedReads += generatedHead.Value.Reads;
+                }
+
+                void AdvanceSuggested()
+                {
+                    suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+                    if (suggestedHead is not null) suggestedReads += suggestedHead.Value.Reads;
+                }
+
+                AdvanceGenerated();
+                AdvanceSuggested();
+
+                while (generatedHead is not null || suggestedHead is not null)
+                {
+                    if (suggestedHead is null)
+                    {
+                        if (HasNoChanges(generatedHead.Value))
+                        {
+                            AdvanceGenerated();
+                            continue;
+                        }
+                        throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                    }
+                    else if (generatedHead is null)
+                    {
+                        if (HasNoChanges(suggestedHead.Value))
+                        {
+                            AdvanceSuggested();
+                            continue;
+                        }
+                        throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                    }
+
+                    int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
+
+                    if (cmp == 0)
+                    {
+                        if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
+                            generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
+                            generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
+                            !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+                        {
+                            throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+                        }
+                    }
+                    else if (cmp > 0)
+                    {
+                        if (HasNoChanges(suggestedHead.Value))
+                        {
+                            AdvanceSuggested();
+                            continue;
+                        }
+                        throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+                    }
+                    else
+                    {
+                        if (HasNoChanges(generatedHead.Value))
+                        {
+                            AdvanceGenerated();
+                            continue;
+                        }
+                        throw new InvalidBlockLevelAccessListException(block.Header, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+                    }
+
+                    AdvanceGenerated();
+                    AdvanceSuggested();
+                }
+
+                if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+                {
+                    throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
+                }
+            }
+
+            private static bool HasNoChanges(in ChangeAtIndex c)
+                => c.BalanceChange is null &&
+                    c.NonceChange is null &&
+                    c.CodeChange is null &&
+                    !c.SlotChanges.GetEnumerator().MoveNext();
+
+
+            public void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
+            {
+                if (index == 0)
+                {
+                    GeneratedBlockAccessList = intermediateBlockAccessLists[0];
+                }
+                else
+                {
+                    GeneratedBlockAccessList.Merge(intermediateBlockAccessLists[index]);
+                }
             }
         }
     }

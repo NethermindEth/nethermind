@@ -23,105 +23,115 @@ using Nethermind.Specs;
 
 namespace Nethermind.State;
 
-public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specProvider, IBlocksConfig blocksConfig) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
+public class ParallelWorldState(
+    IWorldState innerWorldState,
+    ISpecProvider specProvider,
+    IBlocksConfig blocksConfig,
+    int blockAccessIndex,
+    Block suggestedBlock,
+    BlockAccessList intermediateBlockAccessList,
+    BlockAccessList generatedBlockAccessList,
+    TransientStorageProvider transientStorageProvider) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
+    public int BlockAccessIndex { get; } = blockAccessIndex;
     public bool TracingEnabled { get; set; } = false;
     public bool IsGenesis { get; set; } = true;
     public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
 
     // todo: generated will be sorted, suggested will use hash maps to optimize reading
-    public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    private BlockAccessList? _suggestedBlockAccessList;
-    private BlockHeader? _suggestedBlockHeader;
-    private BlockAccessList[] _intermediateBlockAccessLists; // todo: this will change to different structure
-    private TransientStorageProvider[] _transientStorageProviders;
+    // public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    private BlockAccessList _generatedBlockAccessList = generatedBlockAccessList;
+    private BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
+    private BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
+    private BlockAccessList _intermediateBlockAccessList = intermediateBlockAccessList;
+    private TransientStorageProvider _transientStorageProvider = transientStorageProvider;
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
-    private long _gasUsed;
+    // private long _gasUsed = suggestedBlock.GasUsed;
     private readonly bool _isAura = specProvider.SealEngine == SealEngineType.AuRa;
 
-    public void LoadSuggestedBlockAccessList(Block? suggestedBlock, long gasUsed)
-    {
-        if (suggestedBlock.BlockAccessList is not null)
-        {
-            LoadPreBlockState(suggestedBlock.BlockAccessList);
-            _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
-            _suggestedBlockHeader = suggestedBlock.Header;
-        }
-        else
-        {
-            _suggestedBlockAccessList = null;
-            _suggestedBlockHeader = null;
-        }
-        _gasUsed = gasUsed;
-    }
+    // public void LoadSuggestedBlockAccessList(Block? suggestedBlock, long gasUsed)
+    // {
+    //     if (suggestedBlock.BlockAccessList is not null)
+    //     {
+    //         LoadPreBlockState(suggestedBlock.BlockAccessList);
+    //         _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
+    //         _suggestedBlockHeader = suggestedBlock.Header;
+    //     }
+    //     else
+    //     {
+    //         _suggestedBlockAccessList = null;
+    //         _suggestedBlockHeader = null;
+    //     }
+    //     _gasUsed = gasUsed;
+    // }
 
-    public void SetupGeneratedAccessLists(ILogManager logManager, int txCount)
-    {
-        _intermediateBlockAccessLists = new BlockAccessList[txCount + 2];
-        _transientStorageProviders = new TransientStorageProvider[txCount + 2];
+    // public void SetupGeneratedAccessLists(ILogManager logManager, int txCount)
+    // {
+        // _intermediateBlockAccessLists = new BlockAccessList[txCount + 2];
+        // _transientStorageProviders = new TransientStorageProvider[txCount + 2];
 
-        for (int i = 0; i < txCount + 2; i++)
-        {
-            BlockAccessList bal = new()
-            {
-                Index = i
-            };
-            _intermediateBlockAccessLists[i] = bal;
-            _transientStorageProviders[i] = new(logManager);
-        }
-    }
+        // for (int i = 0; i < txCount + 2; i++)
+        // {
+        //     BlockAccessList bal = new()
+        //     {
+        //         Index = i
+        //     };
+        //     _intermediateBlockAccessLists[i] = bal;
+        //     _transientStorageProviders[i] = new(logManager);
+        // }
+    // }
 
-    public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
-    {
-        foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
-        {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
-            {
-                _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                UInt256 oldBalance = accountChanges.GetBalance(0);
-                UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
-                if (newBalance > oldBalance)
-                {
-                    _innerWorldState.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
-                }
-                else
-                {
-                    _innerWorldState.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
-                }
-            }
+    // public void ApplyStateChanges(IReleaseSpec spec, bool shouldComputeStateRoot)
+    // {
+    //     foreach (AccountChanges accountChanges in _suggestedBlockAccessList.AccountChanges)
+    //     {
+    //         if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
+    //         {
+    //             _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+    //             UInt256 oldBalance = accountChanges.GetBalance(0);
+    //             UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
+    //             if (newBalance > oldBalance)
+    //             {
+    //                 _innerWorldState.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
+    //             }
+    //             else
+    //             {
+    //                 _innerWorldState.SubtractFromBalance(accountChanges.Address, oldBalance - newBalance, spec);
+    //             }
+    //         }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges.Last().BlockAccessIndex != -1)
-            {
-                _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                _innerWorldState.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
-            }
+    //         if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges.Last().BlockAccessIndex != -1)
+    //         {
+    //             _innerWorldState.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
+    //             _innerWorldState.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
+    //         }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges.Last().BlockAccessIndex != -1)
-            {
-                _innerWorldState.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
-            }
+    //         if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges.Last().BlockAccessIndex != -1)
+    //         {
+    //             _innerWorldState.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
+    //         }
 
-            foreach (SlotChanges slotChange in accountChanges.StorageChanges)
-            {
-                StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
-                // could be empty since prestate loaded
-                if (slotChange.Changes.Count > 0 && slotChange.Changes.Last().Key != -1)
-                {
-                    _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
-                }
-            }
-        }
-        _innerWorldState.Commit(spec);
-        if (shouldComputeStateRoot)
-        {
-            _innerWorldState.RecalculateStateRoot();
-        }
-    }
+    //         foreach (SlotChanges slotChange in accountChanges.StorageChanges)
+    //         {
+    //             StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
+    //             // could be empty since prestate loaded
+    //             if (slotChange.Changes.Count > 0 && slotChange.Changes.Last().Key != -1)
+    //             {
+    //                 _innerWorldState.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
+    //             }
+    //         }
+    //     }
+    //     _innerWorldState.Commit(spec);
+    //     if (shouldComputeStateRoot)
+    //     {
+    //         _innerWorldState.RecalculateStateRoot();
+    //     }
+    // }
 
     public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
     {
@@ -134,22 +144,22 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     }
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
-    public void MergeIntermediateBalsUpTo(ushort index)
-    {
-        if (!ParallelExecutionEnabled)
-        {
-            return;
-        }
+    // public void MergeIntermediateBalsUpTo(ushort index)
+    // {
+    //     if (!ParallelExecutionEnabled)
+    //     {
+    //         return;
+    //     }
 
-        if (index == 0)
-        {
-            GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
-        }
-        else
-        {
-            GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
-        }
-    }
+    //     if (index == 0)
+    //     {
+    //         GeneratedBlockAccessList = _intermediateBlockAccessLists[0];
+    //     }
+    //     else
+    //     {
+    //         GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
+    //     }
+    // }
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {
@@ -538,7 +548,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         ThrowIfBlockAccessIndexIsNull(blockAccessIndex);
 
         return ParallelExecutionEnabled ?
-            _transientStorageProviders[blockAccessIndex.Value].Get(in storageCell) :
+            _transientStorageProvider.Get(in storageCell) :
             _innerWorldState.GetTransientState(in storageCell);
     }
 
@@ -548,7 +558,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
         if (ParallelExecutionEnabled)
         {
-            _transientStorageProviders[blockAccessIndex.Value].Set(in storageCell, newValue);
+            _transientStorageProvider.Set(in storageCell, newValue);
         }
         else
         {
@@ -562,7 +572,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
         if (ParallelExecutionEnabled)
         {
-            _transientStorageProviders[blockAccessIndex.Value].Reset();
+            _transientStorageProvider.Reset();
         }
         else
         {
@@ -570,122 +580,122 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
         }
     }
 
-    public long GasUsed()
-        => _gasUsed;
+    // public long GasUsed()
+    //     => _gasUsed;
 
     // todo: optimize early validation
-    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true)
-    {
-        if (_suggestedBlockAccessList is null)
-        {
-            return;
-        }
+    // public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true)
+    // {
+    //     if (_suggestedBlockAccessList is null)
+    //     {
+    //         return;
+    //     }
 
-        IEnumerator<ChangeAtIndex> generatedChanges = GeneratedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
-        IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+    //     IEnumerator<ChangeAtIndex> generatedChanges = _generatedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
+    //     IEnumerator<ChangeAtIndex> suggestedChanges = _suggestedBlockAccessList.GetChangesAtIndex(index).GetEnumerator();
 
-        ChangeAtIndex? generatedHead;
-        ChangeAtIndex? suggestedHead;
+    //     ChangeAtIndex? generatedHead;
+    //     ChangeAtIndex? suggestedHead;
 
-        int generatedReads = 0;
-        int suggestedReads = 0;
+    //     int generatedReads = 0;
+    //     int suggestedReads = 0;
 
-        void AdvanceGenerated()
-        {
-            generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
-            if (generatedHead is not null) generatedReads += generatedHead.Value.Reads;
-        }
+    //     void AdvanceGenerated()
+    //     {
+    //         generatedHead = generatedChanges.MoveNext() ? generatedChanges.Current : null;
+    //         if (generatedHead is not null) generatedReads += generatedHead.Value.Reads;
+    //     }
 
-        void AdvanceSuggested()
-        {
-            suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
-            if (suggestedHead is not null) suggestedReads += suggestedHead.Value.Reads;
-        }
+    //     void AdvanceSuggested()
+    //     {
+    //         suggestedHead = suggestedChanges.MoveNext() ? suggestedChanges.Current : null;
+    //         if (suggestedHead is not null) suggestedReads += suggestedHead.Value.Reads;
+    //     }
 
-        AdvanceGenerated();
-        AdvanceSuggested();
+    //     AdvanceGenerated();
+    //     AdvanceSuggested();
 
-        while (generatedHead is not null || suggestedHead is not null)
-        {
-            if (suggestedHead is null)
-            {
-                if (HasNoChanges(generatedHead.Value))
-                {
-                    AdvanceGenerated();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
-            }
-            else if (generatedHead is null)
-            {
-                if (HasNoChanges(suggestedHead.Value))
-                {
-                    AdvanceSuggested();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-            }
+    //     while (generatedHead is not null || suggestedHead is not null)
+    //     {
+    //         if (suggestedHead is null)
+    //         {
+    //             if (HasNoChanges(generatedHead.Value))
+    //             {
+    //                 AdvanceGenerated();
+    //                 continue;
+    //             }
+    //             throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+    //         }
+    //         else if (generatedHead is null)
+    //         {
+    //             if (HasNoChanges(suggestedHead.Value))
+    //             {
+    //                 AdvanceSuggested();
+    //                 continue;
+    //             }
+    //             throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+    //         }
 
-            int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
+    //         int cmp = generatedHead.Value.Address.CompareTo(suggestedHead.Value.Address);
 
-            if (cmp == 0)
-            {
-                if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
-                    generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
-                    generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
-                    !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
-                {
-                    throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
-                }
-            }
-            else if (cmp > 0)
-            {
-                if (HasNoChanges(suggestedHead.Value))
-                {
-                    AdvanceSuggested();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
-            }
-            else
-            {
-                if (HasNoChanges(generatedHead.Value))
-                {
-                    AdvanceGenerated();
-                    continue;
-                }
-                throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
-            }
+    //         if (cmp == 0)
+    //         {
+    //             if (generatedHead.Value.BalanceChange != suggestedHead.Value.BalanceChange ||
+    //                 generatedHead.Value.NonceChange != suggestedHead.Value.NonceChange ||
+    //                 generatedHead.Value.CodeChange != suggestedHead.Value.CodeChange ||
+    //                 !Enumerable.SequenceEqual(generatedHead.Value.SlotChanges, suggestedHead.Value.SlotChanges))
+    //             {
+    //                 throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained incorrect changes for {suggestedHead.Value.Address} at index {index}.");
+    //             }
+    //         }
+    //         else if (cmp > 0)
+    //         {
+    //             if (HasNoChanges(suggestedHead.Value))
+    //             {
+    //                 AdvanceSuggested();
+    //                 continue;
+    //             }
+    //             throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list contained surplus changes for {suggestedHead.Value.Address} at index {index}.");
+    //         }
+    //         else
+    //         {
+    //             if (HasNoChanges(generatedHead.Value))
+    //             {
+    //                 AdvanceGenerated();
+    //                 continue;
+    //             }
+    //             throw new InvalidBlockLevelAccessListException(block, $"Suggested block-level access list missing account changes for {generatedHead.Value.Address} at index {index}.");
+    //         }
 
-            AdvanceGenerated();
-            AdvanceSuggested();
-        }
+    //         AdvanceGenerated();
+    //         AdvanceSuggested();
+    //     }
 
-        if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
-        {
-            throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
-        }
-    }
+    //     if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+    //     {
+    //         throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
+    //     }
+    // }
 
-    public void SetBlockAccessList(Block block, IReleaseSpec spec)
-    {
-        if (!spec.BlockLevelAccessListsEnabled)
-        {
-            return;
-        }
+    // public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    // {
+    //     if (!spec.BlockLevelAccessListsEnabled)
+    //     {
+    //         return;
+    //     }
 
-        if (block.IsGenesis)
-        {
-            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-        }
-        else
-        {
-            MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1));
-            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
-            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-        }
-    }
+    //     if (block.IsGenesis)
+    //     {
+    //         block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+    //     }
+    //     else
+    //     {
+    //         // MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1));
+    //         block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+    //         block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+    //         block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+    //     }
+    // }
 
     private void ThrowIfBlockAccessIndexIsNull(int? blockAccessIndex)
     {
@@ -695,38 +705,38 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
         ParallelExecutionEnabled ?
-            _intermediateBlockAccessLists[int.Min(blockAccessIndex!.Value, _intermediateBlockAccessLists.Length - 1)] :
-            GeneratedBlockAccessList;
+            _intermediateBlockAccessList :
+            _generatedBlockAccessList;
 
     // todo: run in parallel like prewarmer
-    private void LoadPreBlockState(BlockAccessList blockAccessList)
-    {
-        foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
-        {
-            // check if changed before loading prestate
-            accountChanges.CheckWasChanged();
+    // private void LoadPreBlockState(BlockAccessList blockAccessList)
+    // {
+    //     foreach (AccountChanges accountChanges in blockAccessList.AccountChanges)
+    //     {
+    //         // check if changed before loading prestate
+    //         accountChanges.CheckWasChanged();
 
-            bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
-            accountChanges.ExistedBeforeBlock = exists;
+    //         bool exists = _innerWorldState.TryGetAccount(accountChanges.Address, out AccountStruct account);
+    //         accountChanges.ExistedBeforeBlock = exists;
 
-            accountChanges.AddBalanceChange(new(-1, account.Balance));
-            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
-            accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
+    //         accountChanges.AddBalanceChange(new(-1, account.Balance));
+    //         accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+    //         accountChanges.AddCodeChange(new(-1, _innerWorldState.GetCode(accountChanges.Address)));
 
-            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
-            }
+    //         foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+    //         {
+    //             StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+    //             slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+    //         }
 
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
-            {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
-                slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
-            }
-        }
-    }
+    //         foreach (StorageRead storageRead in accountChanges.StorageReads)
+    //         {
+    //             SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+    //             StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+    //             slotChanges.AddStorageChange(new(-1, new(_innerWorldState.Get(storageCell), true)));
+    //         }
+    //     }
+    // }
 
     private UInt256 GetBalanceInternal(Address address, int? blockAccessIndex)
     {
@@ -934,11 +944,11 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
                 Keccak.EmptyTreeHash, // never used
                 GetCodeHashInternal(address, blockAccessIndex)) : null;
 
-    private static bool HasNoChanges(in ChangeAtIndex c)
-        => c.BalanceChange is null &&
-            c.NonceChange is null &&
-            c.CodeChange is null &&
-            !c.SlotChanges.GetEnumerator().MoveNext();
+    // private static bool HasNoChanges(in ChangeAtIndex c)
+    //     => c.BalanceChange is null &&
+    //         c.NonceChange is null &&
+    //         c.CodeChange is null &&
+    //         !c.SlotChanges.GetEnumerator().MoveNext();
 
     // for testing
     internal IWorldState Inner => _innerWorldState;

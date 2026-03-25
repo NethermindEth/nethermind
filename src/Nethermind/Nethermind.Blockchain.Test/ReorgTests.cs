@@ -31,6 +31,7 @@ using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -116,7 +117,8 @@ public class ReorgTests
                 specProvider,
                 blockhashProvider,
                 codeInfoRepository,
-                LimboLogs.Instance),
+                LimboLogs.Instance,
+                new BlocksConfig()),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),

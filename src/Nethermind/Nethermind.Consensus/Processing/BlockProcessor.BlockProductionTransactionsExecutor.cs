@@ -6,13 +6,20 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
@@ -26,12 +33,19 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionsExecutor(
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
+            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+            ISpecProvider specProvider,
+            IBlockhashProvider blockHashProvider,
+            ICodeInfoRepository codeInfoRepository,
+            IBlocksConfig blocksConfig,
             IBlockProductionTransactionPicker txPicker,
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+            public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+            // private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private readonly ILogger _logger = logManager.GetClassLogger();
+            private BlockExecutionContext _blockExecutionContext;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -42,11 +56,21 @@ namespace Nethermind.Consensus.Processing
             }
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-                => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            {
+                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+                _blockExecutionContext = blockExecutionContext;
+            }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
+
+                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager));
+                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
+                transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
 
@@ -65,7 +89,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(transactionProcessorAdapter, block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -78,7 +102,7 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
-                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -88,7 +112,28 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
+
+            public void SetBlockAccessList(Block block, IReleaseSpec spec)
+            {
+                if (!spec.BlockLevelAccessListsEnabled)
+                {
+                    return;
+                }
+
+                if (block.IsGenesis)
+                {
+                    block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+                }
+                else
+                {
+                    block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+                    block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+                    block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+                }
+            }
+
             private TxAction ProcessTransaction(
+                ITransactionProcessorAdapter transactionProcessor,
                 Block block,
                 Transaction currentTx,
                 int index,
@@ -104,7 +149,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -114,7 +159,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        _balBuilder?.GeneratedBlockAccessList.RollbackCurrentIndex();
+                        GeneratedBlockAccessList.RollbackCurrentIndex();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
