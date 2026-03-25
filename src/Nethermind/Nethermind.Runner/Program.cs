@@ -611,3 +611,4 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     /// <inheritdoc />
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
+// fake change
