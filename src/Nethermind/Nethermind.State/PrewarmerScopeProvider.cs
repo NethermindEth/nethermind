@@ -57,9 +57,8 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
-        // Pending cross-block cache updates, promoted only on successful CommitTree.
+        // Pending cross-block storage cache updates, promoted only on successful CommitTree.
         // ConcurrentQueue because storage batches may run in parallel (UpdateRootHashesMultiThread).
-        private ConcurrentQueue<(AddressAsKey Key, Account? Value)>? _pendingStateUpdates;
         private ConcurrentQueue<(StorageCell Key, byte[] Value)>? _pendingStorageUpdates;
         private volatile bool _pendingStorageClear;
 
@@ -72,7 +71,7 @@ public class PrewarmerScopeProvider(
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
 
-            // Only clear cross-block caches on reorg (discontinuity). On the canonical chain,
+            // Only clear cross-block storage cache on reorg (discontinuity). On the canonical chain,
             // baseBlock.Number == LastCommittedBlockNumber, so caches persist across blocks.
             // During a reorg, baseBlock.Number < LastCommittedBlockNumber, so we clear stale entries.
             if (!populatePreBlockCache && crossBlockCaches is not null)
@@ -80,7 +79,6 @@ public class PrewarmerScopeProvider(
                 long lastCommitted = crossBlockCaches.LastCommittedBlockNumber;
                 if (baseBlock is not null && baseBlock.Number != lastCommitted)
                 {
-                    crossBlockCaches.StateCache.Clear();
                     crossBlockCaches.StorageCache.Clear();
                 }
             }
@@ -132,12 +130,6 @@ public class PrewarmerScopeProvider(
                 populatePreBlockCache);
         }
 
-        internal void BufferStateUpdate(AddressAsKey key, Account? account)
-        {
-            ConcurrentQueue<(AddressAsKey, Account?)> queue = LazyInitializer.EnsureInitialized(ref _pendingStateUpdates)!;
-            queue.Enqueue((key, account));
-        }
-
         internal void BufferStorageUpdate(in StorageCell cell, byte[] value)
         {
             ConcurrentQueue<(StorageCell, byte[])> queue = LazyInitializer.EnsureInitialized(ref _pendingStorageUpdates)!;
@@ -174,15 +166,6 @@ public class PrewarmerScopeProvider(
         private void PromoteToCrossBlockCaches(long blockNumber)
         {
             if (crossBlockCaches is null) return;
-
-            if (_pendingStateUpdates is not null)
-            {
-                SeqlockCache<AddressAsKey, Account> stateCache = crossBlockCaches.StateCache;
-                while (_pendingStateUpdates.TryDequeue(out (AddressAsKey Key, Account? Value) entry))
-                {
-                    stateCache.Set(in entry.Key, entry.Value);
-                }
-            }
 
             if (_pendingStorageClear)
             {
@@ -242,12 +225,6 @@ public class PrewarmerScopeProvider(
             else
             {
                 if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
-                {
-                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
-                    baseScope.HintGet(address, account);
-                    Metrics.IncrementStateTreeCacheHits();
-                }
-                else if (crossBlockCaches is not null && crossBlockCaches.StateCache.TryGetValue(in addressAsKey, out account))
                 {
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
                     baseScope.HintGet(address, account);
@@ -382,57 +359,29 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>
-    /// Wraps write batch to buffer account and storage updates for cross-block cache promotion.
+    /// Wraps write batch to buffer storage updates for cross-block cache promotion.
     /// Writes are NOT applied to the cross-block caches immediately — they are buffered on the
     /// <see cref="ScopeWrapper"/> and promoted only during <see cref="ScopeWrapper.Commit"/>,
     /// which is called from CommitTree after successful block processing.
-    /// Also intercepts <see cref="OnAccountUpdated"/> to capture storage-root-only account
-    /// updates emitted by the underlying batch (e.g. TrieStoreScopeProvider).
     /// </summary>
-    private sealed class CacheUpdatingWriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
+    private sealed class CacheUpdatingWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
+        ScopeWrapper scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly IWorldStateScopeProvider.IWorldStateWriteBatch _baseBatch;
-        private readonly ScopeWrapper _scope;
-
-        public CacheUpdatingWriteBatch(IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch, ScopeWrapper scope)
-        {
-            _baseBatch = baseBatch;
-            _scope = scope;
-
-            _baseBatch.OnAccountUpdated += OnBaseAccountUpdated;
-        }
-
-        public void Dispose()
-        {
-            // Dispose first so OnAccountUpdated fires while we're still subscribed.
-            // This captures the final StorageRoot set during storage tree commit.
-            _baseBatch.Dispose();
-            _baseBatch.OnAccountUpdated -= OnBaseAccountUpdated;
-        }
+        public void Dispose() => baseBatch.Dispose();
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
         {
-            add => _baseBatch.OnAccountUpdated += value;
-            remove => _baseBatch.OnAccountUpdated -= value;
+            add => baseBatch.OnAccountUpdated += value;
+            remove => baseBatch.OnAccountUpdated -= value;
         }
 
-        public void Set(Address key, Account? account)
-        {
-            _baseBatch.Set(key, account);
-            AddressAsKey addressAsKey = key;
-            _scope.BufferStateUpdate(addressAsKey, account);
-        }
+        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
-            IWorldStateScopeProvider.IStorageWriteBatch baseBatchStorage = _baseBatch.CreateStorageWriteBatch(key, estimatedEntries);
-            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, _scope, key);
-        }
-
-        private void OnBaseAccountUpdated(object? sender, IWorldStateScopeProvider.AccountUpdated updated)
-        {
-            AddressAsKey addressAsKey = updated.Address;
-            _scope.BufferStateUpdate(addressAsKey, updated.Account);
+            IWorldStateScopeProvider.IStorageWriteBatch baseBatchStorage = baseBatch.CreateStorageWriteBatch(key, estimatedEntries);
+            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, scope, key);
         }
     }
 
