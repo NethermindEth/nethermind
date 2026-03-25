@@ -8,7 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.State.Snap;
 using NUnit.Framework;
 
-namespace Nethermind.State.Test.Snap;
+namespace Nethermind.Store.Test.Snap;
 
 [Parallelizable(ParallelScope.Self)]
 public class SlotsAndProofsTests
@@ -52,7 +52,7 @@ public class SlotsAndProofsTests
     public void Dispose_with_null_fields_does_not_throw()
     {
         SlotsAndProofs sut = new() { PathsAndSlots = null!, Proofs = null };
-        Assert.DoesNotThrow(() => sut.Dispose());
+        Assert.DoesNotThrow(sut.Dispose);
     }
 
     private sealed class TrackingOwnedList(Action onDispose) : IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>

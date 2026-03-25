@@ -339,7 +339,7 @@ public class SyncDispatcherTests
         // would trigger UpdateState which accesses those disposed resources.
         // No throw confirms the handler was actually removed, not just that the
         // callback happens to be harmless.
-        Assert.DoesNotThrow(() => syncFeed.Activate());
+        Assert.DoesNotThrow(syncFeed.Activate);
     }
 
     [Test]

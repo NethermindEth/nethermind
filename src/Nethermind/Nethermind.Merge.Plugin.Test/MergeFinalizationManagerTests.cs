@@ -30,7 +30,7 @@ public class MergeFinalizationManagerTests
 
         _poSSwitcher.TerminalBlockReached += Raise.Event();
 
-        Assert.That(_manager.LastFinalizedBlockLevel, Is.EqualTo(0),
+        Assert.That(_manager.LastFinalizedBlockLevel, Is.Zero,
             "Handler should be unsubscribed — IsPostMerge must remain false after dispose");
     }
 
