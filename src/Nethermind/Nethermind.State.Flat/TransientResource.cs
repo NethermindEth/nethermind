@@ -80,12 +80,12 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public RefCountingTrieNode? TryGetStateNode(in TreePath path, Hash256 hash) =>
         Nodes.TryGet(null, path, hash);
 
-    public void UpdateStateRlp(in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp, RefCountingTrieNodePool pool) =>
-        Nodes.Set(null, path, hash, rlp, pool);
+    public void UpdateStateRlp(in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.Set(null, path, hash, rlp);
 
     public RefCountingTrieNode? TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash) =>
         Nodes.TryGet(address, path, hash);
 
-    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp, RefCountingTrieNodePool pool) =>
-        Nodes.Set(address, path, hash, rlp, pool);
+    public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.Set(address, path, hash, rlp);
 }

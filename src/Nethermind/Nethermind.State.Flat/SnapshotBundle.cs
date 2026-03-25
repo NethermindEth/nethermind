@@ -42,9 +42,6 @@ public sealed class SnapshotBundle : IDisposable
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
-    // Pool for creating RefCountingTrieNode instances in the warmer path
-    private readonly RefCountingTrieNodePool _warmerPool = new();
-
     internal ResourcePool.Usage _usage;
 
     public SnapshotBundle(
@@ -62,6 +59,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
+        _transientResource.Nodes.SetShardPools(trieNodeCache.ShardPools);
         _readStateNodes = _transientResource.ReadStateNodes;
         _readStorageNodes = _transientResource.ReadStorageNodes;
 
@@ -232,6 +230,7 @@ public sealed class SnapshotBundle : IDisposable
         RefCountingTrieNode? cached = _transientResource.TryGetStateNode(path, hash);
         if (cached is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             byte[] result = cached.Rlp.ToArray();
             cached.Dispose();
             return result;
@@ -240,6 +239,7 @@ public sealed class SnapshotBundle : IDisposable
         cached = _trieNodeCache.TryGet(null, path, hash);
         if (cached is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             byte[] result = cached.Rlp.ToArray();
             cached.Dispose();
             return result;
@@ -256,6 +256,7 @@ public sealed class SnapshotBundle : IDisposable
         RefCountingTrieNode? cached = _transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash);
         if (cached is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             byte[] result = cached.Rlp.ToArray();
             cached.Dispose();
             return result;
@@ -264,26 +265,13 @@ public sealed class SnapshotBundle : IDisposable
         cached = _trieNodeCache.TryGet((Hash256AsKey)address, path, hash);
         if (cached is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             byte[] result = cached.Rlp.ToArray();
             cached.Dispose();
             return result;
         }
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
-    }
-
-    public byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, flags);
-    }
-
-    public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(address, path, hash, flags);
     }
 
     /// <summary>
@@ -304,16 +292,16 @@ public sealed class SnapshotBundle : IDisposable
         node = _trieNodeCache.TryGet(null, path, hash);
         if (node is not null) return node;
 
+        // Check changed/read TrieNode dictionaries — warmer no longer goes through FindStateNodeOrUnknown
+        if (TryRentFromTrieNode(_changedStateNodes, path, hash, out node)) return node;
+        if (TryRentFromTrieNode(_readStateNodes, path, hash, out node)) return node;
+
         // Check snapshots for TrieNode with FullRlp
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStateNode(path, out TrieNode? trieNode) && trieNode.Keccak == hash && trieNode.FullRlp.IsNotNullOrEmpty)
             {
-                ReadOnlySpan<byte> span = trieNode.FullRlp.AsSpan();
-                if (span.Length > TrieNodeRlp.MaxRlpLength) return null;
-                node = _warmerPool.Rent(hash, span);
-                _transientResource.UpdateStateRlp(path, hash, span, _warmerPool);
-                return node;
+                return RentAndCacheStateRlp(path, hash, trieNode.FullRlp.AsSpan());
             }
         }
 
@@ -321,9 +309,7 @@ public sealed class SnapshotBundle : IDisposable
         byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
-            node = _warmerPool.Rent(hash, rlp);
-            _transientResource.UpdateStateRlp(path, hash, rlp, _warmerPool);
-            return node;
+            return RentAndCacheStateRlp(path, hash, rlp);
         }
 
         return null;
@@ -345,27 +331,61 @@ public sealed class SnapshotBundle : IDisposable
         node = _trieNodeCache.TryGet(addressHash, path, hash);
         if (node is not null) return node;
 
+        // Check changed/read TrieNode dictionaries
+        if (_trieChanged && _changedStorageNodes.TryGetValue((addressHash, path), out TrieNode? changedNode) && changedNode.Keccak == hash && changedNode.FullRlp.IsNotNullOrEmpty)
+        {
+            return RentAndCacheStorageRlp(addressHash, path, hash, changedNode.FullRlp.AsSpan());
+        }
+        if (_readStorageNodes.TryGetValue((addressHash, path), out TrieNode? readNode) && readNode.Keccak == hash && readNode.FullRlp.IsNotNullOrEmpty)
+        {
+            return RentAndCacheStorageRlp(addressHash, path, hash, readNode.FullRlp.AsSpan());
+        }
+
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
             if (_snapshots[i].TryGetStorageNode(addressHash, path, out TrieNode? trieNode) && trieNode.Keccak == hash && trieNode.FullRlp.IsNotNullOrEmpty)
             {
-                ReadOnlySpan<byte> span = trieNode.FullRlp.AsSpan();
-                if (span.Length > TrieNodeRlp.MaxRlpLength) return null;
-                node = _warmerPool.Rent(hash, span);
-                _transientResource.UpdateStorageRlp(addressHash, path, hash, span, _warmerPool);
-                return node;
+                return RentAndCacheStorageRlp(addressHash, path, hash, trieNode.FullRlp.AsSpan());
             }
         }
 
         byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
-            node = _warmerPool.Rent(hash, rlp);
-            _transientResource.UpdateStorageRlp(addressHash, path, hash, rlp, _warmerPool);
-            return node;
+            return RentAndCacheStorageRlp(addressHash, path, hash, rlp);
         }
 
         return null;
+    }
+
+    private bool TryRentFromTrieNode(
+        ConcurrentDictionary<TreePath, TrieNode> dict, in TreePath path, Hash256 hash,
+        [NotNullWhen(true)] out RefCountingTrieNode? node)
+    {
+        node = null;
+        if (!dict.TryGetValue(path, out TrieNode? trieNode)) return false;
+        if (trieNode.Keccak != hash || !trieNode.FullRlp.IsNotNullOrEmpty) return false;
+        node = RentAndCacheStateRlp(path, hash, trieNode.FullRlp.AsSpan());
+        return node is not null;
+    }
+
+    private RefCountingTrieNode? RentAndCacheStateRlp(in TreePath path, Hash256 hash, ReadOnlySpan<byte> span)
+    {
+        if (span.Length > TrieNodeRlp.MaxRlpLength) return null;
+        _transientResource.UpdateStateRlp(path, hash, span);
+        // Re-fetch from child cache to get the pooled node with a lease
+        RefCountingTrieNode? node = _transientResource.TryGetStateNode(path, hash);
+        node?.AcquireLease();
+        return node;
+    }
+
+    private RefCountingTrieNode? RentAndCacheStorageRlp(Hash256AsKey addressHash, in TreePath path, Hash256 hash, ReadOnlySpan<byte> span)
+    {
+        if (span.Length > TrieNodeRlp.MaxRlpLength) return null;
+        _transientResource.UpdateStorageRlp(addressHash, path, hash, span);
+        RefCountingTrieNode? node = _transientResource.TryGetStorageNode(addressHash, path, hash);
+        node?.AcquireLease();
+        return node;
     }
 
     // This is called only during trie commit
@@ -383,7 +403,7 @@ public sealed class SnapshotBundle : IDisposable
         // to block processing time but increase the trie node add time by 3x.
         if (newNode.Keccak is not null && newNode.FullRlp.IsNotNullOrEmpty)
         {
-            _transientResource.UpdateStateRlp(path, newNode.Keccak, newNode.FullRlp.AsSpan(), _warmerPool);
+            _transientResource.UpdateStateRlp(path, newNode.Keccak, newNode.FullRlp.AsSpan());
         }
     }
 
@@ -399,7 +419,7 @@ public sealed class SnapshotBundle : IDisposable
 
         if (newNode.Keccak is not null && newNode.FullRlp.IsNotNullOrEmpty)
         {
-            _transientResource.UpdateStorageRlp(addr, path, newNode.Keccak, newNode.FullRlp.AsSpan(), _warmerPool);
+            _transientResource.UpdateStorageRlp(addr, path, newNode.Keccak, newNode.FullRlp.AsSpan());
         }
     }
 
@@ -497,6 +517,7 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             _transientResource = _resourcePool.GetCachedResource(_usage);
+            _transientResource.Nodes.SetShardPools(_trieNodeCache.ShardPools);
             _trieChanged = false;
 
             _readStateNodes = _transientResource.ReadStateNodes;

@@ -15,4 +15,7 @@ public interface ITrieNodeCache
     RefCountingTrieNode? TryGet(Hash256? address, in TreePath path, Hash256 hash);
     void Add(TransientResource transientResource);
     void Clear();
+
+    /// <summary>Per-shard pools for <see cref="TrieNodeCache.ChildCache"/> to use.</summary>
+    RefCountingTrieNodePool[] ShardPools { get; }
 }

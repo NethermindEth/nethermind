@@ -82,7 +82,7 @@ public class TrieNodeCacheTests
         Hash256 hash = Keccak.Compute(rlp);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, hash, rlp, _pool);
+        transientResource.Nodes.Set(null, in path, hash, rlp);
         _cache.Add(transientResource);
 
         RefCountingTrieNode? node = _cache.TryGet(null, in path, hash);
@@ -100,7 +100,7 @@ public class TrieNodeCacheTests
         Hash256 hash = Keccak.Compute(rlp);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address, in path, hash, rlp, _pool);
+        transientResource.Nodes.Set(address, in path, hash, rlp);
         _cache.Add(transientResource);
 
         RefCountingTrieNode? node = _cache.TryGet(address, in path, hash);
@@ -121,7 +121,7 @@ public class TrieNodeCacheTests
         Hash256 hash = Keccak.Compute(rlp);
 
         TransientResource transientResource = zeroResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, hash, rlp, _pool);
+        transientResource.Nodes.Set(null, in path, hash, rlp);
         zeroCache.Add(transientResource);
 
         RefCountingTrieNode? node = zeroCache.TryGet(null, in path, hash);
@@ -143,9 +143,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute(rlp2);
         Hash256 hash3 = Keccak.Compute(rlp3);
 
-        transientResource.Nodes.Set(null, in path1, hash1, rlp1, _pool);
-        transientResource.Nodes.Set(null, in path2, hash2, rlp2, _pool);
-        transientResource.Nodes.Set(null, in path3, hash3, rlp3, _pool);
+        transientResource.Nodes.Set(null, in path1, hash1, rlp1);
+        transientResource.Nodes.Set(null, in path2, hash2, rlp2);
+        transientResource.Nodes.Set(null, in path3, hash3, rlp3);
         _cache.Add(transientResource);
 
         using RefCountingTrieNode? node1 = _cache.TryGet(null, in path1, hash1);
@@ -170,8 +170,8 @@ public class TrieNodeCacheTests
         Hash256 stateHash = Keccak.Compute(stateRlp);
         Hash256 storageHash = Keccak.Compute(storageRlp);
 
-        transientResource.Nodes.Set(null, in statePath, stateHash, stateRlp, _pool);
-        transientResource.Nodes.Set(storageAddress, in storagePath, storageHash, storageRlp, _pool);
+        transientResource.Nodes.Set(null, in statePath, stateHash, stateRlp);
+        transientResource.Nodes.Set(storageAddress, in storagePath, storageHash, storageRlp);
         _cache.Add(transientResource);
 
         using RefCountingTrieNode? stateNode = _cache.TryGet(null, in statePath, stateHash);
@@ -190,7 +190,7 @@ public class TrieNodeCacheTests
         Hash256 queryHash = Keccak.Compute([4, 5, 6]);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path, storedHash, rlp, _pool);
+        transientResource.Nodes.Set(null, in path, storedHash, rlp);
         _cache.Add(transientResource);
 
         RefCountingTrieNode? node = _cache.TryGet(null, in path, queryHash);
@@ -207,11 +207,11 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute(rlp2);
 
         TransientResource transientResource1 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource1.Nodes.Set(null, in path, hash1, rlp1, _pool);
+        transientResource1.Nodes.Set(null, in path, hash1, rlp1);
         _cache.Add(transientResource1);
 
         TransientResource transientResource2 = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource2.Nodes.Set(null, in path, hash2, rlp2, _pool);
+        transientResource2.Nodes.Set(null, in path, hash2, rlp2);
         _cache.Add(transientResource2);
 
         RefCountingTrieNode? oldNode = _cache.TryGet(null, in path, hash1);
@@ -232,8 +232,8 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute(rlp2);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(null, in path1, hash1, rlp1, _pool);
-        transientResource.Nodes.Set(null, in path2, hash2, rlp2, _pool);
+        transientResource.Nodes.Set(null, in path1, hash1, rlp1);
+        transientResource.Nodes.Set(null, in path2, hash2, rlp2);
         _cache.Add(transientResource);
 
         using RefCountingTrieNode? node1 = _cache.TryGet(null, in path1, hash1);
@@ -255,8 +255,8 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute(rlp2);
 
         TransientResource transientResource = _resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
-        transientResource.Nodes.Set(address1, in path, hash1, rlp1, _pool);
-        transientResource.Nodes.Set(address2, in path, hash2, rlp2, _pool);
+        transientResource.Nodes.Set(address1, in path, hash1, rlp1);
+        transientResource.Nodes.Set(address2, in path, hash2, rlp2);
         _cache.Add(transientResource);
 
         using RefCountingTrieNode? node1 = _cache.TryGet(address1, in path, hash1);
@@ -281,9 +281,9 @@ public class TrieNodeCacheTests
         Hash256 hash2 = Keccak.Compute(rlp2);
         Hash256 hash3 = Keccak.Compute(rlp3);
 
-        transientResource.Nodes.Set(null, in path1, hash1, rlp1, _pool);
-        transientResource.Nodes.Set(null, in path2, hash2, rlp2, _pool);
-        transientResource.Nodes.Set(null, in path3, hash3, rlp3, _pool);
+        transientResource.Nodes.Set(null, in path1, hash1, rlp1);
+        transientResource.Nodes.Set(null, in path2, hash2, rlp2);
+        transientResource.Nodes.Set(null, in path3, hash3, rlp3);
         _cache.Add(transientResource);
 
         // Verify nodes are cached
@@ -315,8 +315,8 @@ public class TrieNodeCacheTests
         Hash256 stateHash = Keccak.Compute(stateRlp);
         Hash256 storageHash = Keccak.Compute(storageRlp);
 
-        transientResource.Nodes.Set(null, in statePath, stateHash, stateRlp, _pool);
-        transientResource.Nodes.Set(storageAddress, in storagePath, storageHash, storageRlp, _pool);
+        transientResource.Nodes.Set(null, in statePath, stateHash, stateRlp);
+        transientResource.Nodes.Set(storageAddress, in storagePath, storageHash, storageRlp);
         _cache.Add(transientResource);
 
         // Verify nodes are cached
@@ -381,7 +381,7 @@ public class ChildCacheTests
         byte[] rlp = BuildBranchRlp(1);
         Hash256 hash = Keccak.Compute(rlp);
 
-        _cache.Set(null, in path, hash, rlp, _pool);
+        _cache.Set(null, in path, hash, rlp);
 
         RefCountingTrieNode? node = _cache.TryGet(null, in path, hash);
         Assert.That(node, Is.Not.Null);
@@ -396,7 +396,7 @@ public class ChildCacheTests
         byte[] rlp = BuildBranchRlp(2);
         Hash256 hash = Keccak.Compute(rlp);
 
-        _cache.Set(address, in path, hash, rlp, _pool);
+        _cache.Set(address, in path, hash, rlp);
 
         RefCountingTrieNode? node = _cache.TryGet(address, in path, hash);
         Assert.That(node, Is.Not.Null);
@@ -411,7 +411,7 @@ public class ChildCacheTests
         Hash256 storedHash = Keccak.Compute(rlp);
         Hash256 queryHash = Keccak.Compute([4, 5, 6]);
 
-        _cache.Set(null, in path, storedHash, rlp, _pool);
+        _cache.Set(null, in path, storedHash, rlp);
 
         RefCountingTrieNode? node = _cache.TryGet(null, in path, queryHash);
         Assert.That(node, Is.Null);
@@ -424,7 +424,7 @@ public class ChildCacheTests
         byte[] rlp = BuildBranchRlp(4);
         Hash256 hash = Keccak.Compute(rlp);
 
-        _cache.Set(null, in path, hash, rlp, _pool);
+        _cache.Set(null, in path, hash, rlp);
         Assert.That(_cache.Count, Is.EqualTo(1));
 
         _cache.Reset();
@@ -445,10 +445,10 @@ public class ChildCacheTests
         Hash256 hash1 = Keccak.Compute(rlp1);
         Hash256 hash2 = Keccak.Compute(rlp2);
 
-        _cache.Set(null, in path1, hash1, rlp1, _pool);
+        _cache.Set(null, in path1, hash1, rlp1);
         Assert.That(_cache.Count, Is.EqualTo(1));
 
-        _cache.Set(null, in path2, hash2, rlp2, _pool);
+        _cache.Set(null, in path2, hash2, rlp2);
         Assert.That(_cache.Count, Is.EqualTo(2));
     }
 
@@ -470,7 +470,7 @@ public class ChildCacheTests
             TreePath path = TreePath.FromHexString(i.ToString("x8"));
             byte[] rlp = BuildBranchRlp((byte)(i % 256));
             Hash256 hash = Keccak.Compute(rlp);
-            smallCache.Set(null, in path, hash, rlp, _pool);
+            smallCache.Set(null, in path, hash, rlp);
         }
 
         smallCache.Reset();
@@ -489,8 +489,8 @@ public class ChildCacheTests
         Hash256 storageHash = Keccak.Compute(storageRlp);
         Hash256 storageAddress = Keccak.Compute([0xaa]);
 
-        _cache.Set(null, in path, stateHash, stateRlp, _pool);
-        _cache.Set(storageAddress, in path, storageHash, storageRlp, _pool);
+        _cache.Set(null, in path, stateHash, stateRlp);
+        _cache.Set(storageAddress, in path, storageHash, storageRlp);
 
         RefCountingTrieNode? retrievedState = _cache.TryGet(null, in path, stateHash);
         RefCountingTrieNode? retrievedStorage = _cache.TryGet(storageAddress, in path, storageHash);
