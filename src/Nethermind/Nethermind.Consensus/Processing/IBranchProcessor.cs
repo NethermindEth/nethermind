@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
@@ -21,7 +20,7 @@ public interface IBranchProcessor
     /// <param name="blockTracer">Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/></param>
     /// <returns>List of processed blocks.</returns>
     //
-    Task<Block[]> Process(
+    Block[] Process(
         BlockHeader? baseBlock,
         IReadOnlyList<Block> suggestedBlocks,
         ProcessingOptions processingOptions,

@@ -335,7 +335,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             IsProcessingBlock = true;
             try
             {
-                await ProcessBlocks();
+                ProcessBlocks();
             }
             finally
             {
@@ -354,7 +354,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
     }
 
-    private async Task ProcessBlocks()
+    private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
         while (_blockQueue.Reader.TryRead(out BlockRef blockRef))
@@ -370,7 +370,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                (Block? processedBlock, string? error) = await Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken);
+                (Block? processedBlock, string? error) = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken);
 
                 if (processedBlock is null)
                 {
@@ -434,7 +434,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public bool IsEmpty => Volatile.Read(ref _queueCount) == 0;
     public int Count => Volatile.Read(ref _queueCount);
 
-    public async Task<(Block?, string?)> Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
+    public (Block?, string?) Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
@@ -462,7 +462,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        (Block[]? processedBlocks, string? error) = await ProcessBranch(processingBranch, options, tracer, token);
+        (Block[]? processedBlocks, string? error) = ProcessBranch(processingBranch, options, tracer, token);
 
         _stopwatch.Stop();
         if (processedBlocks is null)
@@ -542,7 +542,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private async Task<(Block[]?, string?)> ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
+    private (Block[]?, string?) ProcessBranch(ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -561,7 +561,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         string? error = null;
         try
         {
-            processedBlocks = await _branchProcessor.Process(
+            processedBlocks = _branchProcessor.Process(
                 processingBranch.BaseBlock,
                 processingBranch.BlocksToProcess,
                 options,
