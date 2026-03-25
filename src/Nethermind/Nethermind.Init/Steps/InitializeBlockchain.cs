@@ -30,6 +30,8 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
+    // Lazy: resolving ITxGossipPolicy eagerly pulls in the sync infrastructure (SyncedTxGossipPolicy → ISyncModeSelector → ...)
+    // which depends on IBackgroundTaskScheduler that this step creates during Execute.
     public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, Lazy<ITxGossipPolicy> txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
