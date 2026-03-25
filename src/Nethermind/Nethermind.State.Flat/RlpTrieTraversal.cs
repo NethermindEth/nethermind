@@ -40,7 +40,7 @@ internal static class RlpTrieTraversal
         Hash256 rootHash,
         ReadOnlySpan<byte> rawKey)
     {
-        TryRead(rlpLoader, rootHash, rawKey, out _);
+        TryRead(rlpLoader, rootHash, rawKey, out _, readValue: false);
     }
 
     /// <summary>
@@ -62,7 +62,8 @@ internal static class RlpTrieTraversal
         RlpLoader rlpLoader,
         Hash256 rootHash,
         ReadOnlySpan<byte> rawKey,
-        out byte[]? value)
+        out byte[]? value,
+        bool readValue = true)
     {
         int nibblesCount = 2 * rawKey.Length;
         byte[]? rentedArray = null;
@@ -76,7 +77,7 @@ internal static class RlpTrieTraversal
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
 
             TreePath path = TreePath.Empty;
-            return TryReadHashedNode(rlpLoader, ref path, rootHash, nibbles, out value);
+            return TryReadHashedNode(rlpLoader, ref path, rootHash, nibbles, readValue, out value);
         }
         finally
         {
@@ -89,6 +90,7 @@ internal static class RlpTrieTraversal
         ref TreePath path,
         Hash256 hash,
         Span<byte> remainingNibbles,
+        bool readValue,
         out byte[]? value)
     {
         value = null;
@@ -106,7 +108,7 @@ internal static class RlpTrieTraversal
             nodeBuffer.Length = 0;
             if (!rlpLoader(path, hash, ref nodeBuffer) || nodeBuffer.Length == 0) return false;
 
-            bool continueLoop = TraverseNode(rlpLoader, ref path, nodeBuffer.AsSpan(), remainingNibbles, out Hash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
+            bool continueLoop = TraverseNode(rlpLoader, ref path, nodeBuffer.AsSpan(), remainingNibbles, readValue, out Hash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
             if (!continueLoop)
             {
                 value = leafValue;
@@ -130,6 +132,7 @@ internal static class RlpTrieTraversal
         ref TreePath path,
         ReadOnlySpan<byte> rlp,
         Span<byte> remainingNibbles,
+        bool readValue,
         out Hash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
@@ -138,6 +141,18 @@ internal static class RlpTrieTraversal
         nibblesConsumed = 0;
         leafValue = null;
 
+        // Full branch fast-path: all 16 children are 33-byte hash refs (0xA0 + 32B).
+        // Layout: [3B seq prefix][16 × 33B child][1B empty value] = 532B
+        if (rlp.Length == 532)
+        {
+            if (remainingNibbles.IsEmpty) return false;
+            int nib = remainingNibbles[0];
+            nextHash = new Hash256(rlp.Slice(3 + nib * 33 + 1, 32));
+            path.AppendMut(nib);
+            nibblesConsumed = 1;
+            return true;
+        }
+
         Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
         int sequenceLength = ctx.ReadSequenceLength();
         int endPosition = ctx.Position + sequenceLength;
@@ -145,7 +160,7 @@ internal static class RlpTrieTraversal
 
         if (itemCount == 2)
         {
-            return TraverseExtensionOrLeaf(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue);
+            return TraverseExtensionOrLeaf(rlpLoader, ref path, rlp, ref ctx, remainingNibbles, readValue, out nextHash, out nibblesConsumed, out leafValue);
         }
 
         // Branch node (17 items) — branch values are always empty in the Ethereum state trie
@@ -158,6 +173,7 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
+        bool readValue,
         out Hash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
@@ -188,6 +204,9 @@ internal static class RlpTrieTraversal
 
         if (isLeaf)
         {
+            // Warmer only needs to touch nodes along the path — the leaf RLP is already loaded.
+            if (!readValue) return false;
+
             // Leaf: remaining nibbles must exactly match the leaf's compact key
             if (remainingNibbles.Length != keyNibbleCount) return false;
 
@@ -244,7 +263,7 @@ internal static class RlpTrieTraversal
         nibblesConsumed = keyNibbleCount;
 
         // Second item: child reference
-        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], out nextHash, out int childNibblesConsumed, out leafValue);
+        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], readValue, out nextHash, out int childNibblesConsumed, out leafValue);
         nibblesConsumed += childNibblesConsumed;
         return result;
     }
@@ -273,7 +292,7 @@ internal static class RlpTrieTraversal
         path.AppendMut(nib);
         nibblesConsumed = 1;
 
-        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], out nextHash, out int childNibblesConsumed, out leafValue);
+        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], true, out nextHash, out int childNibblesConsumed, out leafValue);
         nibblesConsumed += childNibblesConsumed;
         return result;
     }
@@ -289,6 +308,7 @@ internal static class RlpTrieTraversal
         ReadOnlySpan<byte> parentRlp,
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
+        bool readValue,
         out Hash256? nextHash,
         out int nibblesConsumed,
         out byte[]? leafValue)
@@ -325,7 +345,7 @@ internal static class RlpTrieTraversal
             ReadOnlySpan<byte> inlineRlp = parentRlp.Slice(inlineStart, inlineLen);
 
             // Traverse the inline node without loading from cache (it has no hash)
-            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue);
+            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, readValue, out nextHash, out nibblesConsumed, out leafValue);
 
             // nextHash may be set if the inline node leads to a hash-referenced child
             return nextHash is not null;
