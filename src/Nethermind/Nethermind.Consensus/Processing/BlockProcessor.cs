@@ -67,7 +67,6 @@ public partial class BlockProcessor(
             _balBuilder.TracingEnabled = balsEnabled;
             if (balsEnabled)
             {
-                _balBuilder.GeneratedBlockAccessList = new();
                 _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
             }
         }

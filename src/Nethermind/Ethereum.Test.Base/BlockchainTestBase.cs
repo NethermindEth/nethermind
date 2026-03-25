@@ -34,8 +34,10 @@ using Nethermind.Init.Modules;
 using NUnit.Framework;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
+using System.Reflection;
 using System.Text.Json;
 
 namespace Ethereum.Test.Base;
@@ -328,17 +330,19 @@ public abstract class BlockchainTestBase
     {
         if (newPayloads is null || newPayloads.Length == 0) return;
 
-        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? "3");
+        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
         AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
 
         foreach (TestEngineNewPayloadsJson enginePayload in newPayloads)
         {
-            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? "4");
-            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? "3");
+            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? EngineApiVersions.NewPayload.Latest.ToString());
+            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
             string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            // Take only the params the engine method expects (exclude trailing validation error)
-            int paramCount = newPayloadVersion >= 4 ? 4 : newPayloadVersion >= 3 ? 3 : 1;
+            // Get param count from the engine method signature via reflection (excludes trailing validation error)
+            int paramCount = typeof(IEngineRpcModule)
+                .GetMethod($"engine_newPayloadV{newPayloadVersion}")!
+                .GetParameters().Length;
             string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
             JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
