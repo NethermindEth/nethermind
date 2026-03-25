@@ -42,7 +42,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
             .AddLast<ITxGossipPolicy, SyncedTxGossipPolicy>()
-            .AddDecorator<ITxGossipPolicy, CompositeTxGossipPolicy>()
+            .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
 

@@ -346,28 +346,32 @@ public static class ContainerBuilderExtensions
 
     public static ContainerBuilder AddComposite<T, TComposite>(this ContainerBuilder builder) where T : class where TComposite : T
     {
-        builder.RegisterComposite<TComposite, T>();
-
-        return builder;
-    }
-
-    public static ContainerBuilder AddDecorator<T, TDecorator>(this ContainerBuilder builder) where T : class where TDecorator : T
-    {
         string orderedMarker = OrderedComponentsContainerBuilderExtensions.OrderedMarkerPrefix + typeof(T).Name;
+        string compositeMarker = OrderedComponentsContainerBuilderExtensions.CompositeMarkerPrefix + typeof(T).Name;
         if (builder.Properties.ContainsKey(orderedMarker))
         {
-            // OrderedComponents mode: register TDecorator as T and AsSelf.
-            // TDecorator takes T[] from OrderedComponents via its constructor.
-            builder.Properties[OrderedComponentsContainerBuilderExtensions.DecoratorMarkerPrefix + typeof(T).Name] = null;
-            builder.RegisterType<TDecorator>()
+            // OrderedComponents mode: register TComposite as T and AsSelf.
+            // TComposite takes T[] from OrderedComponents via its constructor.
+            // Guard against double registration.
+            if (!builder.Properties.TryAdd(compositeMarker, null))
+                return builder;
+
+            builder.RegisterType<TComposite>()
                 .As<T>()
                 .AsSelf()
                 .SingleInstance();
         }
         else
         {
-            builder.RegisterDecorator<TDecorator, T>();
+            builder.RegisterComposite<TComposite, T>();
         }
+
+        return builder;
+    }
+
+    public static ContainerBuilder AddDecorator<T, TDecorator>(this ContainerBuilder builder) where T : class where TDecorator : T
+    {
+        builder.RegisterDecorator<TDecorator, T>();
 
         return builder;
     }

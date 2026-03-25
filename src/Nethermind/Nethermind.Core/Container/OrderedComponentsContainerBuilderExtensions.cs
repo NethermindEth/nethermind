@@ -17,7 +17,7 @@ namespace Nethermind.Core.Container;
 public static class OrderedComponentsContainerBuilderExtensions
 {
     internal const string OrderedMarkerPrefix = "Registered OrderedComponents For ";
-    internal const string DecoratorMarkerPrefix = "Registered OrderedComponents Decorator For ";
+    internal const string CompositeMarkerPrefix = "Registered OrderedComponents Decorator For ";
 
     public static ContainerBuilder AddLast<T>(this ContainerBuilder builder, Func<IComponentContext, T> factory) =>
         builder
@@ -79,7 +79,7 @@ public static class OrderedComponentsContainerBuilderExtensions
         // Prevent registering separately which has no explicit ordering
         builder.RegisterBuildCallback(scope =>
         {
-            string decoratorMarker = DecoratorMarkerPrefix + typeof(T).Name;
+            string decoratorMarker = CompositeMarkerPrefix + typeof(T).Name;
             bool hasDecorator = builder.Properties.ContainsKey(decoratorMarker);
             int registrationCount = scope.ComponentRegistry.ServiceRegistrationsFor(new TypedService(typeof(T))).Count();
             int expectedCount = hasDecorator ? 1 : 0;
