@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -25,18 +26,15 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
         _ = Task.Run(async () =>
         {
             // Reader should be re-created every block unless something holds it for very long.
-            // It prevent database compaction, so this need to be closed eventually.
-            try
+            // It prevents database compaction, so this needs to be closed eventually.
+            while (true)
             {
-                while (true)
-                {
-                    await Task.Delay(60_000, _cts.Token);
-                    if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
-                    if (logger.IsWarn)
-                        logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
-                }
+                await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(60_000, _cts.Token);
+                if (_cts.IsCancellationRequested) return;
+                if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
+                if (logger.IsWarn)
+                    logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
             }
-            catch (OperationCanceledException) { }
         });
     }
 

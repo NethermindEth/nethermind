@@ -31,6 +31,8 @@ using DataCompletion = System.Threading.Tasks.TaskCompletionSource<byte[]>;
 
 namespace Nethermind.Runner.Monitoring;
 
+using Nethermind.Core.Extensions;
+
 public class DataFeed
 {
     public static long StartTime { get; set; }
@@ -180,22 +182,18 @@ public class DataFeed
     private DataCompletion _txFlow = new();
     private async Task StartTxFlowRefresh()
     {
-        try
+        while (!_lifetime.IsCancellationRequested)
         {
-            while (!_lifetime.IsCancellationRequested)
-            {
-                await Task.Delay(millisecondsDelay: 1000, _lifetime);
-                // No subscribers, no need to prepare event data
-                if (!HaveSubscribers) continue;
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
+            // No subscribers, no need to prepare event data
+            if (!HaveSubscribers) continue;
 
-                byte[] data = GetTxFlowTask();
+            byte[] data = GetTxFlowTask();
 
-                DataCompletion txFlow = _txFlow;
-                _txFlow = new DataCompletion();
-                txFlow.TrySetResult(data);
-            }
+            DataCompletion txFlow = _txFlow;
+            _txFlow = new DataCompletion();
+            txFlow.TrySetResult(data);
         }
-        catch (OperationCanceledException) { }
     }
 
     private Environment.ProcessCpuUsage _lastCpuUsage;
@@ -205,22 +203,18 @@ public class DataFeed
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
-        try
+        while (!_lifetime.IsCancellationRequested)
         {
-            while (!_lifetime.IsCancellationRequested)
-            {
-                byte[] data = await GetStatsTask(delayMs: 1000);
-                DataCompletion systemStats = _systemStats;
-                _systemStats = new();
-                systemStats.TrySetResult(data);
-            }
+            byte[] data = await GetStatsTask(delayMs: 1000);
+            DataCompletion systemStats = _systemStats;
+            _systemStats = new();
+            systemStats.TrySetResult(data);
         }
-        catch (OperationCanceledException) { }
     }
 
     private async Task<byte[]> GetStatsTask(int delayMs)
     {
-        await Task.Delay(delayMs, _lifetime);
+        await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
@@ -245,21 +239,17 @@ public class DataFeed
     {
         _lastCpuUsage = Environment.CpuUsage;
         _lastTimeStamp = Stopwatch.GetTimestamp();
-        try
+        while (!_lifetime.IsCancellationRequested)
         {
-            while (!_lifetime.IsCancellationRequested)
-            {
-                await Task.Delay(millisecondsDelay: 1000, _lifetime);
-                // No subscribers, no need to prepare event data
-                if (!HaveSubscribers) continue;
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
+            // No subscribers, no need to prepare event data
+            if (!HaveSubscribers) continue;
 
-                byte[] data = GetPeersTask();
-                DataCompletion peers = _peers;
-                _peers = new();
-                peers.TrySetResult(data);
-            }
+            byte[] data = GetPeersTask();
+            DataCompletion peers = _peers;
+            _peers = new();
+            peers.TrySetResult(data);
         }
-        catch (OperationCanceledException) { }
     }
 
     private byte[] GetPeersTask()

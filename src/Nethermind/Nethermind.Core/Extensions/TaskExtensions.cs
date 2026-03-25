@@ -3,12 +3,22 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Core.Extensions;
 
 public static class TaskExtensions
 {
+    /// <summary>
+    /// Delay that returns immediately when cancelled instead of throwing <see cref="OperationCanceledException"/>.
+    /// </summary>
+    public static async Task DelaySafe(int millisecondsDelay, CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(millisecondsDelay, cancellationToken); }
+        catch (OperationCanceledException) { }
+    }
+
     public static bool IsFailedButNotCanceled(this Task? task)
     {
         if (task is null || !task.IsFaulted || task.Exception is null) return false;

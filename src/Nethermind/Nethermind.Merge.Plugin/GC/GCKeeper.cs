@@ -7,10 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.GC;
+
+using Nethermind.Core.Extensions;
 
 public class GCKeeper : IDisposable
 {
@@ -23,6 +24,7 @@ public class GCKeeper : IDisposable
     private Task _gcScheduleTask = Task.CompletedTask;
     private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
     private readonly CancellationTokenSource _shutdownCts = new();
+    private int _disposed;
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
@@ -34,7 +36,8 @@ public class GCKeeper : IDisposable
 
     public void Dispose()
     {
-        try { _shutdownCts.Cancel(); } catch (ObjectDisposedException) { }
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _shutdownCts.Cancel();
         _shutdownCts.Dispose();
     }
 
@@ -172,14 +175,8 @@ public class GCKeeper : IDisposable
             }
             else
             {
-                try
-                {
-                    await Task.Delay(postBlockDelayMs, _shutdownCts.Token);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
+                await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts.Token);
+                if (_shutdownCts.IsCancellationRequested) return;
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)

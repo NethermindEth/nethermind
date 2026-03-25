@@ -62,6 +62,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private readonly CancellationTokenSource _cancellation = new();
+        private int _disposed;
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
@@ -699,7 +700,8 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose()
         {
-            try { _cancellation.Cancel(); } catch (ObjectDisposedException) { }
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            _cancellation.Cancel();
             _cancellation.Dispose();
         }
 
