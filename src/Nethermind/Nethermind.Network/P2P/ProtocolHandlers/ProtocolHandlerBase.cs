@@ -159,7 +159,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void ReceivedProtocolInitMsg(MessageBase msg)
         {
-            _initCompletionSource?.SetResult(msg);
+            _initCompletionSource?.TrySetResult(msg);
         }
 
         protected void ReportIn(MessageBase msg, int size)
