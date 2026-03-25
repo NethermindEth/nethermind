@@ -81,11 +81,17 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         Nodes.TryGet(null, path, hash);
 
     public void UpdateStateRlp(in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
-        Nodes.Set(null, path, hash, rlp);
+        Nodes.SetAndLease(null, path, hash, rlp).Dispose();
 
     public RefCountingTrieNode? TryGetStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash) =>
         Nodes.TryGet(address, path, hash);
 
     public void UpdateStorageRlp(Hash256AsKey address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
-        Nodes.Set(address, path, hash, rlp);
+        Nodes.SetAndLease(address, path, hash, rlp).Dispose();
+
+    public RefCountingTrieNode SetAndLeaseStateNode(in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(null, path, hash, rlp);
+
+    public RefCountingTrieNode SetAndLeaseStorageNode(Hash256AsKey address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp) =>
+        Nodes.SetAndLease(address, path, hash, rlp);
 }

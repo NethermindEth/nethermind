@@ -48,6 +48,9 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
     /// <summary>Tries to acquire a lease. Returns false if already disposed.</summary>
     public new bool TryAcquireLease() => base.TryAcquireLease();
 
+    /// <summary>Current lease count. For diagnostics only.</summary>
+    public long LeaseCount => Volatile.Read(ref _leases.Value);
+
     /// <summary>
     /// Returns the 32-byte hash of child at <paramref name="index"/> by reading from the RLP at the stored offset.
     /// Returns <c>null</c> if the child offset is 0 (empty/absent).

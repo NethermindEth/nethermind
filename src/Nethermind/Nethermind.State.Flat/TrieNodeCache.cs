@@ -53,12 +53,14 @@ public sealed class TrieNodeCache : ITrieNodeCache
         _maxCacheMemoryThreshold = maxCacheMemoryThreshold;
     }
 
-    private long GetTotalActiveMemory()
+    private long GetTotalActiveCount()
     {
         long total = 0;
         for (int i = 0; i < ShardCount; i++) total += _shardPools[i].ActiveCount;
-        return total * EstimatedSizePerNode;
+        return total;
     }
+
+    private long GetTotalActiveMemory() => GetTotalActiveCount() * EstimatedSizePerNode;
 
     /// <summary>The per-shard pools. Exposed so that <see cref="ChildCache"/> can use the same pools.</summary>
     public RefCountingTrieNodePool[] ShardPools => _shardPools;
@@ -92,9 +94,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
         int bucketIdx = hashCode & _bucketMask;
 
         RefCountingTrieNode? maybeNode = Volatile.Read(ref _cacheShards[shardIdx][bucketIdx]);
-        if (maybeNode is not null && maybeNode.Hash == hash && maybeNode.TryAcquireLease())
+        if (maybeNode is not null && maybeNode.TryAcquireLease())
         {
-            return maybeNode;
+            if (maybeNode.Hash == hash) return maybeNode;
+            maybeNode.Dispose();
         }
 
         return null;
@@ -109,10 +112,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             {
                 RefCountingTrieNode?[] shard = transientResource.Nodes.Shards[i];
                 for (int j = 0; j < shard.Length; j++)
-                {
-                    shard[j]?.Dispose();
-                    shard[j] = null;
-                }
+                    Interlocked.Exchange(ref shard[j], null)?.Dispose();
             }
             return;
         }
@@ -122,21 +122,15 @@ public sealed class TrieNodeCache : ITrieNodeCache
             RefCountingTrieNode?[] childShard = transientResource.Nodes.Shards[i];
             for (int j = 0; j < childShard.Length; j++)
             {
-                RefCountingTrieNode? childNode = childShard[j];
+                // Atomically take the child node — no re-rent needed since child and main share the same shard pools.
+                RefCountingTrieNode? childNode = Interlocked.Exchange(ref childShard[j], null);
                 if (childNode is null) continue;
 
-                // Transfer from child cache to main cache: create a new node in the shard pool
-                // and release the child node's lease.
                 int hashCode = transientResource.Nodes.HashCodes[i][j];
                 int bucketIdx = hashCode & _bucketMask;
 
-                RefCountingTrieNode newNode = _shardPools[i].Rent(childNode.Hash, childNode.Rlp.AsSpan());
-
-                RefCountingTrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[i][bucketIdx], newNode);
+                RefCountingTrieNode? oldNode = Interlocked.Exchange(ref _cacheShards[i][bucketIdx], childNode);
                 oldNode?.Dispose();
-
-                childNode.Dispose();
-                childShard[j] = null;
             }
         });
 
@@ -144,24 +138,40 @@ public sealed class TrieNodeCache : ITrieNodeCache
         long prevMemory = currentTotalMemory;
         bool wasPruned = false;
 
-        while (currentTotalMemory > _maxCacheMemoryThreshold)
+        int pruneAttempts = 0;
+        int totalEvicted = 0;
+        int totalRetained = 0;
+        while (currentTotalMemory > _maxCacheMemoryThreshold && pruneAttempts < ShardCount)
         {
+            pruneAttempts++;
             wasPruned = true;
             int shardToClear = _nextShardToClear;
 
             for (int i = 0; i < _bucketSize; i++)
             {
                 RefCountingTrieNode? node = Interlocked.Exchange(ref _cacheShards[shardToClear][i], null);
-                node?.Dispose();
+                if (node is not null)
+                {
+                    if (node.LeaseCount <= 1) totalEvicted++;
+                    else totalRetained++;
+                    node.Dispose();
+                }
             }
 
             currentTotalMemory = GetTotalActiveMemory();
             _nextShardToClear = (_nextShardToClear + 1) & 255;
         }
 
-        if (wasPruned && _logger.IsTrace) _logger.Trace($"Pruning trie cache from {prevMemory} to {currentTotalMemory}");
+        if (wasPruned)
+        {
+            int total = totalEvicted + totalRetained;
+            double retainedPct = total > 0 ? 100.0 * totalRetained / total : 0;
+            _logger.Info($"Pruning trie cache: {prevMemory} -> {currentTotalMemory}, shards cleared: {pruneAttempts}, evicted: {totalEvicted}, retained (leased): {totalRetained} ({retainedPct:F1}%)");
+        }
 
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = currentTotalMemory;
+        long activeCount = GetTotalActiveCount();
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = activeCount * EstimatedSizePerNode;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = activeCount;
     }
 
     /// <summary>Clears all cached trie nodes.</summary>
@@ -176,7 +186,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
             }
         }
         _nextShardToClear = 0;
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = GetTotalActiveMemory();
+        long activeCount = GetTotalActiveCount();
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = activeCount * EstimatedSizePerNode;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = activeCount;
     }
 
     /// <summary>
@@ -233,19 +245,24 @@ public sealed class TrieNodeCache : ITrieNodeCache
                 int powerOfTwoSize = (int)BitOperations.RoundUpToPowerOf2((uint)(newTarget + ShardCount - 1) / ShardCount);
                 _shardSize = powerOfTwoSize;
                 _mask = powerOfTwoSize - 1;
+
+                // Dispose nodes in old shards before replacing with new arrays
+                for (int i = 0; i < ShardCount; i++)
+                {
+                    RefCountingTrieNode?[] shard = _shards[i];
+                    for (int j = 0; j < shard.Length; j++)
+                        Interlocked.Exchange(ref shard[j], null)?.Dispose();
+                }
+
                 CreateCacheArray(_shardSize);
             }
             else
             {
                 for (int i = 0; i < ShardCount; i++)
                 {
-                    // Dispose any remaining nodes before clearing
                     RefCountingTrieNode?[] shard = _shards[i];
                     for (int j = 0; j < shard.Length; j++)
-                    {
-                        shard[j]?.Dispose();
-                        shard[j] = null;
-                    }
+                        Interlocked.Exchange(ref shard[j], null)?.Dispose();
                     Array.Clear(_hashCodes[i]);
                 }
             }
@@ -258,28 +275,32 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int shardIdx, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
-            RefCountingTrieNode? maybeNode = _shards[shardIdx][idx];
-            if (maybeNode is not null && _hashCodes[shardIdx][idx] == hashCode && maybeNode.Hash == hash)
+            RefCountingTrieNode? maybeNode = Volatile.Read(ref _shards[shardIdx][idx]);
+            if (maybeNode is not null && _hashCodes[shardIdx][idx] == hashCode && maybeNode.TryAcquireLease())
             {
-                return maybeNode;
+                if (maybeNode.Hash == hash) return maybeNode;
+                maybeNode.Dispose();
             }
 
             return null;
         }
 
-        public void Set(Hash256? address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp)
+        public RefCountingTrieNode SetAndLease(Hash256? address, in TreePath path, Hash256 hash, ReadOnlySpan<byte> rlp)
         {
+            if (rlp.Length > TrieNodeRlp.MaxRlpLength)
+                throw new ArgumentException($"RLP too large: {rlp.Length} > {TrieNodeRlp.MaxRlpLength}");
+
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
-            RefCountingTrieNode? oldNode = _shards[shard][idx];
+            RefCountingTrieNode newNode = _shardPools[shard].Rent(hash, rlp);
+            newNode.TryAcquireLease(); // Extra lease for caller (1→2): cache owns one, caller owns one
+            _hashCodes[shard][idx] = hashCode;
+            RefCountingTrieNode? oldNode = Interlocked.Exchange(ref _shards[shard][idx], newNode);
             oldNode?.Dispose();
 
-            RefCountingTrieNode newNode = _shardPools[shard].Rent(hash, rlp);
-            _shards[shard][idx] = newNode;
-            _hashCodes[shard][idx] = hashCode;
-
-            _count++;
+            Interlocked.Increment(ref _count);
+            return newNode;
         }
     }
 }

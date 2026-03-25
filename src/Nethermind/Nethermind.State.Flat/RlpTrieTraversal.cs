@@ -31,8 +31,10 @@ internal static class RlpTrieTraversal
     public static void WarmUpPath(
         NodeLoader nodeLoader,
         Hash256 rootHash,
-        ReadOnlySpan<byte> rawKey) =>
+        ReadOnlySpan<byte> rawKey)
+    {
         TryRead(nodeLoader, rootHash, rawKey, out _, readValue: false);
+    }
 
     /// <summary>
     /// Traverses the trie along the path described by <paramref name="rawKey"/> and returns the

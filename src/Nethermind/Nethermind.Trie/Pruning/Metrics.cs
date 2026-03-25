@@ -83,5 +83,9 @@ namespace Nethermind.Trie.Pruning
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
         public static long MemoryUsedByCache { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of active (rented but not returned) pooled trie nodes.")]
+        public static long ActivePooledNodeCount { get; set; }
     }
 }
