@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Text.Unicode;
 using System.Threading;
@@ -29,10 +30,10 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, Lazy<ITxGossipPolicy> txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
-        protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
+        protected ITxGossipPolicy TxGossipPolicy => txGossipPolicy.Value;
 
         public async Task Execute(CancellationToken _)
         {
@@ -108,7 +109,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _txGossipPolicy,
+                TxGossipPolicy,
                 null,
                 _api.HeadTxValidator
             );

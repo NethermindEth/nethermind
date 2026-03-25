@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -20,7 +21,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, Lazy<ITxGossipPolicy> txGossipPolicy)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private INethermindApi NethermindApi => api;
@@ -98,7 +99,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             api.TxValidator!,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-            _txGossipPolicy,
+            TxGossipPolicy,
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
             api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);
