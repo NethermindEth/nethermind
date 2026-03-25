@@ -56,9 +56,10 @@ public class ProtocolInitCompletionRaceTests
     }
 
     [Test]
-    public async Task Concurrent_TrySetCanceled_and_TrySetResult_never_throws()
+    public async Task Stress_concurrent_TrySetCanceled_and_TrySetResult_never_throws()
     {
         // Stress test: race TrySetCanceled and TrySetResult on many TCS instances
+        // to verify that no ordering of the two operations causes an exception.
         const int iterations = 10_000;
 
         for (int i = 0; i < iterations; i++)
