@@ -63,8 +63,9 @@ public partial class BlockProcessor(
 
         if (_balBuilder is not null)
         {
-            _balBuilder.TracingEnabled = spec.BlockLevelAccessListsEnabled;
-            if (spec.BlockLevelAccessListsEnabled)
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+            _balBuilder.TracingEnabled = balsEnabled;
+            if (balsEnabled)
             {
                 _balBuilder.GeneratedBlockAccessList = new();
                 _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
