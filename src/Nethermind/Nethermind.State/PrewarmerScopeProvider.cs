@@ -296,8 +296,10 @@ public class PrewarmerScopeProvider(
                 }
                 else if (crossBlockStorageCache is not null && crossBlockStorageCache.TryGetValue(in storageCell, out value))
                 {
+                    // Skip HintGet — the value came from the cross-block cache, not the trie.
+                    // HintGet triggers WarmUpSlot (bloom filter + XxHash64 + potential trie path
+                    // warming), which is wasted work since the value is already cached.
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
-                    baseStorageTree.HintGet(in index, value);
                     Db.Metrics.IncrementStorageTreeCache();
                 }
                 else
