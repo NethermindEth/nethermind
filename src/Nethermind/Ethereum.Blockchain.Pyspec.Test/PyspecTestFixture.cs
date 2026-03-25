@@ -64,16 +64,20 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
 }
 
 /// <summary>
-/// Skips tests in CI on runners that are too slow for heavy test fixtures.
+/// Skips heavy tests in CI on runners that are too slow or running variant builds.
 /// Only active when TEST_CHUNK is set (CI). Local runs always execute.
+/// Set TEST_SKIP_HEAVY=1 to unconditionally skip (used by checked/no-intrinsics variants).
 /// </summary>
 internal static class CiRunnerGuard
 {
     private static readonly bool s_isCi = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_CHUNK"));
     private static readonly bool s_isLinuxX64 = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+    private static readonly bool s_skipHeavy = Environment.GetEnvironmentVariable("TEST_SKIP_HEAVY") == "1";
 
     public static void SkipIfNotLinuxX64()
     {
+        if (s_skipHeavy)
+            Assert.Ignore("Skipped — TEST_SKIP_HEAVY is set");
         if (s_isCi && !s_isLinuxX64)
             Assert.Ignore("Skipped in CI — engine/Amsterdam tests only run on Linux x64");
     }
