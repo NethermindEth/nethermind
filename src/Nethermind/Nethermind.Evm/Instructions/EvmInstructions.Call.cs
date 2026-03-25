@@ -148,15 +148,32 @@ internal static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
+        IReleaseSpec spec = vm.Spec;
+
+        IWorldState state = vm.WorldState;
+
+        // Charge additional gas if the target account is new or considered empty.
+        //
+        // Perform the account existence/emptiness check first, before any gas deductions that could
+        // abort early. In Nitro (go-ethereum), gasCall() accumulates all gas costs and returns them
+        // in one shot; the interpreter does a single OOG check after gasCall returns. This means
+        // StateDB.Empty(address) always executes for value-transferring CALLs, regardless of whether
+        // the total cost would exceed available gas. Nethermind deducts gas inline, so we must perform
+        // the state read (which records witness preimages) before any deduction can abort.
+        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
+        {
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+        }
+        else if (spec.ClearEmptyAccountWhenTouched && !transferValue.IsZero && state.IsDeadAccount(target))
+        {
+            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
+        }
+
         // Add extra gas cost if value is transferred.
         if (!transferValue.IsZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
-
-        IReleaseSpec spec = vm.Spec;
-
-        IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
@@ -174,16 +191,6 @@ internal static partial class EvmInstructions
         {
             if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                     vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
-        }
-
-        // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
         }
 
         // Retrieve code information for the call and schedule background analysis if needed.
