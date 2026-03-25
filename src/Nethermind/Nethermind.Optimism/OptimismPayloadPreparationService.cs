@@ -75,11 +75,9 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             if (_logger.IsDebug)
                 _logger.Debug("Skip block improvement because of NoTxPool payload attribute.");
 
-            cts.Dispose();
-
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId,
-                new PayloadEntry(new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime), null));
+                new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime));
         }
         else
         {
