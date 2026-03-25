@@ -2,8 +2,7 @@ name: Sync Supported Chains
 
 on:
   schedule:
-    - cron: "0 0 * * 2,4"   # Tuesday, Thursday
-    - cron: "0 0 * * 0"     # Sunday
+    - cron: "0 0 * * 0,3"   # Sunday, Wednesday
 
   workflow_dispatch:
     inputs:
