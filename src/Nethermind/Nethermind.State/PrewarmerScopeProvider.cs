@@ -40,7 +40,7 @@ public class PrewarmerScopeProvider(
 {
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache, crossBlockCaches);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) => new ScopeWrapper(baseProvider.BeginScope(baseBlock), preBlockCaches, populatePreBlockCache, crossBlockCaches, baseBlock);
 
     public PreBlockCaches? Caches => preBlockCaches;
     public bool IsWarmWorldState => !populatePreBlockCache;
@@ -63,7 +63,7 @@ public class PrewarmerScopeProvider(
         private ConcurrentQueue<(StorageCell Key, byte[] Value)>? _pendingStorageUpdates;
         private volatile bool _pendingStorageClear;
 
-        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches)
+        public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches, BlockHeader? baseBlock)
         {
             this.baseScope = baseScope;
             preBlockCache = preBlockCaches.StateCache;
@@ -72,14 +72,17 @@ public class PrewarmerScopeProvider(
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
 
-            // Clear cross-block caches on each new scope. A new scope means either the start
-            // of a new branch or a commit-point in a long branch. The cache may contain stale
-            // entries from a different branch (e.g. during reorg) that would corrupt reads.
-            // Within a single scope, multiple blocks will re-populate these caches.
-            if (!populatePreBlockCache)
+            // Only clear cross-block caches on reorg (discontinuity). On the canonical chain,
+            // baseBlock.Number == LastCommittedBlockNumber, so caches persist across blocks.
+            // During a reorg, baseBlock.Number < LastCommittedBlockNumber, so we clear stale entries.
+            if (!populatePreBlockCache && crossBlockCaches is not null)
             {
-                crossBlockCaches?.StateCache.Clear();
-                crossBlockCaches?.StorageCache.Clear();
+                long lastCommitted = crossBlockCaches.LastCommittedBlockNumber;
+                if (baseBlock is not null && baseBlock.Number != lastCommitted)
+                {
+                    crossBlockCaches.StateCache.Clear();
+                    crossBlockCaches.StorageCache.Clear();
+                }
             }
         }
 
@@ -151,13 +154,13 @@ public class PrewarmerScopeProvider(
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
-                PromoteToCrossBlockCaches();
+                PromoteToCrossBlockCaches(blockNumber);
                 return;
             }
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
-            PromoteToCrossBlockCaches();
+            PromoteToCrossBlockCaches(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
         }
 
@@ -168,7 +171,7 @@ public class PrewarmerScopeProvider(
         /// epoch-bumped first, then all committed values are re-written so the cache ends
         /// up with only correct post-block values.
         /// </summary>
-        private void PromoteToCrossBlockCaches()
+        private void PromoteToCrossBlockCaches(long blockNumber)
         {
             if (crossBlockCaches is null) return;
 
@@ -197,6 +200,8 @@ public class PrewarmerScopeProvider(
                     storageCacheRef.Set(in entry.Key, entry.Value);
                 }
             }
+
+            crossBlockCaches.LastCommittedBlockNumber = blockNumber;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
