@@ -17,7 +17,7 @@ Determine the audit scope before starting:
 Audit only files changed in the PR. Use `git diff` to get the changed files, then apply the full methodology to those files plus their immediate callers/callees.
 
 Steps:
-1. Get changed files: `git diff <base>..HEAD --name-only`
+1. Get changed files: `git diff origin/master...HEAD --name-only` (three-dot diff uses the merge-base, so it works correctly both locally and in CI even if master has advanced)
 2. Filter to non-test C# files (exclude `*.Test*`, `*.Benchmark*`)
 3. For each changed file, also read classes it inherits from and interfaces it implements
 4. Apply Phase 1 search only for categories relevant to the changed code
@@ -83,7 +83,7 @@ If subagents are available:
 
 **The most common failure mode is spending all time validating a few findings while missing dozens of others. Phase 1 separates search from validation.**
 
-For each category (see @pattern-categories.md):
+For each category (see @references/pattern-categories.md):
 
 1. **Search exhaustively** using three complementary strategies:
    - **Forward search (construction -> disposal):** Grep for resource construction. For each hit, follow forward to verify cleanup exists.
