@@ -443,10 +443,10 @@ public struct DefaultCacheSets : ICacheSets
     public static int SetsLog2 => 14;
 }
 
-/// <summary>128K sets × 2 ways = 256K entries (~16 MB). For cross-block caches.</summary>
+/// <summary>64K sets × 2 ways = 128K entries (~8 MB). For cross-block caches.</summary>
 public struct LargeCacheSets : ICacheSets
 {
-    public static int SetsLog2 => 17;
+    public static int SetsLog2 => 16;
 }
 
 /// <summary>
