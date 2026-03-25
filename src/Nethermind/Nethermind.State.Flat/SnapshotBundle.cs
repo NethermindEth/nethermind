@@ -305,6 +305,15 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
+        // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
+        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out TrieNode? roNode))
+        {
+            if (roNode.Keccak != hash)
+                throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
+            if (roNode.FullRlp.IsNotNullOrEmpty)
+                return RentAndCacheStateRlp(path, hash, roNode.FullRlp.AsSpan());
+        }
+
         // Fall back to disk
         byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
@@ -349,6 +358,16 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
+        // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(addressHash, path, hash, out TrieNode? roNode))
+        {
+            if (roNode.Keccak != hash)
+                throw new NodeHashMismatchException($"Storage node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
+            if (roNode.FullRlp.IsNotNullOrEmpty)
+                return RentAndCacheStorageRlp(addressHash, path, hash, roNode.FullRlp.AsSpan());
+        }
+
+        // Fall back to disk
         byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
@@ -364,7 +383,9 @@ public sealed class SnapshotBundle : IDisposable
     {
         node = null;
         if (!dict.TryGetValue(path, out TrieNode? trieNode)) return false;
-        if (trieNode.Keccak != hash || !trieNode.FullRlp.IsNotNullOrEmpty) return false;
+        if (trieNode.Keccak != hash)
+            throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {trieNode.Keccak}");
+        if (!trieNode.FullRlp.IsNotNullOrEmpty) return false;
         node = RentAndCacheStateRlp(path, hash, trieNode.FullRlp.AsSpan());
         return node is not null;
     }
