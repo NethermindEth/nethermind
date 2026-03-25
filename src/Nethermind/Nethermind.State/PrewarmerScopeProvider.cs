@@ -68,6 +68,16 @@ public class PrewarmerScopeProvider(
             this.crossBlockCaches = crossBlockCaches;
             this.populatePreBlockCache = populatePreBlockCache;
             _labels = populatePreBlockCache ? PrewarmerGetTimeLabels.Prewarmer : PrewarmerGetTimeLabels.NonPrewarmer;
+
+            // Clear cross-block caches on each new scope. A new scope means either the start
+            // of a new branch or a commit-point in a long branch. The cache may contain stale
+            // entries from a different branch (e.g. during reorg) that would corrupt reads.
+            // Within a single scope, multiple blocks will re-populate these caches.
+            if (!populatePreBlockCache)
+            {
+                crossBlockCaches?.StateCache.Clear();
+                crossBlockCaches?.StorageCache.Clear();
+            }
         }
 
         private long _writeBatchTime = 0;
@@ -381,15 +391,15 @@ public class PrewarmerScopeProvider(
             _baseBatch = baseBatch;
             _scope = scope;
 
-            // Intercept OnAccountUpdated from the underlying batch to capture
-            // storage-root-only account updates (e.g. after storage tree commit).
             _baseBatch.OnAccountUpdated += OnBaseAccountUpdated;
         }
 
         public void Dispose()
         {
-            _baseBatch.OnAccountUpdated -= OnBaseAccountUpdated;
+            // Dispose first so OnAccountUpdated fires while we're still subscribed.
+            // This captures the final StorageRoot set during storage tree commit.
             _baseBatch.Dispose();
+            _baseBatch.OnAccountUpdated -= OnBaseAccountUpdated;
         }
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
@@ -413,8 +423,6 @@ public class PrewarmerScopeProvider(
 
         private void OnBaseAccountUpdated(object? sender, IWorldStateScopeProvider.AccountUpdated updated)
         {
-            // Buffer the final account (with updated StorageRoot) so the
-            // cross-block state cache sees the fully-resolved account metadata.
             AddressAsKey addressAsKey = updated.Address;
             _scope.BufferStateUpdate(addressAsKey, updated.Account);
         }
