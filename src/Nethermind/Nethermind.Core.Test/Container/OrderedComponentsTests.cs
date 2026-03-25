@@ -104,9 +104,9 @@ public class OrderedComponentsTests
     }
     private interface IItem { string Name { get; } }
     private record Item(string Name) : IItem;
-    private class CompositeItem(IItem[] Items) : IItem
+    private class CompositeItem(IItem[] items) : IItem
     {
-        public IItem[] Items { get; } = Items;
+        public IItem[] Items { get; } = items;
         public string Name => string.Join(",", Items.Select(i => i.Name));
     }
 }
