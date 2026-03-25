@@ -115,7 +115,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        private static string? ParseValidationError(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion)
+        public static string? ParseValidationError(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion)
         {
             if (engineNewPayload.ValidationError is not null)
             {

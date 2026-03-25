@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -29,19 +30,14 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 /// <summary>
 /// Generic base for pyspec engine blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "EngineBlockchainTests" suffix, lowercase.
-/// Linux x64 only: engine tests are heavy (full DI + Engine API per test) and timeout on slower CI runners.
+/// In CI (TEST_CHUNK set), only runs on Linux x64 to stay within the job timeout budget.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-[Platform("Linux")]
 public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestBase
 {
     [SetUp]
-    public void SkipOnArm()
-    {
-        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
-            Assert.Ignore("Skipped on ARM — exceeds CI timeout");
-    }
+    public void SkipInCiOnSlowRunners() => CiRunnerGuard.SkipIfNotLinuxX64();
 
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
@@ -65,4 +61,20 @@ public abstract class PyspecStateTestFixture<TSelf> : GeneralStateTestBase
     public static IEnumerable<GeneralStateTest> LoadTests() =>
         new TestsSourceLoader(new LoadPyspecTestsStrategy(),
             $"fixtures/state_tests/for_{TestDirectoryHelper.GetDirectoryByConvention<TSelf>("StateTests")}").LoadTests<GeneralStateTest>();
+}
+
+/// <summary>
+/// Skips tests in CI on runners that are too slow for heavy test fixtures.
+/// Only active when TEST_CHUNK is set (CI). Local runs always execute.
+/// </summary>
+internal static class CiRunnerGuard
+{
+    private static readonly bool s_isCi = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TEST_CHUNK"));
+    private static readonly bool s_isLinuxX64 = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
+
+    public static void SkipIfNotLinuxX64()
+    {
+        if (s_isCi && !s_isLinuxX64)
+            Assert.Ignore("Skipped in CI — engine/Amsterdam tests only run on Linux x64");
+    }
 }

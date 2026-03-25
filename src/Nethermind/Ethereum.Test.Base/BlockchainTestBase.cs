@@ -32,10 +32,11 @@ using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
-using System.Reflection;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
+using System.Text.Json;
 
 namespace Ethereum.Test.Base;
 
@@ -206,9 +207,11 @@ public abstract class BlockchainTestBase
             }
             else if (test.EngineNewPayloads is not null)
             {
-                // engine test
-                IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
-                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule, parentHeader.Hash!);
+                // engine test — route through JsonRpcService for realistic deserialization
+                IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
+                JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
+                JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
+                await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
             }
             else
             {
@@ -311,54 +314,56 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule, Hash256 initialHeadHash)
+    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        (ExecutionPayload, string[]?, string?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        if (newPayloads is null || newPayloads.Length == 0) return;
 
-        if (payloads.Length > 0)
+        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? "3");
+        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
+
+        foreach (TestEngineNewPayloadsJson enginePayload in newPayloads)
         {
-            int initialFcuVersion = payloads[0].Item5;
-            ForkchoiceStateV1 initialFcuState = new(initialHeadHash, initialHeadHash, initialHeadHash);
-            MethodInfo initialFcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{initialFcuVersion}");
-            ResultWrapper<ForkchoiceUpdatedV1Result> initialFcuResult =
-                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)initialFcuMethod.Invoke(engineRpcModule, [initialFcuState, null]);
+            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? "4");
+            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? "3");
+            string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            Assert.That(initialFcuResult.Result.ResultType, Is.EqualTo(ResultType.Success), initialFcuResult.Result.Error);
-        }
+            // Take only the params the engine method expects (exclude trailing validation error)
+            int paramCount = newPayloadVersion >= 4 ? 4 : newPayloadVersion >= 3 ? 3 : 1;
+            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
 
-        // blockchain test engine
-        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string? validationError, int newPayloadVersion, int fcuVersion) in payloads)
-        {
-            ResultWrapper<PayloadStatusV1> res;
-            byte[]?[] hashes = blobVersionedHashes is null ? [] : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
+                "engine_newPayloadV" + newPayloadVersion, paramsJson);
+            AssertRpcSuccess(npResponse);
 
-            MethodInfo newPayloadMethod = engineRpcModule.GetType().GetMethod($"engine_newPayloadV{newPayloadVersion}");
-            List<object?> newPayloadParams = [executionPayload];
-            if (newPayloadVersion >= 3)
-            {
-                newPayloadParams.AddRange([hashes, executionPayload.ParentBeaconBlockRoot]);
-            }
-            if (newPayloadVersion >= 4)
-            {
-                newPayloadParams.Add(executionPayload.ExecutionRequests ?? []);
-            }
-
-            res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
-
-            Assert.That(res.Result.ResultType, Is.EqualTo(ResultType.Success), res.Result.Error);
-            Assert.That(res.Data, Is.Not.Null, "engine_newPayload returned success without payload status");
-
+            PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
             string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-            Assert.That(res.Data!.Status, Is.EqualTo(expectedStatus),
-                $"engine_newPayloadV{newPayloadVersion} returned unexpected status for {executionPayload.BlockHash}. Validation error: {res.Data.ValidationError}");
+            Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
+                $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
+                $"ValidationError: {payloadStatus.ValidationError}");
 
-            if (res.Data.Status == PayloadStatus.Valid)
+            if (payloadStatus.Status == PayloadStatus.Valid)
             {
-                ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
-                MethodInfo fcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{fcuVersion}");
-                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)fcuMethod.Invoke(engineRpcModule, [fcuState, null]);
+                string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
             }
         }
+    }
+
+    private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
+    {
+        using JsonDocument doc = JsonDocument.Parse(paramsJson);
+        JsonRpcRequest request = new() { JsonRpc = "2.0", Id = 1, Method = method, Params = doc.RootElement.Clone() };
+        return await rpcService.SendRequestAsync(request, context);
+    }
+
+    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
+        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion,
+            $$$"""[{"headBlockHash":"{{{blockHash}}}","safeBlockHash":"{{{blockHash}}}","finalizedBlockHash":"{{{blockHash}}}"},null]""");
+
+    private static void AssertRpcSuccess(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(),
+            response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
     }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
