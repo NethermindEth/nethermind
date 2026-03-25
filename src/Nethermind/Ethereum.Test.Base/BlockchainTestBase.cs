@@ -41,17 +41,10 @@ namespace Ethereum.Test.Base;
 
 public abstract class BlockchainTestBase
 {
-    private static readonly ILogger _logger;
-    private static readonly ILogManager _logManager = new TestLogManager(LogLevel.Warn);
-    private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
+    private static readonly TestLogManager _logManager = new();
+    private static readonly ILogger _logger = _logManager.GetClassLogger();
+    private static DifficultyCalculatorWrapper DifficultyCalculator { get; } = new();
     private const int _genesisProcessingTimeoutMs = 30000;
-
-    static BlockchainTestBase()
-    {
-        DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logManager ??= LimboLogs.Instance;
-        _logger = _logManager.GetClassLogger();
-    }
 
     [SetUp]
     public void Setup()
@@ -62,16 +55,8 @@ public abstract class BlockchainTestBase
     {
         public IDifficultyCalculator? Wrapped { get; set; }
 
-        public UInt256 Calculate(BlockHeader header, BlockHeader parent)
-        {
-            if (Wrapped is null)
-            {
-                throw new InvalidOperationException(
-                    $"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
-            }
-
-            return Wrapped.Calculate(header, parent);
-        }
+        public UInt256 Calculate(BlockHeader header, BlockHeader parent) =>
+            Wrapped?.Calculate(header, parent) ?? throw new InvalidOperationException($"Cannot calculate difficulty before the {nameof(Wrapped)} calculator is set.");
     }
 
     protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
@@ -158,51 +143,13 @@ public abstract class BlockchainTestBase
 
         try
         {
-            BlockHeader parentHeader;
-            // Genesis processing
-            using (stateProvider.BeginScope(null))
-            {
-                InitializeTestState(test, stateProvider, specProvider);
+            BlockHeader parentHeader = ProcessGenesis(test, stopwatch, stateProvider, specProvider, blockTree, blockchainProcessor);
 
-                stopwatch?.Start();
-
-                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-                Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
-                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-                ManualResetEvent genesisProcessed = new(false);
-
-                blockTree.NewHeadBlock += (_, args) =>
-                {
-                    if (args.Block.Number == 0)
-                    {
-                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
-                        genesisProcessed.Set();
-                    }
-                };
-
-                blockchainProcessor.BlockRemoved += (_, args) =>
-                {
-                    if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
-                    {
-                        Assert.Fail($"Failed to process genesis block: {args.Exception}");
-                        genesisProcessed.Set();
-                    }
-                };
-
-                blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
-                parentHeader = genesisBlock.Header;
-
-                // Dispose genesis block's AccountChanges
-                genesisBlock.DisposeAccountChanges();
-            }
-
+            List<ExpectedTransactionFailure> pendingExpectedFailures = [];
             if (test.Blocks is not null)
             {
                 // blockchain test
-                parentHeader = SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader);
+                SuggestBlocks(test, failOnInvalidRlp, blockValidator, blockTree, parentHeader, pendingExpectedFailures);
             }
             else if (test.EngineNewPayloads is not null)
             {
@@ -219,6 +166,12 @@ public abstract class BlockchainTestBase
             // Blocks are queued asynchronously, so we need to wait for processing to complete
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
+
+            // Verify blocks with expectException were actually rejected during async processing
+            foreach (ExpectedTransactionFailure failure in pendingExpectedFailures)
+            {
+                Assert.That(blockTree.IsMainChain(failure.Block.Hash!, throwOnMissingHash: false), Is.False, $"block (index {failure.Index}) insertion should have failed due to: {failure.ExpectedException}");
+            }
 
             IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
 
@@ -259,59 +212,124 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static BlockHeader SuggestBlocks(BlockchainTest test, bool failOnInvalidRlp, IBlockValidator blockValidator, IBlockTree blockTree, BlockHeader parentHeader)
+    private static BlockHeader ProcessGenesis(
+        BlockchainTest test,
+        Stopwatch? stopwatch,
+        IWorldState stateProvider,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        BlockchainProcessor blockchainProcessor)
     {
-        List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
-        for (int i = 0; i < correctRlp.Count; i++)
+        using IDisposable scope = stateProvider.BeginScope(null);
+        InitializeTestState(test, stateProvider, specProvider);
+
+        stopwatch?.Start();
+
+        test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+        Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
+        Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader!.Hash)));
+
+        ManualResetEvent genesisProcessed = new(false);
+
+        blockTree.NewHeadBlock += (_, args) =>
         {
+            if (args.Block.Number == 0)
+            {
+                Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                genesisProcessed.Set();
+            }
+        };
+
+        blockchainProcessor.BlockRemoved += (_, args) =>
+        {
+            if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
+            {
+                Assert.Fail($"Failed to process genesis block: {args.Exception}");
+                genesisProcessed.Set();
+            }
+        };
+
+        blockTree.SuggestBlock(genesisBlock);
+        genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
+
+        // Dispose genesis block's AccountChanges
+        genesisBlock.DisposeAccountChanges();
+        return genesisBlock.Header;
+    }
+
+    private static void SuggestBlocks(
+        BlockchainTest test,
+        bool failOnInvalidRlp,
+        IBlockValidator blockValidator,
+        IBlockTree blockTree,
+        BlockHeader parentHeader,
+        List<ExpectedTransactionFailure> pendingExpectedFailures)
+    {
+        List<ExpectedResult> correctRlps = DecodeRlps(test, failOnInvalidRlp);
+        for (int i = 0; i < correctRlps.Count; i++)
+        {
+            ExpectedResult expectedResult = correctRlps[i];
+
             // Mimic the actual behaviour where block goes through validating sync manager
-            correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
+            expectedResult.Block.Header.IsPostMerge = expectedResult.Block.Difficulty == 0;
 
             // For tests with reorgs, find the actual parent header from block tree
-            parentHeader = blockTree.FindHeader(correctRlp[i].Block.ParentHash) ?? parentHeader;
+            parentHeader = blockTree.FindHeader(expectedResult.Block.ParentHash) ?? parentHeader;
 
-            Assert.That(correctRlp[i].Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
+            Assert.That(expectedResult.Block.Hash, Is.Not.Null, $"null hash in {test.Name} block {i}");
 
-            bool expectsException = correctRlp[i].ExpectedException is not null;
-            // Validate block structure first (mimics SyncServer validation)
-            if (blockValidator.ValidateSuggestedBlock(correctRlp[i].Block, parentHeader, out string? validationError))
+            bool expectsException = expectedResult.ExpectedException is not null;
+            bool validationPassed;
+            string? validationError;
+            try
             {
-                Assert.That(!expectsException, $"Expected block {correctRlp[i].Block.Hash} to fail with '{correctRlp[i].ExpectedException}', but it passed validation");
+                // Validate block structure first (mimics SyncServer validation)
+                validationPassed = blockValidator.ValidateSuggestedBlock(expectedResult.Block, parentHeader, out validationError);
+            }
+            catch (Exception e)
+            {
+                // Validation itself threw (e.g. null parent reference) — treat as validation failure
+                Assert.That(expectsException, $"Unexpected exception validating block {expectedResult.Block.Hash}: {e}");
+                continue;
+            }
+
+            if (validationPassed)
+            {
                 try
                 {
-                    // All validations passed, suggest the block
-                    blockTree.SuggestBlock(correctRlp[i].Block);
-
+                    blockTree.SuggestBlock(expectedResult.Block);
+                    if (expectsException)
+                    {
+                        pendingExpectedFailures.Add(new(i, expectedResult));
+                    }
                 }
                 catch (InvalidBlockException e)
                 {
-                    // Exception thrown during block processing
-                    Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}, Exception: {e}");
-                    // else: Expected to fail and did fail via exception → this is correct behavior
+                    Assert.That(expectsException, $"Unexpected invalid block {expectedResult.Block.Hash}: {validationError}, Exception: {e}");
                 }
                 catch (Exception e)
                 {
-                    Assert.Fail($"Unexpected exception during processing: {e}");
+                    if (!expectsException) Assert.Fail($"Unexpected exception during processing: {e}");
                 }
                 finally
                 {
                     // Dispose AccountChanges to prevent memory leaks in tests
-                    correctRlp[i].Block.DisposeAccountChanges();
+                    expectedResult.Block.DisposeAccountChanges();
                 }
             }
             else
             {
                 // Validation FAILED
-                Assert.That(expectsException, $"Unexpected invalid block {correctRlp[i].Block.Hash}: {validationError}");
+                Assert.That(expectsException, $"Unexpected invalid block {expectedResult.Block.Hash}: {validationError}");
                 // else: Expected to fail and did fail → this is correct behavior
             }
 
-            parentHeader = correctRlp[i].Block.Header;
+            parentHeader = expectedResult.Block.Header;
         }
-        return parentHeader;
     }
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    private static async Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
     {
         (ExecutionPayloadV4, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
 
@@ -343,9 +361,9 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
+    private static List<ExpectedResult> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
-        List<(Block Block, string ExpectedException)> correctRlp = [];
+        List<ExpectedResult> correctRlp = [];
         for (int i = 0; i < test.Blocks!.Length; i++)
         {
             TestBlockJson testBlockJson = test.Blocks[i];
@@ -362,9 +380,9 @@ public abstract class BlockchainTestBase
                     {
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
-
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
+
+                correctRlp.Add(new(suggestedBlock, testBlockJson.ExpectException));
             }
             catch (Exception e)
             {
@@ -472,9 +490,9 @@ public abstract class BlockchainTestBase
             differencesBefore = differences.Count;
 
             KeyValuePair<UInt256, byte[]>[] clearedStorages = [];
-            if (test.Pre.ContainsKey(accountAddress))
+            if (test.Pre.TryGetValue(accountAddress, out AccountState state))
             {
-                clearedStorages = [.. test.Pre[accountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key))];
+                clearedStorages = [.. state.Storage.Where(s => !accountState.Storage.ContainsKey(s.Key))];
             }
 
             foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
@@ -547,5 +565,13 @@ public abstract class BlockchainTestBase
         }
 
         return differences;
+    }
+
+    private readonly record struct ExpectedResult(Block Block, string? ExpectedException);
+
+    private readonly record struct ExpectedTransactionFailure(int Index, ExpectedResult Result)
+    {
+        public Block Block => Result.Block;
+        public string? ExpectedException => Result.ExpectedException;
     }
 }

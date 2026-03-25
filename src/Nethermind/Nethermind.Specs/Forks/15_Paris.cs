@@ -8,5 +8,6 @@ public class Paris() : NamedReleaseSpec<Paris>(GrayGlacier.Instance)
     public override void Apply(ReleaseSpec spec)
     {
         spec.Name = "Paris";
+        spec.MaximumUncleCount = 0;
     }
 }

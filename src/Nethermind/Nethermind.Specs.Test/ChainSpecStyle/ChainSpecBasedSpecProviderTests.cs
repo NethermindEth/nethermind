@@ -61,6 +61,7 @@ public class ChainSpecBasedSpecProviderTests
         expectedSpec.IsEip3198Enabled = false;
         expectedSpec.Eip1559TransitionBlock = 0;
         expectedSpec.DifficultyBombDelay = 0;
+        expectedSpec.MaximumUncleCount = 0;
         expectedSpec.IsEip3855Enabled = isEip3855Enabled;
         TestSpecProvider testProvider = TestSpecProvider.Instance;
         testProvider.NextForkSpec = expectedSpec;
