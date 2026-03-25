@@ -166,15 +166,21 @@ internal static class RlpTrieTraversal
         nibblesConsumed = 0;
         leafValue = null;
 
-        // First item: compact-encoded path prefix
-        (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
-        if (contentLen == 0)
+        // First item: compact-encoded path prefix.
+        // For single-byte values (< 0x80), ReadPrefixAndContentLength advances past
+        // the byte, so Read(contentLen) would read wrong data. Handle this case directly.
+        ReadOnlySpan<byte> compactKeyBytes;
+        if (parentRlp[ctx.Position] < 0x80)
         {
-            // Empty key segment — skip
-            return false;
+            compactKeyBytes = parentRlp.Slice(ctx.Position, 1);
+            ctx.Position++;
         }
-
-        ReadOnlySpan<byte> compactKeyBytes = ctx.Read(contentLen);
+        else
+        {
+            (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
+            if (contentLen == 0) return false;
+            compactKeyBytes = ctx.Read(contentLen);
+        }
         byte firstByte = compactKeyBytes[0];
         bool isLeaf = (firstByte & 0x20) != 0;
         bool isOdd = (firstByte & 0x10) != 0;
@@ -238,7 +244,9 @@ internal static class RlpTrieTraversal
         nibblesConsumed = keyNibbleCount;
 
         // Second item: child reference
-        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], out nextHash, out leafValue);
+        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[keyNibbleCount..], out nextHash, out int childNibblesConsumed, out leafValue);
+        nibblesConsumed += childNibblesConsumed;
+        return result;
     }
 
     private static bool TraverseBranch(
@@ -265,7 +273,9 @@ internal static class RlpTrieTraversal
         path.AppendMut(nib);
         nibblesConsumed = 1;
 
-        return TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], out nextHash, out leafValue);
+        bool result = TryReadChildRef(rlpLoader, ref path, parentRlp, ref ctx, remainingNibbles[1..], out nextHash, out int childNibblesConsumed, out leafValue);
+        nibblesConsumed += childNibblesConsumed;
+        return result;
     }
 
     /// <summary>
@@ -280,9 +290,11 @@ internal static class RlpTrieTraversal
         ref Rlp.ValueDecoderContext ctx,
         Span<byte> remainingNibbles,
         out Hash256? nextHash,
+        out int nibblesConsumed,
         out byte[]? leafValue)
     {
         nextHash = null;
+        nibblesConsumed = 0;
         leafValue = null;
 
         if (ctx.Position >= parentRlp.Length) return false;
@@ -313,7 +325,7 @@ internal static class RlpTrieTraversal
             ReadOnlySpan<byte> inlineRlp = parentRlp.Slice(inlineStart, inlineLen);
 
             // Traverse the inline node without loading from cache (it has no hash)
-            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out _, out leafValue);
+            TraverseNode(rlpLoader, ref path, inlineRlp, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue);
 
             // nextHash may be set if the inline node leads to a hash-referenced child
             return nextHash is not null;

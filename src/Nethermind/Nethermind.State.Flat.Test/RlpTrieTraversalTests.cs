@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -42,22 +43,28 @@ public class RlpTrieTraversalTests
     }
 
     // Builds an RlpLoader that delegates to the state trie store.
+    // Asserts that the loaded RLP actually hashes to the expected hash.
     private RlpLoader MakeStateLoader() => (TreePath path, Hash256 hash, ref TrieNodeRlp target) =>
     {
         byte[]? data = _trieStore.TryLoadRlp(path, hash);
-        if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return false;
+        if (data is null) return false;
+        if (data.Length > TrieNodeRlp.MaxRlpLength) throw new Exception($"RLP at path {path} exceeds MaxRlpLength: {data.Length} > {TrieNodeRlp.MaxRlpLength}");
+        Assert.That(Keccak.Compute(data), Is.EqualTo(hash), $"RLP hash mismatch at path {path}");
         target.Set(data);
         return true;
     };
 
     // Builds an RlpLoader that delegates to the storage trie store for the given contract address hash.
+    // Asserts that the loaded RLP actually hashes to the expected hash.
     private RlpLoader MakeStorageLoader(Hash256 addressHash)
     {
         IScopedTrieStore storageStore = (IScopedTrieStore)_trieStore.GetStorageTrieNodeResolver(addressHash);
         return (TreePath path, Hash256 hash, ref TrieNodeRlp target) =>
         {
             byte[]? data = storageStore.TryLoadRlp(path, hash);
-            if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return false;
+            if (data is null) return false;
+            if (data.Length > TrieNodeRlp.MaxRlpLength) throw new Exception($"RLP at path {path} exceeds MaxRlpLength: {data.Length} > {TrieNodeRlp.MaxRlpLength}");
+            Assert.That(Keccak.Compute(data), Is.EqualTo(hash), $"RLP hash mismatch at path {path}");
             target.Set(data);
             return true;
         };
@@ -120,14 +127,14 @@ public class RlpTrieTraversalTests
     [Test]
     public void TryRead_MultipleAccounts_AllMatchStateTreeGet()
     {
-        Address[] addresses =
-        [
-            TestItem.AddressA,
-            TestItem.AddressB,
-            TestItem.AddressC,
-            TestItem.AddressD,
-            TestItem.AddressE,
-        ];
+        const int count = 300;
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[20];
+            BinaryPrimitives.WriteInt32BigEndian(key, i);
+            addresses[i] = new Address(key);
+        }
 
         for (int i = 0; i < addresses.Length; i++)
         {
@@ -222,15 +229,13 @@ public class RlpTrieTraversalTests
     [Test]
     public void TryRead_MultipleStorageSlots_AllMatchStorageTreeGet()
     {
+        const int count = 300;
         Address address = TestItem.AddressA;
-        (UInt256 slot, byte[] value)[] slots =
-        [
-            (1, [0x11]),
-            (2, [0x22]),
-            (3, [0x33]),
-            (100, [0xAA]),
-            (200, [0xBB]),
-        ];
+        (UInt256 slot, byte[] value)[] slots = new (UInt256, byte[])[count];
+        for (int i = 0; i < count; i++)
+        {
+            slots[i] = ((UInt256)(i + 1), [(byte)((i % 255) + 1)]);
+        }
 
         StorageTree storageTree = CreateStorageTree(address, slots);
         Hash256 rootHash = storageTree.RootHash;
@@ -279,17 +284,15 @@ public class RlpTrieTraversalTests
     [Test]
     public void TryRead_ExtensionNode_TraversedCorrectly()
     {
-        // Two addresses with a common keccak prefix force an extension node in the trie.
-        // We add many accounts to ensure the trie has extension nodes.
-        Address[] addresses =
-        [
-            TestItem.AddressA,
-            TestItem.AddressB,
-            TestItem.AddressC,
-            TestItem.AddressD,
-            TestItem.AddressE,
-            TestItem.AddressF,
-        ];
+        // Many accounts to ensure the trie has extension nodes at various depths.
+        const int count = 300;
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[20];
+            BinaryPrimitives.WriteInt32BigEndian(key, i);
+            addresses[i] = new Address(key);
+        }
 
         for (int i = 0; i < addresses.Length; i++)
         {
@@ -357,5 +360,58 @@ public class RlpTrieTraversalTests
 
         Assert.That(found, Is.False);
         Assert.That(value, Is.Null);
+    }
+
+    [Test]
+    public void TryRead_DiagnosticTrace_FailingAddress()
+    {
+        const int count = 300;
+        Address[] addresses = new Address[count];
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = new byte[20];
+            BinaryPrimitives.WriteInt32BigEndian(key, i);
+            addresses[i] = new Address(key);
+        }
+
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            _stateTree.Set(addresses[i], new Account((ulong)(i + 1), (UInt256)(i + 1) * 100));
+        }
+        _stateTree.Commit();
+        Hash256 rootHash = _stateTree.RootHash;
+
+        // Find the failing address (0x21 = 33)
+        Address failAddr = addresses[33];
+        ReadOnlySpan<byte> addrPath = KeccakCache.Compute(failAddr.Bytes).Bytes;
+
+        System.Text.StringBuilder trace = new();
+        int loadCount = 0;
+        RlpLoader tracingLoader = (TreePath path, Hash256 hash, ref TrieNodeRlp target) =>
+        {
+            byte[]? data = _trieStore.TryLoadRlp(path, hash);
+            if (data is null) { trace.AppendLine($"  [{loadCount}] path={path} hash={hash} -> null"); return false; }
+            if (data.Length > TrieNodeRlp.MaxRlpLength) { trace.AppendLine($"  [{loadCount}] path={path} -> too large ({data.Length})"); return false; }
+
+            // Decode to see node type
+            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+            int seqLen = ctx.ReadSequenceLength();
+            int items = ctx.PeekNumberOfItemsRemaining(ctx.Position + seqLen, maxSearch: 20);
+            string nodeType = items == 2 ? "ext/leaf" : $"branch({items})";
+            string hex = items == 2 ? Convert.ToHexString(data) : "";
+            trace.AppendLine($"  [{loadCount++}] path={path} -> {data.Length}B {nodeType} {hex}");
+
+            target.Set(data);
+            return true;
+        };
+
+        trace.AppendLine($"Tracing TryRead for {failAddr}, keccak path = {KeccakCache.Compute(failAddr.Bytes)}");
+        bool found = RlpTrieTraversal.TryRead(tracingLoader, rootHash, addrPath, out byte[]? rawValue);
+        trace.AppendLine($"Result: found={found}");
+
+        Account? fromStateTree = _stateTree.Get(failAddr, rootHash);
+        trace.AppendLine($"StateTree.Get exists: {fromStateTree is not null}");
+
+        Assert.That(found, Is.True, trace.ToString());
     }
 }
