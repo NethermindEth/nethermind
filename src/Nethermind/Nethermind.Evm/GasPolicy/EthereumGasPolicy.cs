@@ -75,21 +75,12 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             accessTracker.WarmUp(address);
         }
 
-        bool result;
-        // If the account is cold (and not a precompile), charge the cold access cost.
-        if (!spec.IsPrecompile(address) && accessTracker.WarmUp(address))
-            result = UpdateGas(ref gas, GasCostOf.ColdAccountAccess);
-        else
+        return (!spec.IsPrecompile(address) && accessTracker.WarmUp(address)) switch
         {
-            result = kind switch
-            {
-                AccountAccessKind.SelfDestructBeneficiary => true, // no warm charge
-                AccountAccessKind.Default => UpdateGas(ref gas, GasCostOf.WarmStateRead),
-                _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
-            };
-        }
-
-        return result;
+            true => UpdateGas(ref gas, GasCostOf.ColdAccountAccess),
+            false when kind == AccountAccessKind.SelfDestructBeneficiary => true,
+            false => UpdateGas(ref gas, GasCostOf.WarmStateRead)
+        };
     }
 
     public static bool ConsumeStorageAccessGas(ref EthereumGasPolicy gas,
