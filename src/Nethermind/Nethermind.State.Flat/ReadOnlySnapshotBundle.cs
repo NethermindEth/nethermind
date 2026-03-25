@@ -211,6 +211,10 @@ public sealed class ReadOnlySnapshotBundle(
 
         if (TryFindStorageNodes(address, path, hash, out TrieNode? node))
         {
+            if (node.Keccak != hash)
+            {
+                throw new InvalidOperationException($"Unexpected storage hash. {address}:{path}. Keccek {node.Keccak}, but expected {hash}");
+            }
             return node.FullRlp.ToArray();
         }
 

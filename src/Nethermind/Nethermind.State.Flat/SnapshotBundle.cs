@@ -401,10 +401,6 @@ public sealed class SnapshotBundle : IDisposable
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
             target.Set(rlp);
-            if (Keccak.Compute(rlp) != hash)
-            {
-                Console.Error.WriteLine("Storage rlp mismatch");
-            }
             _transientResource.UpdateStorageRlp(addressHash, path, hash, rlp);
             return true;
         }
