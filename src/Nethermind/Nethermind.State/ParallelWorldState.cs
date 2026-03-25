@@ -35,7 +35,7 @@ public class ParallelWorldState(
 {
     public int BlockAccessIndex { get; } = blockAccessIndex;
     public bool TracingEnabled { get; set; } = specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled;
-    public bool IsGenesis { get; set; } = true;
+    public bool IsGenesis { get; set; } = suggestedBlock.IsGenesis;
     // public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
     public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis;
 
