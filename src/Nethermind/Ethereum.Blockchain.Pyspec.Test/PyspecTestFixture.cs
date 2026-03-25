@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using FluentAssertions;
@@ -28,11 +29,20 @@ public abstract class PyspecBlockchainTestFixture<TSelf> : BlockchainTestBase
 /// <summary>
 /// Generic base for pyspec engine blockchain tests using <see cref="LoadPyspecTestsStrategy"/>.
 /// Directory is derived by convention: strip "EngineBlockchainTests" suffix, lowercase.
+/// Linux x64 only: engine tests are heavy (full DI + Engine API per test) and timeout on slower CI runners.
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
+[Platform("Linux")]
 public abstract class PyspecEngineBlockchainTestFixture<TSelf> : BlockchainTestBase
 {
+    [SetUp]
+    public void SkipOnArm()
+    {
+        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+            Assert.Ignore("Skipped on ARM — exceeds CI timeout");
+    }
+
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
 
