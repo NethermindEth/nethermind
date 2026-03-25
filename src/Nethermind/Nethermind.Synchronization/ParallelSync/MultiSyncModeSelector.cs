@@ -699,7 +699,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose()
         {
-            _cancellation.Cancel();
+            try { _cancellation.Cancel(); } catch (ObjectDisposedException) { }
             _cancellation.Dispose();
         }
 
