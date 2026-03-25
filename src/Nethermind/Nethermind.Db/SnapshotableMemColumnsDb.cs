@@ -13,7 +13,7 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemColumnsDb<TKey> : IColumnsDb<TKey> where TKey : struct, Enum
     {
-        private readonly IDictionary<TKey, SnapshotableMemDb> _columnDbs = new Dictionary<TKey, SnapshotableMemDb>();
+        private readonly Dictionary<TKey, SnapshotableMemDb> _columnDbs = new();
         private readonly bool _neverPrune;
 
         private SnapshotableMemColumnsDb(TKey[] keys, bool neverPrune)

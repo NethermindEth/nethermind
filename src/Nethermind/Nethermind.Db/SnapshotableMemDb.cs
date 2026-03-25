@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -20,7 +21,7 @@ namespace Nethermind.Db
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
         private readonly HashSet<int> _activeSnapshotVersions = new();
-        private readonly object _versionLock = new();
+        private readonly Lock _versionLock = new();
         private readonly bool _neverPrune = neverPrune;
 
         public long ReadsCount { get; private set; }
