@@ -80,10 +80,10 @@ namespace Nethermind.Xdc
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
-            var (signers, count) = GetSigningTxCount(xdcHeader, spec);
+            var (masternodeSigners, _, _) = GetSigningTxCount(xdcHeader, spec);
 
             UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
-            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
+            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
 
             UInt256 totalFoundationWalletReward = UInt256.Zero;
             var rewards = new List<BlockReward>();
@@ -97,17 +97,24 @@ namespace Nethermind.Xdc
             return rewards.ToArray();
         }
 
-        private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
+        private (
+            Dictionary<Address, long> MasternodeSigners,
+            Dictionary<Address, long> ProtectorSigners,
+            Dictionary<Address, long> ObserverSigners) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
-            var signers = new Dictionary<Address, long>();
+            var masternodeSigners = new Dictionary<Address, long>();
+            var protectorSigners = new Dictionary<Address, long>();
+            var observerSigners = new Dictionary<Address, long>();
             long number = epochHeader.Number;
-            if (number == 0) return (signers, 0);
+            if (number == 0) return (masternodeSigners, protectorSigners, observerSigners);
 
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
+            var protectors = new HashSet<Address>();
+            var observers = new HashSet<Address>();
             var mergeSignRange = spec.MergeSignRange;
 
             XdcBlockHeader h = epochHeader;
@@ -128,9 +135,29 @@ namespace Nethermind.Xdc
                             masternodes = new HashSet<Address>(h.ExtraData.ParseV1Masternodes());
                         else
                             masternodes = new HashSet<Address>(h.ValidatorsAddress!);
-                        // TIPUpgradeReward path (protector/observer selection) is currently ignored,
-                        // because on mainnet the upgrade height is set to an effectively unreachable block.
-                        // If/when that changes, we must compute protector/observer sets here.
+
+                        if (h.Number >= spec.TipUpgradeRewardBlock)
+                        {
+                            // TIPUpgradeReward path: select protector and observer sets from stake-sorted candidates.
+                            // Exclude current masternodes and penalized nodes from the checkpoint header.
+                            Address[] candidatesByStake = _masternodeVotingContract.GetCandidatesByStake(h) ?? [];
+                            int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
+                            var excludedCandidates = new HashSet<Address>(masternodes.Count + penaltiesCount);
+                            excludedCandidates.UnionWith(masternodes);
+                            if (h.PenaltiesAddress is not null)
+                                excludedCandidates.UnionWith(h.PenaltiesAddress);
+
+                            foreach (Address candidate in candidatesByStake)
+                            {
+                                if (candidate == Address.Zero || excludedCandidates.Contains(candidate))
+                                    continue;
+
+                                if (protectors.Count < spec.MaxProtectorNodes)
+                                    protectors.Add(candidate);
+                                else if (observers.Count < spec.MaxObserverNodes)
+                                    observers.Add(candidate);
+                            }
+                        }
                         break;
                     }
                 }
@@ -157,13 +184,21 @@ namespace Nethermind.Xdc
                 if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
                 foreach (Address addr in addresses)
                 {
-                    if (!masternodes.Contains(addr)) continue;
-                    if (!signers.ContainsKey(addr)) signers[addr] = 0;
-                    signers[addr] += 1;
-                    signingCount++;
+                    if (masternodes.Contains(addr))
+                        IncrementSignerCount(masternodeSigners, addr);
+                    else if (protectors.Contains(addr))
+                        IncrementSignerCount(protectorSigners, addr);
+                    else if (observers.Contains(addr))
+                        IncrementSignerCount(observerSigners, addr);
                 }
             }
-            return (signers, signingCount);
+            return (masternodeSigners, protectorSigners, observerSigners);
+        }
+
+        private static void IncrementSignerCount(Dictionary<Address, long> signers, Address addr)
+        {
+            if (!signers.TryAdd(addr, 1))
+                signers[addr] += 1;
         }
 
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
@@ -178,9 +213,15 @@ namespace Nethermind.Xdc
         }
 
         private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
-            Dictionary<Address, long> signers, long totalSigningCount)
+            Dictionary<Address, long> signers)
         {
             var rewardSigners = new Dictionary<Address, UInt256>();
+            long totalSigningCount = 0;
+            foreach (long signerCount in signers.Values)
+            {
+                totalSigningCount += signerCount;
+            }
+
             foreach (var (signer, count) in signers)
             {
                 UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);

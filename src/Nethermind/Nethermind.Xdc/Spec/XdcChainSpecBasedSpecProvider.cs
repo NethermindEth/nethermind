@@ -27,6 +27,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.Reward = chainSpecEngineParameters.Reward;
         releaseSpec.MasternodeVotingContract = chainSpecEngineParameters.MasternodeVotingContract;
         releaseSpec.BlockSignerContract = chainSpecEngineParameters.BlockSignerContract;
+        releaseSpec.TipUpgradeRewardBlock = chainSpecEngineParameters.TipUpgradeReward ?? long.MaxValue;
 
         releaseSpec.IsTipTrc21FeeEnabled = (chainSpecEngineParameters.TipTrc21Fee ?? 0) <= releaseStartBlock;
         releaseSpec.IsBlackListingEnabled = chainSpecEngineParameters.BlackListHFNumber <= releaseStartBlock;

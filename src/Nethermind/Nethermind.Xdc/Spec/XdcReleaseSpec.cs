@@ -44,6 +44,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public long TIP2019Block { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public long TipUpgradeRewardBlock { get; set; } = long.MaxValue;
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
@@ -131,6 +132,7 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public HashSet<Address> BlackListedAddresses { get; set; }
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
+    public long TipUpgradeRewardBlock { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }
