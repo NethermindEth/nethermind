@@ -17,13 +17,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.ProtocolHandlers;
 
-/// <summary>
-/// Verifies that a late init message arriving after protocol init timeout
-/// does not throw. Before fix, TrySetCanceled (timeout) followed by SetResult
-/// (late message) threw InvalidOperationException on the TCS.
-/// </summary>
 [Parallelizable(ParallelScope.Self)]
-public class ProtocolInitCompletionRaceTests
+public class ProtocolHandlerBaseTests
 {
     private class TestProtocolHandler(ISession session, TimeSpan initTimeout)
         : ProtocolHandlerBase(session, Substitute.For<INodeStatsManager>(), Substitute.For<IMessageSerializationService>(), Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance)
