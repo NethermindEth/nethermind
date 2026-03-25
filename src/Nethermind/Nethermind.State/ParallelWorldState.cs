@@ -135,14 +135,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     public void MergeIntermediateBalsUpTo(ushort index)
-    {
-        if (!ParallelExecutionEnabled)
-        {
-            return;
-        }
-
-        GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
-    }
+        => GeneratedBlockAccessList.Merge(_intermediateBlockAccessLists[index]);
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null)
     {

@@ -52,6 +52,7 @@ public class ParallelWorldStateTests
         Action<ParallelWorldState>? genesisSetup = null)
     {
         ParallelWorldState pws = CreateStateCore(parallel: false, genesisSetup, out BlockHeader baseBlock);
+        pws.SetupGeneratedAccessLists(Logger, 1);
         return (pws, pws.BeginScope(baseBlock));
     }
 
@@ -96,6 +97,8 @@ public class ParallelWorldStateTests
                 pws.SubtractFromBalance(TestItem.AddressA, delta, Spec, blockAccessIndex: 0);
             }
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -124,6 +127,8 @@ public class ParallelWorldStateTests
                 pws.SetNonce(TestItem.AddressA, value, blockAccessIndex: 0);
             }
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -145,6 +150,8 @@ public class ParallelWorldStateTests
             ValueHash256 codeHash = ValueKeccak.Compute(code);
             pws.InsertCode(TestItem.AddressA, codeHash, code, Spec, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
             {
@@ -164,6 +171,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.Set(cell, [0x01], blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -191,6 +200,8 @@ public class ParallelWorldStateTests
                 _ = pws.GetOriginal(cell, blockAccessIndex: 0);
             }
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             Assert.That(ac!.StorageReads, Has.Count.EqualTo(1));
@@ -206,6 +217,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             UInt256 balance = pws.GetBalance(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -226,6 +239,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             UInt256 nonce = pws.GetNonce(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -248,6 +263,8 @@ public class ParallelWorldStateTests
         {
             byte[]? retrieved = pws.GetCode(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retrieved, Is.EquivalentTo(code));
@@ -268,6 +285,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             ValueHash256 hash = pws.GetCodeHash(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -290,6 +309,8 @@ public class ParallelWorldStateTests
         {
             bool isContract = pws.IsContract(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(isContract, Is.True);
@@ -310,6 +331,8 @@ public class ParallelWorldStateTests
                 ? pws.IsDeadAccount(TestItem.AddressA, blockAccessIndex: 0)
                 : pws.AccountExists(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result, Is.True);
@@ -326,6 +349,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             bool found = pws.TryGetAccount(TestItem.AddressA, out AccountStruct account, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             using (Assert.EnterMultipleScope())
             {
@@ -345,6 +370,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.CreateAccount(TestItem.AddressA, balance, nonce, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             using (Assert.EnterMultipleScope())
@@ -374,6 +401,8 @@ public class ParallelWorldStateTests
         {
             pws.DeleteAccount(TestItem.AddressA, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
             Assert.That(ac, Is.Not.Null);
             using (Assert.EnterMultipleScope())
@@ -392,6 +421,8 @@ public class ParallelWorldStateTests
         using (scope)
         {
             pws.AddAccountRead(TestItem.AddressA, blockAccessIndex: 0);
+
+            pws.MergeIntermediateBalsUpTo(0);
 
             Assert.That(pws.GeneratedBlockAccessList.HasAccount(TestItem.AddressA), Is.True);
             AccountChanges? ac = pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA);
@@ -413,10 +444,14 @@ public class ParallelWorldStateTests
             Snapshot snap = pws.TakeSnapshot(blockAccessIndex: 0);
             pws.AddToBalance(TestItem.AddressA, 50, Spec, blockAccessIndex: 0);
 
+            pws.MergeIntermediateBalsUpTo(0);
+
             Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA)!
                 .BalanceChanges, Has.Count.EqualTo(1));
 
+            pws.GeneratedBlockAccessList = new();
             pws.Restore(snap, blockAccessIndex: 0);
+            pws.MergeIntermediateBalsUpTo(0);
 
             // Balance change must be rolled back by the snapshot restore.
             Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressA)!
