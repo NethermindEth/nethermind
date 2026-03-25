@@ -30,21 +30,9 @@ public class PragueBlockchainTests : PyspecBlockchainTestFixture<PragueBlockchai
 
 public class OsakaBlockchainTests : PyspecBlockchainTestFixture<OsakaBlockchainTests>;
 
-// Engine blockchain tests - directory derived from class name by convention (strip "EngineBlockchainTests", lowercase)
-
-public class FrontierEngineBlockchainTests : PyspecEngineBlockchainTestFixture<FrontierEngineBlockchainTests>;
-
-public class HomesteadEngineBlockchainTests : PyspecEngineBlockchainTestFixture<HomesteadEngineBlockchainTests>;
-
-public class ByzantiumEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ByzantiumEngineBlockchainTests>;
-
-public class IstanbulEngineBlockchainTests : PyspecEngineBlockchainTestFixture<IstanbulEngineBlockchainTests>;
-
-public class BerlinEngineBlockchainTests : PyspecEngineBlockchainTestFixture<BerlinEngineBlockchainTests>;
-
-public class ParisEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ParisEngineBlockchainTests>;
-
-public class ShanghaiEngineBlockchainTests : PyspecEngineBlockchainTestFixture<ShanghaiEngineBlockchainTests>;
+// Engine blockchain tests — only forks with meaningful Engine API differences
+// (e.g. blobs, execution requests, BAL). Regular BlockchainTests cover earlier forks.
+// Directory derived from class name by convention (strip "EngineBlockchainTests", lowercase)
 
 public class CancunEngineBlockchainTests : PyspecEngineBlockchainTestFixture<CancunEngineBlockchainTests>
 {
