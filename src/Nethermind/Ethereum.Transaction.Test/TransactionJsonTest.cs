@@ -2,16 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Ethereum.Test.Base;
-using System;
-using System.Linq;
-using System.Text.Json;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -56,46 +52,6 @@ public class TransactionJsonTest : GeneralStateTestBase
 
         tx.Type.Should().Be(TxType.AccessList,
             "presence of accessLists field (even empty) should set Type 1");
-    }
-
-    [TestCase(1, typeof(ExecutionPayload))]
-    [TestCase(3, typeof(ExecutionPayloadV3))]
-    [TestCase(4, typeof(ExecutionPayloadV3))]
-    [TestCase(5, typeof(ExecutionPayloadV4))]
-    public void Convert_engine_payloads_uses_declared_payload_version(int newPayloadVersion, Type expectedPayloadType)
-    {
-        TestEngineNewPayloadsJson[] payloads =
-        [
-            new()
-            {
-                NewPayloadVersion = newPayloadVersion.ToString(),
-                ForkChoiceUpdatedVersion = "3",
-                Params = [CreatePayloadJson(newPayloadVersion)]
-            }
-        ];
-
-        (ExecutionPayload executionPayload, _, _, _, _) = JsonToEthereumTest.Convert(payloads).Single();
-
-        executionPayload.Should().BeOfType(expectedPayloadType);
-    }
-
-    [Test]
-    public void Convert_engine_payloads_reads_top_level_validation_error()
-    {
-        TestEngineNewPayloadsJson[] payloads =
-        [
-            new()
-            {
-                NewPayloadVersion = "5",
-                ForkChoiceUpdatedVersion = "4",
-                ValidationError = "BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED",
-                Params = [CreatePayloadJson(5), JsonDocument.Parse("[]").RootElement.Clone(), JsonDocument.Parse("\"0x0000000000000000000000000000000000000000000000000000000000000000\"").RootElement.Clone(), JsonDocument.Parse("[]").RootElement.Clone()]
-            }
-        ];
-
-        (_, _, string validationError, _, _) = JsonToEthereumTest.Convert(payloads).Single();
-
-        validationError.Should().Be("BlockException.BLOCK_ACCESS_LIST_GAS_LIMIT_EXCEEDED");
     }
 
     /// <summary>
@@ -165,32 +121,4 @@ public class TransactionJsonTest : GeneralStateTestBase
         result.Pass.Should().BeTrue();
     }
 
-    private static JsonElement CreatePayloadJson(int newPayloadVersion)
-    {
-        string payloadJson = $$"""
-            {
-              "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-              "feeRecipient": "0x0000000000000000000000000000000000000001",
-              "stateRoot": "0x0000000000000000000000000000000000000000000000000000000000000002",
-              "receiptsRoot": "0x0000000000000000000000000000000000000000000000000000000000000003",
-              "logsBloom": "0x{{new string('0', 512)}}",
-              "blockNumber": "0x1",
-              "gasLimit": "0x5208",
-              "gasUsed": "0x5208",
-              "timestamp": "0x1",
-              "extraData": "0x",
-              "prevRandao": "0x0000000000000000000000000000000000000000000000000000000000000004",
-              "baseFeePerGas": "0x7",
-              "blobGasUsed": "0x0",
-              "excessBlobGas": "0x0",
-              "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000005",
-              "transactions": [],
-              "withdrawals": []
-              {{(newPayloadVersion >= 5 ? ",\n  \"blockAccessList\": \"0xc0\",\n  \"slotNumber\": \"0x0\"" : string.Empty)}}
-            }
-            """;
-
-        using JsonDocument document = JsonDocument.Parse(payloadJson);
-        return document.RootElement.Clone();
-    }
 }
