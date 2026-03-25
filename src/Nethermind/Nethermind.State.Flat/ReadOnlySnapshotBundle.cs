@@ -192,6 +192,11 @@ public sealed class ReadOnlySnapshotBundle(
     {
         GuardDispose();
 
+        if (TryFindStateNodes(path, hash, out TrieNode? node))
+        {
+            return node.FullRlp.ToArray();
+        }
+
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
@@ -203,6 +208,11 @@ public sealed class ReadOnlySnapshotBundle(
     public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
+
+        if (TryFindStorageNodes(address, path, hash, out TrieNode? node))
+        {
+            return node.FullRlp.ToArray();
+        }
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

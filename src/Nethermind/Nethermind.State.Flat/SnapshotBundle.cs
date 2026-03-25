@@ -245,20 +245,6 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
-    public byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, flags);
-    }
-
-    public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
-    {
-        GuardDispose();
-
-        return _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(address, path, hash, flags);
-    }
-
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
@@ -378,7 +364,7 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, ReadFlags.None);
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
             target.Set(rlp);
@@ -411,10 +397,14 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlp(addressHash, path, hash, ReadFlags.None);
+        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hash, ReadFlags.None);
         if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
         {
             target.Set(rlp);
+            if (Keccak.Compute(rlp) != hash)
+            {
+                Console.Error.WriteLine("Storage rlp mismatch");
+            }
             _transientResource.UpdateStorageRlp(addressHash, path, hash, rlp);
             return true;
         }
