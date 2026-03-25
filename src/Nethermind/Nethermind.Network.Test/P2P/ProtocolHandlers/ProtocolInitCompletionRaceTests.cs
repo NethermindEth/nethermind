@@ -2,8 +2,17 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Logging;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.ProtocolHandlers;
@@ -17,92 +26,64 @@ namespace Nethermind.Network.Test.P2P.ProtocolHandlers;
 ///
 /// After fix: TrySetResult() is used instead of SetResult(), making the
 /// late message a safe no-op when the TCS is already in a terminal state.
-///
-/// All three possible orderings are tested deterministically:
-///   1. Timeout first, then message (TrySetCanceled → TrySetResult)
-///   2. Message first, then timeout (TrySetResult → TrySetCanceled)
-///   3. Simultaneous (Barrier-synchronized)
 /// </summary>
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class ProtocolInitCompletionRaceTests
 {
-    [Test]
-    public void SetResult_after_TrySetCanceled_throws_InvalidOperationException()
+    /// <summary>
+    /// Minimal concrete subclass of ProtocolHandlerBase with a configurable
+    /// init timeout, used to exercise the timeout → late-message race without
+    /// needing the full P2P protocol stack.
+    /// </summary>
+    private class TestProtocolHandler(ISession session, TimeSpan initTimeout)
+        : ProtocolHandlerBase(
+            session,
+            Substitute.For<INodeStatsManager>(),
+            Substitute.For<IMessageSerializationService>(),
+            Substitute.For<IBackgroundTaskScheduler>(),
+            LimboLogs.Instance)
     {
-        // Pre-fix behavior: timeout fires → TrySetCanceled, then late message → SetResult
-        TaskCompletionSource<object> tcs = new();
+        public override string Name => "test";
+        protected override TimeSpan InitTimeout => initTimeout;
+        public override byte ProtocolVersion => 1;
+        public override string ProtocolCode => "test";
+        public override int MessageIdSpaceSize => 0;
 
-        tcs.TrySetCanceled();
+        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = delegate { };
+        public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = delegate { };
 
-        Assert.Throws<InvalidOperationException>(() => tcs.SetResult(new object()));
+        public Task StartTimeoutCheck() => CheckProtocolInitTimeout();
+
+        /// <summary>
+        /// Simulates a late init message arriving after timeout has already fired.
+        /// Calls the protected ReceivedProtocolInitMsg which sets the TCS.
+        /// </summary>
+        public void SimulateLateInitMessage() => ReceivedProtocolInitMsg(new AckMessage());
+
+        public override void Init() { }
+        public override void Dispose() { }
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
+        public override void HandleMessage(Packet msg) { }
     }
 
     [Test]
-    public void TrySetResult_after_TrySetCanceled_is_safe_noop()
+    public async Task Late_init_message_after_timeout_does_not_throw()
     {
-        // Post-fix: timeout wins the race, late message is a no-op
-        TaskCompletionSource<object> tcs = new();
+        ISession session = Substitute.For<ISession>();
+        TestProtocolHandler handler = new(session, TimeSpan.FromMilliseconds(50));
 
-        tcs.TrySetCanceled();
+        // Start the timeout check — it will TrySetCanceled after 50ms
+        Task timeoutTask = handler.StartTimeoutCheck();
+        await timeoutTask;
 
-        bool wasSet = tcs.TrySetResult(new object());
+        // Timeout has fired, TCS is now in Canceled state.
+        // Simulate a late init message arriving after the timeout.
+        // Before fix (SetResult): throws InvalidOperationException.
+        // After fix (TrySetResult): safe no-op.
+        Assert.DoesNotThrow(() => handler.SimulateLateInitMessage());
 
-        Assert.That(wasSet, Is.False, "TrySetResult should return false — TCS is already canceled");
-        Assert.That(tcs.Task.IsCanceled, Is.True, "TCS should remain in canceled state");
-    }
-
-    [Test]
-    public void TrySetCanceled_after_TrySetResult_is_safe_noop()
-    {
-        // Message wins the race, late timeout is a no-op
-        TaskCompletionSource<object> tcs = new();
-
-        tcs.TrySetResult(new object());
-
-        bool wasCanceled = tcs.TrySetCanceled();
-
-        Assert.That(wasCanceled, Is.False, "TrySetCanceled should return false — TCS is already completed");
-        Assert.That(tcs.Task.IsCompletedSuccessfully, Is.True, "TCS should remain in completed state");
-    }
-
-    [Test]
-    public void Simultaneous_TrySetCanceled_and_TrySetResult_exactly_one_wins()
-    {
-        // Both threads release at the exact same instant via Barrier.
-        // Exactly one must win; the loser must return false; no exceptions.
-        using Barrier barrier = new(2);
-        TaskCompletionSource<object> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        bool cancelWon = false;
-        bool resultWon = false;
-
-        Thread cancelThread = new(() =>
-        {
-            barrier.SignalAndWait();
-            cancelWon = tcs.TrySetCanceled();
-        });
-
-        Thread resultThread = new(() =>
-        {
-            barrier.SignalAndWait();
-            resultWon = tcs.TrySetResult(new object());
-        });
-
-        cancelThread.Start();
-        resultThread.Start();
-        cancelThread.Join();
-        resultThread.Join();
-
-        Assert.That(tcs.Task.IsCompleted, Is.True, "TCS must be in a terminal state");
-        Assert.That(cancelWon ^ resultWon, Is.True, "Exactly one operation must win the race");
-
-        if (cancelWon)
-        {
-            Assert.That(tcs.Task.IsCanceled, Is.True);
-        }
-        else
-        {
-            Assert.That(tcs.Task.IsCompletedSuccessfully, Is.True);
-        }
+        session.Received().InitiateDisconnect(
+            DisconnectReason.ProtocolInitTimeout,
+            Arg.Any<string>());
     }
 }
