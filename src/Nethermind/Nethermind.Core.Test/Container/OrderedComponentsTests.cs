@@ -67,9 +67,8 @@ public class OrderedComponentsTests
     [Test]
     public void TestCompositeResolved_WhenCalledBeforeAnyAddLast()
     {
-        // AddComposite is called first, then AddLast — should still work
+        // AddComposite is called before any AddLast — should still work
         using IContainer ctx = new ContainerBuilder()
-            .AddLast<IItem>(_ => new Item("0"))
             .AddCompositeOrderedComponents<IItem, CompositeItem>()
             .AddLast<IItem>(_ => new Item("1"))
             .AddLast<IItem>(_ => new Item("2"))
@@ -77,7 +76,7 @@ public class OrderedComponentsTests
 
         IItem resolved = ctx.Resolve<IItem>();
         resolved.Should().BeOfType<CompositeItem>();
-        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["0", "1", "2"]);
+        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["1", "2"]);
     }
 
     private class ModuleA : Module
