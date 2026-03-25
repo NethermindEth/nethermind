@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -19,19 +18,19 @@ namespace Nethermind.Consensus.Tracing
         ProcessingOptions traceOptions = ProcessingOptions.Trace)
         : ITracer
     {
-        private async Task Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
+        private void Process(Block block, IBlockTracer blockTracer, BlockchainProcessorFacade processor, ProcessingOptions options)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
                We also want to make it read only so the state is not modified persistently in any way. */
 
             blockTracer.StartNewBlockTrace(block);
-            await processor.Process(block, options, blockTracer);
+            processor.Process(block, options, blockTracer);
             blockTracer.EndBlockTrace();
         }
 
-        public async void Trace(Block block, IBlockTracer tracer) => await Process(block, tracer, traceProcessor, traceOptions);
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor, traceOptions);
 
-        public async void Execute(Block block, IBlockTracer tracer) => await Process(block, tracer, executeProcessor, executeOptions);
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor, executeOptions);
 
         public void Accept<TCtx>(ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock) where TCtx : struct, INodeContext<TCtx>
         {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -23,13 +22,13 @@ public sealed class BlockchainProcessorFacade(
     CompositeBlockPreprocessorStep preprocessorStep
 )
 {
-    public Task<Block?> Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
+    public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token = default)
     {
         preprocessorStep.RecoverData(block);
 
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
 
         (Block? processedBlock, TxReceipt[] _) = blockProcessor.ProcessOne(block, options, tracer, spec, token);
-        return Task.FromResult(processedBlock);
+        return processedBlock;
     }
 }

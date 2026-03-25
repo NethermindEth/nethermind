@@ -6,7 +6,6 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Columns;
@@ -247,91 +246,91 @@ public class BlockProcessingBenchmark
     // ── Benchmarks ────────────────────────────────────────────────────────
 
     [Benchmark(OperationsPerInvoke = N_LARGE)]
-    public async Task<Block[]> EmptyBlock()
+    public Block[] EmptyBlock()
     {
         Block[] result = null!;
         for (int i = 0; i < N_LARGE; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_emptyBlock],
+            result = _branchProcessor.Process(_parentHeader, [_emptyBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_LARGE)]
-    public async Task<Block[]> SingleTransfer()
+    public Block[] SingleTransfer()
     {
         Block[] result = null!;
         for (int i = 0; i < N_LARGE; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
+            result = _branchProcessor.Process(_parentHeader, [_singleTransferBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_MEDIUM)]
-    public async Task<Block[]> Transfers_50()
+    public Block[] Transfers_50()
     {
         Block[] result = null!;
         for (int i = 0; i < N_MEDIUM; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_transfers50Block],
+            result = _branchProcessor.Process(_parentHeader, [_transfers50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(Baseline = true, OperationsPerInvoke = N_SMALL)]
-    public async Task<Block[]> Transfers_200()
+    public Block[] Transfers_200()
     {
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_transfers200Block],
+            result = _branchProcessor.Process(_parentHeader, [_transfers200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_SMALL)]
-    public async Task<Block[]> Eip1559_200()
+    public Block[] Eip1559_200()
     {
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
+            result = _branchProcessor.Process(_parentHeader, [_eip1559_200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_MEDIUM)]
-    public async Task<Block[]> AccessList_50()
+    public Block[] AccessList_50()
     {
         Block[] result = null!;
         for (int i = 0; i < N_MEDIUM; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_accessList50Block],
+            result = _branchProcessor.Process(_parentHeader, [_accessList50Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_LARGE)]
-    public async Task<Block[]> ContractDeploy_10()
+    public Block[] ContractDeploy_10()
     {
         Block[] result = null!;
         for (int i = 0; i < N_LARGE; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
+            result = _branchProcessor.Process(_parentHeader, [_contractDeploy10Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_SMALL)]
-    public async Task<Block[]> ContractCall_200()
+    public Block[] ContractCall_200()
     {
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_contractCall200Block],
+            result = _branchProcessor.Process(_parentHeader, [_contractCall200Block],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }
 
     [Benchmark(OperationsPerInvoke = N_SMALL)]
-    public async Task<Block[]> MixedBlock()
+    public Block[] MixedBlock()
     {
         Block[] result = null!;
         for (int i = 0; i < N_SMALL; i++)
-            result = await _branchProcessor.Process(_parentHeader, [_mixedBlock],
+            result = _branchProcessor.Process(_parentHeader, [_mixedBlock],
                 ProcessingOptions.NoValidation, NullBlockTracer.Instance);
         return result;
     }

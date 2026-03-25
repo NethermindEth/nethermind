@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
@@ -17,7 +16,7 @@ public class TestBranchProcessorInterceptor(IBranchProcessor baseBlockProcessor,
     public Exception? ExceptionToThrow { get; set; }
     public ManualResetEventSlim? ProcessingStarted { get; set; }
 
-    public Task<Block[]> Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
+    public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
     {
         ProcessingStarted?.Set();
 

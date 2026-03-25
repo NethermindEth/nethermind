@@ -78,13 +78,13 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Prepared_block_contains_author_field()
+    public void Prepared_block_contains_author_field()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        Block[] processedBlocks = await branchProcessor.Process(
+        Block[] processedBlocks = branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
@@ -94,20 +94,20 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task Recovers_state_on_cancel()
+    public void Recovers_state_on_cancel()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
             rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance));
 
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
-        Assert.ThrowsAsync<OperationCanceledException>(() => branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
             AlwaysCancelBlockTracer.Instance));
 
-        Assert.ThrowsAsync<OperationCanceledException>(() => branchProcessor.Process(
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.None,
@@ -166,7 +166,7 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
+    public void BranchProcessor_cancels_prewarmer_via_TransactionsExecuted_event()
     {
         TokenCapturingPreWarmer preWarmer = new();
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
@@ -174,7 +174,7 @@ public class BlockProcessorTests
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
 
-        await branchProcessor.Process(
+        branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.NoValidation,
@@ -185,14 +185,14 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
+    public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
         (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
 
-        await branchProcessor.Process(
+        branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.NoValidation,
@@ -214,14 +214,14 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public async Task BranchProcessor_no_prewarmer_still_processes_successfully()
+    public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
 
         BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
         Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
 
-        Block[] processedBlocks = await branchProcessor.Process(
+        Block[] processedBlocks = branchProcessor.Process(
             null,
             new List<Block> { block },
             ProcessingOptions.NoValidation,

@@ -63,9 +63,9 @@ namespace Nethermind.Consensus.AuRa
             return block;
         }
 
-        protected override async Task<(Block?, string?)> ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
+        protected override (Block?, string?) ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token)
         {
-            (Block? processedBlock, string? error) = await base.ProcessPreparedBlock(block, blockTracer, token);
+            (Block? processedBlock, string? error) = base.ProcessPreparedBlock(block, blockTracer, token);
 
             if (processedBlock is not null)
             {
