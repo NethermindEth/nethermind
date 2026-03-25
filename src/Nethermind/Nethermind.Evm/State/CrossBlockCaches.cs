@@ -8,16 +8,18 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Evm.State;
 
 /// <summary>
-/// Cross-block cache for storage slots. Survives across blocks and is updated via
-/// write-through during block commit. Unlike <see cref="PreBlockCaches"/>, this is
-/// never shared with the prewarmer — only the main processing thread reads/writes it.
+/// Cross-block caches for accounts and storage slots. Survives across blocks and is
+/// updated via write-through during block commit. Unlike <see cref="PreBlockCaches"/>,
+/// this is never shared with the prewarmer — only the main processing thread reads/writes it.
 /// </summary>
 public class CrossBlockCaches
 {
-    private readonly SeqlockCache<StorageCell, byte[]> _storageCache = new();
+    private readonly SeqlockCache<AddressAsKey, Account> _stateCache = new();
+    private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets> _storageCache = new();
     private long _lastCommittedBlockNumber = -1;
 
-    public SeqlockCache<StorageCell, byte[]> StorageCache => _storageCache;
+    public SeqlockCache<AddressAsKey, Account> StateCache => _stateCache;
+    public SeqlockCache<StorageCell, byte[], LargeCacheSets> StorageCache => _storageCache;
 
     /// <summary>
     /// Block number of the last successfully committed block. Used to detect reorgs:

@@ -76,6 +76,7 @@ public class PrewarmerScopeProvider(
                 long lastCommitted = crossBlockCaches.LastCommittedBlockNumber;
                 if (baseBlock is not null && baseBlock.Number != lastCommitted)
                 {
+                    crossBlockCaches.StateCache.Clear();
                     crossBlockCaches.StorageCache.Clear();
                 }
             }
@@ -89,6 +90,7 @@ public class PrewarmerScopeProvider(
             // any entries written directly to the cross-block cache during this scope.
             if (!_committed && crossBlockCaches is not null)
             {
+                crossBlockCaches.StateCache.Clear();
                 crossBlockCaches.StorageCache.Clear();
             }
 
@@ -119,7 +121,7 @@ public class PrewarmerScopeProvider(
             // On block failure, Dispose epoch-bumps to rollback stale entries.
             if (crossBlockCaches is not null)
             {
-                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
+                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StateCache, crossBlockCaches.StorageCache);
             }
 
             if (!_measureMetric) return batch;
@@ -218,9 +220,17 @@ public class PrewarmerScopeProvider(
                     baseScope.HintGet(address, account);
                     Metrics.IncrementStateTreeCacheHits();
                 }
+                else if (crossBlockCaches is not null && crossBlockCaches.StateCache.TryGetValue(in addressAsKey, out account))
+                {
+                    if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressHit);
+                    baseScope.HintGet(address, account);
+                    Metrics.IncrementStateTreeCacheHits();
+                }
                 else
                 {
                     account = GetFromBaseTree(in addressAsKey);
+                    // Seed cross-block state cache from trie reads.
+                    crossBlockCaches?.StateCache.Set(in addressAsKey, account);
                     if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.AddressMiss);
                 }
                 return account;
@@ -239,7 +249,7 @@ public class PrewarmerScopeProvider(
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree;
         private readonly SeqlockCache<StorageCell, byte[]> preBlockCache;
-        private readonly SeqlockCache<StorageCell, byte[]>? crossBlockStorageCache;
+        private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache;
         private readonly Address address;
         private readonly bool populatePreBlockCache;
         private static readonly SeqlockCache<StorageCell, byte[]>.ValueFactory<StorageTreeWrapper> _loadFromTreeStorage = static (in StorageCell cell, StorageTreeWrapper self) => self.LoadFromTreeStorage(in cell);
@@ -252,7 +262,7 @@ public class PrewarmerScopeProvider(
             SeqlockCache<StorageCell, byte[]> preBlockCache,
             Address address,
             bool populatePreBlockCache,
-            SeqlockCache<StorageCell, byte[]>? crossBlockStorageCache)
+            SeqlockCache<StorageCell, byte[], LargeCacheSets>? crossBlockStorageCache)
         {
             this.baseStorageTree = baseStorageTree;
             this.preBlockCache = preBlockCache;
@@ -356,7 +366,8 @@ public class PrewarmerScopeProvider(
     private sealed class CacheUpdatingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
         ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[]> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+        SeqlockCache<AddressAsKey, Account> crossBlockStateCache,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         public void Dispose() => baseBatch.Dispose();
 
@@ -366,7 +377,12 @@ public class PrewarmerScopeProvider(
             remove => baseBatch.OnAccountUpdated -= value;
         }
 
-        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+        public void Set(Address key, Account? account)
+        {
+            baseBatch.Set(key, account);
+            AddressAsKey addressAsKey = key;
+            crossBlockStateCache.Set(in addressAsKey, account);
+        }
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
         {
@@ -383,7 +399,7 @@ public class PrewarmerScopeProvider(
     private sealed class CacheUpdatingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
         ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[]> crossBlockStorageCache,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         public void Set(in UInt256 index, byte[] value)
