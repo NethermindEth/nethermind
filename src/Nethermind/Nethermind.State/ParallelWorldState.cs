@@ -687,7 +687,7 @@ public class ParallelWorldState(IWorldState innerWorldState, ISpecProvider specP
     }
 
     private GeneratingBlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
-            _intermediateBlockAccessLists[int.Min(blockAccessIndex.Value, _intermediateBlockAccessLists.Length - 1)];
+        _intermediateBlockAccessLists[int.Min(blockAccessIndex.Value, _intermediateBlockAccessLists.Length - 1)];
 
     // todo: run in parallel like prewarmer
     private void LoadPreBlockState(BlockAccessList blockAccessList)

@@ -327,14 +327,7 @@ public partial class BlockProcessor(
             }
             _lastLoadedBal = suggested.Hash;
 
-            if (_balBuilder.ParallelExecutionEnabled)
-            {
-                _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
-            }
-            else
-            {
-                _balBuilder.GeneratedBlockAccessList = new();
-            }
+            _balBuilder.SetupGeneratedAccessLists(logManager, suggested.Transactions.Length);
         }
     }
 }
