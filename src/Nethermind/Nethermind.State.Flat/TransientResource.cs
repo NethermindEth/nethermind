@@ -75,7 +75,11 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
         return true;
     }
 
-    public void Dispose() => PrewarmedAddresses.Dispose();
+    public void Dispose()
+    {
+        Reset();
+        PrewarmedAddresses.Dispose();
+    }
 
     public RefCountingTrieNode? TryGetStateNode(in TreePath path, Hash256 hash) =>
         Nodes.TryGet(null, path, hash);

@@ -321,6 +321,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         if (endBlock.BlockNumber <= persistedStateId.BlockNumber)
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot register snapshot earlier than bigcache. Snapshot number {endBlock.BlockNumber}, bigcache number: {persistedStateId}");
+            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            snapshot.Dispose();
             return;
         }
 
