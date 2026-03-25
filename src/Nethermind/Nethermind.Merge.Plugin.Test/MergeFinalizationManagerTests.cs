@@ -33,6 +33,21 @@ public class MergeFinalizationManagerTests
     }
 
     [Test]
+    public void Double_dispose_does_not_throw()
+    {
+        IManualBlockFinalizationManager inner = Substitute.For<IManualBlockFinalizationManager>();
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+
+        MergeFinalizationManager manager = new(inner, null, poSSwitcher);
+
+        Assert.DoesNotThrow(() =>
+        {
+            manager.Dispose();
+            manager.Dispose();
+        });
+    }
+
+    [Test]
     public void Dispose_unsubscribes_from_inner_BlocksFinalized()
     {
         IManualBlockFinalizationManager inner = Substitute.For<IManualBlockFinalizationManager>();

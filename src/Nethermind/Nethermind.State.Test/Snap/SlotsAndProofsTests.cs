@@ -66,6 +66,18 @@ public class SlotsAndProofsTests
         Assert.That(disposeCount, Is.EqualTo(1));
     }
 
+    [Test]
+    public void Dispose_with_null_fields_does_not_throw()
+    {
+        SlotsAndProofs sut = new()
+        {
+            PathsAndSlots = null!,
+            Proofs = null
+        };
+
+        Assert.DoesNotThrow(() => sut.Dispose());
+    }
+
     /// <summary>
     /// Minimal IOwnedReadOnlyList that counts Dispose calls.
     /// DisposeRecursive iterates elements (none here) then calls Dispose on the list.
