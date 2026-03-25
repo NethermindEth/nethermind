@@ -36,6 +36,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.TxPool;
 using Nethermind.Serialization.Json;
 using System.Reflection;
 using System.Text.Json;
@@ -137,7 +138,9 @@ public abstract class BlockchainTestBase
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .Intercept<IBlocksConfig>(cfg => cfg.PreWarmStateConcurrency = 0);
 
         if (isEngineTest)
         {
