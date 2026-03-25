@@ -310,8 +310,8 @@ public class BatchedTrieVisitor<TNodeContext>
             using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
             TreePath emptyPath = TreePath.Empty;
             while (GetNextBatch() is { } currentBatch)
-            using (currentBatch)
-            {
+                using (currentBatch)
+                {
                     // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
                     // but the path ordering is important for read amplification
                     resolveOrdering.Clear();
@@ -375,7 +375,7 @@ public class BatchedTrieVisitor<TNodeContext>
                         AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
                         QueueNextNodes(ref nextToProcesses);
                     }
-            }
+                }
         }
         finally
         {
