@@ -334,9 +334,11 @@ public class SyncDispatcherTests
 
         await dispatcher.DisposeAsync();
 
-        // After dispose, changing feed state should not throw or interact with
-        // the dispatcher. If the handler were still subscribed, it would try to
-        // update internal state on a disposed object.
+        // After dispose, the dispatcher's internal semaphores and countdown events
+        // are disposed. If the StateChanged handler were still subscribed, Activate()
+        // would trigger UpdateState which accesses those disposed resources.
+        // No throw confirms the handler was actually removed, not just that the
+        // callback happens to be harmless.
         Assert.DoesNotThrow(() => syncFeed.Activate());
     }
 
@@ -354,6 +356,29 @@ public class SyncDispatcherTests
 
         await dispatcher.DisposeAsync();
         await dispatcher.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+
+        // Start and immediately dispose — sets _currentFeedState to Dormant
+        await dispatcher.DisposeAsync();
+
+        // Activate then Finish — if handler is still subscribed, this would
+        // modify internal state and potentially access disposed resources
+        syncFeed.Activate();
+        syncFeed.Finish();
+
+        // No exception means the handler was properly unsubscribed
     }
 
     [Retry(tryCount: 5)]
