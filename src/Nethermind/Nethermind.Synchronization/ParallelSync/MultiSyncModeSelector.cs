@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -61,8 +62,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private long? LastBlockThatEnabledFullSync { get; set; }
         private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
-        private readonly CancellationTokenSource _cancellation = new();
-        private int _disposed;
+        private CancellationTokenSource? _cancellation = new();
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            _ = StartAsync(_cancellation.Token);
+            _ = StartAsync(_cancellation?.Token ?? CancellationToken.None);
         }
 
         private async Task StartAsync(CancellationToken cancellationToken)
@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public Task StopAsync()
         {
-            return _cancellation.CancelAsync();
+            return _cancellation?.CancelAsync() ?? Task.CompletedTask;
         }
 
         string IStoppableService.Description => "sync mode selector";
@@ -700,9 +700,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            _cancellation.Cancel();
-            _cancellation.Dispose();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
         }
 
         private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)

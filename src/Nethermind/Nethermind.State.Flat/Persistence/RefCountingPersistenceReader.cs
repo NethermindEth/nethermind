@@ -18,7 +18,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
     private const int NoAccessors = 0; // Same as parent's constant
     private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
-    private readonly CancellationTokenSource _cts = new();
+    private CancellationTokenSource? _cts = new();
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)
     {
         _innerReader = innerReader;
@@ -29,7 +29,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
             // It prevents database compaction, so this needs to be closed eventually.
             while (true)
             {
-                if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(60_000, _cts.Token)) return;
+                if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(60_000, _cts?.Token ?? CancellationToken.None)) return;
                 if (Volatile.Read(ref _leases.Value) <= NoAccessors) return;
                 if (logger.IsWarn)
                     logger.Warn($"Unexpected old snapshot created. Lease count {_leases.Value}. State {CurrentState}");
@@ -67,8 +67,7 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     protected override void CleanUp()
     {
-        _cts.Cancel();
-        _cts.Dispose();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _cts);
         _innerReader.Dispose();
     }
 

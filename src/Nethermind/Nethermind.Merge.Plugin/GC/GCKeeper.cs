@@ -23,8 +23,7 @@ public class GCKeeper : IDisposable
     private static readonly long _defaultSize = 512.MB;
     private Task _gcScheduleTask = Task.CompletedTask;
     private readonly Func<IDisposable> _tryStartNoGCRegionFunc;
-    private readonly CancellationTokenSource _shutdownCts = new();
-    private int _disposed;
+    private CancellationTokenSource? _shutdownCts = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
     {
@@ -36,9 +35,7 @@ public class GCKeeper : IDisposable
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        _shutdownCts.Cancel();
-        _shutdownCts.Dispose();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
     }
 
     public Task<IDisposable> TryStartNoGCRegionAsync() => Task.Run(_tryStartNoGCRegionFunc);
@@ -175,7 +172,7 @@ public class GCKeeper : IDisposable
             }
             else
             {
-                if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts.Token)) return;
+                if (!await TaskExtensions.DelaySafe(postBlockDelayMs, _shutdownCts?.Token ?? CancellationToken.None)) return;
             }
 
             if (GCSettings.LatencyMode != GCLatencyMode.NoGCRegion)

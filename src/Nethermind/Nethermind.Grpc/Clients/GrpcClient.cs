@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Grpc.Clients
@@ -19,7 +20,9 @@ namespace Nethermind.Grpc.Clients
         private Channel _channel;
         private NethermindService.NethermindServiceClient _client;
         private readonly string _address;
-        private readonly CancellationTokenSource _cts = new();
+#nullable enable
+        private CancellationTokenSource? _cts = new();
+#nullable restore
 
         public GrpcClient(string host, int port, int reconnectionInterval, ILogManager logManager)
         {
@@ -64,7 +67,7 @@ namespace Nethermind.Grpc.Clients
             _client = new NethermindService.NethermindServiceClient(_channel);
             while (_channel.State != ChannelState.Ready)
             {
-                await Task.Delay(_reconnectionInterval, _cts.Token);
+                await Task.Delay(_reconnectionInterval, _cts?.Token ?? CancellationToken.None);
             }
 
             if (_logger.IsInfo) _logger.Info($"Connected gRPC client to: '{_address}'");
@@ -74,7 +77,7 @@ namespace Nethermind.Grpc.Clients
         public Task StopAsync()
         {
             _connected = false;
-            _cts.Cancel();
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _cts);
             return _channel?.ShutdownAsync() ?? Task.CompletedTask;
         }
 
