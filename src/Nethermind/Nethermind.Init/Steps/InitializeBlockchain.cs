@@ -29,10 +29,10 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompositeTxGossipPolicy txGossipPolicy) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
-        protected readonly CompositeTxGossipPolicy _txGossipPolicy = txGossipPolicy;
+        protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
         public async Task Execute(CancellationToken _)
         {

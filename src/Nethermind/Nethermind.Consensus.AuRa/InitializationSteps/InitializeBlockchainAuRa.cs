@@ -20,7 +20,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompositeTxGossipPolicy txGossipPolicy)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private INethermindApi NethermindApi => api;

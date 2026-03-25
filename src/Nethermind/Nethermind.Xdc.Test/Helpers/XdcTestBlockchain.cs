@@ -187,7 +187,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
-                    ctx.Resolve<CompositeTxGossipPolicy>(),
+                    ctx.Resolve<ITxGossipPolicy>(),
                     new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );

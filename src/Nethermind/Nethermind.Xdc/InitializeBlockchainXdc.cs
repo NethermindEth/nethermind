@@ -11,7 +11,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Xdc;
 
-internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, CompositeTxGossipPolicy txGossipPolicy)
+internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
     : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private readonly INethermindApi _api = api;
