@@ -54,7 +54,7 @@ internal sealed class StateTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStateRlp(path, hash, flags);
+        bundle.TryLoadStateRlpForWarmer(path, hash, flags);
 
     public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
     {
@@ -103,5 +103,5 @@ internal sealed class StorageTrieStoreWarmerAdapter(
     }
 
     public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        bundle.TryLoadStorageRlp(addressHash, in path, hash, flags);
+        bundle.TryLoadStorageRlpForWarmer(addressHash, in path, hash, flags);
 }
