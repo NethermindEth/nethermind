@@ -284,13 +284,18 @@ public sealed class SnapshotBundle : IDisposable
         RefCountingTrieNode? node = _transientResource.TryGetStateNode(path, hash);
         if (node is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             node.AcquireLease();
             return node;
         }
 
         // Check main cache
         node = _trieNodeCache.TryGet(null, path, hash);
-        if (node is not null) return node;
+        if (node is not null)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
+        }
 
         // Check changed/read TrieNode dictionaries — warmer no longer goes through FindStateNodeOrUnknown
         if (TryRentFromTrieNode(_changedStateNodes, path, hash, out node)) return node;
@@ -301,6 +306,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStateNode(path, out TrieNode? trieNode) && trieNode.Keccak == hash && trieNode.FullRlp.IsNotNullOrEmpty)
             {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return RentAndCacheStateRlp(path, hash, trieNode.FullRlp.AsSpan());
             }
         }
@@ -333,20 +339,27 @@ public sealed class SnapshotBundle : IDisposable
         RefCountingTrieNode? node = _transientResource.TryGetStorageNode(addressHash, path, hash);
         if (node is not null)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             node.AcquireLease();
             return node;
         }
 
         node = _trieNodeCache.TryGet(addressHash, path, hash);
-        if (node is not null) return node;
+        if (node is not null)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return node;
+        }
 
         // Check changed/read TrieNode dictionaries
         if (_trieChanged && _changedStorageNodes.TryGetValue((addressHash, path), out TrieNode? changedNode) && changedNode.Keccak == hash && changedNode.FullRlp.IsNotNullOrEmpty)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return RentAndCacheStorageRlp(addressHash, path, hash, changedNode.FullRlp.AsSpan());
         }
         if (_readStorageNodes.TryGetValue((addressHash, path), out TrieNode? readNode) && readNode.Keccak == hash && readNode.FullRlp.IsNotNullOrEmpty)
         {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return RentAndCacheStorageRlp(addressHash, path, hash, readNode.FullRlp.AsSpan());
         }
 
@@ -354,6 +367,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             if (_snapshots[i].TryGetStorageNode(addressHash, path, out TrieNode? trieNode) && trieNode.Keccak == hash && trieNode.FullRlp.IsNotNullOrEmpty)
             {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 return RentAndCacheStorageRlp(addressHash, path, hash, trieNode.FullRlp.AsSpan());
             }
         }
@@ -386,6 +400,7 @@ public sealed class SnapshotBundle : IDisposable
         if (trieNode.Keccak != hash)
             throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {trieNode.Keccak}");
         if (!trieNode.FullRlp.IsNotNullOrEmpty) return false;
+        Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         node = RentAndCacheStateRlp(path, hash, trieNode.FullRlp.AsSpan());
         return node is not null;
     }
