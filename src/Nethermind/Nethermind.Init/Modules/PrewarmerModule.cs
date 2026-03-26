@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -37,6 +38,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
     {
         protected override void Load(ContainerBuilder builder)
         {
+            builder.Register(_ => new SeqlockCache<StorageCell, byte[]>()).SingleInstance();
+
             builder
                 // Singleton so that all child env share the same caches. Note: this module is applied per-processing
                 // module, so singleton here is like scoped but exclude inner prewarmer lifetime.
@@ -53,7 +56,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                     return new PrewarmerScopeProvider(
                         worldStateScopeProvider,
                         ctx.Resolve<PreBlockCaches>(),
-                        populatePreBlockCache: false
+                        populatePreBlockCache: false,
+                        crossBlockCache: ctx.Resolve<SeqlockCache<StorageCell, byte[]>>()
                     );
                 })
                 .AddDecorator<ICodeInfoRepository>((ctx, originalCodeInfoRepository) =>
