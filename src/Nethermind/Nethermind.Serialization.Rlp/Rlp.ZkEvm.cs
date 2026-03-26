@@ -42,6 +42,7 @@ public partial class Rlp
         // Register the required decoders explicitly instead.
         RegisterDecoder(typeof(Account), AccountDecoder.Instance);
         RegisterDecoder(typeof(AccountChanges), AccountChangesDecoder.Instance);
+        RegisterDecoder(typeof(AuthorizationTuple), new AuthorizationTupleDecoder());
         RegisterDecoder(typeof(BalanceChange), BalanceChangeDecoder.Instance);
         RegisterDecoder(typeof(Block), new BlockDecoder());
         RegisterDecoder(typeof(BlockAccessList), BlockAccessListDecoder.Instance);
