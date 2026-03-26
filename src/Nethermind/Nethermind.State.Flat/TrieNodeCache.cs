@@ -17,8 +17,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class TrieNodeCache : ITrieNodeCache
 {
-    // RefCountingTrieNode object: ~128 (PaddedValue) + 32 (Hash) + 35 (Metadata) + 546 (Rlp) + 8 (pool ref) + 16 (header) ≈ 765
-    private const int EstimatedSizePerNode = 800;
+    // RefCountingTrieNode object: ~128 (PaddedValue) + 32 (Hash) + 35 (Metadata) + 546 (Rlp) + 128 (Children) + 8 (tracker ref) + 16 (header) ≈ 893
+    private const int EstimatedSizePerNode = 928;
     private const double UtilRatio = 0.25;
     private const int ShardCount = 256;
 
