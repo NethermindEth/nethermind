@@ -71,31 +71,25 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     private async Task CleanOldRequests()
     {
-        try
+        while (true)
         {
             await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken);
 
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
-                await Task.Delay(_oldRequestThreshold, _cancellationToken);
-
-                foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
+                if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
-                    if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
+                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
-                        if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
-                        {
-                            Interlocked.Decrement(ref _requestCount);
-                            // Unblock waiting thread.
-                            request.CompletionSource.TrySetException(new TimeoutException("No response received"));
-                        }
+                        Interlocked.Decrement(ref _requestCount);
+                        // Unblock waiting thread.
+                        request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
-
-                if (Volatile.Read(ref _requestCount) == 0) break;
             }
+
+            if (Volatile.Read(ref _requestCount) == 0) break;
         }
-        catch (OperationCanceledException) { }
     }
 
     public void Handle(long id, TData data, long size)
