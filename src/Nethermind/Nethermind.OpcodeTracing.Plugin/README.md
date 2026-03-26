@@ -17,7 +17,7 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
   - **Retrospective mode**: Single JSON file per trace with metadata and aggregated opcode counts
   - **RealTime mode**: Dual output - per-block JSON files + cumulative JSON file with running totals
 
-- **Parallel Processing for Retrospective Mode**:
+- **Parallel Processing for Retrospective and RetrospectiveExecution Modes**:
   - Traces blocks in parallel using the `MaxDegreeOfParallelism` parameter
 
 ## Understanding the Tracing Modes
@@ -36,9 +36,9 @@ The Opcode Tracing Plugin enables tracing of EVM opcode usage across configurabl
 **Block Range Behavior**:
 When `StartBlock` and `EndBlock` are configured:
 
-- Only blocks within the configured range are traced
-- After `EndBlock` is reached, tracing **stops** and the cumulative file is finalized with `completionStatus="complete"`
-- Blocks after `EndBlock` are **not** traced
+- Blocks before `StartBlock` are skipped
+- After `EndBlock` is reached, the cumulative file is finalized with `completionStatus="complete"`
+- Tracing continues beyond `EndBlock` for any new blocks, writing per-block files and updating the cumulative totals
 
 When `RecentBlocks` is configured:
 
@@ -158,7 +158,7 @@ dotnet run --project Nethermind.Runner -- \\
 | `EndBlock` | long? | null | Last block number (inclusive) |
 | `RecentBlocks` | long? | null | Number of recent blocks to trace |
 | `Mode` | string | "RealTime" | Tracing mode: RealTime, Retrospective, or RetrospectiveExecution |
-| `MaxDegreeOfParallelism` | int | 0 | Parallel processing limit (0 = auto) |
+| `MaxDegreeOfParallelism` | int | 0 | Parallel processing limit for Retrospective and RetrospectiveExecution modes (0 = auto) |
 
 ### JSON Configuration
 
@@ -311,9 +311,12 @@ This mode captures actual executed opcodes including internal calls, providing a
 The plugin validates configuration on startup:
 
 - StartBlock must be ≤ EndBlock
+- StartBlock must be non-negative
+- RecentBlocks must be positive
 - Warns when both explicit range and RecentBlocks parameter specified
+- Warns when only StartBlock is specified (uses current chain tip as EndBlock)
 - At least one range specification required
-- EndBlock must not exceed current chain tip
+- EndBlock beyond current chain tip is allowed (RealTime waits for new blocks; Retrospective waits for sync)
 - Output directory must be writable
 
 ### Error Detection

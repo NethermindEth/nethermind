@@ -201,8 +201,13 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
                 effectiveStart = currentTip + 1;
                 effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
-                // Update progress tracker with new range
+                // Update progress tracker and trace config with new range
                 _progress = new TracingProgress(effectiveStart, effectiveEnd);
+                _traceConfig = _traceConfig with
+                {
+                    EffectiveStartBlock = effectiveStart,
+                    EffectiveEndBlock = effectiveEnd
+                };
 
                 if (_logger.IsInfo)
                 {

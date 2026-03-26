@@ -28,6 +28,7 @@ public sealed class RealTimeTracer : IAsyncDisposable
     // Tracking state
     private readonly Stopwatch _stopwatch;
     private readonly DateTime _startedAt;
+    private readonly SemaphoreSlim _cumulativeWriteLock = new(1, 1);
     private long _firstBlock = -1;
     private long _lastBlock = -1;
     private long _totalBlocksProcessed;
@@ -197,6 +198,12 @@ public sealed class RealTimeTracer : IAsyncDisposable
     /// </summary>
     private async Task UpdateCumulativeFileAsync()
     {
+        if (!await _cumulativeWriteLock.WaitAsync(0).ConfigureAwait(false))
+        {
+            // Another write is already in progress; skip this update
+            return;
+        }
+
         try
         {
             string status = _rangeCompleted ? "complete" : "in_progress";
@@ -209,6 +216,10 @@ public sealed class RealTimeTracer : IAsyncDisposable
             {
                 _logger.Error($"Failed to update cumulative file: {ex.Message}", ex);
             }
+        }
+        finally
+        {
+            _cumulativeWriteLock.Release();
         }
     }
 

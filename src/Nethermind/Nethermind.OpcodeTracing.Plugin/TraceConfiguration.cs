@@ -158,6 +158,7 @@ public sealed record TraceConfiguration
             // Start block only, use current chain tip as end
             effectiveStart = config.StartBlock.Value;
             effectiveEnd = currentChainTip;
+            warnings.Add($"Only StartBlock specified, using current chain tip ({currentChainTip}) as EndBlock.");
         }
         else if (config.EndBlock.HasValue)
         {
