@@ -10,6 +10,8 @@ using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -21,6 +23,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -50,12 +53,45 @@ namespace Nethermind.Consensus.Processing
             private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
             private BlockAccessList[] _intermediateBlockAccessLists;
+            ITransactionProcessorAdapter[] _transactionProcessorAdapters;
+            ITransactionProcessor[] _transactionProcessors;
+            ParallelWorldState[] _parallelWorldState;
             private const int GasValidationChunkSize = 8;
+            private long _gasUsed;
 
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 _transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
                 _blockExecutionContext = blockExecutionContext;
+            }
+
+            public void SetGasUsed(long gasUsed)
+            {
+                _gasUsed = gasUsed;
+            }
+
+            public void Setup(Block block, ProcessingOptions processingOptions)
+            {
+                int len = block.Transactions.Length;
+                _transactionProcessorAdapters = new ITransactionProcessorAdapter[len + 2];
+                _transactionProcessors = new ITransactionProcessor[len + 2];
+                _parallelWorldState = new ParallelWorldState[len + 2];
+                _intermediateBlockAccessLists = new BlockAccessList[len + 2];
+
+                for (int i = 0; i < len + 2; i++)
+                {
+                    BlockAccessList bal = new()
+                    {
+                        Index = i
+                    };
+                    _intermediateBlockAccessLists[i] = bal;
+
+                    (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, ParallelWorldState parallelWorldState) = CreateTransactionProcessor(block, i, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                    _transactionProcessors[i] = transactionProcessor;
+                    _transactionProcessorAdapters[i] = transactionProcessorAdapter;
+                    _parallelWorldState[i] = parallelWorldState;
+                }
+
             }
 
             public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -67,16 +103,27 @@ namespace Nethermind.Consensus.Processing
                     ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
             }
 
-            private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            private (ExecuteTransactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy>, ParallelWorldState) CreateTransactionProcessor(Block block, int balIndex, bool isBuildingBlock)
             {
-                // todo: add parallel to _transactionprocessor
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, balIndex, block, _intermediateBlockAccessLists[balIndex], GeneratedBlockAccessList, new(logManager), isBuildingBlock);
                 TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                 ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                 transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
 
-                long? gasRemaining = block.GasUsed;
+                return (transactionProcessorAdapter, transactionProcessor, parallelWorldState);
+            }
+
+            private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            {
+                // VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                // ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                // TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                // ExecuteTransactionProcessorAdapter transactionProcessorAdapter = CreateTransactionProcessor(block, -1, _intermediateBlockAccessLists[bal], );
+                // transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+
+
+                long? gasRemaining = _gasUsed;
                 if (gasRemaining is not null)
                 {
                     ValidateBlockAccessList(block, 0, gasRemaining.Value);
@@ -86,7 +133,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(transactionProcessorAdapter, block, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(_transactionProcessorAdapters[i + 1], block, currentTx, i, receiptsTracer, processingOptions);
 
                     if (gasRemaining is not null)
                     {
@@ -102,31 +149,31 @@ namespace Nethermind.Consensus.Processing
             private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
             {
                 int len = block.Transactions.Length;
-                ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
-                _intermediateBlockAccessLists = new BlockAccessList[len + 2];
+                // ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
+                // _intermediateBlockAccessLists = new BlockAccessList[len + 2];
                 TransientStorageProvider[] transientStorageProviders = new TransientStorageProvider[len + 2];
                 BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
                 TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
 
                 for (int i = 0; i < len + 2; i++)
                 {
-                    BlockAccessList bal = new()
-                    {
-                        Index = i
-                    };
-                    _intermediateBlockAccessLists[i] = bal;
+                    // BlockAccessList bal = new()
+                    // {
+                    //     Index = i
+                    // };
+                    // _intermediateBlockAccessLists[i] = bal;
                     transientStorageProviders[i] = new(logManager);
                 }
 
                 for (int i = 0; i < len; i++)
                 {
                     // todo: look into reusing / reducing allocation
-                    VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                    ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1], processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
-                    TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
-                    ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
-                    transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
-                    transactionProcessors[i] = transactionProcessorAdapter;
+                    // VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                    // ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1], processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                    // TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                    // ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
+                    // transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+                    // transactionProcessors[i] = transactionProcessorAdapter;
 
                     BlockReceiptsTracer tracer = new();
                     tracer.StartNewBlockTrace(block);
@@ -140,7 +187,7 @@ namespace Nethermind.Consensus.Processing
                     0,
                     len + 1,
                     ParallelUnbalancedWork.DefaultOptions,
-                    (block, processingOptions, stateProvider, transactionProcessors, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                    (block, processingOptions, stateProvider, transactionProcessors: _transactionProcessorAdapters, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
                     static (i, state) =>
                     {
                         if (i == 0)
@@ -155,7 +202,7 @@ namespace Nethermind.Consensus.Processing
                         {
                             Transaction tx = state.txs[txIndex];
                             ProcessTransactionParallel(
-                                state.transactionProcessors[txIndex],
+                                state.transactionProcessors[i],
                                 state.stateProvider,
                                 state.block,
                                 tx,
@@ -179,8 +226,9 @@ namespace Nethermind.Consensus.Processing
             private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers)
             {
                 int len = block.Transactions.Length;
-                long gasRemaining = block.GasUsed;
-                // ValidateBlockAccessList(block, 0, gasRemaining);
+                long gasRemaining = _gasUsed;
+                MergeIntermediateBalsUpTo(0, _intermediateBlockAccessLists);
+                ValidateBlockAccessList(block, 0, gasRemaining);
 
                 long totalGas = 0;
                 for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -199,7 +247,7 @@ namespace Nethermind.Consensus.Processing
 
                         bool validateStorageReads = j == chunkEnd - 1;
                         MergeIntermediateBalsUpTo((ushort)(j + 1), _intermediateBlockAccessLists);
-                        // ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
+                        ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
                     }
 
                     if (totalGas > block.Header.GasLimit)
@@ -426,6 +474,16 @@ namespace Nethermind.Consensus.Processing
                 }
             }
 
+            public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+            {
+                new BeaconBlockRootHandler(_transactionProcessors[0], _parallelWorldState[0]).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            }
+
+            public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+            {
+                new BlockhashStore(_parallelWorldState[0]).ApplyBlockhashStateChanges(header, spec);
+            }
+
             private static bool HasNoChanges(in ChangeAtIndex c)
                 => c.BalanceChange is null &&
                     c.NonceChange is null &&
@@ -433,7 +491,7 @@ namespace Nethermind.Consensus.Processing
                     !c.SlotChanges.GetEnumerator().MoveNext();
 
 
-            public void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
+            private void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
             {
                 if (index == 0)
                 {

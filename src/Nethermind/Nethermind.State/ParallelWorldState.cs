@@ -705,10 +705,17 @@ public class ParallelWorldState(
             throw new ArgumentNullException(nameof(blockAccessIndex));
     }
 
-    private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null) =>
-        ParallelExecutionEnabled ?
+    private BlockAccessList GetGeneratingBlockAccessList(int? blockAccessIndex = null)
+    {
+        if (blockAccessIndex != BlockAccessIndex)
+        {
+
+        }
+        return ParallelExecutionEnabled ?
             _intermediateBlockAccessList :
             _generatedBlockAccessList;
+    }
+        
 
     // todo: run in parallel like prewarmer
     // private void LoadPreBlockState(BlockAccessList blockAccessList)

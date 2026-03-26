@@ -65,4 +65,24 @@ public class SimulateBlockValidationTransactionsExecutor(
     {
         throw new System.NotImplementedException();
     }
+
+    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void Setup(Block block, ProcessingOptions processingOptions)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void SetGasUsed(long gasUsed)
+    {
+        throw new System.NotImplementedException();
+    }
 }

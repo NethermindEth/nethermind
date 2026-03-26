@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Producers;
@@ -16,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -23,8 +26,6 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using Nethermind.TxPool.Comparison;
-
-#nullable enable
 
 namespace Nethermind.Consensus.Processing
 {
@@ -46,6 +47,10 @@ namespace Nethermind.Consensus.Processing
             // private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
             private readonly ILogger _logger = logManager.GetClassLogger();
             private BlockExecutionContext _blockExecutionContext;
+            private BlockAccessList[] _intermediateBlockAccessLists;
+            private ITransactionProcessorAdapter[] _transactionProcessorAdapters;
+            private ITransactionProcessor[] _transactionProcessors;
+            private ParallelWorldState[] _parallelWorldState;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -55,21 +60,79 @@ namespace Nethermind.Consensus.Processing
                 remove => txPicker.AddingTransaction -= value;
             }
 
+            public void SetGasUsed(long gasUsed) { }
+
             public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
                 _blockExecutionContext = blockExecutionContext;
             }
 
+            private (ExecuteTransactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy>, ParallelWorldState) CreateTransactionProcessor(Block block, int balIndex, bool isBuildingBlock)
+            {
+                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, balIndex, block, _intermediateBlockAccessLists[balIndex], GeneratedBlockAccessList, new(logManager), isBuildingBlock);
+                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
+                transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+
+                return (transactionProcessorAdapter, transactionProcessor, parallelWorldState);
+            }
+
+            public void Setup(Block block, ProcessingOptions processingOptions)
+            {
+                int len = block.Transactions.Length;
+                _transactionProcessorAdapters = new ITransactionProcessorAdapter[len + 2];
+                _transactionProcessors = new ITransactionProcessor[len + 2];
+                _parallelWorldState = new ParallelWorldState[len + 2];
+                _intermediateBlockAccessLists = new BlockAccessList[len + 2];
+
+                for (int i = 0; i < len + 2; i++)
+                {
+                    BlockAccessList bal = new()
+                    {
+                        Index = i
+                    };
+                    _intermediateBlockAccessLists[i] = bal;
+
+                    (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, ParallelWorldState parallelWorldState) = CreateTransactionProcessor(block, i, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                    _transactionProcessors[i] = transactionProcessor;
+                    _transactionProcessorAdapters[i] = transactionProcessorAdapter;
+                    _parallelWorldState[i] = parallelWorldState;
+                }
+
+            }
+
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,
                 BlockReceiptsTracer receiptsTracer, CancellationToken token = default)
             {
 
-                VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
-                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
-                ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
-                transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+                // VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
+                // ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                // TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                // ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
+                // transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
+
+                // int len = block.Transactions.Length;
+                // _transactionProcessorAdapters = new ITransactionProcessorAdapter[len + 2];
+                // _transactionProcessors = new ITransactionProcessor[len + 2];
+                // _parallelWorldState = new ParallelWorldState[len + 2];
+                // _intermediateBlockAccessLists = new BlockAccessList[len + 2];
+
+                // for (int j = 0; j < len + 2; j++)
+                // {
+                //     BlockAccessList bal = new()
+                //     {
+                //         Index = j
+                //     };
+                //     _intermediateBlockAccessLists[j] = bal;
+
+                //     (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, ParallelWorldState parallelWorldState) = CreateTransactionProcessor(block, j, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                //     _transactionProcessors[j] = transactionProcessor;
+                //     _transactionProcessorAdapters[j] = transactionProcessorAdapter;
+                //     _parallelWorldState[j] = parallelWorldState;
+                // }
+
 
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
@@ -89,7 +152,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(transactionProcessorAdapter, block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(_transactionProcessorAdapters[i], block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -102,7 +165,7 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
-                GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                // GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -112,6 +175,15 @@ namespace Nethermind.Consensus.Processing
                 return receiptsTracer.TxReceipts.ToArray();
             }
 
+            public void StoreBeaconRoot(Block block, IReleaseSpec spec)
+            {
+                new BeaconBlockRootHandler(_transactionProcessors[0], _parallelWorldState[0]).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            }
+
+            public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
+            {
+                new BlockhashStore(_parallelWorldState[0]).ApplyBlockhashStateChanges(header, spec);
+            }
 
             public void SetBlockAccessList(Block block, IReleaseSpec spec)
             {

@@ -67,6 +67,7 @@ public partial class BlockProcessor(
         {
             // _balBuilder.TracingEnabled = true;
             blockTransactionsExecutor.GeneratedBlockAccessList.Clear();
+            blockTransactionsExecutor.SetGasUsed(suggestedBlock.GasUsed);
 
             if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))
             {
@@ -121,8 +122,17 @@ public partial class BlockProcessor(
         bool shouldComputeStateRoot = ShouldComputeStateRoot(header);
         blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
+        blockTransactionsExecutor.Setup(block, options);
+
         StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            blockTransactionsExecutor.ApplyBlockhashStateChanges(header, spec);
+        }
+        else
+        {
+            blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        }
         _stateProvider.Commit(spec, commitRoots: false);
 
         // _balBuilder?.MergeIntermediateBalsUpTo(0);
@@ -195,7 +205,14 @@ public partial class BlockProcessor(
     {
         try
         {
-            beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            if (spec.BlockLevelAccessListsEnabled)
+            {
+                blockTransactionsExecutor.StoreBeaconRoot(block, spec);
+            }
+            else
+            {
+                beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+            }
         }
         catch (Exception e)
         {

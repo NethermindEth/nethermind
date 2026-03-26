@@ -40,7 +40,11 @@ namespace Nethermind.Consensus.Processing
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
             void SetBlockAccessList(Block block, IReleaseSpec spec);
+            void StoreBeaconRoot(Block block, IReleaseSpec spec);
             BlockAccessList GeneratedBlockAccessList { get; set; }
+            void Setup(Block block, ProcessingOptions processingOptions);
+            void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
+            void SetGasUsed(long gasUsed);
         }
     }
 }
