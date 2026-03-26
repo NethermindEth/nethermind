@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Core;
 using Nethermind.OpcodeTracing.Plugin.Output;
 using Nethermind.OpcodeTracing.Plugin.Tracing;
 
@@ -18,27 +19,10 @@ public class OpcodeTracingModule : Module
     /// <param name="builder">The container builder.</param>
     protected override void Load(ContainerBuilder builder)
     {
-        // Register configuration
         builder
-            .RegisterType<OpcodeTracingConfig>()
-            .As<IOpcodeTracingConfig>()
-            .SingleInstance();
-
-        // Register core services
-        builder
-            .RegisterType<OpcodeCounter>()
-            .AsSelf()
-            .SingleInstance();
-
-        builder
-            .RegisterType<TraceOutputWriter>()
-            .AsSelf()
-            .SingleInstance();
-
-        // Register trace recorder
-        builder
-            .RegisterType<OpcodeTraceRecorder>()
-            .AsSelf()
-            .SingleInstance();
+            .AddSingleton<IOpcodeTracingConfig, OpcodeTracingConfig>()
+            .AddSingleton<OpcodeCounter>()
+            .AddSingleton<TraceOutputWriter>()
+            .AddSingleton<OpcodeTraceRecorder>();
     }
 }
