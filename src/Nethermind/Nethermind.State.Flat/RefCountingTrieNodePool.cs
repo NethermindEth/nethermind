@@ -3,6 +3,7 @@
 
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -10,100 +11,114 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Shared object pool for <see cref="RefCountingTrieNode"/> instances and their type-specialized impls.
-/// Handles only object reuse — active-node tracking is done by <see cref="RefCountingRlpNodePoolTracker"/>.
+/// Shared object pool for <see cref="RefCountingTrieNode"/> instances and their type-specific byte[] RLP buffers.
 /// </summary>
 public sealed class RefCountingTrieNodePool
 {
+    public const int BranchBufferSize = 544;
+    public const int ExtensionBufferSize = 96;
+    public const int LeafBufferSize = 160;
+
     private readonly ObjectPool<RefCountingTrieNode> _shellPool;
-    private readonly ObjectPool<TrieNodeBranch> _branchPool;
-    private readonly ObjectPool<TrieNodeExtension> _extensionPool;
-    private readonly ObjectPool<TrieNodeLeaf> _leafPool;
+    private readonly ObjectPool<byte[]> _branchBufferPool;
+    private readonly ObjectPool<byte[]> _extensionBufferPool;
+    private readonly ObjectPool<byte[]> _leafBufferPool;
 
     public RefCountingTrieNodePool(int maxPooled = 4096)
     {
         _shellPool = new DefaultObjectPool<RefCountingTrieNode>(new ShellPolicy(), maxPooled);
-        _branchPool = new DefaultObjectPool<TrieNodeBranch>(new BranchPolicy(), maxPooled);
-        _extensionPool = new DefaultObjectPool<TrieNodeExtension>(new ExtensionPolicy(), maxPooled);
-        _leafPool = new DefaultObjectPool<TrieNodeLeaf>(new LeafPolicy(), maxPooled);
+        _branchBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(BranchBufferSize), maxPooled);
+        _extensionBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(ExtensionBufferSize), maxPooled);
+        _leafBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(LeafBufferSize), maxPooled);
     }
 
-    /// <summary>
-    /// Rents a node from the pool, determines node type from RLP, initializes the correct impl,
-    /// and returns a fully initialized <see cref="RefCountingTrieNode"/> bound to the given tracker.
-    /// </summary>
     internal RefCountingTrieNode Rent(RefCountingRlpNodePoolTracker tracker, ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
         RefCountingTrieNode shell = _shellPool.Get();
         shell.SetTracker(tracker);
 
         NodeType nodeType = DetermineNodeType(rlp);
-        object impl = nodeType switch
-        {
-            NodeType.Branch => RentAndInitBranch(rlp),
-            NodeType.Extension => RentAndInitExtension(rlp),
-            _ => RentAndInitLeaf(rlp),
-        };
+        byte[] buffer = RentBuffer(nodeType);
+        rlp.CopyTo(buffer);
+        CappedArray<byte> cappedRlp = new(buffer, rlp.Length);
 
-        shell.Initialize(hash, nodeType, impl);
+        shell.Initialize(hash, nodeType, cappedRlp);
+        ParseMetadata(shell, rlp);
         return shell;
     }
 
-    /// <summary>
-    /// Returns a node and its impl to the appropriate pools.
-    /// Called by <see cref="RefCountingRlpNodePoolTracker.Return"/>.
-    /// </summary>
     internal void Return(RefCountingTrieNode node)
     {
-        switch (node.NodeType)
+        byte[]? buffer = node.Rlp.UnderlyingArray;
+        if (buffer is not null)
         {
-            case NodeType.Branch:
-                TrieNodeBranch branch = Unsafe.As<TrieNodeBranch>(node.NodeImpl);
-                branch.Clear();
-                _branchPool.Return(branch);
-                break;
-            case NodeType.Extension:
-                TrieNodeExtension ext = Unsafe.As<TrieNodeExtension>(node.NodeImpl);
-                ext.Clear();
-                _extensionPool.Return(ext);
-                break;
-            default:
-                TrieNodeLeaf leaf = Unsafe.As<TrieNodeLeaf>(node.NodeImpl);
-                leaf.Clear();
-                _leafPool.Return(leaf);
-                break;
+            ReturnBuffer(node.NodeType, buffer);
         }
-
+        node.Rlp = default;
         _shellPool.Return(node);
     }
 
-    private TrieNodeBranch RentAndInitBranch(ReadOnlySpan<byte> rlp)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] RentBuffer(NodeType nodeType) => nodeType switch
     {
-        TrieNodeBranch branch = _branchPool.Get();
-        branch.Set(rlp);
-        branch.ParseMetadata(rlp);
-        return branch;
+        NodeType.Branch => _branchBufferPool.Get(),
+        NodeType.Extension => _extensionBufferPool.Get(),
+        _ => _leafBufferPool.Get(),
+    };
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ReturnBuffer(NodeType nodeType, byte[] buffer)
+    {
+        switch (nodeType)
+        {
+            case NodeType.Branch: _branchBufferPool.Return(buffer); break;
+            case NodeType.Extension: _extensionBufferPool.Return(buffer); break;
+            default: _leafBufferPool.Return(buffer); break;
+        }
     }
 
-    private TrieNodeExtension RentAndInitExtension(ReadOnlySpan<byte> rlp)
+    private static void ParseMetadata(RefCountingTrieNode node, ReadOnlySpan<byte> rlp)
     {
-        TrieNodeExtension ext = _extensionPool.Get();
-        ext.Set(rlp);
-        ext.ParseMetadata(rlp);
-        return ext;
+        if (node.NodeType == NodeType.Branch)
+        {
+            Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
+            int sequenceLength = ctx.ReadSequenceLength();
+            int endPosition = ctx.Position + sequenceLength;
+
+            for (int i = 0; i < 17 && ctx.Position < endPosition; i++)
+            {
+                byte prefix = rlp[ctx.Position];
+                if (prefix == 0x80)
+                {
+                    node.ChildOffsets[i] = 0;
+                    ctx.Position++;
+                }
+                else
+                {
+                    node.ChildOffsets[i] = (short)ctx.Position;
+                    ctx.SkipItem();
+                }
+            }
+        }
+        else if (node.NodeType == NodeType.Extension)
+        {
+            Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
+            ctx.ReadSequenceLength();
+
+            if (rlp[ctx.Position] < 0x80)
+            {
+                ctx.Position++;
+            }
+            else
+            {
+                (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
+                ctx.Position += contentLen;
+            }
+
+            node.ChildOffsets[0] = (short)ctx.Position;
+        }
     }
 
-    private TrieNodeLeaf RentAndInitLeaf(ReadOnlySpan<byte> rlp)
-    {
-        TrieNodeLeaf leaf = _leafPool.Get();
-        leaf.Set(rlp);
-        return leaf;
-    }
-
-    /// <summary>
-    /// Determines the node type from RLP by counting sequence items and checking compact key prefix.
-    /// Branch has 17 items; Extension/Leaf have 2 items distinguished by <c>(firstByte &amp; 0x20) != 0</c>.
-    /// </summary>
     private static NodeType DetermineNodeType(ReadOnlySpan<byte> rlp)
     {
         if (rlp.IsEmpty) return NodeType.Leaf;
@@ -115,7 +130,6 @@ public sealed class RefCountingTrieNodePool
 
         if (itemCount != 2) return NodeType.Branch;
 
-        // Extension or Leaf — determined by the compact encoding prefix
         byte firstByte;
         if (rlp[ctx.Position] < 0x80)
         {
@@ -136,21 +150,9 @@ public sealed class RefCountingTrieNodePool
         public override bool Return(RefCountingTrieNode obj) => true;
     }
 
-    private sealed class BranchPolicy : PooledObjectPolicy<TrieNodeBranch>
+    private sealed class ByteArrayPolicy(int size) : PooledObjectPolicy<byte[]>
     {
-        public override TrieNodeBranch Create() => new();
-        public override bool Return(TrieNodeBranch obj) => true;
-    }
-
-    private sealed class ExtensionPolicy : PooledObjectPolicy<TrieNodeExtension>
-    {
-        public override TrieNodeExtension Create() => new();
-        public override bool Return(TrieNodeExtension obj) => true;
-    }
-
-    private sealed class LeafPolicy : PooledObjectPolicy<TrieNodeLeaf>
-    {
-        public override TrieNodeLeaf Create() => new();
-        public override bool Return(TrieNodeLeaf obj) => true;
+        public override byte[] Create() => new byte[size];
+        public override bool Return(byte[] obj) => obj.Length == size;
     }
 }

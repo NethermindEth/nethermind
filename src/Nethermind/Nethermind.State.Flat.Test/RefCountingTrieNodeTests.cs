@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -120,11 +119,10 @@ public class RefCountingTrieNodeTests
 
         Assert.That(node.NodeType, Is.EqualTo(NodeType.Branch));
 
-        TrieNodeBranch branch = Unsafe.As<TrieNodeBranch>(node.NodeImpl);
         // All 16 children should have non-zero offsets (they're all hash refs)
         for (int i = 0; i < 16; i++)
         {
-            short offset = branch.ChildOffsets[i];
+            short offset = node.ChildOffsets[i];
             Assert.That(offset, Is.GreaterThan((short)0), $"Child {i} offset should be non-zero");
 
             // Verify the offset points to 0xA0 (hash ref prefix)
@@ -132,7 +130,7 @@ public class RefCountingTrieNodeTests
         }
 
         // Value slot (index 16) is 0x80 (empty), so its offset should be 0
-        Assert.That(branch.ChildOffsets[16], Is.EqualTo((short)0));
+        Assert.That(node.ChildOffsets[16], Is.EqualTo((short)0));
 
         node.Dispose();
     }

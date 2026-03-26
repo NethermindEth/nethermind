@@ -10,7 +10,7 @@ namespace Nethermind.State.Flat;
 public interface IFlatDbManager : IFlatCommitTarget
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, ICappedArrayPool? bufferPool = null);
+    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, ICappedArrayPool? bufferPool = null, RefCountingNodeLeasePool? leasePool = null);
     ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock);
     void FlushCache(CancellationToken cancellationToken);
     bool HasStateForBlock(in StateId stateId);

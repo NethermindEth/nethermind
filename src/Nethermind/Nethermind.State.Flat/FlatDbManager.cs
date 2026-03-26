@@ -219,7 +219,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, ICappedArrayPool? bufferPool = null)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, ICappedArrayPool? bufferPool = null, RefCountingNodeLeasePool? leasePool = null)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
@@ -227,7 +227,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             _trieNodeCache,
             _resourcePool,
             usage: usage,
-            bufferPool: bufferPool);
+            bufferPool: bufferPool,
+            leasePool: leasePool);
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)

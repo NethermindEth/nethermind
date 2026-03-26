@@ -46,6 +46,7 @@ public sealed class SnapshotBundle : IDisposable
     internal ResourcePool.Usage _usage;
 
     private readonly ICappedArrayPool? _bufferPool;
+    private readonly RefCountingNodeLeasePool? _leasePool;
 
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
@@ -53,7 +54,8 @@ public sealed class SnapshotBundle : IDisposable
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
-        ICappedArrayPool? bufferPool = null)
+        ICappedArrayPool? bufferPool = null,
+        RefCountingNodeLeasePool? leasePool = null)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
@@ -61,6 +63,7 @@ public sealed class SnapshotBundle : IDisposable
         _resourcePool = resourcePool;
         _usage = usage;
         _bufferPool = bufferPool;
+        _leasePool = leasePool;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -73,9 +76,14 @@ public sealed class SnapshotBundle : IDisposable
         Metrics.ActiveSnapshotBundle++;
     }
 
-    /// <summary>Copies RLP from a RefCountingTrieNode into a CappedArray, using the pool if available.</summary>
-    private CappedArray<byte> RentRlpCopy(RefCountingTrieNode node)
+    /// <summary>
+    /// Returns the node's RLP as a CappedArray. If the lease pool is available, holds a lease
+    /// on the node and returns its Rlp directly (zero copy). Otherwise copies.
+    /// </summary>
+    private CappedArray<byte> RentRlpOrCopy(RefCountingTrieNode node)
     {
+        if (_leasePool is not null && _leasePool.TryHoldLease(node))
+            return node.Rlp;
         if (_bufferPool is not null)
         {
             CappedArray<byte> result = _bufferPool.Rent(node.RlpLength);
@@ -195,7 +203,7 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return RentRlpCopy(changed);
+            return RentRlpOrCopy(changed);
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -206,7 +214,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -217,7 +225,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -229,7 +237,7 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(snapshotNode);
+                return RentRlpOrCopy(snapshotNode);
             }
         }
 
@@ -238,7 +246,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -258,7 +266,7 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return RentRlpCopy(changed);
+            return RentRlpOrCopy(changed);
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -268,7 +276,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -279,7 +287,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -291,7 +299,7 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return RentRlpCopy(snapshotNode);
+                return RentRlpOrCopy(snapshotNode);
             }
         }
 
@@ -300,7 +308,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return RentRlpCopy(cached);
+                return RentRlpOrCopy(cached);
             }
             finally { cached.Dispose(); }
         }
