@@ -151,7 +151,7 @@ cat <<EOF > node_$1/configs/config.json
         "Port": 8545
     },
     "KeyStoreConfig": {
-        "TestNodeKey": "$KEY"
+        "TestNodeKey": "$4"
     },
 	"Merge":{
 		"Enabled":false
