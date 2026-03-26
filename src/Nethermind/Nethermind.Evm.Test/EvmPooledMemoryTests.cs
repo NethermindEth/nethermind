@@ -317,11 +317,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         ulong ts = 123456;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ISpecProvider specProvider = new TestSpecProvider(London.Instance);
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         EthereumVirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
             specProvider,
-            IBlockAccessListBuilder.None,
             LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,

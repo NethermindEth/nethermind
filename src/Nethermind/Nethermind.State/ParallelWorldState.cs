@@ -205,4 +205,6 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlockAccessListBui
         _innerWorldState.ClearStorage(address);
     }
 
+    public override void AddAccountRead(Address address)
+        => _balStore.AddAccountRead(address);
 }

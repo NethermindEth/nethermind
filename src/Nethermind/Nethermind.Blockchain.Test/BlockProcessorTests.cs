@@ -347,7 +347,7 @@ public class BlockProcessorTests
 
         private long _gasUsed;
 
-        public void AddAccountRead(Address address)
+        public override void AddAccountRead(Address address)
         {
         }
 

@@ -27,7 +27,7 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     {
         IReleaseSpec spec = Fork.GetLatest();
         IBlockhashProvider hashProvider = new WarmupBlockhashProvider(MainnetSpecProvider.Instance);
-        VirtualMachine<TGasPolicy> vm = new(hashProvider, MainnetSpecProvider.Instance, IBlockAccessListBuilder.None, LimboLogs.Instance);
+        VirtualMachine<TGasPolicy> vm = new(hashProvider, MainnetSpecProvider.Instance, LimboLogs.Instance);
         ILogManager lm = new OneLoggerLogManager(NullLogger.Instance);
 
         byte[] bytecode = new byte[64];

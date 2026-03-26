@@ -129,11 +129,10 @@ public class TxProcessingBenchmark
             .WithStateRoot(_stateProvider.StateRoot)
             .TestObject;
 
-        EthereumCodeInfoRepository codeInfo = new(_stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository codeInfo = new(_stateProvider);
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
             SpecProvider,
-            IBlockAccessListBuilder.None,
             LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,

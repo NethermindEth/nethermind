@@ -34,9 +34,8 @@ using Int256;
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    IBlockAccessListBuilder balStore,
     ILogManager? logManager
-) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, balStore, logManager), IVirtualMachine
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
 {
 }
 
@@ -77,11 +76,9 @@ public static class VirtualMachineStatics
 public unsafe partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    IBlockAccessListBuilder balStore,
     ILogManager? logManager) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
-    public IBlockAccessListBuilder BalStore { get; } = balStore;
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -1404,5 +1401,4 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 public sealed class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    IBlockAccessListBuilder balStore,
-    ILogManager? logManager) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, balStore, logManager), IVirtualMachine;
+    ILogManager? logManager) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine;

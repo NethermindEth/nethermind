@@ -24,18 +24,16 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
-    private readonly IBlockAccessListBuilder _balBuilder;
 
-    public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, IBlockAccessListBuilder balBuilder)
-        : this(worldState, precompileProvider, balBuilder, codeInfoLoader: null)
+    public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
+        : this(worldState, precompileProvider, codeInfoLoader: null)
     {
     }
 
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, IBlockAccessListBuilder balBuilder, Func<ValueHash256, CodeInfo>? codeInfoLoader)
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _balBuilder = balBuilder;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
         CodeInfo DefaultLoad(ValueHash256 codeHash) =>
@@ -47,7 +45,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource))
         {
-            _balBuilder.AddAccountRead(codeSource);
+            _worldState.AddAccountRead(codeSource);
             return _localPrecompiles[codeSource];
         }
 

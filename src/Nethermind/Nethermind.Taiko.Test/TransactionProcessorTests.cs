@@ -49,8 +49,8 @@ public class TransactionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider, IBlockAccessListBuilder.None);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, IBlockAccessListBuilder.None, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new TaikoTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
     }
 

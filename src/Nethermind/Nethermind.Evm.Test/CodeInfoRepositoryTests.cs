@@ -58,7 +58,7 @@ public class CodeInfoRepositoryTests
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(false);
     }
@@ -81,7 +81,7 @@ public class CodeInfoRepositoryTests
         using var _scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _).Should().Be(true);
     }
@@ -93,7 +93,7 @@ public class CodeInfoRepositoryTests
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         Address result;
         sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out result);
@@ -113,7 +113,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(delegationAddress, 0);
         stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
 
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         sut.GetExecutableCodeHash(TestItem.AddressA, _releaseSpec).Should().Be(Keccak.Compute(code).ValueHash256);
     }
@@ -126,7 +126,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
 
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         sut.GetExecutableCodeHash(TestItem.AddressA, _releaseSpec).Should().Be(Keccak.Compute(code).ValueHash256);
     }
@@ -142,7 +142,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
         stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
         result.CodeSpan.ToArray().Should().BeEquivalentTo(delegationCode);
@@ -156,7 +156,7 @@ public class CodeInfoRepositoryTests
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
 
-        EthereumCodeInfoRepository sut = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository sut = new(stateProvider);
 
         sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec).Should().BeEquivalentTo(new CodeInfo(code));
     }

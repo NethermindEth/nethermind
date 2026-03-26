@@ -37,11 +37,11 @@ public class WitnessGeneratingBlockProcessingEnv(
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IBlockAccessListBuilder balBuilder, IHeaderFinder witnessGeneratingHeaderFinder)
+    private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
     {
         BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, balBuilder, logManager);
-        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider(), balBuilder);
+        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
+        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
         return new TransactionProcessor<EthereumGasPolicy>(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 
@@ -50,7 +50,7 @@ public class WitnessGeneratingBlockProcessingEnv(
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
         WitnessGeneratingWorldState state = new(baseWorldState, stateReader, witnessCapturingTrieStore, witnessGenHeaderFinder);
         BalStore balBuilder = new();
-        TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, balBuilder, witnessGenHeaderFinder);
+        TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
             new ExecuteTransactionProcessorAdapter(txProcessor), state, balBuilder);
 

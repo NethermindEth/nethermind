@@ -19,10 +19,10 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     private readonly IWorldState _worldState;
     private readonly CodeInfoRepository _inner;
 
-    public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, IBlockAccessListBuilder balBuilder)
+    public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _worldState = worldState;
-        _inner = new CodeInfoRepository(worldState, precompileProvider, balBuilder, GetOrCacheCodeInfo);
+        _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
     private CodeInfo GetOrCacheCodeInfo(ValueHash256 codeHash)

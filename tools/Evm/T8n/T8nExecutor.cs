@@ -34,13 +34,12 @@ public static class T8nExecutor
         KzgPolynomialCommitments.InitializeAsync().Wait();
 
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider, IBlockAccessListBuilder.None);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
         IBlockhashProvider blockhashProvider = ConstructBlockHashProvider(test);
 
         IVirtualMachine virtualMachine = new EthereumVirtualMachine(
             blockhashProvider,
             test.SpecProvider,
-            IBlockAccessListBuilder.None,
             _logManager);
         EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,

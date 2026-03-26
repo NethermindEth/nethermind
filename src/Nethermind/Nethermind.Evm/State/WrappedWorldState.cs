@@ -140,4 +140,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public void WarmUp(Address address)
         => _innerWorldState.WarmUp(address);
+
+    public virtual void AddAccountRead(Address address)
+        => _innerWorldState.AddAccountRead(address);
 }

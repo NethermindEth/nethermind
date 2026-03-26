@@ -213,7 +213,7 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            vm.BalStore.AddAccountRead(address);
+            vm.WorldState.AddAccountRead(address);
 
             CodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
@@ -241,7 +241,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            vm.BalStore.AddAccountRead(address);
+            vm.WorldState.AddAccountRead(address);
         }
 
         return EvmExceptionType.None;
@@ -288,7 +288,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             goto OutOfGas;
 
-        vm.BalStore.AddAccountRead(address);
+        vm.WorldState.AddAccountRead(address);
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;

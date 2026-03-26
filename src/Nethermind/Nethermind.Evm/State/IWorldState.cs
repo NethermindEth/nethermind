@@ -148,6 +148,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void ResetTransient();
 
+    void AddAccountRead(Address address) { }
+
     // See https://eips.ethereum.org/EIPS/eip-7610
     bool IsNonZeroAccount(Address address, out bool accountExists)
     {

@@ -74,8 +74,8 @@ public class MultipleUnsignedOperations
         _stateProvider.Commit(_spec);
 
         Console.WriteLine(MuirGlacier.Instance);
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider, IBlockAccessListBuilder.None);
-        _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, IBlockAccessListBuilder.None, new OneLoggerLogManager(NullLogger.Instance));
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        _virtualMachine = new EthereumVirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
         _virtualMachine.SetBlockExecutionContext(new BlockExecutionContext(_header, _spec));
         _virtualMachine.SetTxExecutionContext(new TxExecutionContext(Address.Zero, codeInfoRepository, null, 0));
 

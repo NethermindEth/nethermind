@@ -72,8 +72,8 @@ public abstract class VirtualMachineTestsBase
         _worldStateCloser = TestState.BeginScope(IWorldState.PreGenesis);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId);
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
-        CodeInfoRepository = new EthereumCodeInfoRepository(TestState, BalStore);
-        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, BalStore, logManager);
+        CodeInfoRepository = new EthereumCodeInfoRepository(TestState);
+        Machine = new EthereumVirtualMachine(blockhashProvider, SpecProvider, logManager);
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, logManager);
     }
 
