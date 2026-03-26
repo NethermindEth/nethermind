@@ -711,9 +711,7 @@ public class ParallelWorldState(
         {
 
         }
-        return ParallelExecutionEnabled ?
-            _intermediateBlockAccessList :
-            _generatedBlockAccessList;
+        return _intermediateBlockAccessList;
     }
         
 

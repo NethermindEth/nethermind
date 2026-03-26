@@ -136,6 +136,7 @@ namespace Nethermind.Consensus.Processing
                 //     _parallelWorldState[j] = parallelWorldState;
                 // }
 
+                MergeIntermediateBalsUpTo(0, _intermediateBlockAccessLists);
 
                 // We start with high number as don't want to resize too much
                 const int defaultTxCount = 512;
@@ -155,7 +156,7 @@ namespace Nethermind.Consensus.Processing
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
-                    TxAction action = ProcessTransaction(_transactionProcessorAdapters[i], block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
+                    TxAction action = ProcessTransaction(_transactionProcessorAdapters[i + 1], block, currentTx, i++, receiptsTracer, processingOptions, consideredTx);
                     if (action == TxAction.Stop) break;
 
                     consideredTx.Add(currentTx);
@@ -213,9 +214,22 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
+                    MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1), _intermediateBlockAccessLists);
                     block.GeneratedBlockAccessList = GeneratedBlockAccessList;
                     block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
                     block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+                }
+            }
+
+            private void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
+            {
+                if (index == 0)
+                {
+                    GeneratedBlockAccessList = intermediateBlockAccessLists[0];
+                }
+                else
+                {
+                    GeneratedBlockAccessList.Merge(intermediateBlockAccessLists[index]);
                 }
             }
 
@@ -236,17 +250,18 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    // GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {
+                        MergeIntermediateBalsUpTo((ushort)(index + 1), _intermediateBlockAccessLists);
                         _transactionProcessed?.Invoke(this,
                             new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
                     }
                     else
                     {
-                        GeneratedBlockAccessList.RollbackCurrentIndex();
+                        // GeneratedBlockAccessList.RollbackCurrentIndex();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }
