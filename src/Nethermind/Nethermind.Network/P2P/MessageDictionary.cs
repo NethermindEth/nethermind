@@ -12,7 +12,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
-using TaskExtensions = System.Threading.Tasks.TaskExtensions;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
@@ -73,7 +73,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     {
         while (true)
         {
-            await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken);
+            if (!await TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken))
+                break;
 
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {

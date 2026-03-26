@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -28,7 +29,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 /// </summary>
 public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 {
-    private readonly CancellationTokenSource _shutdown = new();
+    private CancellationTokenSource? _shutdown = new();
     private readonly IBlockProducer _blockProducer;
     private readonly ITxPool _txPool;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
@@ -99,7 +100,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken));
         }
         else if (_logger.IsInfo)
         {
@@ -141,13 +142,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
             {
-                IBlockImprovementContext ReturnCurrent(string? reason = null)
-                {
-                    if (_logger.IsTrace && reason is not null) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, {reason}");
-                    cts.Dispose();
-                    return currentContext;
-                }
-
                 if (cts.IsCancellationRequested)
                 {
                     return ReturnCurrent("improvement has been cancelled");
@@ -168,6 +162,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                 currentContext.Dispose();
                 return newContext;
+
+                IBlockImprovementContext ReturnCurrent(string? reason = null)
+                {
+                    if (_logger.IsTrace && reason is not null) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, {reason}");
+                    cts.Dispose();
+                    return currentContext;
+                }
             });
 
 
@@ -429,7 +430,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        _shutdown.Cancel();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdown);
     }
 
     public void CancelBlockProduction(string payloadId)
