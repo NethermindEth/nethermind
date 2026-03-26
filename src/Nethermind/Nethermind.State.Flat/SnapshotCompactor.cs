@@ -132,8 +132,8 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<AddressAsKey, Account?> accounts = snapshot.Content.Accounts;
         ConcurrentDictionary<(AddressAsKey, UInt256), SlotValue?> storages = snapshot.Content.Storages;
         ConcurrentDictionary<AddressAsKey, bool> selfDestructedStorageAddresses = snapshot.Content.SelfDestructedStorageAddresses;
-        ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> storageNodes = snapshot.Content.StorageNodes;
-        ConcurrentDictionary<TreePath, TrieNode> stateNodes = snapshot.Content.StateNodes;
+        ConcurrentDictionary<(Hash256AsKey, TreePath), RefCountingTrieNode> storageNodes = snapshot.Content.StorageNodes;
+        ConcurrentDictionary<TreePath, RefCountingTrieNode> stateNodes = snapshot.Content.StateNodes;
 
         using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(4);
 
@@ -193,7 +193,13 @@ public class SnapshotCompactor : ISnapshotCompactor
             for (int i = 0; i < snapshots.Count; i++)
             {
                 Snapshot knownState = snapshots[i];
-                stateNodes.AddOrUpdateRange(knownState.StateNodes);
+                foreach (KeyValuePair<TreePath, RefCountingTrieNode> kv in knownState.StateNodes)
+                {
+                    kv.Value.AcquireLease(); // +1 for compacted snapshot ownership
+                    if (stateNodes.TryGetValue(kv.Key, out RefCountingTrieNode? old))
+                        old.Dispose();
+                    stateNodes[kv.Key] = kv.Value;
+                }
             }
         }));
 
@@ -215,17 +221,23 @@ public class SnapshotCompactor : ISnapshotCompactor
                 if (addressHashToClear.Count > 0)
                 {
                     // Clear
-                    foreach (((Hash256AsKey Address, TreePath) key, TrieNode? _) in storageNodes)
+                    foreach (((Hash256AsKey Address, TreePath) key, RefCountingTrieNode? _) in storageNodes)
                     {
                         if (addressHashToClear.Contains(key.Address))
                         {
-                            storageNodes.Remove(key, out _);
+                            if (storageNodes.Remove(key, out RefCountingTrieNode? removed))
+                                removed.Dispose();
                         }
                     }
-
                 }
 
-                storageNodes.AddOrUpdateRange(knownState.StorageNodes);
+                foreach (KeyValuePair<(Hash256AsKey, TreePath), RefCountingTrieNode> kv in knownState.StorageNodes)
+                {
+                    kv.Value.AcquireLease(); // +1 for compacted snapshot ownership
+                    if (storageNodes.TryGetValue(kv.Key, out RefCountingTrieNode? old))
+                        old.Dispose();
+                    storageNodes[kv.Key] = kv.Value;
+                }
             }
         }));
 

@@ -23,6 +23,7 @@ public class SnapshotCompactorTests
     private ResourcePool _resourcePool = null!;
     private FlatDbConfig _config = null!;
     private SnapshotRepository _snapshotRepository;
+    private RefCountingRlpNodePoolTracker _tracker = new(new RefCountingTrieNodePool());
 
     [SetUp]
     public void SetUp()
@@ -101,8 +102,6 @@ public class SnapshotCompactorTests
         TreePath statePath2 = TreePath.FromHexString("ef01");
         TreePath storageNodePath1 = TreePath.FromHexString("1234");
         TreePath storageNodePath2 = TreePath.FromHexString("5678");
-        Hash256 storageNodeHash1 = Keccak.Zero;
-        Hash256 storageNodeHash2 = Keccak.Zero;
         SlotValue slotValue1 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100 });
         SlotValue slotValue2 = new SlotValue(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200 });
 
@@ -115,14 +114,16 @@ public class SnapshotCompactorTests
         snapshot.Content.Storages[(address2, storageIndex2)] = slotValue2;
 
         // Add state nodes
-        snapshot.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, storageNodeHash1);
-        snapshot.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, storageNodeHash2);
+        byte[] rlp1 = [0xc1, 0x01];
+        byte[] rlp2 = [0xc1, 0x02];
+        snapshot.Content.StateNodes[statePath1] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
+        snapshot.Content.StateNodes[statePath2] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
 
         // Add storage nodes
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, storageNodeHash1);
-        snapshot.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, storageNodeHash2);
+        snapshot.Content.StorageNodes[(address1Hash, storageNodePath1)] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
+        snapshot.Content.StorageNodes[(address2Hash, storageNodePath2)] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
 
         SnapshotPooledList snapshots = new SnapshotPooledList(1);
         snapshots.Add(snapshot);
@@ -139,8 +140,8 @@ public class SnapshotCompactorTests
         AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address2, storageIndex2)]);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(2));
-        Assert.That(compacted.Content.StateNodes[statePath1].Keccak, Is.EqualTo(storageNodeHash1));
-        Assert.That(compacted.Content.StateNodes[statePath2].Keccak, Is.EqualTo(storageNodeHash2));
+        Assert.That(compacted.Content.StateNodes[statePath1].Hash, Is.EqualTo(ValueKeccak.Compute(rlp1)));
+        Assert.That(compacted.Content.StateNodes[statePath2].Hash, Is.EqualTo(ValueKeccak.Compute(rlp2)));
 
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(2));
     }
@@ -165,9 +166,10 @@ public class SnapshotCompactorTests
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot0.Content.Accounts[address1] = new Account(1, 100);
         snapshot0.Content.Storages[(address1, storageIndex1)] = slotValue1;
-        snapshot0.Content.StateNodes[statePath1] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        byte[] rlp1 = [0xc1, 0x01];
+        snapshot0.Content.StateNodes[statePath1] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
         Hash256 address1Hash = address1.ToAccountPath.ToCommitment();
-        snapshot0.Content.StorageNodes[(address1Hash, storageNodePath1)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.StorageNodes[(address1Hash, storageNodePath1)] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
 
         // Second snapshot with different items
         StateId from1 = new StateId(1, Keccak.Zero);
@@ -175,9 +177,10 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.Accounts[address2] = new Account(2, 200);
         snapshot1.Content.Storages[(address2, storageIndex2)] = slotValue2;
-        snapshot1.Content.StateNodes[statePath2] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        byte[] rlp2 = [0xc1, 0x02];
+        snapshot1.Content.StateNodes[statePath2] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
         Hash256 address2Hash = address2.ToAccountPath.ToCommitment();
-        snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        snapshot1.Content.StorageNodes[(address2Hash, storageNodePath2)] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
 
         SnapshotPooledList snapshots = new SnapshotPooledList(2);
         snapshots.Add(snapshot0);
@@ -208,9 +211,10 @@ public class SnapshotCompactorTests
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue1;
-        snapshot0.Content.StateNodes[statePath] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        byte[] rlp1 = [0xc1, 0x01];
+        snapshot0.Content.StateNodes[statePath] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
         Hash256 addressHash = address.ToAccountPath.ToCommitment();
-        snapshot0.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Leaf, Keccak.Zero);
+        snapshot0.Content.StorageNodes[(addressHash, storageNodePath)] = _tracker.Rent(ValueKeccak.Compute(rlp1), rlp1);
 
         // Second snapshot with updated values for same keys
         StateId from1 = new StateId(1, Keccak.Zero);
@@ -218,8 +222,9 @@ public class SnapshotCompactorTests
         using Snapshot snapshot1 = _resourcePool.CreateSnapshot(from1, to1, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot1.Content.Accounts[address] = new Account(2, 200);
         snapshot1.Content.Storages[(address, storageIndex)] = slotValue2;
-        snapshot1.Content.StateNodes[statePath] = new TrieNode(NodeType.Branch, Keccak.Zero);
-        snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = new TrieNode(NodeType.Branch, Keccak.Zero);
+        byte[] rlp2 = [0xc1, 0x02];
+        snapshot1.Content.StateNodes[statePath] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
+        snapshot1.Content.StorageNodes[(addressHash, storageNodePath)] = _tracker.Rent(ValueKeccak.Compute(rlp2), rlp2);
 
         SnapshotPooledList snapshots = new SnapshotPooledList(2);
         snapshots.Add(snapshot0);
@@ -244,7 +249,6 @@ public class SnapshotCompactorTests
         Address address = new Address("0x1111111111111111111111111111111111111111");
         UInt256 storageIndex = new UInt256(1);
         TreePath storagePath = TreePath.FromHexString("1234");
-        Hash256 storageHash = Keccak.Zero;
         SlotValue slotValue = new SlotValue(new byte[32]);
 
         StateId from0 = new StateId(0, Keccak.Zero);
@@ -252,7 +256,8 @@ public class SnapshotCompactorTests
         using Snapshot snapshot0 = _resourcePool.CreateSnapshot(from0, to0, ResourcePool.Usage.ReadOnlyProcessingEnv);
         snapshot0.Content.Accounts[address] = new Account(1, 100);
         snapshot0.Content.Storages[(address, storageIndex)] = slotValue;
-        snapshot0.Content.StorageNodes[(address.ToAccountPath.ToCommitment(), storagePath)] = new TrieNode(NodeType.Leaf, storageHash);
+        byte[] rlp = [0xc1, 0x01];
+        snapshot0.Content.StorageNodes[(address.ToAccountPath.ToCommitment(), storagePath)] = _tracker.Rent(ValueKeccak.Compute(rlp), rlp);
 
         StateId from1 = new StateId(1, Keccak.Zero);
         StateId to1 = new StateId(2, Keccak.Zero);

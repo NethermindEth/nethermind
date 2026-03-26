@@ -117,7 +117,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                 {
                     throw new Exception($"Double storage rlp write. {address} {path}");
                 }
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 return node;
             }
 

@@ -103,11 +103,11 @@ public class Importer(
 
             if (address is null)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
             }
             else
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
             }
 
             if (node.IsLeaf)

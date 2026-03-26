@@ -268,27 +268,15 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
 
-                snapshot.TryGetStateNode(path, out TrieNode? node);
+                snapshot.TryGetStateNode(path, out RefCountingTrieNode? node);
+                if (node!.Rlp.Length == 0) continue;
 
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                stateNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStateTrieNode(path, node);
-
-                node.IsPersisted = true;
+                stateNodesSize += node.Rlp.Length;
+                batch.SetStateTrieNode(path, node.Rlp.AsSpan());
             }
 
             _trieNodesSortBuffer.Clear();
@@ -296,27 +284,15 @@ public class PersistenceManager(
             _trieNodesSortBuffer.Sort();
 
             long storageNodesSize = 0;
-            // foreach (var tn in snapshot.TrieNodes)
             foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
             {
                 (Hash256AsKey address, TreePath path) = k;
 
-                snapshot.TryGetStorageNode(address, path, out TrieNode? node);
+                snapshot.TryGetStorageNode(address, path, out RefCountingTrieNode? node);
+                if (node!.Rlp.Length == 0) continue;
 
-                if (node!.FullRlp.Length == 0)
-                {
-                    // TODO: Need to double check this case. Does it need a rewrite or not?
-                    if (node.NodeType == NodeType.Unknown)
-                    {
-                        continue;
-                    }
-                }
-
-                storageNodesSize += node.FullRlp.Length;
-                // Note: Even if the node already marked as persisted, we still re-persist it
-                batch.SetStorageTrieNode(address, path, node);
-
-                node.IsPersisted = true;
+                storageNodesSize += node.Rlp.Length;
+                batch.SetStorageTrieNode(address, path, node.Rlp.AsSpan());
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

@@ -131,8 +131,9 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStateNode(path, out node))
+            if (snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? refNode))
             {
+                node = new TrieNode(NodeType.Unknown, refNode.Hash.ToCommitment(), refNode.Rlp.AsSpan());
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
                 return true;
@@ -152,8 +153,9 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(address, path, out node))
+            if (snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? refNode))
             {
+                node = new TrieNode(NodeType.Unknown, refNode.Hash.ToCommitment(), refNode.Rlp.AsSpan());
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;

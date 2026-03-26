@@ -461,14 +461,14 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             // State trie nodes (address=null)
-            writer.SetStateTrieNode(in stateShortPath, new TrieNode(NodeType.Leaf, stateShortRlp));
-            writer.SetStateTrieNode(in stateMediumPath, new TrieNode(NodeType.Leaf, stateMediumRlp));
-            writer.SetStateTrieNode(in stateLongPath, new TrieNode(NodeType.Leaf, stateLongRlp));
+            writer.SetStateTrieNode(in stateShortPath, stateShortRlp);
+            writer.SetStateTrieNode(in stateMediumPath, stateMediumRlp);
+            writer.SetStateTrieNode(in stateLongPath, stateLongRlp);
 
             // Storage trie nodes (with account address)
-            writer.SetStorageTrieNode(account1, in storageShortPath, new TrieNode(NodeType.Leaf, storage1ShortRlp));
-            writer.SetStorageTrieNode(account1, in storageLongPath, new TrieNode(NodeType.Leaf, storage1LongRlp));
-            writer.SetStorageTrieNode(account2, in storageShortPath, new TrieNode(NodeType.Leaf, storage2ShortRlp));
+            writer.SetStorageTrieNode(account1, in storageShortPath, storage1ShortRlp);
+            writer.SetStorageTrieNode(account1, in storageLongPath, storage1LongRlp);
+            writer.SetStorageTrieNode(account2, in storageShortPath, storage2ShortRlp);
         }
 
         // Verify all nodes
@@ -500,19 +500,19 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData1));
+            writer.SetStateTrieNode(in path, rlpData1);
         }
         using IPersistence.IPersistenceReader reader1 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData2));
+            writer.SetStateTrieNode(in path, rlpData2);
         }
         using IPersistence.IPersistenceReader reader2 = _persistence.CreateReader();
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in path, new TrieNode(NodeType.Leaf, rlpData3));
+            writer.SetStateTrieNode(in path, rlpData3);
         }
         using IPersistence.IPersistenceReader reader3 = _persistence.CreateReader();
 
@@ -548,12 +548,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStateTrieNode(in statePath5, new TrieNode(NodeType.Leaf, rlp5));
-            writer.SetStateTrieNode(in statePath6, new TrieNode(NodeType.Leaf, rlp6));
-            writer.SetStateTrieNode(in statePath15, new TrieNode(NodeType.Leaf, rlp15));
-            writer.SetStateTrieNode(in statePath16, new TrieNode(NodeType.Leaf, rlp16));
-            writer.SetStorageTrieNode(account, in storagePath15, new TrieNode(NodeType.Leaf, storageRlp15));
-            writer.SetStorageTrieNode(account, in storagePath16, new TrieNode(NodeType.Leaf, storageRlp16));
+            writer.SetStateTrieNode(in statePath5, rlp5);
+            writer.SetStateTrieNode(in statePath6, rlp6);
+            writer.SetStateTrieNode(in statePath15, rlp15);
+            writer.SetStateTrieNode(in statePath16, rlp16);
+            writer.SetStorageTrieNode(account, in storagePath15, storageRlp15);
+            writer.SetStorageTrieNode(account, in storagePath16, storageRlp16);
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
@@ -592,14 +592,14 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
             // Account 1 storage trie nodes
-            writer.SetStorageTrieNode(account1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlpShort));
-            writer.SetStorageTrieNode(account1Hash, in mediumPath, new TrieNode(NodeType.Leaf, rlpMedium));
-            writer.SetStorageTrieNode(account1Hash, in longPath, new TrieNode(NodeType.Leaf, rlpLong));
+            writer.SetStorageTrieNode(account1Hash, in shortPath, rlpShort);
+            writer.SetStorageTrieNode(account1Hash, in mediumPath, rlpMedium);
+            writer.SetStorageTrieNode(account1Hash, in longPath, rlpLong);
 
             // Account 2 storage trie nodes (same paths, different account)
-            writer.SetStorageTrieNode(account2Hash, in shortPath, new TrieNode(NodeType.Leaf, rlpShort));
-            writer.SetStorageTrieNode(account2Hash, in mediumPath, new TrieNode(NodeType.Leaf, rlpMedium));
-            writer.SetStorageTrieNode(account2Hash, in longPath, new TrieNode(NodeType.Leaf, rlpLong));
+            writer.SetStorageTrieNode(account2Hash, in shortPath, rlpShort);
+            writer.SetStorageTrieNode(account2Hash, in mediumPath, rlpMedium);
+            writer.SetStorageTrieNode(account2Hash, in longPath, rlpLong);
         }
 
         // Verify all nodes exist
@@ -665,10 +665,10 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write trie nodes using the hashes directly
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageTrieNode(account1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(account1Hash, in longPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(account2Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp2));
-            writer.SetStorageTrieNode(account2Hash, in longPath, new TrieNode(NodeType.Leaf, rlp2));
+            writer.SetStorageTrieNode(account1Hash, in shortPath, rlp1);
+            writer.SetStorageTrieNode(account1Hash, in longPath, rlp1);
+            writer.SetStorageTrieNode(account2Hash, in shortPath, rlp2);
+            writer.SetStorageTrieNode(account2Hash, in longPath, rlp2);
         }
 
         // Verify all nodes exist before SelfDestruct
@@ -690,8 +690,8 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Write and then delete using the real address flow
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetStorageTrieNode(address1Hash, in shortPath, new TrieNode(NodeType.Leaf, rlp1));
-            writer.SetStorageTrieNode(address1Hash, in longPath, new TrieNode(NodeType.Leaf, rlp1));
+            writer.SetStorageTrieNode(address1Hash, in shortPath, rlp1);
+            writer.SetStorageTrieNode(address1Hash, in longPath, rlp1);
         }
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))

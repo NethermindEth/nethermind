@@ -67,9 +67,9 @@ public class PreimageRecordingPersistence : IPersistence
             inner.SetStorage(addr, slot, value);
         }
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) => inner.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) => inner.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value)
         {

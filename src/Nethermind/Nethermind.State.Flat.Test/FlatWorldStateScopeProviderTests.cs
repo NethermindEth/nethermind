@@ -679,8 +679,9 @@ public class FlatWorldStateScopeProviderTests
             content.Storages[(addr1, slot1)] = SlotValue.FromSpanWithoutLeadingZero(value1);
 
             // Also add a storage trie node for addr1 at root path
-            TrieNode storageNode = new TrieNode(NodeType.Leaf, Keccak.Zero);
-            content.StorageNodes[(addr1Hash, TreePath.Empty)] = storageNode;
+            byte[] rlp = [0xc1, 0x01];
+            RefCountingRlpNodePoolTracker tracker = new(new RefCountingTrieNodePool());
+            content.StorageNodes[(addr1Hash, TreePath.Empty)] = tracker.Rent(ValueKeccak.Compute(rlp), rlp);
         });
 
         // Create local commits for addr2 (NOT addr1) - this creates local _snapshots

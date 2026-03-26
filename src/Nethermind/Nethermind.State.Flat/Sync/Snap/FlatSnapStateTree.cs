@@ -111,7 +111,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
                 {
                     throw new Exception($"Double state rlp write. {path}");
                 }
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
                 return node;
             }
 

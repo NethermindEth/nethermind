@@ -170,8 +170,8 @@ public static class BasePersistence
     public interface ITrieWriteBatch
     {
         public void SelfDestruct(in ValueHash256 address);
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath);
     }
@@ -340,11 +340,11 @@ public static class BasePersistence
         public void SetStorage(Address addr, in UInt256 slot, in SlotValue? value) =>
             _flatWriter.SetStorage(addr, slot, value);
 
-        public void SetStateTrieNode(in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStateTrieNode(path, tnValue);
+        public void SetStateTrieNode(in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, TrieNode tnValue) =>
-            _trieWriteBatch.SetStorageTrieNode(address, path, tnValue);
+        public void SetStorageTrieNode(Hash256 address, in TreePath path, ReadOnlySpan<byte> rlp) =>
+            _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, in SlotValue? value) =>
             _flatWriter.SetStorageRaw(addrHash, slotHash, value);

@@ -54,14 +54,14 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         {
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
-            writeBatch.SetStateTrieNode(path, node);
+            writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
             FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
         }
         else
         {
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
-            writeBatch.SetStorageTrieNode(address, path, node);
+            writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
     }
