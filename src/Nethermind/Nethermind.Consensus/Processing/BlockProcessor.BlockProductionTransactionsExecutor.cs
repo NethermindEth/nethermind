@@ -27,10 +27,11 @@ namespace Nethermind.Consensus.Processing
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
-            ILogManager logManager)
+            ILogManager logManager,
+            IBlockAccessListBuilder balBuilder)
             : IBlockProductionTransactionsExecutor
         {
-            private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+            private readonly IBlockAccessListBuilder _balBuilder = balBuilder;
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
             private readonly IReadOnlyStateProvider _txSelectionStateProvider = stateProvider.GetUntrackedReader();
 
@@ -79,7 +80,7 @@ namespace Nethermind.Consensus.Processing
                         }
                     }
                 }
-                _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                _balBuilder.GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
@@ -105,7 +106,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
+                    _balBuilder.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
@@ -115,7 +116,7 @@ namespace Nethermind.Consensus.Processing
                     }
                     else
                     {
-                        _balBuilder?.GeneratedBlockAccessList.RollbackCurrentIndex();
+                        _balBuilder.GeneratedBlockAccessList.RollbackCurrentIndex();
                         args.Set(TxAction.Skip, result.ErrorDescription!);
                     }
                 }

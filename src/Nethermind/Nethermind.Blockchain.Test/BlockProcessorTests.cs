@@ -51,14 +51,15 @@ public class BlockProcessorTests
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, IBlockAccessListBuilder.None),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            IBlockAccessListBuilder.None);
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,
@@ -226,7 +227,7 @@ public class BlockProcessorTests
             return TransactionResult.Ok;
         });
 
-        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
+        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, stateProvider);
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);

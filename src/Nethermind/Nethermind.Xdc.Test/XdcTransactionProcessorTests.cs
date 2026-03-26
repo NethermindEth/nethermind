@@ -48,8 +48,8 @@ internal class XdcTransactionProcessorTests
 
         _masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
 
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
-        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider, IBlockAccessListBuilder.None);
+        EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance, IBlockAccessListBuilder.None);
         _transactionProcessor = new TestXdcTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             _specProvider,

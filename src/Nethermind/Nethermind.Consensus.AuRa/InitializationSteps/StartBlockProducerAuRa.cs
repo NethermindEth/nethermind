@@ -126,7 +126,7 @@ public class StartBlockProducerAuRa(
         return blockProducer;
     }
 
-    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState)
+    private BlockProcessor CreateBlockProcessor(ITransactionProcessor txProcessor, IWorldState worldState, IBlockAccessListBuilder balBuilder)
     {
         ITxFilter auRaTxFilter = apiTxAuRaFilterBuilders.CreateAuRaTxFilter(
             new LocalTxFilter(engineSigner));
@@ -164,7 +164,8 @@ public class StartBlockProducerAuRa(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
-            logManager);
+            logManager,
+            balBuilder);
 
         return new AuRaBlockProcessor(
             specProvider,
@@ -178,6 +179,7 @@ public class StartBlockProducerAuRa(
             blockTree,
             NullWithdrawalProcessor.Instance,
             new ExecutionRequestsProcessor(txProcessor),
+            balBuilder,
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,
@@ -263,7 +265,7 @@ public class StartBlockProducerAuRa(
             ILifetimeScope innerLifetime = lifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddSingleton<IWorldStateScopeProvider>(worldStateScopeProvider)
                 .AddSingleton<BlockchainProcessor.Options>(BlockchainProcessor.Options.NoReceipts)
-                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState>(CreateBlockProcessor)
+                .AddSingleton<IBlockProcessor, ITransactionProcessor, IWorldState, IBlockAccessListBuilder>(CreateBlockProcessor)
                 .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>());
             lifetimeScope.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
 

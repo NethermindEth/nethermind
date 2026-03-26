@@ -41,6 +41,8 @@ public class StatelessBlockProcessingEnv(
         get => _worldState ??= new WorldState(new TrieStoreScopeProvider(new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager), logManager);
     }
 
+    private readonly BalStore _balBuilder = new();
+
     private IBlockProcessor GetProcessor()
     {
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
@@ -49,7 +51,8 @@ public class StatelessBlockProcessingEnv(
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
             new BlockProcessor.BlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
-                WorldState);
+                WorldState,
+                _balBuilder);
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
@@ -66,7 +69,8 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new ExecutionRequestsProcessor(txProcessor)
+            new ExecutionRequestsProcessor(txProcessor),
+            _balBuilder
         );
     }
 
@@ -74,7 +78,7 @@ public class StatelessBlockProcessingEnv(
     private ITransactionProcessor CreateTransactionProcessor(IWorldState state, IBlockhashCache blockhashCache)
     {
         BlockhashProvider blockhashProvider = new(blockhashCache, state, logManager);
-        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state), logManager);
+        EthereumVirtualMachine vm = new(blockhashProvider, specProvider, logManager, _balBuilder);
+        return new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, specProvider, state, vm, new EthereumCodeInfoRepository(state, _balBuilder), logManager);
     }
 }

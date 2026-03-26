@@ -50,8 +50,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         bool revert)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+        BalBuilder.TracingEnabled = true;
 
         UInt256 value = _testAccountBalance;
 
@@ -72,7 +71,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        BlockAccessList bal = BalBuilder.GeneratedBlockAccessList;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
@@ -110,8 +109,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         EvmExceptionType expectedException)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+        BalBuilder.TracingEnabled = true;
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
@@ -131,7 +129,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
         TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        BlockAccessList bal = BalBuilder.GeneratedBlockAccessList;
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         AccountChanges accountChangesA = Build.An.AccountChanges

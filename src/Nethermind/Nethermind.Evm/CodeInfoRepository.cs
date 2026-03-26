@@ -24,18 +24,18 @@ public class CodeInfoRepository : ICodeInfoRepository
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
     private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
-    private readonly IBlockAccessListBuilder? _balBuilder;
+    private readonly IBlockAccessListBuilder _balBuilder;
 
-    public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
-        : this(worldState, precompileProvider, codeInfoLoader: null)
+    public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, IBlockAccessListBuilder balBuilder)
+        : this(worldState, precompileProvider, balBuilder, codeInfoLoader: null)
     {
     }
 
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, CodeInfo>? codeInfoLoader)
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, IBlockAccessListBuilder balBuilder, Func<ValueHash256, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
-        _balBuilder = _worldState as IBlockAccessListBuilder;
+        _balBuilder = balBuilder;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
         CodeInfo DefaultLoad(ValueHash256 codeHash) =>
@@ -47,10 +47,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         delegationAddress = null;
         if (vmSpec.IsPrecompile(codeSource))
         {
-            if (_balBuilder is not null && _balBuilder.TracingEnabled)
-            {
-                _balBuilder.AddAccountRead(codeSource);
-            }
+            _balBuilder.AddAccountRead(codeSource);
             return _localPrecompiles[codeSource];
         }
 

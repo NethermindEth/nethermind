@@ -37,11 +37,11 @@ public class WitnessGeneratingBlockProcessingEnv(
     IHeaderStore headerStore,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
-    private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
+    private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IBlockAccessListBuilder balBuilder, IHeaderFinder witnessGeneratingHeaderFinder)
     {
         BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
-        VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
+        VirtualMachine vm = new(blockhashProvider, specProvider, logManager, balBuilder);
+        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider(), balBuilder);
         return new TransactionProcessor<EthereumGasPolicy>(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 
@@ -49,9 +49,10 @@ public class WitnessGeneratingBlockProcessingEnv(
     {
         WitnessGeneratingHeaderFinder witnessGenHeaderFinder = new(headerStore);
         WitnessGeneratingWorldState state = new(baseWorldState, stateReader, witnessCapturingTrieStore, witnessGenHeaderFinder);
-        TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, witnessGenHeaderFinder);
+        BalStore balBuilder = new();
+        TransactionProcessor<EthereumGasPolicy> txProcessor = CreateTransactionProcessor(state, balBuilder, witnessGenHeaderFinder);
         IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
-            new ExecuteTransactionProcessorAdapter(txProcessor), state);
+            new ExecuteTransactionProcessorAdapter(txProcessor), state, balBuilder);
 
         IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
@@ -68,7 +69,8 @@ public class WitnessGeneratingBlockProcessingEnv(
             new BlockhashStore(state),
             logManager,
             new WithdrawalProcessor(state, logManager),
-            new ExecutionRequestsProcessor(txProcessor));
+            new ExecutionRequestsProcessor(txProcessor),
+            balBuilder);
 
         return new WitnessCollector(state, blockProcessor, specProvider);
     }

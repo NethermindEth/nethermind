@@ -196,7 +196,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
-                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+                new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, IBlockAccessListBuilder.None),
                 stateProvider,
                 NullReceiptStorage.Instance,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -204,6 +204,7 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
+                IBlockAccessListBuilder.None,
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);

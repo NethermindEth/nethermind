@@ -9,6 +9,8 @@ namespace Nethermind.Evm.State;
 
 public interface IBlockAccessListBuilder
 {
+    public static IBlockAccessListBuilder None { get; } = new NullBlockAccessListBuilder();
+
     public bool TracingEnabled { get; set; }
     public BlockAccessList GeneratedBlockAccessList { get; set; }
     public void AddAccountRead(Address address);
@@ -16,4 +18,15 @@ public interface IBlockAccessListBuilder
     public long GasUsed();
     public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining);
     public void SetBlockAccessList(Block block, IReleaseSpec spec);
+
+    private sealed class NullBlockAccessListBuilder : IBlockAccessListBuilder
+    {
+        public bool TracingEnabled { get; set; }
+        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public void AddAccountRead(Address address) { }
+        public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed) { }
+        public long GasUsed() => 0;
+        public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining) { }
+        public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
+    }
 }

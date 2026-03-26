@@ -42,11 +42,13 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IExecutionRequestsProcessor executionRequestsProcessor)
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    IBlockAccessListBuilder balBuilder)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
-    private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
+    private readonly IBlockAccessListBuilder _balBuilder = balBuilder;
+    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -60,14 +62,11 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null)
+        bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+        _balBuilder.TracingEnabled = balsEnabled;
+        if (balsEnabled)
         {
-            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
-            _balBuilder.TracingEnabled = balsEnabled;
-            if (balsEnabled)
-            {
-                _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
-            }
+            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -147,7 +146,7 @@ public partial class BlockProcessor(
 
         executionRequestsProcessor.ProcessExecutionRequests(block, stateProvider, receipts, spec);
 
-        _balBuilder?.SetBlockAccessList(block, spec);
+        _balBuilder.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 

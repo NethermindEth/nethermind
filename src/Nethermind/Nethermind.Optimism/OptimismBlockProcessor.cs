@@ -42,7 +42,8 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
-        ICostHelper costHelper)
+        ICostHelper costHelper,
+        IBlockAccessListBuilder balBuilder)
         : base(
             specProvider,
             blockValidator,
@@ -54,7 +55,8 @@ public class OptimismBlockProcessor : BlockProcessor
             blockhashStore,
             logManager,
             withdrawalProcessor,
-            executionRequestsProcessor)
+            executionRequestsProcessor,
+            balBuilder)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _stateProvider = stateProvider;

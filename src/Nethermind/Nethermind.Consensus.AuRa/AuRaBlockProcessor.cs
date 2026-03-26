@@ -46,6 +46,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
             IExecutionRequestsProcessor executionRequestsProcessor,
+            IBlockAccessListBuilder balBuilder,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -61,7 +62,8 @@ namespace Nethermind.Consensus.AuRa
                 new BlockhashStore(stateProvider),
                 logManager,
                 withdrawalProcessor,
-                executionRequestsProcessor)
+                executionRequestsProcessor,
+                balBuilder)
         {
             _stateProvider = stateProvider;
             _specProvider = specProvider;

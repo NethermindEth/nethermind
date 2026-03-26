@@ -34,8 +34,9 @@ using Int256;
 public sealed class EthereumVirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager
-) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine
+    ILogManager? logManager,
+    IBlockAccessListBuilder balBuilder
+) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, balBuilder), IVirtualMachine
 {
 }
 
@@ -76,9 +77,11 @@ public static class VirtualMachineStatics
 public unsafe partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine<TGasPolicy>
+    ILogManager? logManager,
+    IBlockAccessListBuilder balBuilder) : IVirtualMachine<TGasPolicy>
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
+    public IBlockAccessListBuilder BalBuilder { get; } = balBuilder;
     private readonly ValueHash256 _chainId = ((UInt256)specProvider.ChainId).ToValueHash();
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
@@ -309,7 +312,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Continue with the next iteration of the execution loop.
             continue;
 
-            // Failure handling: attempts to process and possibly finalize the transaction after an error.
+        // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)
@@ -1401,4 +1404,5 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 public sealed class VirtualMachine(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager), IVirtualMachine;
+    ILogManager? logManager,
+    IBlockAccessListBuilder balBuilder) : VirtualMachine<EthereumGasPolicy>(blockHashProvider, specProvider, logManager, balBuilder), IVirtualMachine;

@@ -66,8 +66,8 @@ internal class MasternodeVotingContractTests
             genesis = Build.A.XdcBlockHeader().WithStateRoot(stateProvider.StateRoot).TestObject;
         }
 
-        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-        VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
+        EthereumCodeInfoRepository codeInfoRepository = new(stateProvider, IBlockAccessListBuilder.None);
+        VirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance, IBlockAccessListBuilder.None);
         EthereumTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
 
         AutoReadOnlyTxProcessingEnv autoReadOnlyTxProcessingEnv = new AutoReadOnlyTxProcessingEnv(transactionProcessor, stateProvider, Substitute.For<ILifetimeScope>());
