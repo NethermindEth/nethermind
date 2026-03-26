@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Processing
             {
 
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager));
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
                 TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                 ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                 transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);

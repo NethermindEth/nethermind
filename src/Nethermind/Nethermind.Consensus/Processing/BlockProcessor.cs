@@ -67,7 +67,11 @@ public partial class BlockProcessor(
         {
             // _balBuilder.TracingEnabled = true;
             blockTransactionsExecutor.GeneratedBlockAccessList.Clear();
-            SetupBlockAccessLists(spec, suggestedBlock);
+
+            if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))
+            {
+                LoadPreStateToSuggestedBlockAccessList(spec, suggestedBlock);
+            }
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -315,7 +319,7 @@ public partial class BlockProcessor(
         }
     }
 
-    private void SetupBlockAccessLists(IReleaseSpec spec, Block suggested)
+    private void LoadPreStateToSuggestedBlockAccessList(IReleaseSpec spec, Block suggested)
     {
         foreach (AccountChanges accountChanges in suggested.BlockAccessList.AccountChanges)
         {

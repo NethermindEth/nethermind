@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.Processing
             {
                 // todo: add parallel to _transactionprocessor
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager));
+                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
                 TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                 ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                 transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (gasRemaining is not null)
                     {
-                        gasRemaining -= currentTx.SpentGas;
+                        gasRemaining -= currentTx.BlockGasUsed;
                         ValidateBlockAccessList(block, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }
@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Processing
                 {
                     // todo: look into reusing / reducing allocation
                     VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                    ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1]);
+                    ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1], processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
                     TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                     ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                     transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
@@ -180,7 +180,7 @@ namespace Nethermind.Consensus.Processing
             {
                 int len = block.Transactions.Length;
                 long gasRemaining = block.GasUsed;
-                ValidateBlockAccessList(block, 0, gasRemaining);
+                // ValidateBlockAccessList(block, 0, gasRemaining);
 
                 long totalGas = 0;
                 for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -199,7 +199,7 @@ namespace Nethermind.Consensus.Processing
 
                         bool validateStorageReads = j == chunkEnd - 1;
                         MergeIntermediateBalsUpTo((ushort)(j + 1), _intermediateBlockAccessLists);
-                        ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
+                        // ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
                     }
 
                     if (totalGas > block.Header.GasLimit)

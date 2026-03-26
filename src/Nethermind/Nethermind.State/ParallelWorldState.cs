@@ -31,13 +31,14 @@ public class ParallelWorldState(
     Block suggestedBlock,
     BlockAccessList intermediateBlockAccessList,
     BlockAccessList generatedBlockAccessList,
-    TransientStorageProvider transientStorageProvider) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
+    TransientStorageProvider transientStorageProvider,
+    bool isBuildingBlock) : WrappedWorldState(innerWorldState), IBlockAccessListBuilder, IPreBlockCaches
 {
     public int BlockAccessIndex { get; } = blockAccessIndex;
     public bool TracingEnabled { get; set; } = specProvider.GetSpec(suggestedBlock.Header).BlockLevelAccessListsEnabled;
     public bool IsGenesis { get; set; } = suggestedBlock.IsGenesis;
     // public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis && _suggestedBlockAccessList is not null;
-    public bool ParallelExecutionEnabled => TracingEnabled && blocksConfig.ParallelExecution && !IsGenesis;
+    public bool ParallelExecutionEnabled => !isBuildingBlock  && blocksConfig.ParallelExecution && !IsGenesis&& TracingEnabled;
 
     // todo: generated will be sorted, suggested will use hash maps to optimize reading
     // public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
