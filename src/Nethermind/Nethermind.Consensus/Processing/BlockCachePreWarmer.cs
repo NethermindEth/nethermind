@@ -108,6 +108,7 @@ public sealed class BlockCachePreWarmer(
         }
         finally
         {
+            // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
             addressWarmer.Dispose();
         }
