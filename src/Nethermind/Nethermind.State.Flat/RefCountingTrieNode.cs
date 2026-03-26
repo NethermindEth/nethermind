@@ -16,16 +16,15 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class RefCountingTrieNode : RefCountingDisposable
 {
-    private RefCountingRlpNodePoolTracker _tracker;
+    private RefCountingRlpNodePoolTracker _tracker = null!;
 
     public ValueHash256 Hash;
     public TrieNodeMetadata Metadata;
     public TrieNodeRlp Rlp;
 
-    internal RefCountingTrieNode(RefCountingRlpNodePoolTracker tracker) : base(initialCount: 0) =>
-        _tracker = tracker;
+    internal RefCountingTrieNode() : base(initialCount: 0) { }
 
-    /// <summary>Rebinds this node to a different tracker when reused from the shared pool.</summary>
+    /// <summary>Binds this node to a tracker. Called by the pool before each use.</summary>
     internal void SetTracker(RefCountingRlpNodePoolTracker tracker) =>
         _tracker = tracker;
 
