@@ -25,7 +25,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
     private readonly RefCountingTrieNode?[][] _cacheShards;
     private readonly RefCountingTrieNodePool _pool;
     private readonly RefCountingRlpNodePoolTracker[] _shardTrackers;
-    private readonly long _maxCacheMemoryThreshold;
+    private long _maxCacheMemoryThreshold;
     private readonly int _bucketSize;
     private readonly int _bucketMask;
 
@@ -173,6 +173,13 @@ public sealed class TrieNodeCache : ITrieNodeCache
             int total = totalEvicted + totalRetained;
             double retainedPct = total > 0 ? 100.0 * totalRetained / total : 0;
             _logger.Info($"Pruning trie cache: {prevMemory} -> {currentTotalMemory}, shards cleared: {pruneAttempts}, evicted: {totalEvicted}, retained (leased): {totalRetained} ({retainedPct:F1}%)");
+
+            if (pruneAttempts > 16)
+            {
+                long increase = 1L * 1024 * 1024 * 1024; // 1 GB
+                _maxCacheMemoryThreshold += increase;
+                _logger.Warn($"Trie cache pruned {pruneAttempts} shards in one go — increasing memory budget by 1 GB to {_maxCacheMemoryThreshold}");
+            }
         }
 
         UpdateMetrics();
