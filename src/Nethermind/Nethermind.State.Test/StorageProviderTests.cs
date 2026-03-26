@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test;
@@ -57,6 +58,137 @@ public class StorageProviderTests(bool useFlat)
     private WorldState BuildStorageProvider(Context ctx)
     {
         return ctx.StateProvider;
+    }
+
+    [Test]
+    public void PreBlockCaches_recorded_block_matches_parent()
+    {
+        PreBlockCaches caches = new();
+        Hash256 hashA = Keccak.Compute("a");
+        Hash256 hashB = Keccak.Compute("b");
+
+        caches.IsValidForParent(0, hashA).Should().BeFalse();
+
+        caches.RecordCommittedBlock(5, hashA);
+
+        caches.IsValidForParent(5, hashA).Should().BeTrue();
+        caches.IsValidForParent(5, hashB).Should().BeFalse();
+        caches.IsValidForParent(6, hashA).Should().BeFalse();
+    }
+
+    [Test]
+    public void PreBlockCaches_invalidate_resets_metadata_and_entries()
+    {
+        PreBlockCaches caches = new();
+        AddressAsKey address = TestItem.AddressA;
+        StorageCell storageCell = new(TestItem.AddressA, 1);
+        Account account = new(1, 2);
+        Hash256 hash = Keccak.Compute("a");
+
+        caches.StateCache.Set(address, account);
+        caches.StorageCache.Set(storageCell, [1, 2, 3]);
+        caches.RecordCommittedBlock(5, hash);
+
+        caches.InvalidateCaches();
+
+        caches.IsValidForParent(5, hash).Should().BeFalse();
+        caches.StateCache.TryGetValue(in address, out _).Should().BeFalse();
+        caches.StorageCache.TryGetValue(in storageCell, out _).Should().BeFalse();
+    }
+
+    [Test]
+    public void PreBlockCaches_clear_preserves_reusable_entries_and_metadata()
+    {
+        PreBlockCaches caches = new();
+        AddressAsKey address = TestItem.AddressA;
+        StorageCell storageCell = new(TestItem.AddressA, 1);
+        Account account = new(1, 2);
+        Hash256 hash = Keccak.Compute("a");
+
+        caches.StateCache.Set(address, account);
+        caches.StorageCache.Set(storageCell, [1, 2, 3]);
+        caches.RecordCommittedBlock(5, hash);
+
+        caches.ClearCaches();
+
+        caches.IsValidForParent(5, hash).Should().BeTrue();
+        caches.StateCache.TryGetValue(in address, out Account cachedAccount).Should().BeTrue();
+        caches.StorageCache.TryGetValue(in storageCell, out byte[] cachedValue).Should().BeTrue();
+        cachedAccount.Should().Be(account);
+        cachedValue.Should().BeEquivalentTo([1, 2, 3]);
+    }
+
+    [Test]
+    public void PrewarmerScopeProvider_BeginScope_invalidates_caches_when_parent_does_not_match()
+    {
+        PreBlockCaches caches = new();
+        Hash256 hashA = Keccak.Compute("a");
+        Hash256 hashB = Keccak.Compute("b");
+
+        caches.RecordCommittedBlock(5, hashA);
+        caches.StateCache.Set(TestItem.AddressA, new Account(1, 2));
+        caches.IsValidForParent(5, hashA).Should().BeTrue();
+
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>())
+            .Returns(Substitute.For<IWorldStateScopeProvider.IScope>());
+
+        PrewarmerScopeProvider provider = new(baseProvider, caches);
+
+        // Mismatched parent should invalidate
+        BlockHeader mismatchedParent = Build.A.BlockHeader.WithNumber(5).WithHash(hashB).TestObject;
+        provider.BeginScope(mismatchedParent);
+
+        caches.IsValidForParent(5, hashA).Should().BeFalse("BeginScope should invalidate caches when parent does not match");
+        caches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().BeFalse("cache entries should be cleared on invalidation");
+    }
+
+    [Test]
+    public void PrewarmerScopeProvider_BeginScope_preserves_caches_when_parent_matches()
+    {
+        PreBlockCaches caches = new();
+        Hash256 hashA = Keccak.Compute("a");
+
+        caches.RecordCommittedBlock(5, hashA);
+        caches.StateCache.Set(TestItem.AddressA, new Account(1, 2));
+
+        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
+        baseProvider.BeginScope(Arg.Any<BlockHeader>())
+            .Returns(Substitute.For<IWorldStateScopeProvider.IScope>());
+
+        PrewarmerScopeProvider provider = new(baseProvider, caches);
+
+        BlockHeader matchingParent = Build.A.BlockHeader.WithNumber(5).WithHash(hashA).TestObject;
+        provider.BeginScope(matchingParent);
+
+        caches.IsValidForParent(5, hashA).Should().BeTrue("BeginScope should preserve caches when parent matches");
+        caches.StateCache.TryGetValue(TestItem.AddressA, out _).Should().BeTrue("cache entries should survive when valid");
+    }
+
+    [Test]
+    public void PreBlockCaches_storage_clear_flag_lifecycle_is_correct()
+    {
+        PreBlockCaches caches = new();
+
+        caches.HasLegacyStorageClear.Should().BeFalse();
+
+        caches.NoteStorageClear();
+        caches.HasLegacyStorageClear.Should().BeTrue();
+
+        caches.ResetBlockFlags();
+        caches.HasLegacyStorageClear.Should().BeFalse();
+    }
+
+    [Test]
+    public void PreBlockCaches_can_store_null_account_values()
+    {
+        PreBlockCaches caches = new();
+        AddressAsKey address = TestItem.AddressA;
+
+        caches.StateCache.Set(address, null);
+
+        caches.StateCache.TryGetValue(in address, out Account cachedAccount).Should().BeTrue();
+        cachedAccount.Should().BeNull();
     }
 
     [TestCase(-1)]
@@ -425,6 +557,86 @@ public class StorageProviderTests(bool useFlat)
         _values[snapshot + 1].Should().BeEquivalentTo(provider.Get(new StorageCell(ctx.Address1, 1)).ToArray());
     }
 
+    private (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) CreateCarryForwardTestScope()
+    {
+        PreBlockCaches caches = new();
+        Context ctx = new(useFlat, preBlockCaches: caches, setInitialState: false, populatePreBlockCache: false);
+        WorldState provider = BuildStorageProvider(ctx);
+        IDisposable scope = provider.BeginScope(IWorldState.PreGenesis);
+        return (caches, provider, scope, ctx);
+    }
+
+    [Test]
+    public void Commit_mirrors_account_writes_into_state_cache()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            provider.CreateAccount(TestItem.AddressA, 3, 4);
+            provider.Commit(Frontier.Instance);
+            caches.FlushCarryForwardWrites();
+
+            caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out Account account).Should().BeTrue();
+            account.Should().NotBeNull();
+            account.Balance.Should().Be((UInt256)3);
+            account.Nonce.Should().Be((UInt256)4);
+        }
+    }
+
+    [Test]
+    public void Commit_mirrors_storage_writes_into_storage_cache()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            StorageCell storageCell = new(TestItem.AddressA, 1);
+
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(storageCell, [1, 2, 3]);
+            provider.Commit(Frontier.Instance);
+            caches.FlushCarryForwardWrites();
+
+            caches.StorageCache.TryGetValue(in storageCell, out byte[] value).Should().BeTrue();
+            value.Should().BeEquivalentTo([1, 2, 3]);
+        }
+    }
+
+    [Test]
+    public void Commit_mirrors_account_deletion_as_null_into_state_cache()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Commit(Frontier.Instance);
+            provider.DeleteAccount(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+            caches.FlushCarryForwardWrites();
+
+            caches.StateCache.TryGetValue((AddressAsKey)TestItem.AddressA, out Account account).Should().BeTrue();
+            account.Should().BeNull();
+        }
+    }
+
+    [Test]
+    public void Commit_storage_clear_marks_legacy_storage_clear_flag()
+    {
+        (PreBlockCaches caches, WorldState provider, IDisposable scope, Context ctx) = CreateCarryForwardTestScope();
+        using (scope) using (ctx)
+        {
+            provider.CreateAccount(TestItem.AddressA, 1);
+            provider.Set(new StorageCell(TestItem.AddressA, 1), [1, 2, 3]);
+            provider.Commit(Frontier.Instance);
+
+            caches.ResetBlockFlags();
+
+            provider.ClearStorage(TestItem.AddressA);
+            provider.Commit(Frontier.Instance);
+
+            caches.HasLegacyStorageClear.Should().BeTrue();
+        }
+    }
+
     /// <summary>
     /// Reset will reset transient state
     /// </summary>
@@ -745,7 +957,7 @@ public class StorageProviderTests(bool useFlat)
         public readonly Address Address1 = new(Keccak.Compute("1"));
         public readonly Address Address2 = new(Keccak.Compute("2"));
 
-        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false)
+        public Context(bool useFlat, PreBlockCaches preBlockCaches = null, bool setInitialState = true, bool trackWrittenData = false, bool populatePreBlockCache = true)
         {
             IWorldStateScopeProvider scopeProvider;
             if (useFlat)
@@ -761,7 +973,7 @@ public class StorageProviderTests(bool useFlat)
 
             if (preBlockCaches is not null)
             {
-                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache: true);
+                scopeProvider = new PrewarmerScopeProvider(scopeProvider, preBlockCaches, populatePreBlockCache);
             }
 
             if (trackWrittenData)

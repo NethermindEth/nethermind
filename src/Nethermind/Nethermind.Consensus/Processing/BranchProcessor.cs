@@ -126,11 +126,7 @@ public class BranchProcessor(
                 if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
-                    CacheType result = preWarmer?.ClearCaches() ?? default;
-                    if (result != default)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
-                    }
+                    preWarmer?.ClearCaches();
                 }
 
                 (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
@@ -142,6 +138,7 @@ public class BranchProcessor(
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(suggestedBlock.Header);
+                preWarmer?.FinalizeProcessedBlock(suggestedBlock.Header, spec);
                 QueueClearCaches(preWarmTask);
 
                 if (notReadOnly)
@@ -170,6 +167,7 @@ public class BranchProcessor(
                 prefetchBlockhash = null;
 
                 _stateProvider.Reset();
+                preWarmer?.FlushCarryForwardWrites();
 
                 // Calculate the transaction hashes in the background and release tx sequence memory
                 // Hashes will be required for PersistentReceiptStorage in ForkchoiceUpdatedHandler
@@ -183,6 +181,7 @@ public class BranchProcessor(
         {
             if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+            preWarmer?.InvalidateCaches();
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
             throw;

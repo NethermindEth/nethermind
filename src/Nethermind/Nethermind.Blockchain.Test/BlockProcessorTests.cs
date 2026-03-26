@@ -14,6 +14,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
@@ -250,6 +251,83 @@ public class BlockProcessorTests
         processedBlocks.Should().HaveCount(1, "block should process successfully without a prewarmer");
     }
 
+    private static (TrackingPreWarmer preWarmer, BranchProcessor branchProcessor) CreateTrackingBranch(
+        IRewardCalculator? rewardCalculator = null)
+    {
+        TrackingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
+            rewardCalculator: rewardCalculator, preWarmer: preWarmer);
+        return (preWarmer, branchProcessor);
+    }
+
+    private static BlockHeader BuildBaseBlock(string label) =>
+        Build.A.BlockHeader
+            .WithNumber(0)
+            .WithHash(Keccak.Compute(label))
+            .WithStateRoot(Keccak.EmptyTreeHash)
+            .TestObject;
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_sequential_blocks_validate_once_and_finalize_each_block()
+    {
+        (TrackingPreWarmer preWarmer, BranchProcessor branchProcessor) = CreateTrackingBranch();
+        BlockHeader baseBlock = BuildBaseBlock("base-a");
+        Block block1 = Build.A.Block.WithParent(baseBlock).WithTransactions(3, MuirGlacier.Instance).TestObject;
+        Block block2 = Build.A.Block.WithParent(block1).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(baseBlock, new List<Block> { block1, block2 },
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        preWarmer.FinalizedBlocks.Should().Equal(block1.Header, block2.Header);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_non_sequential_block_invalidates_caches()
+    {
+        (TrackingPreWarmer preWarmer, BranchProcessor branchProcessor) = CreateTrackingBranch();
+        BlockHeader baseBlock = BuildBaseBlock("base-b");
+        Block blockA = Build.A.Block.WithParent(baseBlock).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(baseBlock, new List<Block> { blockA },
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        BlockHeader mismatchedBase = Build.A.BlockHeader
+            .WithNumber(1).WithHash(Keccak.Compute("base-c")).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        Block blockB = Build.A.Block.WithParent(mismatchedBase).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(mismatchedBase, new List<Block> { blockB },
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        preWarmer.InvalidateCount.Should().Be(0, "cache validity is now checked in BeginScope, not on the prewarmer");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_error_path_invalidates_caches_and_skips_finalize()
+    {
+        (TrackingPreWarmer preWarmer, BranchProcessor branchProcessor) =
+            CreateTrackingBranch(rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance));
+        BlockHeader baseBlock = BuildBaseBlock("base-d");
+        Block block = Build.A.Block.WithParent(baseBlock).WithTransactions(1, MuirGlacier.Instance).TestObject;
+
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+            baseBlock, new List<Block> { block }, ProcessingOptions.None, AlwaysCancelBlockTracer.Instance));
+
+        preWarmer.InvalidateCount.Should().BeGreaterThanOrEqualTo(1);
+        preWarmer.FinalizedBlocks.Should().BeEmpty();
+    }
+
+    [Test]
+    public void BranchProcessor_null_base_block_invalidates_caches()
+    {
+        (TrackingPreWarmer preWarmer, BranchProcessor branchProcessor) = CreateTrackingBranch();
+        Block block = Build.A.Block.WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        branchProcessor.Process(null, new List<Block> { block },
+            ProcessingOptions.NoValidation, NullBlockTracer.Instance);
+
+        preWarmer.InvalidateCount.Should().Be(0, "cache validity is now checked in BeginScope, not on the prewarmer");
+    }
+
     [Test]
     public void NullBlockProcessor_TransactionsExecuted_subscribe_unsubscribe_is_safe()
     {
@@ -301,7 +379,40 @@ public class BlockProcessorTests
             return Task.CompletedTask;
         }
 
-        public CacheType ClearCaches() => default;
+        public void ClearCaches() { }
+        public void InvalidateCaches() { }
+        public void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec) { }
+        public void FlushCarryForwardWrites() { }
+    }
+
+    private sealed class TrackingPreWarmer : IBlockCachePreWarmer
+    {
+        private readonly PreBlockCaches _preBlockCaches = new();
+
+        public List<BlockHeader> FinalizedBlocks { get; } = [];
+        public int InvalidateCount { get; private set; }
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+            => Task.CompletedTask;
+
+        public void ClearCaches() { }
+
+        public void InvalidateCaches()
+        {
+            InvalidateCount++;
+            _preBlockCaches.InvalidateCaches();
+        }
+
+        public void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec)
+        {
+            FinalizedBlocks.Add(block);
+            _preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
+        }
+
+        public void FlushCarryForwardWrites()
+        {
+            _preBlockCaches.FlushCarryForwardWrites();
+        }
     }
 
     private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)

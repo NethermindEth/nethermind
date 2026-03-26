@@ -9,18 +9,17 @@ using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
-using Nethermind.Core.Eip2930;
-using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
@@ -56,13 +55,9 @@ public sealed class BlockCachePreWarmer(
     {
         if (preBlockCaches is not null)
         {
-            CacheType result = preBlockCaches.ClearCaches();
+            preBlockCaches.ClearCaches();
             nodeStorageCache.ClearCaches();
             nodeStorageCache.Enabled = true;
-            if (result != default)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
-            }
 
             if (parent is not null && _concurrencyLevel > 1 && !cancellationToken.IsCancellationRequested)
             {
@@ -80,13 +75,40 @@ public sealed class BlockCachePreWarmer(
         return Task.CompletedTask;
     }
 
-    public CacheType ClearCaches()
+    public void InvalidateCaches()
+    {
+        if (_logger.IsDebug) _logger.Debug("Invalidating caches");
+        preBlockCaches?.InvalidateCaches();
+        if (_logger.IsDebug) _logger.Debug("Invalidated caches");
+    }
+
+    public void FinalizeProcessedBlock(BlockHeader block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip6780Enabled && preBlockCaches.HasLegacyStorageClear)
+        {
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Legacy storage clear detected at block {block.Number}, invalidating carry-forward caches");
+            }
+
+            InvalidateCaches();
+            return;
+        }
+
+        preBlockCaches.RecordCommittedBlock(block.Number, block.Hash);
+    }
+
+    public void FlushCarryForwardWrites()
+    {
+        preBlockCaches?.FlushCarryForwardWrites();
+    }
+
+    public void ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
-        if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
-        return cachesCleared;
+        preBlockCaches?.ClearCaches();
+        nodeStorageCache.ClearCaches();
+        if (_logger.IsDebug) _logger.Debug("Cleared caches");
     }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
