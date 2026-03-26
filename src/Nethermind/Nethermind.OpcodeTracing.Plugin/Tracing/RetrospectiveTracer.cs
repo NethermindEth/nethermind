@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using FastEnumUtility;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.OpcodeTracing.Plugin.Utilities;
 
@@ -14,6 +16,21 @@ namespace Nethermind.OpcodeTracing.Plugin.Tracing;
 /// </summary>
 public sealed class RetrospectiveTracer
 {
+    /// <summary>
+    /// Precomputed lookup table for valid EVM opcodes. Avoids Enum.IsDefined overhead in tight loops.
+    /// </summary>
+    private static readonly bool[] s_validOpcodes = BuildValidOpcodesTable();
+
+    private static bool[] BuildValidOpcodesTable()
+    {
+        bool[] table = new bool[256];
+        foreach (Instruction instruction in FastEnum.GetValues<Instruction>())
+        {
+            table[(byte)instruction] = true;
+        }
+        return table;
+    }
+
     private readonly IBlockTree _blockTree;
     private readonly OpcodeCounter _counter;
     private readonly ILogger _logger;
@@ -48,9 +65,8 @@ public sealed class RetrospectiveTracer
             _logger.Info($"Retrospective tracing with MaxDegreeOfParallelism={_maxDegreeOfParallelism}");
         }
 
-        // Create enumerable of block numbers for parallel processing
-        var blockNumbers = Enumerable.Range(0, (int)range.Count)
-            .Select(i => range.StartBlock + i);
+        // Generate block numbers without int cast to avoid overflow for large ranges
+        IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
 
         var parallelOptions = new ParallelOptions
         {
@@ -97,6 +113,14 @@ public sealed class RetrospectiveTracer
         }).ConfigureAwait(false);
     }
 
+    private static IEnumerable<long> GenerateBlockNumbers(BlockRange range)
+    {
+        for (long i = range.StartBlock; i <= range.EndBlock; i++)
+        {
+            yield return i;
+        }
+    }
+
     /// <summary>
     /// Analyzes transaction bytecode to extract and count opcodes.
     /// This provides a static analysis of opcodes present in the transaction data.
@@ -120,8 +144,8 @@ public sealed class RetrospectiveTracer
         {
             byte opcodeByte = data[i];
 
-            // Check if this byte is a valid EVM opcode
-            if (Enum.IsDefined(typeof(Nethermind.Evm.Instruction), opcodeByte))
+            // Check if this byte is a valid EVM opcode using precomputed lookup table
+            if (s_validOpcodes[opcodeByte])
             {
                 // Count this opcode
                 _counter.Increment(opcodeByte);

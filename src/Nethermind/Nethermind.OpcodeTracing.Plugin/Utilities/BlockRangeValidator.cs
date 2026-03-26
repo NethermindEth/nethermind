@@ -42,6 +42,18 @@ public static class BlockRangeValidator
             }
         }
 
+        // Validate StartBlock non-negative when only StartBlock is specified
+        if (config.StartBlock.HasValue && !config.EndBlock.HasValue && config.StartBlock.Value < 0)
+        {
+            return ValidationResult.Error("StartBlock must be non-negative");
+        }
+
+        // Validate RecentBlocks parameter
+        if (config.RecentBlocks.HasValue && config.RecentBlocks.Value <= 0)
+        {
+            return ValidationResult.Error("RecentBlocks parameter must be positive");
+        }
+
         // Conflicting configuration warning
         if (config.StartBlock.HasValue && config.RecentBlocks.HasValue)
         {
@@ -53,24 +65,9 @@ public static class BlockRangeValidator
             return ValidationResult.Warning("Both EndBlock and RecentBlocks specified. This configuration is ambiguous.");
         }
 
-        // Blocks beyond chain tip
-        // Both modes can handle EndBlock > chain tip:
-        // - RealTime: Will trace blocks as they arrive until EndBlock is reached
-        // - Retrospective: Will wait for blocks to be synced
-        if (config.EndBlock.HasValue && config.EndBlock.Value > currentChainTip)
-        {
-            // Both modes handle EndBlock > chain tip gracefully
-            // No warning needed - this is normal expected behavior
-            // RealTime: traces new blocks until EndBlock, then stops
-            // Retrospective: waits for blocks during sync
-            return ValidationResult.Success();
-        }
-
-        // Validate RecentBlocks parameter
-        if (config.RecentBlocks.HasValue && config.RecentBlocks.Value <= 0)
-        {
-            return ValidationResult.Error("RecentBlocks parameter must be positive");
-        }
+        // Blocks beyond chain tip - both modes handle this gracefully
+        // RealTime: traces new blocks until EndBlock, then stops
+        // Retrospective: waits for blocks during sync
 
         return ValidationResult.Success();
     }

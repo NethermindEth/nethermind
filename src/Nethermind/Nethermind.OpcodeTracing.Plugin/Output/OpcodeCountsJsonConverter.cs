@@ -67,7 +67,7 @@ public sealed class OpcodeCountsJsonConverter : JsonConverter<Dictionary<byte, l
         // Handle hex format like "0xfe"
         if (opcodeName.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
         {
-            return Convert.ToByte(opcodeName, 16);
+            return Convert.ToByte(opcodeName.AsSpan(2).ToString(), 16);
         }
 
         // Try to parse as Instruction enum
@@ -76,6 +76,6 @@ public sealed class OpcodeCountsJsonConverter : JsonConverter<Dictionary<byte, l
             return (byte)instruction;
         }
 
-        return 0;
+        throw new JsonException($"Unrecognized opcode label: '{opcodeName}'");
     }
 }

@@ -122,8 +122,9 @@ public class OpcodeTracingPlugin(IOpcodeTracingConfig? config = null) : INetherm
         }
         catch (Exception ex)
         {
-            _logger?.Error($"Failed to initialize network protocol: {ex.Message}", ex);
-            throw;
+            _logger?.Error($"Opcode tracing plugin disabled due to network protocol error: {ex.Message}", ex);
+            _traceRecorder = null;
+            return Task.CompletedTask;
         }
     }
 

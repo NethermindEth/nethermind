@@ -26,7 +26,7 @@ public interface IOpcodeTracingConfig : IConfig
     /// <summary>
     /// Gets or sets the maximum number of tracing workers. 0 uses the number of logical processors.
     /// </summary>
-    [ConfigItem(Description = "Maximum number of tracing workers. 0 switches to the number of logical processors. For Retrospective mode only.", DefaultValue = "0")]
+    [ConfigItem(Description = "Maximum number of tracing workers. 0 switches to the number of logical processors. For Retrospective and RetrospectiveExecution modes.", DefaultValue = "0")]
     int MaxDegreeOfParallelism { get; set; }
 
     /// <summary>
@@ -52,6 +52,6 @@ public interface IOpcodeTracingConfig : IConfig
     /// Gets or sets the tracing mode: "RealTime" traces blocks as they are processed during sync/new blocks,
     /// "Retrospective" reads historical blocks from database.
     /// </summary>
-    [ConfigItem(Description = "Tracing mode: RealTime (trace during processing) or Retrospective (read from database).", DefaultValue = "\"RealTime\"")]
+    [ConfigItem(Description = "Tracing mode: RealTime (trace during processing), Retrospective (static bytecode analysis from database), or RetrospectiveExecution (full EVM replay from database).", DefaultValue = "\"RealTime\"")]
     string Mode { get; set; }
 }
