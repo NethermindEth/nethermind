@@ -289,6 +289,7 @@ public class PersistenceManager(
                 batch.SetStateTrieNode(path, node);
 
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -317,6 +318,7 @@ public class PersistenceManager(
                 batch.SetStorageTrieNode(address, path, node);
 
                 node.IsPersisted = true;
+                node.PrunePersistedRecursively(1);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
