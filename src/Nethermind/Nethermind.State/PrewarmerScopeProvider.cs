@@ -54,11 +54,6 @@ public class PrewarmerScopeProvider(
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
 
-        // Set to true after successful commit; used in Dispose to rollback stale direct writes.
-        private bool _committed;
-        // Set if any storage Clear() was observed (CREATE/SELFDESTRUCT); triggers epoch-bump on commit.
-        private volatile bool _pendingStorageClear;
-
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches, BlockHeader? baseBlock)
         {
             this.baseScope = baseScope;
@@ -85,13 +80,6 @@ public class PrewarmerScopeProvider(
 
         public void Dispose()
         {
-            // If commit didn't happen (e.g., block was invalid), epoch-bump to invalidate
-            // any entries written directly to the cross-block cache during this scope.
-            if (!_committed && crossBlockCaches is not null)
-            {
-                crossBlockCaches.StorageCache.Clear();
-            }
-
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -115,13 +103,6 @@ public class PrewarmerScopeProvider(
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
 
-            // Wrap write batch to write storage updates directly to the cross-block cache.
-            // On block failure, Dispose epoch-bumps to rollback stale entries.
-            if (crossBlockCaches is not null)
-            {
-                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
-            }
-
             if (!_measureMetric) return batch;
 
             _writeBatchTime = Stopwatch.GetTimestamp();
@@ -133,46 +114,21 @@ public class PrewarmerScopeProvider(
                 populatePreBlockCache);
         }
 
-        internal void BufferStorageClear()
-        {
-            _pendingStorageClear = true;
-        }
-
         public void Commit(long blockNumber)
         {
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
-                PromoteToCrossBlockCaches(blockNumber);
+                if (crossBlockCaches is not null)
+                    crossBlockCaches.LastCommittedBlockNumber = blockNumber;
                 return;
             }
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
-            PromoteToCrossBlockCaches(blockNumber);
+            if (crossBlockCaches is not null)
+                crossBlockCaches.LastCommittedBlockNumber = blockNumber;
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
-        }
-
-        /// <summary>
-        /// Finalizes cross-block cache state after successful commit. Storage values are
-        /// written directly to the cross-block cache during the write batch phase and seeded
-        /// from trie reads, so this only handles epoch-bumps from storage Clear() and sets
-        /// the committed flag for reorg detection.
-        /// </summary>
-        private void PromoteToCrossBlockCaches(long blockNumber)
-        {
-            if (crossBlockCaches is null) return;
-
-            if (_pendingStorageClear)
-            {
-                // A CREATE or SELFDESTRUCT cleared storage for at least one address.
-                // Epoch-bump invalidates all cross-block storage entries. The cache will
-                // be re-seeded organically from trie reads on subsequent blocks.
-                crossBlockCaches.StorageCache.Clear();
-            }
-
-            _committed = true;
-            crossBlockCaches.LastCommittedBlockNumber = blockNumber;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -351,56 +307,4 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
     }
 
-    /// <summary>
-    /// Wraps write batch to write storage updates directly to the cross-block cache.
-    /// On block failure, the ScopeWrapper's Dispose epoch-bumps the cache to rollback.
-    /// </summary>
-    private sealed class CacheUpdatingWriteBatch(
-        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
-        ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
-    {
-        public void Dispose() => baseBatch.Dispose();
-
-        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
-        {
-            add => baseBatch.OnAccountUpdated += value;
-            remove => baseBatch.OnAccountUpdated -= value;
-        }
-
-        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
-
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-        {
-            IWorldStateScopeProvider.IStorageWriteBatch baseBatchStorage = baseBatch.CreateStorageWriteBatch(key, estimatedEntries);
-            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, scope, crossBlockStorageCache, key);
-        }
-    }
-
-    /// <summary>
-    /// Wraps storage write batch to write slot updates directly to the cross-block cache.
-    /// On <see cref="Clear"/> (CREATE/SELFDESTRUCT), sets a flag so the commit step
-    /// epoch-bumps the cross-block storage cache.
-    /// </summary>
-    private sealed class CacheUpdatingStorageWriteBatch(
-        IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
-        ScopeWrapper scope,
-        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
-        Address address) : IWorldStateScopeProvider.IStorageWriteBatch
-    {
-        public void Set(in UInt256 index, byte[] value)
-        {
-            baseBatch.Set(in index, value);
-            StorageCell cell = new(address, in index);
-            crossBlockStorageCache.Set(in cell, value);
-        }
-
-        public void Clear()
-        {
-            baseBatch.Clear();
-            scope.BufferStorageClear();
-        }
-
-        public void Dispose() => baseBatch.Dispose();
-    }
 }

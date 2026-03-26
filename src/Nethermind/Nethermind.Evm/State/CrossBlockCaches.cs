@@ -8,18 +8,10 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Evm.State;
 
 /// <summary>
-/// Cross-block cache for storage slots. Survives across blocks and is updated via
-/// write-through during block commit. Unlike <see cref="PreBlockCaches"/>, this is
-/// never shared with the prewarmer — only the main processing thread reads/writes it.
+/// Cross-block cache for storage slots. Survives across blocks and is seeded from trie
+/// reads. Unlike <see cref="PreBlockCaches"/>, this is never shared with the prewarmer —
+/// only the main processing thread reads/writes it.
 /// </summary>
-/// <remarks>
-/// Account (state) caching is intentionally excluded. The base scope (flat state) must be
-/// the single source of truth for Account values because the EVM reads the account from
-/// the scope and writes modified values back through the same scope's write batch. Returning
-/// a cached Account that doesn't match the base scope's version causes InvalidStateRoot.
-/// Storage slot values are safe to cache because they are independent leaf values with no
-/// structural coupling to the trie.
-/// </remarks>
 public class CrossBlockCaches
 {
     private readonly SeqlockCache<StorageCell, byte[], LargeCacheSets> _storageCache = new();
