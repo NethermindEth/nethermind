@@ -22,6 +22,12 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
     public TrieNodeMetadata Metadata;
     public TrieNodeRlp Rlp;
 
+    /// <summary>
+    /// Direct references to child nodes (branch children 0-15 only).
+    /// Only valid for branch nodes whose path nibble length is divisible by 2.
+    /// </summary>
+    public ChildRefBuffer Children;
+
     internal RefCountingTrieNode() : base(initialCount: 0) { }
 
     /// <summary>Binds this node to a tracker. Called by the pool before each use.</summary>
@@ -42,6 +48,12 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
 
     protected override void CleanUp()
     {
+        for (int i = 0; i < 16; i++)
+        {
+            RefCountingTrieNode? child = Interlocked.Exchange(ref Children[i], null);
+            child?.Dispose();
+        }
+
         Rlp.Length = 0;
         Metadata = default;
         Hash = default;
@@ -53,6 +65,36 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
 
     /// <summary>Current lease count. For diagnostics only.</summary>
     public long LeaseCount => Volatile.Read(ref _leases.Value);
+
+    /// <summary>
+    /// Returns a leased direct child reference at <paramref name="index"/> if it matches <paramref name="expectedHash"/>.
+    /// Caller must dispose the returned node. Returns <c>null</c> on miss, hash mismatch, or if the child was already disposed.
+    /// Only valid for branch nodes whose path nibble length is divisible by 2.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public RefCountingTrieNode? TryGetChildRef(int index, in ValueHash256 expectedHash)
+    {
+        RefCountingTrieNode? child = Volatile.Read(ref Children[index]);
+        if (child is null) return null;
+        if (!child.TryAcquireLease()) return null;
+        if (child.Hash == expectedHash) return child;
+        child.Dispose();
+        return null;
+    }
+
+    /// <summary>
+    /// Atomically sets a direct child reference at <paramref name="index"/>. Acquires a lease on the child
+    /// for parent ownership. If the slot is already occupied, the lease is released (first-writer-wins).
+    /// Only valid for branch nodes whose path nibble length is divisible by 2.
+    /// </summary>
+    public void SetChildRef(int index, RefCountingTrieNode child)
+    {
+        child.AcquireLease(); // +1 for parent ownership
+        if (Interlocked.CompareExchange(ref Children[index], child, null) is not null)
+        {
+            child.Dispose(); // slot already occupied, release the lease we just took
+        }
+    }
 
     /// <summary>
     /// Returns the 32-byte hash of child at <paramref name="index"/> by reading from the RLP at the stored offset.
@@ -169,4 +211,13 @@ public struct TrieNodeMetadata
     {
         private short _element;
     }
+}
+
+/// <summary>
+/// Inline array of 16 direct child references for branch nodes.
+/// </summary>
+[InlineArray(16)]
+public struct ChildRefBuffer
+{
+    private RefCountingTrieNode? _element;
 }

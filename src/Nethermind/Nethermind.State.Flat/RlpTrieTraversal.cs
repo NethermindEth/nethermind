@@ -80,24 +80,29 @@ internal static class RlpTrieTraversal
         if (hash == ValueKeccak.EmptyTreeHash) return false;
 
         // Iterative loop for hash-referenced nodes; recurse only for inline nodes.
+        RefCountingTrieNode? preloaded = null;
         while (true)
         {
-            RefCountingTrieNode? node = nodeLoader(path, hash);
+            RefCountingTrieNode? node = preloaded ?? nodeLoader(path, hash);
+            preloaded = null;
             if (node is null) return false;
 
             try
             {
-                bool continueLoop = TraverseNode(nodeLoader, ref path, node, remainingNibbles, readValue, out ValueHash256? nextHash, out int nibblesConsumed, out byte[]? leafValue);
+                bool continueLoop = TraverseNode(nodeLoader, ref path, node, remainingNibbles, readValue, out ValueHash256? nextHash, out int nibblesConsumed, out byte[]? leafValue, out preloaded);
                 if (!continueLoop)
                 {
                     value = leafValue;
                     return leafValue is not null;
                 }
 
-                if (nextHash is not { } next) return false;
+                if (preloaded is null && nextHash is not { } next) return false;
 
                 remainingNibbles = remainingNibbles[nibblesConsumed..];
-                hash = next;
+                if (preloaded is not null)
+                    hash = preloaded.Hash;
+                else
+                    hash = nextHash!.Value;
             }
             finally
             {
@@ -118,15 +123,17 @@ internal static class RlpTrieTraversal
         bool readValue,
         out ValueHash256? nextHash,
         out int nibblesConsumed,
-        out byte[]? leafValue)
+        out byte[]? leafValue,
+        out RefCountingTrieNode? preloadedChild)
     {
         nextHash = null;
         nibblesConsumed = 0;
         leafValue = null;
+        preloadedChild = null;
 
         return node.Metadata.NodeType switch
         {
-            NodeType.Branch => TraverseBranch(nodeLoader, ref path, node, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue),
+            NodeType.Branch => TraverseBranch(nodeLoader, ref path, node, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue, out preloadedChild),
             NodeType.Extension => TraverseExtensionOrLeaf(nodeLoader, ref path, node, remainingNibbles, readValue, out nextHash, out nibblesConsumed, out leafValue),
             NodeType.Leaf => TraverseLeaf(node, remainingNibbles, readValue, out leafValue),
             _ => false
@@ -140,11 +147,13 @@ internal static class RlpTrieTraversal
         Span<byte> remainingNibbles,
         out ValueHash256? nextHash,
         out int nibblesConsumed,
-        out byte[]? leafValue)
+        out byte[]? leafValue,
+        out RefCountingTrieNode? preloadedChild)
     {
         nextHash = null;
         nibblesConsumed = 0;
         leafValue = null;
+        preloadedChild = null;
 
         if (remainingNibbles.IsEmpty) return false;
 
@@ -156,8 +165,26 @@ internal static class RlpTrieTraversal
         nibblesConsumed = 1;
 
         ReadOnlySpan<byte> rlp = node.Rlp.AsSpan();
-        return TryReadChildRef(nodeLoader, ref path, rlp, childOffset, remainingNibbles[1..], true, out nextHash, out int childNibblesConsumed, out leafValue)
-            && (nibblesConsumed += childNibblesConsumed) >= 0; // always true, just adds the consumed count
+        bool hasChildRef = TryReadChildRef(nodeLoader, ref path, rlp, childOffset, remainingNibbles[1..], true, out nextHash, out int childNibblesConsumed, out leafValue);
+        nibblesConsumed += childNibblesConsumed;
+
+        if (!hasChildRef || nextHash is not { } childHash) return hasChildRef;
+
+        // Direct child ref path: only for branch nodes at byte-aligned depths (nibble length divisible by 2)
+        if ((path.Length - 1) % 2 != 0) return true;
+
+        // Try cached direct reference first
+        preloadedChild = node.TryGetChildRef(nib, childHash);
+        if (preloadedChild is not null) return true;
+
+        // Cache miss — eagerly load and set the ref while parent is still alive
+        preloadedChild = nodeLoader(path, childHash);
+        if (preloadedChild is not null)
+        {
+            node.SetChildRef(nib, preloadedChild);
+        }
+
+        return true;
     }
 
     private static bool TraverseExtensionOrLeaf(
