@@ -349,73 +349,7 @@ namespace Nethermind.Core.Crypto
         // compute a Keccak hash (md) of given byte length from "in"
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            int roundSize = GetRoundSize(output.Length);
-            if (output.Length <= 0 || output.Length > STATE_SIZE)
-            {
-                ThrowBadKeccak();
-            }
-
-            Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
-            Span<byte> stateBytes = MemoryMarshal.AsBytes(state);
-
-            if (input.Length == Address.Size)
-            {
-                // Hashing Address, 20 bytes which is uint+Vector128
-                Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(stateBytes)) =
-                    Unsafe.As<byte, uint>(ref MemoryMarshal.GetReference(input));
-                Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(stateBytes), sizeof(uint))) =
-                        Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(input), sizeof(uint)));
-            }
-            else if (input.Length == Vector256<byte>.Count)
-            {
-                // Hashing Hash256 or UInt256, 32 bytes
-                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes)) =
-                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(input));
-            }
-            else if (input.Length >= roundSize)
-            {
-                // Process full rounds
-                do
-                {
-                    XorVectors(stateBytes, input[..roundSize]);
-                    KeccakF(state);
-                    input = input[roundSize..];
-                } while (input.Length >= roundSize);
-
-                if (input.Length > 0)
-                {
-                    // XOR the remaining input bytes into the state
-                    XorVectors(stateBytes, input);
-                }
-            }
-            else
-            {
-                input.CopyTo(stateBytes);
-            }
-
-            // Apply terminator markers within the current block
-            stateBytes[input.Length] ^= 0x01;  // Append bit '1' after remaining input
-            stateBytes[roundSize - 1] ^= 0x80; // Set the last bit of the round to '1'
-
-            // Process the final block
-            KeccakF(state);
-
-            if (output.Length == Vector256<byte>.Count)
-            {
-                // Fast Vector sized copy for Hash256
-                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) =
-                    Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(stateBytes));
-            }
-            else if (output.Length == Vector512<byte>.Count)
-            {
-                // Fast Vector sized copy for Hash512
-                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) =
-                    Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(stateBytes));
-            }
-            else
-            {
-                stateBytes[..output.Length].CopyTo(output);
-            }
+            ZiskBindings.Crypto.keccak256_c(input, (nuint)input.Length, output);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

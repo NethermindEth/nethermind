@@ -13,7 +13,6 @@ BFLAT_BUILD := bflat build --arch riscv64 --os linux --stdlib dotnet \
   --no-stacktrace-data \
   --no-globalization \
   --nostdlibrefs \
-  --verbose \
   -x
 BFLAT_REFS := \
   -r {std}/Microsoft.Win32.Primitives.dll \

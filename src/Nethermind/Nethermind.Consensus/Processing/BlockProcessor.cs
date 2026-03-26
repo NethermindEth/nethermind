@@ -127,6 +127,7 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
+
         _stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
@@ -150,9 +151,9 @@ public partial class BlockProcessor(
         _balBuilder?.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
-
+        ZiskBindings.IO.WriteLine("BEFORE _stateProvider.Commit");
         _stateProvider.Commit(spec, commitRoots: true);
-
+        ZiskBindings.IO.WriteLine("AFTER _stateProvider.Commit");
         if (BlockchainProcessor.IsMainProcessingThread)
         {
             // Get the accounts that have been changed

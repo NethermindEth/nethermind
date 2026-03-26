@@ -480,17 +480,18 @@ namespace Nethermind.State
             Task codeFlushTask = !commitRoots || _codeBatch is null || _codeBatch.Count == 0
                 ? Task.CompletedTask
                 : CommitCodeAsync(_codeDb);
-
+            
             bool isTracing = _logger.IsTrace;
             int stepsBack = _changes.Count - 1;
             if (stepsBack < 0)
             {
+                ZiskBindings.IO.WriteLine("in stepsBack");
                 if (isTracing) TraceNoChanges();
-
                 codeFlushTask.GetAwaiter().GetResult();
+                ZiskBindings.IO.WriteLine("return from stepsBack");
                 return;
             }
-
+            //ZiskBindings.IO.WriteLine("after stepsBack");
             if (isTracing) TraceCommit(stepsBack);
             if (_changes[stepsBack].IsNull)
             {
@@ -498,7 +499,7 @@ namespace Nethermind.State
             }
 
             Dictionary<AddressAsKey, ChangeTrace>? trace = !stateTracer.IsTracingState ? null : [];
-
+            
             ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
             for (int i = 0; i <= stepsBack; i++)
             {
@@ -618,30 +619,33 @@ namespace Nethermind.State
                 if (dict is null) return Task.CompletedTask;
                 _codeBatchAlternate = default;
 
-                return Task.Run(() =>
+                ZiskBindings.IO.WriteLine("in CommitCodeAsync");
                 {
                     using (var batch = codeDb.BeginCodeWrite())
                     {
+                        
                         // Insert ordered for improved performance
                         foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
                         {
                             batch.Set(kvp.Key.Value, kvp.Value);
                         }
+                        
                     }
-
+                    
                     // Mark all inserted codes as persisted
                     foreach (Hash256AsKey kvp in dict.Keys)
                     {
                         _persistedCodeInsertFilter.Set(kvp.Value.ValueHash256);
                     }
-
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
                     if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
                     {
                         _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
                     }
-                });
+                }
+                ZiskBindings.IO.WriteLine("return from CommitCodeAsync");
+                return Task.CompletedTask;
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]

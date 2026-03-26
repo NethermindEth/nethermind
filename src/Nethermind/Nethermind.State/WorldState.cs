@@ -332,14 +332,20 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(tracer);
             _persistentStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, commitRoots, isGenesis);
-
+            //ZiskBindings.IO.WriteLine("after worldstate");
             if (commitRoots)
             {
+                ZiskBindings.IO.WriteLine("in commitRoots");
                 using IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = _currentScope.StartWriteBatch(_stateProvider.ChangedAccountCount);
+                ZiskBindings.IO.WriteLine("after StartWriteBatch");
                 writeBatch.OnAccountUpdated += (_, updatedAccount) => _stateProvider.SetState(updatedAccount.Address, updatedAccount.Account);
+                ZiskBindings.IO.WriteLine("after OnAccountUpdated");
                 _persistentStorageProvider.FlushToTree(writeBatch);
+                ZiskBindings.IO.WriteLine("after _persistentStorageProvider.FlushToTree");
                 _stateProvider.FlushToTree(writeBatch);
+                ZiskBindings.IO.WriteLine("after _stateProvider.FlushToTree");
             }
+            //ZiskBindings.IO.WriteLine("after commitRoots");
         }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)

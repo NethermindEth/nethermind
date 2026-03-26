@@ -242,14 +242,17 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
         }
 
         // Is overhead of parallel foreach worth it?
-        if (_toUpdateRoots.Count < 3)
+        //if (_toUpdateRoots.Count < 3)
         {
+            ZiskBindings.IO.WriteLine("SINGLE THREAD");
             UpdateRootHashesSingleThread();
+            ZiskBindings.IO.WriteLine("AFTER SINGLE THREAD");
         }
-        else
-        {
-            UpdateRootHashesMultiThread();
-        }
+        //else
+        //{
+        //    ZiskBindings.IO.WriteLine("MULTI THREAD");
+        //    UpdateRootHashesMultiThread();
+        //}
 
         _toUpdateRoots.Clear();
 
@@ -262,54 +265,56 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     // Wasn't updated don't recalculate
                     continue;
                 }
-
+                ZiskBindings.IO.WriteLine("before "+ writeBatch.GetType().FullName );
                 PerContractState contractState = kvp.Value;
                 (int writes, int skipped) = contractState.ProcessStorageChanges(writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+                ZiskBindings.IO.WriteLine("after ProcessStorageChanges");
                 ReportMetrics(writes, skipped);
+                //ZiskBindings.IO.WriteLine("after ReportMetrics");
             }
         }
 
-        void UpdateRootHashesMultiThread()
-        {
-            // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
+        //void UpdateRootHashesMultiThread()
+        //{
+        //    // We can recalculate the roots in parallel as they are all independent tries
+        //    using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
+        //        // Only consider contracts that actually have pending changes
+        //        .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
+        //        // Schedule larger changes first to help balance the work
+        //        .OrderByDescending(kv => kv.Value.EstimatedChanges)
+        //        .Select((kv) => (
+        //            kv.Key,
+        //            kv.Value,
+        //            writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
+        //        ))
+        //        .ToPooledList(_storages.Count);
 
-            ParallelUnbalancedWork.For(
-                0,
-                storages.Count,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
-                static (i, state) =>
-                {
-                    ref var kvp = ref state.storages.GetRef(i);
-                    (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-                    if (writes == 0)
-                    {
-                        // Mark as no changes; we set as false rather than removing so
-                        // as not to modify the non-concurrent collection without synchronization
-                        state.toUpdateRoots[kvp.Key] = false;
-                    }
-                    else
-                    {
-                        state.writes += writes;
-                    }
+        //    ParallelUnbalancedWork.For(
+        //        0,
+        //        storages.Count,
+        //        RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
+        //        (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
+        //        static (i, state) =>
+        //        {
+        //            ref var kvp = ref state.storages.GetRef(i);
+        //            (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
+        //            if (writes == 0)
+        //            {
+        //                // Mark as no changes; we set as false rather than removing so
+        //                // as not to modify the non-concurrent collection without synchronization
+        //                state.toUpdateRoots[kvp.Key] = false;
+        //            }
+        //            else
+        //            {
+        //                state.writes += writes;
+        //            }
 
-                    state.skips += skipped;
+        //            state.skips += skipped;
 
-                    return state;
-                },
-                (state) => ReportMetrics(state.writes, state.skips));
-        }
+        //            return state;
+        //        },
+        //        (state) => ReportMetrics(state.writes, state.skips));
+        //}
 
         static void ReportMetrics(int writes, int skipped)
         {
@@ -573,8 +578,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
+            ZiskBindings.IO.WriteLine("in ProcessStorageChanges");
             EnsureStorageTree();
-
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
 
             int writes = 0;
@@ -585,7 +590,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                 storageWriteBatch.Clear();
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
-
+            ZiskBindings.IO.WriteLine("after BlockChange.HasClear");
             foreach (var kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
@@ -601,7 +606,8 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
                     skipped++;
                 }
             }
-
+            ZiskBindings.IO.WriteLine("after BlockChange loop");
+            ZiskBindings.IO.WriteLine("return from ProcessStorageChanges:" + writes + " " +skipped);
             return (writes, skipped);
         }
 
@@ -620,6 +626,7 @@ internal sealed class PersistentStorageProvider : PartialStorageProviderBase
 
             public static PerContractState Rent(Address address, PersistentStorageProvider provider)
             {
+                //ZiskBindings.IO.WriteLine("RRRRRRenting PerContractState");
                 if (Volatile.Read(ref _poolCount) > 0 && _pool.TryDequeue(out PerContractState item))
                 {
                     Interlocked.Decrement(ref _poolCount);

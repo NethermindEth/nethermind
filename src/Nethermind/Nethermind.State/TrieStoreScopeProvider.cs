@@ -181,12 +181,14 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
         {
+            ZiskBindings.IO.WriteLine("in CreateStorageWriteBatch");
             return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
                 (address, rootHash) => MarkDirty(address, rootHash), address);
         }
 
         public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
         {
+            ZiskBindings.IO.WriteLine("before _dirtyStorageTree.Enqueue");
             _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
         }
 
