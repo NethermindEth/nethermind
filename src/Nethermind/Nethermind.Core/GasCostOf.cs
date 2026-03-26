@@ -82,6 +82,7 @@ namespace Nethermind.Core
         public const long PerAuthBaseRegular = 7_500;
         public const long PerAuthBaseState = 23 * CostPerStateByte;
         public const long PerEmptyAccountState = 112 * CostPerStateByte;
+        public const long BlockAccessListItem = 2_000; // eip-7928
 
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
