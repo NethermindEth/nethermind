@@ -16,6 +16,6 @@ public interface ITrieNodeCache
     void Add(TransientResource transientResource);
     void Clear();
 
-    /// <summary>Per-shard pools for <see cref="TrieNodeCache.ChildCache"/> to use.</summary>
-    RefCountingTrieNodePool[] ShardPools { get; }
+    /// <summary>Per-shard trackers for <see cref="TrieNodeCache.ChildCache"/> to use.</summary>
+    RefCountingRlpNodePoolTracker[] ShardTrackers { get; }
 }

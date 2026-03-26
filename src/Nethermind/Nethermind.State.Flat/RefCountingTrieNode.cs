@@ -12,18 +12,22 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// A poolable, ref-counted trie node that stores RLP inline with pre-parsed metadata.
-/// Created exclusively by <see cref="RefCountingTrieNodePool"/> and returned to it on final dispose.
+/// Created by <see cref="RefCountingTrieNodePool"/> and tracked by <see cref="RefCountingRlpNodePoolTracker"/>.
 /// </summary>
 public sealed class RefCountingTrieNode : RefCountingDisposable
 {
-    private readonly RefCountingTrieNodePool _pool;
+    private RefCountingRlpNodePoolTracker _tracker;
 
     public ValueHash256 Hash;
     public TrieNodeMetadata Metadata;
     public TrieNodeRlp Rlp;
 
-    internal RefCountingTrieNode(RefCountingTrieNodePool pool) : base(initialCount: 0) =>
-        _pool = pool;
+    internal RefCountingTrieNode(RefCountingRlpNodePoolTracker tracker) : base(initialCount: 0) =>
+        _tracker = tracker;
+
+    /// <summary>Rebinds this node to a different tracker when reused from the shared pool.</summary>
+    internal void SetTracker(RefCountingRlpNodePoolTracker tracker) =>
+        _tracker = tracker;
 
     /// <summary>
     /// Initializes this node with the given hash and RLP data. Eagerly parses metadata.
@@ -42,7 +46,7 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
         Rlp.Length = 0;
         Metadata = default;
         Hash = default;
-        _pool.Return(this);
+        _tracker.Return(this);
     }
 
     /// <summary>Tries to acquire a lease. Returns false if already disposed.</summary>

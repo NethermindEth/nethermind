@@ -11,11 +11,11 @@ namespace Nethermind.State.Flat.Test;
 [TestFixture]
 public class RefCountingTrieNodeTests
 {
-    private RefCountingTrieNodePool _pool = null!;
+    private RefCountingRlpNodePoolTracker _tracker = null!;
 
     [SetUp]
     public void SetUp() =>
-        _pool = new RefCountingTrieNodePool();
+        _tracker = new RefCountingRlpNodePoolTracker(new RefCountingTrieNodePool());
 
     /// <summary>
     /// Builds a minimal branch node RLP with 16 hash children + empty value.
@@ -67,11 +67,11 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, branchRlp);
-        Assert.That(_pool.ActiveCount, Is.EqualTo(1));
+        RefCountingTrieNode node = _tracker.Rent(hash, branchRlp);
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(1));
 
         node.Dispose();
-        Assert.That(_pool.ActiveCount, Is.EqualTo(0));
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -80,20 +80,20 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node = _tracker.Rent(hash, branchRlp);
         node.AcquireLease(); // 2 leases
         node.AcquireLease(); // 3 leases
 
-        Assert.That(_pool.ActiveCount, Is.EqualTo(1));
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(1));
 
         node.Dispose(); // 2 leases
-        Assert.That(_pool.ActiveCount, Is.EqualTo(1));
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(1));
 
         node.Dispose(); // 1 lease
-        Assert.That(_pool.ActiveCount, Is.EqualTo(1));
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(1));
 
         node.Dispose(); // 0 -> cleanup -> return to pool
-        Assert.That(_pool.ActiveCount, Is.EqualTo(0));
+        Assert.That(_tracker.ActiveCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -102,7 +102,7 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node = _tracker.Rent(hash, branchRlp);
         Assert.That(node.Hash, Is.EqualTo(hash));
         Assert.That(node.Rlp.AsSpan().ToArray(), Is.EqualTo(branchRlp));
 
@@ -115,7 +115,7 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node = _tracker.Rent(hash, branchRlp);
 
         Assert.That(node.Metadata.NodeType, Is.EqualTo(NodeType.Branch));
 
@@ -141,7 +141,7 @@ public class RefCountingTrieNodeTests
         byte[] leafRlp = BuildLeafRlp([0x42]);
         ValueHash256 hash = ValueKeccak.Compute(leafRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, leafRlp);
+        RefCountingTrieNode node = _tracker.Rent(hash, leafRlp);
 
         Assert.That(node.Metadata.NodeType, Is.EqualTo(NodeType.Leaf));
 
@@ -154,7 +154,7 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node = _tracker.Rent(hash, branchRlp);
 
         for (int i = 0; i < 16; i++)
         {
@@ -176,10 +176,10 @@ public class RefCountingTrieNodeTests
         byte[] branchRlp = BuildBranchRlp();
         ValueHash256 hash = ValueKeccak.Compute(branchRlp);
 
-        RefCountingTrieNode node1 = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node1 = _tracker.Rent(hash, branchRlp);
         node1.Dispose(); // returns to pool
 
-        RefCountingTrieNode node2 = _pool.Rent(hash, branchRlp);
+        RefCountingTrieNode node2 = _tracker.Rent(hash, branchRlp);
         // Should be the same instance reused from the pool
         Assert.That(ReferenceEquals(node1, node2), Is.True);
 

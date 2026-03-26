@@ -59,7 +59,7 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
-        _transientResource.Nodes.SetShardPools(trieNodeCache.ShardPools);
+        _transientResource.Nodes.SetShardTrackers(trieNodeCache.ShardTrackers);
         _readStateNodes = _transientResource.ReadStateNodes;
         _readStorageNodes = _transientResource.ReadStorageNodes;
 
@@ -542,7 +542,7 @@ public sealed class SnapshotBundle : IDisposable
             }
 
             _transientResource = _resourcePool.GetCachedResource(_usage);
-            _transientResource.Nodes.SetShardPools(_trieNodeCache.ShardPools);
+            _transientResource.Nodes.SetShardTrackers(_trieNodeCache.ShardTrackers);
             _trieChanged = false;
 
             _readStateNodes = _transientResource.ReadStateNodes;

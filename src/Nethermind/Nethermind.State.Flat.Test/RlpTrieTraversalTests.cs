@@ -27,7 +27,7 @@ public class RlpTrieTraversalTests
     private MemDb _trieDb = null!;
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
-    private RefCountingTrieNodePool _pool = null!;
+    private RefCountingRlpNodePoolTracker _tracker = null!;
 
     [SetUp]
     public void SetUp()
@@ -35,7 +35,7 @@ public class RlpTrieTraversalTests
         _trieDb = new MemDb();
         _trieStore = new RawScopedTrieStore(_trieDb);
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
-        _pool = new RefCountingTrieNodePool();
+        _tracker = new RefCountingRlpNodePoolTracker(new RefCountingTrieNodePool());
     }
 
     [TearDown]
@@ -53,7 +53,7 @@ public class RlpTrieTraversalTests
         byte[]? data = _trieStore.TryLoadRlp(path, h);
         if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
         Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
-        return _pool.Rent(hash, data);
+        return _tracker.Rent(hash, data);
     };
 
     /// <summary>
@@ -68,7 +68,7 @@ public class RlpTrieTraversalTests
             byte[]? data = storageStore.TryLoadRlp(path, h);
             if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
             Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
-            return _pool.Rent(hash, data);
+            return _tracker.Rent(hash, data);
         };
     }
 

@@ -15,7 +15,6 @@ public class TrieNodeCacheTests
     private TrieNodeCache _cache = null!;
     private FlatDbConfig _config = null!;
     private ResourcePool _resourcePool = null!;
-    private RefCountingTrieNodePool _pool = null!;
 
     [SetUp]
     public void SetUp()
@@ -23,7 +22,6 @@ public class TrieNodeCacheTests
         _config = new FlatDbConfig { TrieCacheMemoryBudget = 1024 * 1024 };
         _cache = new TrieNodeCache(_config, LimboLogs.Instance);
         _resourcePool = new ResourcePool(_config);
-        _pool = new RefCountingTrieNodePool();
     }
 
     private static byte[] BuildBranchRlp(byte seed)
@@ -337,14 +335,10 @@ public class TrieNodeCacheTests
 public class ChildCacheTests
 {
     private TrieNodeCache.ChildCache _cache = null!;
-    private RefCountingTrieNodePool _pool = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         _cache = new TrieNodeCache.ChildCache(1024);
-        _pool = new RefCountingTrieNodePool();
-    }
 
     private static byte[] BuildBranchRlp(byte seed)
     {
