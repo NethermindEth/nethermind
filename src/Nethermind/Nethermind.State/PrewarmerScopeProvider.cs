@@ -53,6 +53,8 @@ public class PrewarmerScopeProvider(
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
         private readonly PrewarmerGetTimeLabels _labels;
+        private bool _committed;
+        private volatile bool _pendingStorageClear;
 
         public ScopeWrapper(IWorldStateScopeProvider.IScope baseScope, PreBlockCaches preBlockCaches, bool populatePreBlockCache, CrossBlockCaches? crossBlockCaches, BlockHeader? baseBlock)
         {
@@ -80,6 +82,13 @@ public class PrewarmerScopeProvider(
 
         public void Dispose()
         {
+            // If commit didn't happen (e.g., block was invalid), epoch-bump to invalidate
+            // any entries written directly to the cross-block cache during this scope.
+            if (!_committed && crossBlockCaches is not null)
+            {
+                crossBlockCaches.StorageCache.Clear();
+            }
+
             if (_measureMetric && _writeBatchTime != 0)
             {
                 _metricObserver.Observe(Stopwatch.GetTimestamp() - _writeBatchTime, _labels.WriteBatchToScopeDisposeTime);
@@ -103,6 +112,12 @@ public class PrewarmerScopeProvider(
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch batch = baseScope.StartWriteBatch(estimatedAccountNum);
 
+            // Write-through: intercept storage writes to keep cross-block cache up to date.
+            if (crossBlockCaches is not null)
+            {
+                batch = new CacheUpdatingWriteBatch(batch, this, crossBlockCaches.StorageCache);
+            }
+
             if (!_measureMetric) return batch;
 
             _writeBatchTime = Stopwatch.GetTimestamp();
@@ -114,21 +129,33 @@ public class PrewarmerScopeProvider(
                 populatePreBlockCache);
         }
 
+        internal void BufferStorageClear() => _pendingStorageClear = true;
+
         public void Commit(long blockNumber)
         {
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
-                if (crossBlockCaches is not null)
-                    crossBlockCaches.LastCommittedBlockNumber = blockNumber;
+                FinalizeCommit(blockNumber);
                 return;
             }
 
             long sw = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
-            if (crossBlockCaches is not null)
-                crossBlockCaches.LastCommittedBlockNumber = blockNumber;
+            FinalizeCommit(blockNumber);
             _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.Commit);
+        }
+
+        private void FinalizeCommit(long blockNumber)
+        {
+            if (crossBlockCaches is null) return;
+
+            // CREATE/SELFDESTRUCT cleared storage — epoch-bump invalidates all entries.
+            if (_pendingStorageClear)
+                crossBlockCaches.StorageCache.Clear();
+
+            _committed = true;
+            crossBlockCaches.LastCommittedBlockNumber = blockNumber;
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -305,6 +332,52 @@ public class PrewarmerScopeProvider(
         public void Set(Address key, Account? account) => baseWriteBatch.Set(key, account);
 
         public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => baseWriteBatch.CreateStorageWriteBatch(key, estimatedEntries);
+    }
+
+    /// <summary>
+    /// Wraps write batch to write-through storage updates to the cross-block cache.
+    /// </summary>
+    private sealed class CacheUpdatingWriteBatch(
+        IWorldStateScopeProvider.IWorldStateWriteBatch baseBatch,
+        ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache) : IWorldStateScopeProvider.IWorldStateWriteBatch
+    {
+        public void Dispose() => baseBatch.Dispose();
+
+        public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated
+        {
+            add => baseBatch.OnAccountUpdated += value;
+            remove => baseBatch.OnAccountUpdated -= value;
+        }
+
+        public void Set(Address key, Account? account) => baseBatch.Set(key, account);
+
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
+        {
+            IWorldStateScopeProvider.IStorageWriteBatch baseBatchStorage = baseBatch.CreateStorageWriteBatch(key, estimatedEntries);
+            return new CacheUpdatingStorageWriteBatch(baseBatchStorage, scope, crossBlockStorageCache, key);
+        }
+    }
+
+    private sealed class CacheUpdatingStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch baseBatch,
+        ScopeWrapper scope,
+        SeqlockCache<StorageCell, byte[], LargeCacheSets> crossBlockStorageCache,
+        Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        public void Set(in UInt256 index, byte[] value)
+        {
+            baseBatch.Set(in index, value);
+            crossBlockStorageCache.Set(new StorageCell(address, in index), value);
+        }
+
+        public void Clear()
+        {
+            baseBatch.Clear();
+            scope.BufferStorageClear();
+        }
+
+        public void Dispose() => baseBatch.Dispose();
     }
 
 }

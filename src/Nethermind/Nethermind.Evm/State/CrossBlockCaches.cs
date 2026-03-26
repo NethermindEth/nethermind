@@ -8,9 +8,8 @@ using Nethermind.Core.Collections;
 namespace Nethermind.Evm.State;
 
 /// <summary>
-/// Cross-block cache for storage slots. Survives across blocks and is seeded from trie
-/// reads. Unlike <see cref="PreBlockCaches"/>, this is never shared with the prewarmer —
-/// only the main processing thread reads/writes it.
+/// Cross-block cache for storage slots. Survives across blocks, updated via write-through
+/// and seeded from trie reads. Only the main processing thread reads/writes it.
 /// </summary>
 public class CrossBlockCaches
 {
