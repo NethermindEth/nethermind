@@ -35,6 +35,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -207,6 +209,31 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget()
+    {
+        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
+
+        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
+        {
+            Transaction transaction = callInfo.Arg<Transaction>();
+            transaction.SpentGas = 63_586;
+            transaction.BlockGasUsed = 37_568;
+            return TransactionResult.Ok;
+        });
+
+        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
+
+        stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
         (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: null);
@@ -275,5 +302,29 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+    }
+
+    private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)
+        : WrappedWorldState(innerWorldState), IBlockAccessListBuilder
+    {
+        public bool TracingEnabled { get; set; }
+        public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+        public List<long> ValidatedGasRemaining { get; } = [];
+
+        private long _gasUsed;
+
+        public void AddAccountRead(Address address)
+        {
+        }
+
+        public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed) => _gasUsed = gasUsed;
+
+        public long GasUsed()
+            => _gasUsed;
+
+        public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
+            => ValidatedGasRemaining.Add(gasRemaining);
+
+        public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
     }
 }

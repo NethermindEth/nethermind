@@ -39,7 +39,7 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
-        CompositeTxGossipPolicy TxGossipPolicy { get; }
+
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]
