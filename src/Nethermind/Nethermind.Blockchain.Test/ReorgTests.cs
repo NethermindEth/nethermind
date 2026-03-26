@@ -96,8 +96,8 @@ public class ReorgTests
         EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
-            LimboLogs.Instance,
-            balBuilder);
+            balBuilder,
+            LimboLogs.Instance);
         EthereumTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             specProvider,

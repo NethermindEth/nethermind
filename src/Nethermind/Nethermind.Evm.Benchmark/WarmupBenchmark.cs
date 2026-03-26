@@ -102,10 +102,11 @@ public class WarmupBenchmark
             .WithStateRoot(_stateProvider.StateRoot)
             .TestObject;
 
-        EthereumCodeInfoRepository codeInfo = new(_stateProvider);
+        EthereumCodeInfoRepository codeInfo = new(_stateProvider, IBlockAccessListBuilder.None);
         EthereumVirtualMachine vm = new(
             new TestBlockhashProvider(),
             SpecProvider,
+            IBlockAccessListBuilder.None,
             LimboLogs.Instance);
         _processor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,

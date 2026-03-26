@@ -321,8 +321,8 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EthereumVirtualMachine virtualMachine = new(
             new TestBlockhashProvider(specProvider),
             specProvider,
-            LimboLogs.Instance,
-            IBlockAccessListBuilder.None);
+            IBlockAccessListBuilder.None,
+            LimboLogs.Instance);
         ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(
             BlobBaseFeeCalculator.Instance,
             specProvider,

@@ -159,7 +159,7 @@ public unsafe class EvmOpcodesBenchmark
         }
         _stateProvider.Commit(spec);
 
-        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
+        EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider, IBlockAccessListBuilder.None);
         _codeInfoRepository = codeInfoRepository;
 
         BlockHeader header = new(
@@ -910,7 +910,7 @@ public unsafe class EvmOpcodesBenchmark
     /// Subclass to access protected VirtualMachine members for benchmark setup.
     /// </summary>
     private class BenchmarkVm(IBlockhashProvider bhp, ISpecProvider sp, ILogManager lm)
-        : VirtualMachine<EthereumGasPolicy>(bhp, sp, lm)
+        : VirtualMachine<EthereumGasPolicy>(bhp, sp, IBlockAccessListBuilder.None, lm)
     {
         private static readonly FieldInfo CodeInfoRepositoryField =
             typeof(VirtualMachine<EthereumGasPolicy>)
