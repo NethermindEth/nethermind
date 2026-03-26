@@ -112,6 +112,15 @@ jobs:
           git worktree add --detach -f "${base_dir}" "${base_sha}"
           echo "BASE_WORKTREE=${base_dir}" >> "${GITHUB_ENV}"
 
+      - name: Decompress PGO callchain profiles
+        shell: bash
+        run: |
+          for dir in . "${BASE_WORKTREE}"; do
+            gz="${dir}/src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json.gz"
+            json="${dir}/src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json"
+            if [ -f "$gz" ] && [ ! -f "$json" ]; then gzip -d -k "$gz"; fi
+          done
+
       - name: Run base benchmark
         shell: bash
         run: |

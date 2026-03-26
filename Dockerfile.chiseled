@@ -20,6 +20,9 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
   dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  if [ -f pgo/nethermind.callchain.json.gz ] && [ ! -f pgo/nethermind.callchain.json ]; then \
+    gzip -d -k pgo/nethermind.callchain.json.gz; \
+  fi && \
   dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
@@ -27,7 +30,15 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 RUN cd /publish && \
   mkdir keystore && \
   mkdir logs && \
-  mkdir nethermind_db
+  mkdir nethermind_db && \
+  mkdir -p pgo
+
+# Decompress edge/block PGO data for runtime JIT optimization
+COPY src/Nethermind/Nethermind.Runner/pgo/ /tmp/pgo/
+RUN if [ -s /tmp/pgo/nethermind.jit.gz ]; then \
+    gzip -d -c /tmp/pgo/nethermind.jit.gz > /publish/pgo/nethermind.jit; \
+  fi && \
+  rm -rf /tmp/pgo
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.5-noble-chiseled@sha256:1191b4891ae8b1a8184b2de52b2c6332dfb27c30b58d282632044357db63761d
 
@@ -35,6 +46,12 @@ WORKDIR /nethermind
 
 # Chiseled image has no shell — large pages cannot be auto-detected.
 # To enable: docker run -e DOTNET_GCLargePages=1 -e DOTNET_GCRegionRange=0x800000000 ...
+
+# Enable edge/block PGO and profile-driven inlining.
+# The JIT silently skips PGO loading when the file doesn't exist.
+ENV DOTNET_ReadPGOData=1
+ENV DOTNET_PGODataPath=/nethermind/pgo/nethermind.jit
+ENV DOTNET_JitInlinePolicyProfile=1
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db

@@ -90,6 +90,12 @@ jobs:
           cache: true
           cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
 
+      - name: Decompress PGO callchain profile
+        run: |
+          gz="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json.gz"
+          json="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json"
+          if [ -f "$gz" ] && [ ! -f "$json" ]; then gzip -d -k "$gz"; fi
+
       - name: Build base branch
         run: |
           dotnet restore ${{ env.BENCHMARK_PROJECT }}
@@ -119,6 +125,12 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
           clean: false
+
+      - name: Decompress PGO callchain profile (PR)
+        run: |
+          gz="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json.gz"
+          json="src/Nethermind/Nethermind.Runner/pgo/nethermind.callchain.json"
+          if [ -f "$gz" ] && [ ! -f "$json" ]; then gzip -d -k "$gz"; fi
 
       - name: Build PR branch
         run: |

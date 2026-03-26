@@ -22,8 +22,6 @@
 
   <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
     <PublishReadyToRun>true</PublishReadyToRun>
-    <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
-    <OptimizationPreference>Speed</OptimizationPreference>
   </PropertyGroup>
 
   <PropertyGroup Label="PackagesLock">
@@ -105,6 +103,15 @@
     <EmbeddedResource Include="wwwroot\**" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.jit.gz">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.callchain.json.gz" Condition="Exists('pgo\nethermind.callchain.json.gz')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="pgo\nethermind.mibc">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
