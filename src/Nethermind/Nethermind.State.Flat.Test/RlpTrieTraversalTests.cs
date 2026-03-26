@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -50,10 +51,10 @@ public class RlpTrieTraversalTests
     private NodeLoader MakeStateLoader() => (TreePath path, in ValueHash256 hash) =>
     {
         Hash256 h = hash.ToCommitment();
-        byte[]? data = _trieStore.TryLoadRlp(path, h);
-        if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
-        Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
-        return _tracker.Rent(hash, data);
+        CappedArray<byte> data = _trieStore.TryLoadRlp(path, h);
+        if (data.IsNull || data.Length > TrieNodeRlp.MaxRlpLength) return null;
+        Assert.That(Keccak.Compute(data.AsSpan()), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
+        return _tracker.Rent(hash, data.AsSpan());
     };
 
     /// <summary>
@@ -65,10 +66,10 @@ public class RlpTrieTraversalTests
         return (TreePath path, in ValueHash256 hash) =>
         {
             Hash256 h = hash.ToCommitment();
-            byte[]? data = storageStore.TryLoadRlp(path, h);
-            if (data is null || data.Length > TrieNodeRlp.MaxRlpLength) return null;
-            Assert.That(Keccak.Compute(data), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
-            return _tracker.Rent(hash, data);
+            CappedArray<byte> data = storageStore.TryLoadRlp(path, h);
+            if (data.IsNull || data.Length > TrieNodeRlp.MaxRlpLength) return null;
+            Assert.That(Keccak.Compute(data.AsSpan()), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
+            return _tracker.Rent(hash, data.AsSpan());
         };
     }
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -48,8 +49,9 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = _reader.TryLoadStateRlp(path, ReadFlags.None);
-        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int len = _reader.TryLoadStateRlp(path, buffer, ReadFlags.None);
+        return len > 0 && ValueKeccak.Compute(buffer.AsSpan(0, len)) == keccak;
     }
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries)
@@ -97,8 +99,12 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStateRlp(path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StateCommitter(writeBatch, reader, enableDoubleWriteCheck);
@@ -107,9 +113,11 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                if (enableDoubleWriteCheck && reader.TryLoadStateRlp(path, ReadFlags.None) != null)
+                if (enableDoubleWriteCheck)
                 {
-                    throw new Exception($"Double state rlp write. {path}");
+                    byte[] checkBuf = new byte[TrieNodeRlp.MaxRlpLength];
+                    if (reader.TryLoadStateRlp(path, checkBuf, ReadFlags.None) > 0)
+                        throw new Exception($"Double state rlp write. {path}");
                 }
                 writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
                 return node;

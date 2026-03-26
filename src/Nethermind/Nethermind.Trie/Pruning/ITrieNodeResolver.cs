@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
@@ -23,14 +24,14 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Loads RLP of the node, but return null instead of throwing if does not exist.
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Got another node resolver for another trie. Used for tree traversal. For simplicity, if address is null,

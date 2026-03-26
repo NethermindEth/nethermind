@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -33,8 +34,8 @@ public interface IPersistence
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue);
         StateId CurrentState { get; }
-        byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags);
+        int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags);
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);

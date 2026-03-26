@@ -16,7 +16,7 @@ namespace Nethermind.State.Flat;
 [StructLayout(LayoutKind.Sequential)]
 public struct TrieNodeRlp
 {
-    public const int MaxRlpLength = 544;
+    public const int MaxRlpLength = 532;
 
     /// <summary>Valid RLP byte count. 0 means empty/invalid.</summary>
     public ushort Length;

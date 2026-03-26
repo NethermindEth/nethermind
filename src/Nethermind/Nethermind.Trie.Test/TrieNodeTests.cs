@@ -1029,9 +1029,9 @@ public class TrieNodeTests
             return _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
         }
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => default;
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
+        public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => default;
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
         {

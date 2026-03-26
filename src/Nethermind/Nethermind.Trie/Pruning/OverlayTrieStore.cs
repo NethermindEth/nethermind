@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
@@ -28,14 +29,18 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
         return baseStore.FindCachedOrUnknown(address, in path, hash);
     }
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? rlp = TryLoadRlp(address, in path, hash, flags);
-        if (rlp is null) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
+        CappedArray<byte> rlp = TryLoadRlp(address, in path, hash, flags);
+        if (rlp.IsNull) throw new MissingTrieNodeException("Missing RLP node", address, path, hash);
         return rlp;
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        byte[]? local = _nodeStorage.Get(address, in path, hash, flags);
+        return local is not null ? new CappedArray<byte>(local) : baseStore.TryLoadRlp(address, in path, hash, flags);
+    }
 
     public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
 

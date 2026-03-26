@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -18,9 +19,9 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public StateId CurrentState => new StateId(0, Keccak.EmptyTreeHash);
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
+    public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags) => 0;
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+    public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags) => 0;
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
 

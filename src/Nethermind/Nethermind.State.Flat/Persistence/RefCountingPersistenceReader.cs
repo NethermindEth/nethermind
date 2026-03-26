@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
@@ -42,11 +43,11 @@ public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.
 
     public StateId CurrentState => _innerReader.CurrentState;
 
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStateRlp(in path, flags);
+    public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags) =>
+        _innerReader.TryLoadStateRlp(in path, destination, flags);
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-        _innerReader.TryLoadStorageRlp(address, in path, flags);
+    public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags) =>
+        _innerReader.TryLoadStorageRlp(address, in path, destination, flags);
 
     public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
         _innerReader.GetAccountRaw(addrHash);

@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -166,52 +167,52 @@ public sealed class ReadOnlySnapshotBundle(
         return false;
     }
 
-    public byte[]? TryLoadStateRlpFromPersistence(in TreePath path, Hash256 hash, ReadFlags flags)
+    public int TryLoadStateRlpFromPersistence(in TreePath path, Hash256 hash, Span<byte> destination, ReadFlags flags)
     {
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        int len = persistenceReader.TryLoadStateRlp(path, destination, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
-        return value;
+        return len;
     }
 
-    public byte[]? TryLoadStorageRlpFromPersistence(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public int TryLoadStorageRlpFromPersistence(Hash256 address, in TreePath path, Hash256 hash, Span<byte> destination, ReadFlags flags)
     {
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        int len = persistenceReader.TryLoadStorageRlp(address, path, destination, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
-        return value;
+        return len;
     }
 
-    public byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
+    public int TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, Span<byte> destination, ReadFlags flags)
     {
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        int len = persistenceReader.TryLoadStateRlp(path, destination, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpWarmerLabel);
 
-        return value;
+        return len;
     }
 
-    public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public int TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, Span<byte> destination, ReadFlags flags)
     {
         GuardDispose();
 
         Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        int len = persistenceReader.TryLoadStorageRlp(address, path, destination, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpWarmerLabel);
 
-        return value;
+        return len;
     }
 
     private void GuardDispose()

@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -771,10 +772,10 @@ public class FlatTrieVerifier
             int nibble = fullPath[currentPath.Length];
             currentPath = currentPath.Append(nibble);
 
-            byte[]? zeroHashRlp = trieStore.TryLoadRlp(currentPath, Keccak.Zero, ReadFlags.None);
-            if (zeroHashRlp is not null)
+            CappedArray<byte> zeroHashRlp = trieStore.TryLoadRlp(currentPath, Keccak.Zero, ReadFlags.None);
+            if (zeroHashRlp.IsNotNull)
             {
-                Hash256 actualHash = Keccak.Compute(zeroHashRlp);
+                Hash256 actualHash = Keccak.Compute(zeroHashRlp.AsSpan());
                 if (_logger.IsInfo) _logger.Info($"  Path: {currentPath} | ZeroHash lookup found data | ActualHash: {actualHash.ToShortString()}");
 
                 // Try to decode and show node info
@@ -826,27 +827,27 @@ public class FlatTrieVerifier
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
 
-        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.LoadRlp(path, hash, flags);
-            if (rlp is not null)
+            CappedArray<byte> rlp = inner.LoadRlp(path, hash, flags);
+            if (rlp.IsNotNull)
             {
                 VerifyHash(rlp, hash, path);
             }
             return rlp;
         }
 
-        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[]? rlp = inner.TryLoadRlp(path, hash, flags);
-            if (rlp is not null && hash != Keccak.Zero)
+            CappedArray<byte> rlp = inner.TryLoadRlp(path, hash, flags);
+            if (rlp.IsNotNull && hash != Keccak.Zero)
             {
                 VerifyHash(rlp, hash, path);
             }
             return rlp;
         }
 
-        private void VerifyHash(byte[] rlp, Hash256 expectedHash, in TreePath path)
+        private void VerifyHash(ReadOnlySpan<byte> rlp, Hash256 expectedHash, in TreePath path)
         {
             Hash256 computed = Keccak.Compute(rlp);
             if (computed != expectedHash)

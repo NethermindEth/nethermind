@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,14 +28,15 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        byte[]? data = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int len = address is null
+            ? reader.TryLoadStateRlp(path, buffer, ReadFlags.None)
+            : reader.TryLoadStorageRlp(address, path, buffer, ReadFlags.None);
 
-        if (data is null) return false;
+        if (len == 0) return false;
 
         // Rehash and verify
-        ValueHash256 computedHash = ValueKeccak.Compute(data);
+        ValueHash256 computedHash = ValueKeccak.Compute(buffer.AsSpan(0, len));
         return computedHash == hash;
     }
 
@@ -68,12 +70,13 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
     {
-        byte[]? existingData = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
-        if (existingData is null) return null;
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int len = address is null
+            ? reader.TryLoadStateRlp(path, buffer, ReadFlags.None)
+            : reader.TryLoadStorageRlp(address, path, buffer, ReadFlags.None);
+        if (len == 0) return null;
 
-        TrieNode existingNode = new(NodeType.Unknown, existingData);
+        TrieNode existingNode = new(NodeType.Unknown, buffer.AsSpan(0, len).ToArray());
         existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
         return existingNode;
     }
@@ -277,7 +280,11 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStateRlp(path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
     }
 }

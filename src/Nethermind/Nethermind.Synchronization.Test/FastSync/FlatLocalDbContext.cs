@@ -3,9 +3,11 @@
 
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
@@ -52,7 +54,8 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // For flat, sync finalization writes to persistence. Verify root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        reader.TryLoadStateRlp(TreePath.Empty, ReadFlags.None).Should().NotBeNull("root node should exist after flush");
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        reader.TryLoadStateRlp(TreePath.Empty, buffer, ReadFlags.None).Should().BeGreaterThan(0, "root node should exist after flush");
     }
 
     public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
@@ -95,8 +98,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStateRlp(path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
 
         public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null ? this : new ReadOnlyStorageTrieStore(reader, address);
@@ -110,8 +117,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStorageRlp(address, path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
     }
 
     /// <summary>
@@ -124,8 +135,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStateRlp(path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStateRlp(path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StateCommitter(writeBatch);
@@ -137,7 +152,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStateTrieNode(path, node);
+                writeBatch.SetStateTrieNode(path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteAccountFlatEntries(writeBatch, path, node);
                 return node;
             }
@@ -159,8 +174,12 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
             new(NodeType.Unknown, hash);
 
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(address, path, flags);
+        public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            int len = reader.TryLoadStorageRlp(address, path, buffer, flags);
+            return len > 0 ? new CappedArray<byte>(buffer, len) : default;
+        }
 
         public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
             new StorageCommitter(writeBatch, address);
@@ -169,7 +188,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
         {
             public TrieNode CommitNode(ref TreePath path, TrieNode node)
             {
-                writeBatch.SetStorageTrieNode(address, path, node);
+                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
                 FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
                 return node;
             }

@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Trie;
@@ -14,16 +15,16 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 {
     public abstract TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash);
 
-    public abstract byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+    public abstract CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
 
     public virtual ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         throw new NotSupportedException("Commit not supported");
 
 
-    public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
-        byte[]? value = TryLoadRlp(path, hash, flags);
-        return value ?? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash);
+        CappedArray<byte> value = TryLoadRlp(path, hash, flags);
+        return value.IsNull ? throw new TrieNodeException($"Missing trie node. {path}:{hash}", path, hash) : value;
     }
 
     public virtual ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new UnsupportedOperationException("Get trie node resolver not supported");

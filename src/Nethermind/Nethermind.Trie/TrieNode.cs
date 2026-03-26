@@ -433,14 +433,14 @@ namespace Nethermind.Trie
                     ThrowMissingKeccak();
                 }
 
-                byte[]? fullRlp = tree.LoadRlp(path, keccak, readFlags);
+                CappedArray<byte> fullRlp = tree.LoadRlp(path, keccak, readFlags);
 
-                if (fullRlp == null)
+                if (fullRlp.IsNull)
                 {
                     ThrowNullRlp();
                 }
 
-                WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                WriteRlp(rlp = fullRlp);
                 IsPersisted = true;
             }
 
@@ -489,14 +489,14 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        var fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+                        CappedArray<byte> fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
 
-                        if (fullRlp is null)
+                        if (fullRlp.IsNull)
                         {
                             return false;
                         }
 
-                        WriteRlp(rlp = new CappedArray<byte>(fullRlp));
+                        WriteRlp(rlp = fullRlp);
                         IsPersisted = true;
                     }
                 }

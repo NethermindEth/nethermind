@@ -27,7 +27,7 @@ public class FlatScopeProvider(
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         StateId currentState = new(baseBlock);
-        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage, bufferPool: _bufferPool);
 
         return new FlatWorldStateScope(
             currentState,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -13,14 +14,16 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         new TrieNode(NodeType.Unknown, hash);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (bundle.TryFindStateNodes(path, hash, out RefCountingTrieNode? node))
         {
-            try { return node.RlpToArray(); }
+            try { return new CappedArray<byte>(node.RlpToArray()); }
             finally { node.Dispose(); }
         }
-        return bundle.TryLoadStateRlpFromPersistence(path, hash, flags);
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int len = bundle.TryLoadStateRlpFromPersistence(path, hash, buffer, flags);
+        return len > 0 ? new CappedArray<byte>(buffer, len) : default;
     }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
@@ -41,14 +44,16 @@ internal class ReadOnlyStorageTrieStoreAdapter(
     public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
         new TrieNode(NodeType.Unknown, hash);
 
-    public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         if (bundle.TryFindStorageNodes(addressHash, path, hash, out RefCountingTrieNode? node))
         {
-            try { return node.RlpToArray(); }
+            try { return new CappedArray<byte>(node.RlpToArray()); }
             finally { node.Dispose(); }
         }
-        return bundle.TryLoadStorageRlpFromPersistence(addressHash, in path, hash, flags);
+        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int len = bundle.TryLoadStorageRlpFromPersistence(addressHash, in path, hash, buffer, flags);
+        return len > 0 ? new CappedArray<byte>(buffer, len) : default;
     }
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");

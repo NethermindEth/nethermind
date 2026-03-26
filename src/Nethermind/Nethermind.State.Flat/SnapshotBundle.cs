@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -44,18 +45,22 @@ public sealed class SnapshotBundle : IDisposable
 
     internal ResourcePool.Usage _usage;
 
+    private readonly ICappedArrayPool? _bufferPool;
+
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        SnapshotPooledList? snapshots = null)
+        SnapshotPooledList? snapshots = null,
+        ICappedArrayPool? bufferPool = null)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _usage = usage;
+        _bufferPool = bufferPool;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -66,6 +71,18 @@ public sealed class SnapshotBundle : IDisposable
         ExpandCurrentPooledContent();
 
         Metrics.ActiveSnapshotBundle++;
+    }
+
+    /// <summary>Copies RLP from a RefCountingTrieNode into a CappedArray, using the pool if available.</summary>
+    private CappedArray<byte> RentRlpCopy(RefCountingTrieNode node)
+    {
+        if (_bufferPool is not null)
+        {
+            CappedArray<byte> result = _bufferPool.Rent(node.RlpLength);
+            node.RlpSpan.CopyTo(result.AsSpan());
+            return result;
+        }
+        return new CappedArray<byte>(node.RlpToArray());
     }
 
     private void ExpandCurrentPooledContent()
@@ -170,7 +187,7 @@ public sealed class SnapshotBundle : IDisposable
         return _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash));
     }
 
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public CappedArray<byte> TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -178,7 +195,7 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return changed.RlpToArray();
+            return RentRlpCopy(changed);
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -189,7 +206,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -200,7 +217,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -212,7 +229,7 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return snapshotNode.RlpToArray();
+                return RentRlpCopy(snapshotNode);
             }
         }
 
@@ -221,15 +238,19 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
 
-        return _readOnlySnapshotBundle.TryLoadStateRlpFromPersistence(path, hash, flags);
+        CappedArray<byte> buffer = _bufferPool is not null ? _bufferPool.Rent(TrieNodeRlp.MaxRlpLength) : new CappedArray<byte>(new byte[TrieNodeRlp.MaxRlpLength]);
+        int len = _readOnlySnapshotBundle.TryLoadStateRlpFromPersistence(path, hash, buffer.AsSpan(), flags);
+        if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
+        if (_bufferPool is not null) _bufferPool.Return(buffer);
+        return default;
     }
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public CappedArray<byte> TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -237,7 +258,7 @@ public sealed class SnapshotBundle : IDisposable
         if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return changed.RlpToArray();
+            return RentRlpCopy(changed);
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -247,7 +268,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -258,7 +279,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
@@ -270,7 +291,7 @@ public sealed class SnapshotBundle : IDisposable
             if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return snapshotNode.RlpToArray();
+                return RentRlpCopy(snapshotNode);
             }
         }
 
@@ -279,12 +300,16 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return cached.RlpToArray();
+                return RentRlpCopy(cached);
             }
             finally { cached.Dispose(); }
         }
 
-        return _readOnlySnapshotBundle.TryLoadStorageRlpFromPersistence(address, path, hash, flags);
+        CappedArray<byte> buffer = _bufferPool is not null ? _bufferPool.Rent(TrieNodeRlp.MaxRlpLength) : new CappedArray<byte>(new byte[TrieNodeRlp.MaxRlpLength]);
+        int len = _readOnlySnapshotBundle.TryLoadStorageRlpFromPersistence(address, path, hash, buffer.AsSpan(), flags);
+        if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
+        if (_bufferPool is not null) _bufferPool.Return(buffer);
+        return default;
     }
 
     /// <summary>
@@ -339,10 +364,11 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hashCommitment, ReadFlags.None);
-        if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
+        byte[] rlpBuffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int rlpLen = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hashCommitment, rlpBuffer, ReadFlags.None);
+        if (rlpLen > 0 && rlpLen <= TrieNodeRlp.MaxRlpLength)
         {
-            return _transientResource.SetAndLeaseStateNode(path, hash, rlp);
+            return _transientResource.SetAndLeaseStateNode(path, hash, rlpBuffer.AsSpan(0, rlpLen));
         }
 
         return null;
@@ -402,10 +428,11 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[]? rlp = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hashCommitment, ReadFlags.None);
-        if (rlp is not null && rlp.Length <= TrieNodeRlp.MaxRlpLength)
+        byte[] rlpBuffer = new byte[TrieNodeRlp.MaxRlpLength];
+        int rlpLen = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hashCommitment, rlpBuffer, ReadFlags.None);
+        if (rlpLen > 0 && rlpLen <= TrieNodeRlp.MaxRlpLength)
         {
-            return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, rlp);
+            return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, rlpBuffer.AsSpan(0, rlpLen));
         }
 
         return null;

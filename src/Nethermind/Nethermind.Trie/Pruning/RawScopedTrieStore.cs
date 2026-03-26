@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
@@ -16,14 +17,14 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
+    public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
         byte[]? ret = nodeStorage.Get(address, path, hash, flags);
         if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
-        return ret;
+        return new CappedArray<byte>(ret);
     }
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => nodeStorage.Get(address, path, hash, flags);
+    public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => nodeStorage.Get(address, path, hash, flags);
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => new RawScopedTrieStore(nodeStorage, address);
 

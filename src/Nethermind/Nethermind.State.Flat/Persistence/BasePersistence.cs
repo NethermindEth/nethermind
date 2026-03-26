@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -163,8 +164,8 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
+        public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags);
+        public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags);
     }
 
     public interface ITrieWriteBatch
@@ -294,11 +295,11 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref SlotValue outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStateRlp(path, flags);
+        public int TryLoadStateRlp(in TreePath path, Span<byte> destination, ReadFlags flags) =>
+            _trieReader.TryLoadStateRlp(path, destination, flags);
 
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStorageRlp(address, path, flags);
+        public int TryLoadStorageRlp(Hash256 address, in TreePath path, Span<byte> destination, ReadFlags flags) =>
+            _trieReader.TryLoadStorageRlp(address, path, destination, flags);
 
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) =>
             _flatReader.GetAccountRaw(addrHash);

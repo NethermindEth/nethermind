@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
 
@@ -25,14 +26,14 @@ public class RawTrieStore(INodeStorage nodeStorage) : IReadOnlyTrieStore
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) =>
         new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public CappedArray<byte> LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         byte[]? ret = nodeStorage.Get(address, path, hash, flags);
         if (ret is null) throw new MissingTrieNodeException("Node missing", address, path, hash);
-        return ret;
+        return new CappedArray<byte>(ret);
     }
 
-    public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
+    public CappedArray<byte> TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags) =>
         nodeStorage.Get(address, path, hash, flags);
 
     public INodeStorage.KeyScheme Scheme { get; } = nodeStorage.Scheme;

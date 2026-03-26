@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Buffers;
 using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
@@ -741,15 +742,15 @@ public class PatriciaTreeBulkSetterTests
             TrieNode node = baseTrieStore.FindCachedOrUnknown(in path, hash);
             if (hash != Keccak.EmptyTreeHash)
             {
-                byte[] rlp = LoadRlp(path, hash);
-                Assert.That(Keccak.Compute(rlp), Is.EqualTo(hash));
+                CappedArray<byte> rlp = LoadRlp(path, hash);
+                Assert.That(Keccak.Compute(rlp.AsSpan()), Is.EqualTo(hash));
             }
             return node;
         }
 
-        public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+        public CappedArray<byte> LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
 
-        public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+        public CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
 
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
 
