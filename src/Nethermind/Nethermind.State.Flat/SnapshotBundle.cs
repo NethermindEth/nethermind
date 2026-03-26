@@ -175,10 +175,10 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         // Check changed nodes from current block
-        if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.Rlp.Length > 0)
+        if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return changed.Rlp.ToArray();
+            return changed.RlpToArray();
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -189,7 +189,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }
@@ -200,7 +200,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }
@@ -209,10 +209,10 @@ public sealed class SnapshotBundle : IDisposable
         ValueHash256 valueHash = hash;
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.Rlp.Length > 0)
+            if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return snapshotNode.Rlp.ToArray();
+                return snapshotNode.RlpToArray();
             }
         }
 
@@ -221,7 +221,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }
@@ -234,10 +234,10 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         // Check changed nodes from current block
-        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.Rlp.Length > 0)
+        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.RlpLength > 0)
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return changed.Rlp.ToArray();
+            return changed.RlpToArray();
         }
 
         // Check warmer RLP caches before hitting persistence.
@@ -247,7 +247,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }
@@ -258,7 +258,7 @@ public sealed class SnapshotBundle : IDisposable
             try
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }
@@ -267,10 +267,10 @@ public sealed class SnapshotBundle : IDisposable
         ValueHash256 valueHash = hash;
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
-            if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.Rlp.Length > 0)
+            if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.RlpLength > 0)
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return snapshotNode.Rlp.ToArray();
+                return snapshotNode.RlpToArray();
             }
         }
 
@@ -279,7 +279,7 @@ public sealed class SnapshotBundle : IDisposable
         {
             try
             {
-                return cached.Rlp.ToArray();
+                return cached.RlpToArray();
             }
             finally { cached.Dispose(); }
         }

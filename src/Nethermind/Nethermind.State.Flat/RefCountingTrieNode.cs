@@ -2,28 +2,27 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// A poolable, ref-counted trie node that stores RLP inline with pre-parsed metadata.
+/// A poolable, ref-counted trie node that delegates RLP storage to a type-specialized impl object
+/// (<see cref="TrieNodeBranch"/>, <see cref="TrieNodeExtension"/>, or <see cref="TrieNodeLeaf"/>).
 /// Created by <see cref="RefCountingTrieNodePool"/> and tracked by <see cref="RefCountingRlpNodePoolTracker"/>.
 /// </summary>
 public sealed class RefCountingTrieNode : RefCountingDisposable
 {
-    // ~128 (PaddedValue) + 8 (tracker ref) + 32 (Hash) + 38 (Metadata) + 546 (Rlp) + 16 (header) ≈ 768
-    public const int EstimatedSize = 800;
+    /// <summary>Weighted average of Branch(~700), Extension(~250), Leaf(~320) sizes.</summary>
+    public const int EstimatedSize = 600;
 
     private RefCountingRlpNodePoolTracker _tracker = null!;
+    private object _nodeImpl = null!;
 
     public ValueHash256 Hash;
-    public TrieNodeMetadata Metadata;
-    public TrieNodeRlp Rlp;
+    public NodeType NodeType;
 
     internal RefCountingTrieNode() : base(initialCount: 0) { }
 
@@ -32,21 +31,19 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
         _tracker = tracker;
 
     /// <summary>
-    /// Initializes this node with the given hash and RLP data. Eagerly parses metadata.
+    /// Initializes this node with the given hash, node type, and impl object.
     /// After this call, the node has exactly one lease.
     /// </summary>
-    internal void Initialize(ValueHash256 hash, ReadOnlySpan<byte> rlp)
+    internal void Initialize(ValueHash256 hash, NodeType nodeType, object impl)
     {
         Hash = hash;
-        Rlp.Set(rlp);
-        ParseMetadata();
+        NodeType = nodeType;
+        _nodeImpl = impl;
         _leases.Value = 1;
     }
 
     protected override void CleanUp()
     {
-        Rlp.Length = 0;
-        Metadata = default;
         Hash = default;
         _tracker.Return(this);
     }
@@ -57,119 +54,55 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
     /// <summary>Current lease count. For diagnostics only.</summary>
     public long LeaseCount => Volatile.Read(ref _leases.Value);
 
+    /// <summary>The type-specialized impl object for direct access in hot paths.</summary>
+    internal object NodeImpl => _nodeImpl;
+
+    /// <summary>Returns a read-only span over the valid RLP bytes.</summary>
+    public ReadOnlySpan<byte> RlpSpan
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => NodeType switch
+        {
+            NodeType.Branch => Unsafe.As<TrieNodeBranch>(_nodeImpl).AsSpan(),
+            NodeType.Extension => Unsafe.As<TrieNodeExtension>(_nodeImpl).AsSpan(),
+            _ => Unsafe.As<TrieNodeLeaf>(_nodeImpl).AsSpan(),
+        };
+    }
+
+    /// <summary>Length of the valid RLP bytes.</summary>
+    public int RlpLength
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => NodeType switch
+        {
+            NodeType.Branch => Unsafe.As<TrieNodeBranch>(_nodeImpl).Length,
+            NodeType.Extension => Unsafe.As<TrieNodeExtension>(_nodeImpl).Length,
+            _ => Unsafe.As<TrieNodeLeaf>(_nodeImpl).Length,
+        };
+    }
+
+    /// <summary>Copies the valid RLP bytes into a new heap array.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public byte[] RlpToArray() => NodeType switch
+    {
+        NodeType.Branch => Unsafe.As<TrieNodeBranch>(_nodeImpl).ToArray(),
+        NodeType.Extension => Unsafe.As<TrieNodeExtension>(_nodeImpl).ToArray(),
+        _ => Unsafe.As<TrieNodeLeaf>(_nodeImpl).ToArray(),
+    };
+
     /// <summary>
     /// Returns the 32-byte hash of child at <paramref name="index"/> by reading from the RLP at the stored offset.
-    /// Returns <c>null</c> if the child offset is 0 (empty/absent).
+    /// Only valid for Branch nodes. Returns <c>null</c> if the child offset is 0 (empty/absent).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Hash256? GetChildHash(int index)
-    {
-        short offset = Metadata.ChildOffsets[index];
-        if (offset == 0) return null;
-
-        ReadOnlySpan<byte> rlp = Rlp.AsSpan();
-        // Child hash ref in RLP: 0xA0 prefix byte followed by 32 bytes of hash
-        if (offset < rlp.Length && rlp[offset] == 0xA0 && offset + 33 <= rlp.Length)
-        {
-            return new Hash256(rlp.Slice(offset + 1, 32));
-        }
-
-        return null;
-    }
+    public Hash256? GetChildHash(int index) =>
+        Unsafe.As<TrieNodeBranch>(_nodeImpl).GetChildHash(index);
 
     /// <summary>
     /// Returns the raw RLP bytes of the child item at <paramref name="index"/>.
+    /// Only valid for Branch nodes.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ReadOnlySpan<byte> GetChildRlp(int index)
-    {
-        short offset = Metadata.ChildOffsets[index];
-        if (offset == 0) return ReadOnlySpan<byte>.Empty;
-
-        ReadOnlySpan<byte> rlp = Rlp.AsSpan();
-        Rlp.ValueDecoderContext ctx = rlp[offset..].AsRlpValueContext();
-        int itemLength = ctx.PeekNextRlpLength();
-        return rlp.Slice(offset, itemLength);
-    }
-
-    private void ParseMetadata()
-    {
-        Metadata = default;
-        ReadOnlySpan<byte> rlp = Rlp.AsSpan();
-        if (rlp.IsEmpty) return;
-
-        Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
-        int sequenceLength = ctx.ReadSequenceLength();
-        int endPosition = ctx.Position + sequenceLength;
-
-        int itemCount = ctx.PeekNumberOfItemsRemaining(endPosition, maxSearch: 3);
-
-        if (itemCount == 2)
-        {
-            // Extension or Leaf — determined by the compact encoding prefix
-            int keyStart = ctx.Position;
-            byte firstByte;
-            if (rlp[keyStart] < 0x80)
-            {
-                firstByte = rlp[keyStart];
-                ctx.Position++;
-            }
-            else
-            {
-                (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
-                firstByte = rlp[ctx.Position];
-                ctx.Position += contentLen;
-            }
-
-            bool isLeaf = (firstByte & 0x20) != 0;
-            Metadata.NodeType = isLeaf ? NodeType.Leaf : NodeType.Extension;
-
-            // Store offset of the second item (child for extension, value for leaf)
-            Metadata.ChildOffsets[0] = (short)ctx.Position;
-        }
-        else
-        {
-            // Branch node (17 items)
-            Metadata.NodeType = NodeType.Branch;
-
-            for (int i = 0; i < 17 && ctx.Position < endPosition; i++)
-            {
-                byte prefix = rlp[ctx.Position];
-                if (prefix == 0x80)
-                {
-                    // Empty child
-                    Metadata.ChildOffsets[i] = 0;
-                    ctx.Position++;
-                }
-                else
-                {
-                    Metadata.ChildOffsets[i] = (short)ctx.Position;
-                    ctx.SkipItem();
-                }
-            }
-        }
-    }
-}
-
-/// <summary>
-/// Pre-parsed metadata for a trie node. Stores the node type and byte offsets of each child's
-/// RLP item within the parent <see cref="TrieNodeRlp"/> buffer.
-/// </summary>
-[StructLayout(LayoutKind.Sequential)]
-public struct TrieNodeMetadata
-{
-    public NodeType NodeType;
-
-    /// <summary>
-    /// Byte offsets into the <see cref="TrieNodeRlp"/> buffer where each child's RLP item starts.
-    /// 17 slots: indices 0-15 for branch children, index 16 for the value slot (or index 0 for extension child).
-    /// A value of 0 means the child is empty/absent.
-    /// </summary>
-    public ChildOffsetBuffer ChildOffsets;
-
-    [InlineArray(17)]
-    public struct ChildOffsetBuffer
-    {
-        private short _element;
-    }
+    public ReadOnlySpan<byte> GetChildRlp(int index) =>
+        Unsafe.As<TrieNodeBranch>(_nodeImpl).GetChildRlp(index);
 }

@@ -22,9 +22,8 @@ public sealed class RefCountingRlpNodePoolTracker(RefCountingTrieNodePool pool)
     /// </summary>
     public RefCountingTrieNode Rent(ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
-        RefCountingTrieNode node = pool.Rent(this);
+        RefCountingTrieNode node = pool.Rent(this, hash, rlp);
         Interlocked.Increment(ref _activeCount);
-        node.Initialize(hash, rlp);
         return node;
     }
 

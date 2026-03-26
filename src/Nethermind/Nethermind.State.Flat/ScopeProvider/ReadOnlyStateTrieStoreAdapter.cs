@@ -17,7 +17,7 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
     {
         if (bundle.TryFindStateNodes(path, hash, out RefCountingTrieNode? node))
         {
-            try { return node.Rlp.ToArray(); }
+            try { return node.RlpToArray(); }
             finally { node.Dispose(); }
         }
         return bundle.TryLoadStateRlpFromPersistence(path, hash, flags);
@@ -45,7 +45,7 @@ internal class ReadOnlyStorageTrieStoreAdapter(
     {
         if (bundle.TryFindStorageNodes(addressHash, path, hash, out RefCountingTrieNode? node))
         {
-            try { return node.Rlp.ToArray(); }
+            try { return node.RlpToArray(); }
             finally { node.Dispose(); }
         }
         return bundle.TryLoadStorageRlpFromPersistence(addressHash, in path, hash, flags);

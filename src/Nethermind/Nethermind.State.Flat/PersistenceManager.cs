@@ -273,10 +273,10 @@ public class PersistenceManager(
                 (_, TreePath path) = k;
 
                 snapshot.TryGetStateNode(path, out RefCountingTrieNode? node);
-                if (node!.Rlp.Length == 0) continue;
+                if (node!.RlpLength == 0) continue;
 
-                stateNodesSize += node.Rlp.Length;
-                batch.SetStateTrieNode(path, node.Rlp.AsSpan());
+                stateNodesSize += node.RlpLength;
+                batch.SetStateTrieNode(path, node.RlpSpan);
             }
 
             _trieNodesSortBuffer.Clear();
@@ -289,10 +289,10 @@ public class PersistenceManager(
                 (Hash256AsKey address, TreePath path) = k;
 
                 snapshot.TryGetStorageNode(address, path, out RefCountingTrieNode? node);
-                if (node!.Rlp.Length == 0) continue;
+                if (node!.RlpLength == 0) continue;
 
-                storageNodesSize += node.Rlp.Length;
-                batch.SetStorageTrieNode(address, path, node.Rlp.AsSpan());
+                storageNodesSize += node.RlpLength;
+                batch.SetStorageTrieNode(address, path, node.RlpSpan);
             }
 
             Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));

@@ -17,7 +17,7 @@ internal delegate RefCountingTrieNode? NodeLoader(TreePath path, in ValueHash256
 
 /// <summary>
 /// Traverses a Merkle Patricia Trie using <see cref="RefCountingTrieNode"/> with pre-parsed metadata.
-/// Branch traversal uses <see cref="TrieNodeMetadata.ChildOffsets"/> to jump directly to child positions
+/// Branch traversal uses <see cref="TrieNodeBranch.ChildOffsets"/> to jump directly to child positions
 /// without re-parsing the RLP sequence. For inline nodes (no hash), falls back to local RLP parsing.
 /// </summary>
 internal static class RlpTrieTraversal
@@ -107,7 +107,7 @@ internal static class RlpTrieTraversal
     }
 
     /// <summary>
-    /// Dispatches traversal based on the node's pre-parsed <see cref="TrieNodeMetadata.NodeType"/>.
+    /// Dispatches traversal based on the node's <see cref="RefCountingTrieNode.NodeType"/>.
     /// Returns false when traversal should stop (leaf reached, missing child, key mismatch).
     /// </summary>
     private static bool TraverseNode(
@@ -124,7 +124,7 @@ internal static class RlpTrieTraversal
         nibblesConsumed = 0;
         leafValue = null;
 
-        return node.Metadata.NodeType switch
+        return node.NodeType switch
         {
             NodeType.Branch => TraverseBranch(nodeLoader, ref path, node, remainingNibbles, out nextHash, out nibblesConsumed, out leafValue),
             NodeType.Extension => TraverseExtensionOrLeaf(nodeLoader, ref path, node, remainingNibbles, readValue, out nextHash, out nibblesConsumed, out leafValue),
@@ -149,13 +149,14 @@ internal static class RlpTrieTraversal
         if (remainingNibbles.IsEmpty) return false;
 
         int nib = remainingNibbles[0];
-        short childOffset = node.Metadata.ChildOffsets[nib];
+        TrieNodeBranch branch = Unsafe.As<TrieNodeBranch>(node.NodeImpl);
+        short childOffset = branch.ChildOffsets[nib];
         if (childOffset == 0) return false; // empty child
 
         path.AppendMut(nib);
         nibblesConsumed = 1;
 
-        ReadOnlySpan<byte> rlp = node.Rlp.AsSpan();
+        ReadOnlySpan<byte> rlp = branch.AsSpan();
         return TryReadChildRef(nodeLoader, ref path, rlp, childOffset, remainingNibbles[1..], true, out nextHash, out int childNibblesConsumed, out leafValue)
             && (nibblesConsumed += childNibblesConsumed) >= 0; // always true, just adds the consumed count
     }
@@ -174,7 +175,8 @@ internal static class RlpTrieTraversal
         nibblesConsumed = 0;
         leafValue = null;
 
-        ReadOnlySpan<byte> rlp = node.Rlp.AsSpan();
+        TrieNodeExtension ext = Unsafe.As<TrieNodeExtension>(node.NodeImpl);
+        ReadOnlySpan<byte> rlp = ext.AsSpan();
         Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
         ctx.ReadSequenceLength();
 
@@ -215,7 +217,7 @@ internal static class RlpTrieTraversal
         nibblesConsumed = keyNibbleCount;
 
         // Second item: child reference (at the pre-parsed offset)
-        short childOffset = node.Metadata.ChildOffsets[0];
+        short childOffset = ext.ChildOffset;
         if (childOffset == 0) return false;
 
         bool result = TryReadChildRef(nodeLoader, ref path, rlp, childOffset, remainingNibbles[keyNibbleCount..], readValue, out nextHash, out int childNibblesConsumed, out leafValue);
@@ -232,7 +234,7 @@ internal static class RlpTrieTraversal
         leafValue = null;
         if (!readValue) return false;
 
-        ReadOnlySpan<byte> rlp = node.Rlp.AsSpan();
+        ReadOnlySpan<byte> rlp = node.RlpSpan;
         Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
         ctx.ReadSequenceLength();
 
