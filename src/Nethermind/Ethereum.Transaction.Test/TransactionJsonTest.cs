@@ -120,4 +120,5 @@ public class TransactionJsonTest : GeneralStateTestBase
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
         result.Pass.Should().BeTrue();
     }
+
 }

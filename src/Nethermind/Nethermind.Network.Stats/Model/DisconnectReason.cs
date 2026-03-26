@@ -35,6 +35,7 @@ public enum DisconnectReason : byte
     InvalidForkId,
     ProtocolInitTimeout,
     TxFlooding,
+    InvalidTxReceived,
     NoCapabilityMatched,
     ClientFiltered,
     AppClosing,
@@ -107,6 +108,7 @@ public static class DisconnectReasonExtension
             DisconnectReason.ReceiveMessageTimeout => EthDisconnectReason.ReceiveMessageTimeout,
             DisconnectReason.MultipleHeaderDependencies => EthDisconnectReason.MultipleHeaderDependencies,
             DisconnectReason.ConnectionReset => EthDisconnectReason.TcpSubSystemError,
+            DisconnectReason.InvalidTxReceived => EthDisconnectReason.Other,
             _ => EthDisconnectReason.Other,
         };
     }
