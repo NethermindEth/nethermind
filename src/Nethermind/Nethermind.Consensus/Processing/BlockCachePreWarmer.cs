@@ -91,27 +91,25 @@ public sealed class BlockCachePreWarmer(
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
-        using (addressWarmer)
+        try
         {
-            try
-            {
-                if (cancellationToken.IsCancellationRequested) return;
+            if (cancellationToken.IsCancellationRequested) return;
 
-                if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
+            if (_logger.IsDebug) _logger.Debug($"Started pre-warming caches for block {suggestedBlock.Number}.");
 
-                WarmupTransactions(blockState, parallelOptions);
-                WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
+            WarmupTransactions(blockState, parallelOptions);
+            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parent);
 
-                if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
-            }
-            finally
-            {
-                addressWarmer.Wait();
-            }
+            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsDebug) _logger.Warn($"DEBUG/ERROR Error pre-warming {suggestedBlock.Number}. {ex}");
+        }
+        finally
+        {
+            addressWarmer.Wait();
+            addressWarmer.Dispose();
         }
     }
 

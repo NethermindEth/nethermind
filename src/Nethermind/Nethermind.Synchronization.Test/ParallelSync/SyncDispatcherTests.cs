@@ -323,14 +323,7 @@ public class SyncDispatcherTests
     [Test]
     public async Task DisposeAsync_unsubscribes_StateChanged_handler()
     {
-        TestSyncFeed syncFeed = new();
-        SyncDispatcher<TestBatch> dispatcher = new(
-            new TestSyncConfig(),
-            syncFeed,
-            new TestDownloader(),
-            new TestSyncPeerPool(),
-            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
-            LimboLogs.Instance);
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
 
         await dispatcher.DisposeAsync();
 
@@ -345,14 +338,7 @@ public class SyncDispatcherTests
     [Test]
     public async Task DisposeAsync_double_dispose_does_not_throw()
     {
-        TestSyncFeed syncFeed = new();
-        SyncDispatcher<TestBatch> dispatcher = new(
-            new TestSyncConfig(),
-            syncFeed,
-            new TestDownloader(),
-            new TestSyncPeerPool(),
-            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
-            LimboLogs.Instance);
+        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
 
         await dispatcher.DisposeAsync();
         await dispatcher.DisposeAsync();
@@ -360,6 +346,20 @@ public class SyncDispatcherTests
 
     [Test]
     public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
+    {
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+
+        // Activate then Finish — if handler is still subscribed, this would
+        // modify internal state and potentially access disposed resources
+        syncFeed.Activate();
+        syncFeed.Finish();
+
+        // No exception means the handler was properly unsubscribed
+    }
+
+    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher()
     {
         TestSyncFeed syncFeed = new();
         SyncDispatcher<TestBatch> dispatcher = new(
@@ -369,16 +369,7 @@ public class SyncDispatcherTests
             new TestSyncPeerPool(),
             new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
             LimboLogs.Instance);
-
-        // Start and immediately dispose — sets _currentFeedState to Dormant
-        await dispatcher.DisposeAsync();
-
-        // Activate then Finish — if handler is still subscribed, this would
-        // modify internal state and potentially access disposed resources
-        syncFeed.Activate();
-        syncFeed.Finish();
-
-        // No exception means the handler was properly unsubscribed
+        return (syncFeed, dispatcher);
     }
 
     [Retry(tryCount: 5)]

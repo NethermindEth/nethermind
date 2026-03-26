@@ -155,7 +155,7 @@ namespace Nethermind.Network.Rlpx
                 _service.Agree(_handshake, new Packet(ackData));
             }
 
-            _initCompletionSource?.SetResult(input);
+            _initCompletionSource?.TrySetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
