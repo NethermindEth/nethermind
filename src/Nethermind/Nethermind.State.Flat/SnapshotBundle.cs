@@ -146,29 +146,13 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? rcNode) && rcNode.Hash == (ValueHash256)hash)
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return _readStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash, rcNode.Rlp.AsSpan()));
-        }
-
         if (_readStateNodes.TryGetValue(path, out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return node;
         }
 
-        // Check previous snapshots for nodes committed in prior blocks
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-        {
-            if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == (ValueHash256)hash)
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return _readStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash, snapshotNode.Rlp.AsSpan()));
-            }
-        }
-
-        // Create a lazy unknown node; resolved via TryLoadStateRlp which checks ChildCache/TrieNodeCache/disk.
+        // Create a lazy unknown node; resolved via TryLoadStateRlp which checks all caches and local snapshots.
         return _readStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
     }
 
@@ -176,35 +160,26 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? rcNode) && rcNode.Hash == (ValueHash256)hash)
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash, rcNode.Rlp.AsSpan()));
-        }
-
         if (_readStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
             return node;
         }
 
-        // Check previous snapshots for nodes committed in prior blocks
-        for (int i = _snapshots.Count - 1; i >= 0; i--)
-        {
-            if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == (ValueHash256)hash)
-            {
-                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-                return _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash, snapshotNode.Rlp.AsSpan()));
-            }
-        }
-
-        // Create a lazy unknown node; resolved via TryLoadStorageRlp which checks ChildCache/TrieNodeCache/disk.
+        // Create a lazy unknown node; resolved via TryLoadStorageRlp which checks all caches and local snapshots.
         return _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash));
     }
 
     public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
+
+        // Check changed nodes from current block
+        if (_trieChanged && _changedStateNodes.TryGetValue(path, out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.Rlp.Length > 0)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return changed.Rlp.ToArray();
+        }
 
         // Check warmer RLP caches before hitting persistence.
         // Copy to byte[] only here (commit path); warmup path uses RefCountingTrieNode.
@@ -230,12 +205,30 @@ public sealed class SnapshotBundle : IDisposable
             finally { cached.Dispose(); }
         }
 
+        // Check local snapshots for nodes committed in prior blocks
+        ValueHash256 valueHash = hash;
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.Rlp.Length > 0)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return snapshotNode.Rlp.ToArray();
+            }
+        }
+
         return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
     }
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
+
+        // Check changed nodes from current block
+        if (_trieChanged && _changedStorageNodes.TryGetValue(((Hash256AsKey)address, path), out RefCountingTrieNode? changed) && changed.Hash == (ValueHash256)hash && changed.Rlp.Length > 0)
+        {
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return changed.Rlp.ToArray();
+        }
 
         // Check warmer RLP caches before hitting persistence.
         RefCountingTrieNode? cached = _transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash);
@@ -258,6 +251,17 @@ public sealed class SnapshotBundle : IDisposable
                 return cached.Rlp.ToArray();
             }
             finally { cached.Dispose(); }
+        }
+
+        // Check local snapshots for nodes committed in prior blocks
+        ValueHash256 valueHash = hash;
+        for (int i = _snapshots.Count - 1; i >= 0; i--)
+        {
+            if (_snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? snapshotNode) && snapshotNode.Hash == valueHash && snapshotNode.Rlp.Length > 0)
+            {
+                Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+                return snapshotNode.Rlp.ToArray();
+            }
         }
 
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
@@ -419,9 +423,7 @@ public sealed class SnapshotBundle : IDisposable
             RefCountingTrieNode? old = _changedStateNodes.GetValueOrDefault(path);
             _changedStateNodes[path] = rcNode;
             old?.Dispose();
-
-            // Invalidate stale read cache entry so FindStateNodeOrUnknown re-resolves via TryLoadRlp
-            _readStateNodes.TryRemove(path, out _);
+            _readStateNodes[path] = newNode;
         }
     }
 
@@ -439,9 +441,7 @@ public sealed class SnapshotBundle : IDisposable
             RefCountingTrieNode? old = _changedStorageNodes.GetValueOrDefault((addr, path));
             _changedStorageNodes[(addr, path)] = rcNode;
             old?.Dispose();
-
-            // Invalidate stale read cache entry so FindStorageNodeOrUnknown re-resolves via TryLoadRlp
-            _readStorageNodes.TryRemove(((Hash256AsKey)addr, path), out _);
+            _readStorageNodes[((Hash256AsKey)addr, path)] = newNode;
         }
     }
 
