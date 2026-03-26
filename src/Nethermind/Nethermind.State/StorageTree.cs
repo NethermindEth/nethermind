@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.State;
@@ -43,8 +44,8 @@ namespace Nethermind.State
         {
         }
 
-        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, true, logManager)
+        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager, ICappedArrayPool? bufferPool = null)
+            : base(trieStore, rootHash, true, logManager, bufferPool: bufferPool)
         {
             TrieType = TrieType.Storage;
         }

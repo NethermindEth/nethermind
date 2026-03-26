@@ -20,6 +20,7 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
+    private readonly PreallocatedCappedArrayPool _bufferPool = new();
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
@@ -36,6 +37,7 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            isReadOnly: isReadOnly);
+            isReadOnly: isReadOnly,
+            bufferPool: _bufferPool);
     }
 }

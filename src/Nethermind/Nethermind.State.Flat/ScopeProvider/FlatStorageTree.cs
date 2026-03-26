@@ -4,6 +4,7 @@
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
@@ -41,7 +42,8 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
         ConcurrencyController concurrencyQuota,
         Hash256 storageRoot,
         Address address,
-        ILogManager logManager)
+        ILogManager logManager,
+        ICappedArrayPool? bufferPool = null)
     {
         _scope = scope;
         _trieCacheWarmer = trieCacheWarmer;
@@ -52,7 +54,7 @@ public sealed class FlatStorageTree : IWorldStateScopeProvider.IStorageTree, ITr
 
         StorageTrieStoreAdapter storageTrieAdapter = new(bundle, concurrencyQuota, _addressHash);
 
-        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager)
+        _tree = new StorageTree(storageTrieAdapter, storageRoot, logManager, bufferPool)
         {
             RootHash = storageRoot
         };

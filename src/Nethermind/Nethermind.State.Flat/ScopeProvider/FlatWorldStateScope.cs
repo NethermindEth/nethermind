@@ -32,6 +32,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _recordDetailedMetrics;
 
     private readonly ConcurrencyController _concurrencyQuota;
+    private readonly PreallocatedCappedArrayPool? _bufferPool;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
@@ -50,17 +51,20 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        bool isReadOnly = false)
+        bool isReadOnly = false,
+        PreallocatedCappedArrayPool? bufferPool = null)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
+        _bufferPool = bufferPool;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
-            logManager
+            logManager,
+            bufferPool
         )
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
@@ -79,6 +83,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         _snapshotBundle.Dispose();
+        _bufferPool?.Reset();
         _warmer.OnExitScope();
     }
 
@@ -158,7 +163,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             _concurrencyQuota,
             storageRoot,
             address,
-            _logManager);
+            _logManager,
+            _bufferPool);
 
         return storage;
     }
