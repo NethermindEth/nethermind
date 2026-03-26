@@ -15,8 +15,8 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class RefCountingTrieNode : RefCountingDisposable
 {
-    /// <summary>Weighted average of Branch(~700), Extension(~250), Leaf(~320) sizes.</summary>
-    public const int EstimatedSize = 600;
+    /// <summary>Weighted average of Branch(~808), Extension(~328), Leaf(~384) sizes.</summary>
+    public const int EstimatedSize = 680;
 
     private RefCountingRlpNodePoolTracker _tracker = null!;
     private object _nodeImpl = null!;

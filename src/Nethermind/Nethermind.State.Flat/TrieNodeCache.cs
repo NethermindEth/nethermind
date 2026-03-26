@@ -61,7 +61,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return total;
     }
 
-    private long GetTotalActiveMemory() => GetTotalActiveCount() * EstimatedSizePerNode;
+    private long GetTotalActiveMemory()
+    {
+        long total = 0;
+        for (int i = 0; i < ShardCount; i++) total += _shardTrackers[i].ActiveMemory;
+        return total;
+    }
 
     /// <summary>Per-shard trackers. Exposed so that <see cref="ChildCache"/> can use the same trackers.</summary>
     public RefCountingRlpNodePoolTracker[] ShardTrackers => _shardTrackers;
@@ -170,9 +175,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             _logger.Info($"Pruning trie cache: {prevMemory} -> {currentTotalMemory}, shards cleared: {pruneAttempts}, evicted: {totalEvicted}, retained (leased): {totalRetained} ({retainedPct:F1}%)");
         }
 
-        long activeCount = GetTotalActiveCount();
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = activeCount * EstimatedSizePerNode;
-        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = activeCount;
+        UpdateMetrics();
     }
 
     /// <summary>Clears all cached trie nodes.</summary>
@@ -187,9 +190,25 @@ public sealed class TrieNodeCache : ITrieNodeCache
             }
         }
         _nextShardToClear = 0;
+        UpdateMetrics();
+    }
+
+    private void UpdateMetrics()
+    {
         long activeCount = GetTotalActiveCount();
-        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = activeCount * EstimatedSizePerNode;
+        Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = GetTotalActiveMemory();
         Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = activeCount;
+
+        long branchCount = 0, extensionCount = 0, leafCount = 0;
+        for (int i = 0; i < ShardCount; i++)
+        {
+            branchCount += _shardTrackers[i].ActiveBranchCount;
+            extensionCount += _shardTrackers[i].ActiveExtensionCount;
+            leafCount += _shardTrackers[i].ActiveLeafCount;
+        }
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["branch"] = branchCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["extension"] = extensionCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["leaf"] = leafCount;
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 
@@ -87,5 +88,10 @@ namespace Nethermind.Trie.Pruning
         [GaugeMetric]
         [Description("Number of active (rented but not returned) pooled trie nodes.")]
         public static long ActivePooledNodeCount { get; set; }
+
+        [GaugeMetric]
+        [KeyIsLabel("node_type")]
+        [Description("Number of active pooled trie nodes by type.")]
+        public static ConcurrentDictionary<string, long> ActivePooledNodeCountByType { get; set; } = new();
     }
 }
