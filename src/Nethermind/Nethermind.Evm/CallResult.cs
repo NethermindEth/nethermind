@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
@@ -12,66 +11,43 @@ public partial class VirtualMachine<TGasPolicy>
 {
     protected readonly ref struct CallResult
     {
-        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
-        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-        public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
-        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow);
-        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow);
-        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult InvalidAddressRange => new(EvmExceptionType.AddressOutOfRange);
-        public static CallResult Empty(int fromVersion) => new(container: null, output: default, precompileSuccess: null, fromVersion);
+        public static CallResult Empty() => new(output: default, precompileSuccess: null);
 
         public CallResult(VmState<TGasPolicy> stateToExecute)
         {
             StateToExecute = stateToExecute;
-            Output = (null, Array.Empty<byte>());
+            Output = Array.Empty<byte>();
             PrecompileSuccess = null;
             ShouldRevert = false;
             ExceptionType = EvmExceptionType.None;
         }
 
-        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
-            Output = (null, output);
+            Output = output;
             PrecompileSuccess = precompileSuccess;
             ShouldRevert = shouldRevert;
             ExceptionType = exceptionType;
-            FromVersion = fromVersion;
         }
 
-        public CallResult(CodeInfo? container, ReadOnlyMemory<byte> output, bool? precompileSuccess, int fromVersion, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
-            Output = (container, output);
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            ExceptionType = exceptionType;
-            FromVersion = fromVersion;
-        }
-
-        private CallResult(EvmExceptionType exceptionType)
-        {
-            StateToExecute = null;
-            Output = (null, StatusCode.FailureBytes);
+            Output = StatusCode.FailureBytes;
             PrecompileSuccess = null;
             ShouldRevert = false;
             ExceptionType = exceptionType;
         }
 
         public VmState<TGasPolicy>? StateToExecute { get; }
-        public (CodeInfo Container, ReadOnlyMemory<byte> Bytes) Output { get; }
+        public ReadOnlyMemory<byte> Output { get; }
         public EvmExceptionType ExceptionType { get; }
         public bool ShouldRevert { get; }
         public bool? PrecompileSuccess { get; }
         public bool IsReturn => StateToExecute is null;
         //EvmExceptionType.Revert is returned when the top frame encounters a REVERT opcode, which is not an exception.
         public bool IsException => ExceptionType != EvmExceptionType.None && ExceptionType != EvmExceptionType.Revert;
-        public int FromVersion { get; }
         public string? SubstateError { get; init; }
     }
 }

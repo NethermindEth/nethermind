@@ -22,6 +22,7 @@ namespace Nethermind.Network
         private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
+        private readonly EventHandler<DisconnectEventArgs> _onDisconnected;
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = new();
@@ -34,6 +35,7 @@ namespace Nethermind.Network
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
             _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
+            _onDisconnected = OnDisconnected;
         }
 
         public void Start()
@@ -51,9 +53,13 @@ namespace Nethermind.Network
 
         public void AddSession(ISession session)
         {
-            session.Disconnected += OnDisconnected;
+            session.Disconnected += _onDisconnected;
             if (session.State < SessionState.DisconnectingProtocols)
             {
+                // Stagger ping times so sessions added around the same time don't all ping on the same tick.
+                // Set LastPingUtc to a random offset within the interval so the first ping is naturally spread.
+                int jitterMs = Random.Shared.Next((int)_pingInterval.TotalMilliseconds);
+                session.LastPingUtc = DateTime.UtcNow - TimeSpan.FromMilliseconds(jitterMs);
                 _sessions.TryAdd(session.SessionId, session);
             }
         }
@@ -61,7 +67,7 @@ namespace Nethermind.Network
         private void OnDisconnected(object sender, DisconnectEventArgs e)
         {
             ISession session = (ISession)sender;
-            session.Disconnected -= OnDisconnected;
+            session.Disconnected -= _onDisconnected;
             _sessions.TryRemove(session.SessionId, out session);
         }
 
@@ -159,6 +165,7 @@ namespace Nethermind.Network
         {
             try
             {
+                _pingTimer.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }

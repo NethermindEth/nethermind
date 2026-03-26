@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -57,15 +56,15 @@ namespace Nethermind.Network.Discovery.Test
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
-            var nodes = new[]
-            {
+            Node[] nodes =
+            [
                 new Node(TestItem.PublicKeyA, "192.168.1.1", 30303),
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
-            };
+            ];
 
-            var cls = new CancellationTokenSource().ThatCancelAfter(TimeSpan.FromMilliseconds(5000));
+            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-            var lifecycleManagers = nodes.Select((node) =>
+            INodeLifecycleManager[] lifecycleManagers = nodes.Select((node) =>
             {
                 INodeLifecycleManager lifecycle = Substitute.For<INodeLifecycleManager>();
                 lifecycle.ManagedNode.Returns(node);
@@ -74,14 +73,18 @@ namespace Nethermind.Network.Discovery.Test
 
             _discoveryManager.GetNodeLifecycleManagers().Returns(lifecycleManagers);
 
-            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cls.Token);
+            _ = _persistenceManager.RunDiscoveryPersistenceCommit(cts.Token);
 
-            // Wait a bit to allow at least one persistence cycle to complete
-            await Task.Delay(_discoveryConfig.DiscoveryPersistenceInterval * 2, cls.Token);
+            // Poll for the expected state instead of relying on a fixed delay
+            while (_discoveryDb.Count < nodes.Length)
+            {
+                cts.Token.ThrowIfCancellationRequested();
+                await Task.Delay(10, cts.Token);
+            }
 
-            await cls.CancelAsync();
+            await cts.CancelAsync();
 
-            _discoveryDb.Count.Should().Be(2);
+            _discoveryDb.Count.Should().Be(nodes.Length);
         }
     }
 }

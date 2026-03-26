@@ -255,10 +255,17 @@ jobs:
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
+      - name: Free up disk space
+        if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
       - name: Check out repository
         uses: actions/checkout@v6
         with:
-          submodules: recursive
+          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
@@ -275,6 +282,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
+          TEST_SKIP_HEAVY: 1
         run: |
           set +e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release

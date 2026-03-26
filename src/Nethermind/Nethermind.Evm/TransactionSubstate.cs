@@ -52,7 +52,7 @@ public readonly ref struct TransactionSubstate
     public string? Error { get; }
     public string? SubstateError { get; }
     public EvmExceptionType EvmExceptionType { get; }
-    public (CodeInfo DeployCode, ReadOnlyMemory<byte> Bytes) Output { get; }
+    public ReadOnlyMemory<byte> Output { get; }
     public bool ShouldRevert { get; }
     public long Refund { get; }
     public JournalCollection<LogEntry> Logs => _logs ?? _emptyLogs;
@@ -69,18 +69,7 @@ public readonly ref struct TransactionSubstate
         ShouldRevert = false;
     }
 
-    public static TransactionSubstate FailedInitCode => new("Eip 7698: Invalid CreateTx InitCode");
-
-    private TransactionSubstate(string errorCode)
-    {
-        Error = errorCode;
-        Refund = 0;
-        _destroyList = _emptyDestroyList;
-        _logs = _emptyLogs;
-        ShouldRevert = true;
-    }
-
-    public TransactionSubstate((CodeInfo eofDeployCode, ReadOnlyMemory<byte> bytes) output,
+    public TransactionSubstate(ReadOnlyMemory<byte> bytes,
         long refund,
         IHashSetEnumerableCollection<Address> destroyList,
         JournalCollection<LogEntry> logs,
@@ -90,7 +79,7 @@ public readonly ref struct TransactionSubstate
         ILogger logger = default)
     {
         _logger = logger;
-        Output = output;
+        Output = bytes;
         Refund = refund;
         _destroyList = destroyList;
         _logs = logs;
@@ -108,10 +97,10 @@ public readonly ref struct TransactionSubstate
         if (!isTracerConnected)
             return;
 
-        if (Output.Bytes.IsEmpty)
+        if (Output.IsEmpty)
             return;
 
-        ReadOnlySpan<byte> span = Output.Bytes.Span;
+        ReadOnlySpan<byte> span = Output.Span;
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 

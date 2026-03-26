@@ -41,9 +41,14 @@ public class SnappyTests
 
         public byte[] TestEncode(byte[] input)
         {
-            var result = UnpooledByteBufferAllocator.Default.Buffer();
+            IByteBuffer result = UnpooledByteBufferAllocator.Default.Buffer();
             Encode(null, input.ToUnpooledByteBuffer(), result);
             return result.ReadAllBytesAsArray();
+        }
+
+        public void TestEncode(IByteBuffer input, IByteBuffer output)
+        {
+            Encode(null, input, output);
         }
     }
 
@@ -97,5 +102,28 @@ public class SnappyTests
         byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
         byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());
         Assert.That(uncompressedResult, Is.EqualTo(expectedUncompressed));
+    }
+
+    /// <summary>
+    /// Verifies that Encode does not leak an intermediate pooled IByteBuffer.
+    /// Before the fix, ReadBytes(n) allocated a new pooled buffer that was written
+    /// to output but never released, leaking one buffer per outbound P2P message.
+    /// </summary>
+    [Test]
+    public void Encode_does_not_leak_pooled_buffers()
+    {
+        using PooledBufferLeakDetector detector = new();
+        ZeroSnappyEncoderForTest encoder = new();
+
+        // RLP-encoded packet type (0x01) followed by an RLP-encoded body
+        byte[] packetType = Rlp.Encode(1).Bytes;
+        byte[] body = Rlp.Encode(new byte[100]).Bytes;
+        byte[] payload = Bytes.Concat(packetType, body);
+        using DisposableByteBuffer input = detector.Allocator.Buffer().AsDisposable();
+        using DisposableByteBuffer output = detector.Allocator.Buffer().AsDisposable();
+
+        input.WriteBytes(payload);
+
+        encoder.TestEncode(input, output);
     }
 }

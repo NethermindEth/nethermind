@@ -5,12 +5,19 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Config;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.P2P;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -63,7 +70,7 @@ public class PeerPoolTests
             nodeSource.AddNode(node);
         }
 
-        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(5).After(2000, 10));
+        Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(10).After(100, 10));
 
         await pool.StopAsync();
     }
@@ -104,6 +111,112 @@ public class PeerPoolTests
         {
             await pool.StopAsync();
         }
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldIgnoreNodeRemoved_AfterStop()
+    {
+        ConfigProvider configProvider = new();
+        ChainSpec spec = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile("chainspec/foundation.json");
+        spec.Bootnodes = [];
+
+        TestNodeSource nodeSource = new();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new PseudoNethermindModule(spec, configProvider, new TestLogManager()))
+            .AddModule(new TestEnvironmentModule(TestItem.PrivateKeyA, nameof(PeerPoolTests)))
+            .AddSingleton(nodeSource)
+            .Bind<INodeSource, TestNodeSource>()
+            .Build();
+
+        IPeerPool pool = container.Resolve<IPeerPool>();
+        Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+
+        pool.Start();
+        pool.GetOrAdd(node);
+        await pool.StopAsync();
+
+        nodeSource.RemoveNode(node);
+
+        Assert.That(pool.TryGet(node.Id, out _), Is.True);
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldThrottleSource_WhenCandidatePoolIsFull()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 1);
+
+        pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234));
+        pool.Start();
+        nodeSource.AddNode(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234));
+
+        try
+        {
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(1).After(100, 10));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public async Task PeerPool_ShouldThrottleSource_WhenActivePeerPoolIsFull()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 1, maxCandidatePeerCount: 10);
+
+        Peer activePeer = pool.GetOrAdd(new Node(TestItem.PublicKeyA, "1.2.3.4", 1234));
+        pool.ActivePeers[TestItem.PublicKeyA] = activePeer;
+        pool.Start();
+        nodeSource.AddNode(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234));
+
+        try
+        {
+            Assert.That(() => nodeSource.BufferedNodeCount, Is.EqualTo(1).After(100, 10));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    [Test]
+    public void PeerPool_Replace_DoesNotInheritStaticFlag()
+    {
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new();
+        PeerPool pool = CreatePeerPool(nodeSource, trustedNodesManager, maxActivePeers: 10, maxCandidatePeerCount: 10);
+
+        Node oldNode = new(TestItem.PublicKeyA, "1.2.3.4", 1234) { IsStatic = true };
+        Peer oldPeer = pool.GetOrAdd(oldNode);
+        ISession session = Substitute.For<ISession>();
+        session.Direction.Returns(ConnectionDirection.Out);
+        session.ObsoleteRemoteNodeId.Returns(TestItem.PublicKeyA);
+        session.Node.Returns(new Node(TestItem.PublicKeyB, "1.2.3.5", 1234));
+        oldPeer.OutSession = session;
+
+        Peer replacedPeer = pool.Replace(session);
+
+        Assert.That(replacedPeer.Node.IsStatic, Is.False);
+    }
+
+    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount)
+    {
+        return new PeerPool(
+            nodeSource,
+            Substitute.For<INodeStatsManager>(),
+            new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
+            new NetworkConfig
+            {
+                MaxActivePeers = maxActivePeers,
+                MaxCandidatePeerCount = maxCandidatePeerCount
+            },
+            LimboLogs.Instance,
+            trustedNodesManager);
     }
 
     private sealed class TestNetworkStorage : INetworkStorage
