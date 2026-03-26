@@ -116,7 +116,6 @@ public class ReorgTests
                 new BlobBaseFeeCalculator(),
                 specProvider,
                 blockhashProvider,
-                codeInfoRepository,
                 LimboLogs.Instance,
                 new BlocksConfig()),
             stateProvider,

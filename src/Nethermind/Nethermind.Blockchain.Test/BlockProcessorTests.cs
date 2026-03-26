@@ -57,7 +57,6 @@ public class BlockProcessorTests
                     new BlobBaseFeeCalculator(),
                     HoodiSpecProvider.Instance,
                     Substitute.For<IBlockhashProvider>(),
-                    Substitute.For<ICodeInfoRepository>(),
                     LimboLogs.Instance,
                     new BlocksConfig()),
             stateProvider,

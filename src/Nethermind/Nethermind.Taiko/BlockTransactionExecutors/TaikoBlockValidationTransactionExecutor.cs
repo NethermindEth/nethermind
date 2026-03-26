@@ -19,10 +19,9 @@ public class TaikoBlockValidationTransactionExecutor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider specProvider,
         IBlockhashProvider blockhashProvider,
-        ICodeInfoRepository codeInfoRepository,
         ILogManager logManager,
         IBlocksConfig blocksConfig)
-    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, transactionProcessor, blobBaseFeeCalculator, specProvider, blockhashProvider, codeInfoRepository, logManager, blocksConfig)
+    : BlockProcessor.BlockValidationTransactionsExecutor(stateProvider, transactionProcessor, blobBaseFeeCalculator, specProvider, blockhashProvider, logManager, blocksConfig)
 {
     protected override void ProcessTransaction(ITransactionProcessorAdapter transactionProcessor, Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {

@@ -59,7 +59,6 @@ public class WitnessGeneratingBlockProcessingEnv(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             blockhashProvider,
-            codeInfoRepository,
             logManager,
             new BlocksConfig());
 

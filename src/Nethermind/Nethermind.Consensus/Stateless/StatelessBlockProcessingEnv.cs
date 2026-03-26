@@ -55,7 +55,6 @@ public class StatelessBlockProcessingEnv(
             BlobBaseFeeCalculator.Instance,
             specProvider,
             blockhashProvider,
-            codeInfoRepository,
             logManager,
             new BlocksConfig());
 

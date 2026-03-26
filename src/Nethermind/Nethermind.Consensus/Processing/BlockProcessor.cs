@@ -155,13 +155,27 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            blockTransactionsExecutor.ProcessWithdrawals(block, spec);
+        }
+        else
+        {
+            withdrawalProcessor.ProcessWithdrawals(block, spec);
+        }
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            blockTransactionsExecutor.ProcessExecutionRequests(block, spec);
+        }
+        else
+        {
+            executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        }
 
         blockTransactionsExecutor.SetBlockAccessList(block, spec);
 

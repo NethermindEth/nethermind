@@ -102,4 +102,14 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
     {
         throw new NotImplementedException();
     }
+
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    {
+        throw new NotImplementedException();
+    }
+
+    public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+    {
+        throw new NotImplementedException();
+    }
 }

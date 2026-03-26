@@ -45,6 +45,8 @@ namespace Nethermind.Consensus.Processing
             void Setup(Block block, ProcessingOptions processingOptions);
             void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
             void SetGasUsed(long gasUsed);
+            void ProcessWithdrawals(Block block, IReleaseSpec spec);
+            void ProcessExecutionRequests(Block block, IReleaseSpec spec);
         }
     }
 }

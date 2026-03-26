@@ -14,6 +14,8 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -42,7 +44,6 @@ namespace Nethermind.Consensus.Processing
             ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ISpecProvider specProvider,
             IBlockhashProvider blockHashProvider,
-            ICodeInfoRepository codeInfoRepository,
             ILogManager logManager,
             IBlocksConfig blocksConfig,
             BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
@@ -53,9 +54,10 @@ namespace Nethermind.Consensus.Processing
             private readonly ITransactionProcessorAdapter _transactionProcessor = transactionProcessor;
             private BlockExecutionContext _blockExecutionContext;
             private BlockAccessList[] _intermediateBlockAccessLists;
-            ITransactionProcessorAdapter[] _transactionProcessorAdapters;
-            ITransactionProcessor[] _transactionProcessors;
-            ParallelWorldState[] _parallelWorldState;
+            private ITransactionProcessorAdapter[] _transactionProcessorAdapters;
+            private ITransactionProcessor[] _transactionProcessors;
+            private ParallelWorldState[] _parallelWorldState;
+            private TxReceipt[] _txReceipts;
             private const int GasValidationChunkSize = 8;
             private long _gasUsed;
 
@@ -98,15 +100,18 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                return blocksConfig.ParallelExecution && !block.IsGenesis ?
+                _txReceipts = blocksConfig.ParallelExecution && !block.IsGenesis ?
                     ProcessTransactionsParallel(block, processingOptions, token) :
                     ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
+                
+                return _txReceipts;
             }
 
             private (ExecuteTransactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy>, ParallelWorldState) CreateTransactionProcessor(Block block, int balIndex, bool isBuildingBlock)
             {
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
                 ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, balIndex, block, _intermediateBlockAccessLists[balIndex], GeneratedBlockAccessList, new(logManager), isBuildingBlock);
+                EthereumCodeInfoRepository codeInfoRepository = new(parallelWorldState);
                 TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
                 ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                 transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
@@ -482,6 +487,16 @@ namespace Nethermind.Consensus.Processing
             public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
             {
                 new BlockhashStore(_parallelWorldState[0]).ApplyBlockhashStateChanges(header, spec);
+            }
+
+            public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+            {
+                new WithdrawalProcessor(_parallelWorldState[^1], logManager).ProcessWithdrawals(block, spec);
+            }
+
+            public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+            {
+                new ExecutionRequestsProcessor(_transactionProcessors[^1]).ProcessExecutionRequests(block, _parallelWorldState[^1], _txReceipts, spec);
             }
 
             private static bool HasNoChanges(in ChangeAtIndex c)

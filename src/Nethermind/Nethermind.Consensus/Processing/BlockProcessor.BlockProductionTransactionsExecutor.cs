@@ -9,7 +9,9 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -51,6 +53,7 @@ namespace Nethermind.Consensus.Processing
             private ITransactionProcessorAdapter[] _transactionProcessorAdapters;
             private ITransactionProcessor[] _transactionProcessors;
             private ParallelWorldState[] _parallelWorldState;
+            private TxReceipt[] _txReceipts;
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -172,7 +175,9 @@ namespace Nethermind.Consensus.Processing
                 {
                     blockToProduce.Transactions = includedTx.ToArray();
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                _txReceipts = receiptsTracer.TxReceipts.ToArray();
+                
+                return _txReceipts;
             }
 
             public void StoreBeaconRoot(Block block, IReleaseSpec spec)
@@ -183,6 +188,16 @@ namespace Nethermind.Consensus.Processing
             public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
             {
                 new BlockhashStore(_parallelWorldState[0]).ApplyBlockhashStateChanges(header, spec);
+            }
+
+            public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+            {
+                new WithdrawalProcessor(_parallelWorldState[^1], logManager).ProcessWithdrawals(block, spec);
+            }
+
+            public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+            {
+                new ExecutionRequestsProcessor(_transactionProcessors[^1]).ProcessExecutionRequests(block, _parallelWorldState[^1], _txReceipts, spec);
             }
 
             public void SetBlockAccessList(Block block, IReleaseSpec spec)

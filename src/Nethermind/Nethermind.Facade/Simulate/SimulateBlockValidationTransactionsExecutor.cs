@@ -85,4 +85,14 @@ public class SimulateBlockValidationTransactionsExecutor(
     {
         throw new System.NotImplementedException();
     }
+
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    {
+        throw new System.NotImplementedException();
+    }
+
+    public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+    {
+        throw new System.NotImplementedException();
+    }
 }
