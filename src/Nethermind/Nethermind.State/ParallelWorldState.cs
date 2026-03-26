@@ -205,6 +205,4 @@ public class ParallelWorldState(IWorldState innerWorldState, IBlockAccessListBui
         _innerWorldState.ClearStorage(address);
     }
 
-    // for testing
-    internal IWorldState Inner => _innerWorldState;
 }
