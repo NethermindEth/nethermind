@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Buffers.Binary;
-using System.IO;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -11,49 +8,97 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+//using Nethermind.JsonRpc.Client;
+//using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stateless.Execution;
+using System;
+using System.Buffers.Binary;
+using System.IO;
+using System.Threading.Tasks;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Stateless.ZiskGuest;
 
 class TestProgram
 {
-    static void Main(
+    static async Task Main(
 #if !ZK_EVM
         string[] args
 #endif
         )
     {
-        (Block suggestedBlock, Witness witness, ISpecProvider specProvider) = GetSample();
-#if ZK_EVM
-        if (StatelessExecutor.TryExecute(suggestedBlock, witness, specProvider, out Block? processedBlock))
-            Console.WriteLine(processedBlock!.Hash);
-        else
-            Console.WriteLine("Stateless execution failed");
-#else
+        //(Block suggestedBlock, Witness witness, ISpecProvider specProvider) = await GetSample("0x17940D4");
+        //#if ZK_EVM
+        //byte[] data = File.ReadAllBytes("P:\\Projects\\Nethermind\\nethermind\\src\\Nethermind\\Nethermind.Stateless.ZiskGuest\\bin\\17940d4.bin");
+        //var l = BinaryPrimitives.ReadUInt64LittleEndian(data);
+
+        //if (StatelessExecutor.TryExecute(data.Slice(8, (int)l), out Block? processedBlock))
+        //    Console.WriteLine(processedBlock!.Hash);
+        //else
+        //    Console.WriteLine("Stateless execution failed");
+        //#else
         // If a command line option is specified, treat it as a location
         // where the input data for the Zisk guest should be written
-        if (args.Length == 1 && !string.IsNullOrWhiteSpace(args[0]))
-        {
-            byte[] data = InputSerializer.Serialize(suggestedBlock, witness, specProvider.ChainId);
-            string? dir = Path.GetDirectoryName(args[0]);
+        //if (args.Length == 1 && !string.IsNullOrWhiteSpace(args[0]))
+        //{
+        //byte[] data = InputSerializer.Serialize(suggestedBlock, witness, specProvider.ChainId);
+        //var args0 = "d:/input.bin";
+        //string? dir = Path.GetDirectoryName(args0);
 
-            if (dir is not null)
-                Directory.CreateDirectory(dir);
+        //if (dir is not null)
+        //    Directory.CreateDirectory(dir);
 
-            int rem = data.Length % 8;
-            byte[] framedData = new byte[8 + data.Length + (rem == 0 ? 0 : (8 - rem))];
+        //int rem = data.Length % 8;
+        //byte[] framedData = new byte[8 + data.Length + (rem == 0 ? 0 : (8 - rem))];
 
-            BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
-            Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
+        //BinaryPrimitives.WriteUInt64LittleEndian(framedData, (ulong)data.Length);
+        //Buffer.BlockCopy(data, 0, framedData, sizeof(ulong), data.Length);
 
-            data = framedData;
+        //data = framedData;
 
-            File.WriteAllBytes(args[0], data);
-        }
+        //File.WriteAllBytes(args0, data);
+        //}
 
         // Otherwise, this is a testing playground
-#endif
+
+
+        //#endif
+    }
+
+    //static async Task<(Block, Witness, ISpecProvider)> GetSample(string blockParam)
+    //{
+    //    var client = new BasicJsonRpcClient(new Uri("http://172.234.224.168:8545"), new EthereumJsonSerializer(), Nethermind.Logging.NullLogManager.Instance);
+    //    var rlp = await client.Post<string>("debug_getRawBlock", blockParam);
+    //    var rlpBytes = Convert.FromHexString(rlp![2..]);
+
+    //    IRlpValueDecoder<Block> blockDecoder = Rlp.GetValueDecoder<Block>()!; // cannot be null
+    //    Rlp.ValueDecoderContext blockContext = new(rlpBytes);
+    //    Block block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
+    //    blockContext.Check(rlpBytes.Length);
+
+    //    Wit? w = await client.Post<Wit>("debug_executionWitness", blockParam);
+
+    //    Witness witness = new()
+    //    {
+    //        Codes = ToArrayPoolList(w!.Codes!),
+    //        State = ToArrayPoolList(w!.State!),
+    //        Keys = ToArrayPoolList(w!.Keys!),
+    //        Headers = ToArrayPoolList(w!.Headers!),
+    //    };
+
+    //    return (block, witness!, MainnetSpecProvider.Instance);
+    //}
+
+    public class Wit
+    {
+
+        public string[]? Codes { get; set; }
+        public string[]? State { get; set; }
+        public string[]? Keys { get; set; }
+        public string[]? Headers { get; set; }
+
     }
 
     static (Block, Witness, ISpecProvider) GetSample()
@@ -261,16 +306,18 @@ class TestProgram
             State = ToArrayPoolList(state),
         };
 
-        static ArrayPoolList<byte[]> ToArrayPoolList(string[] value)
-        {
-            ArrayPoolList<byte[]> list = new(value.Length, value.Length);
-
-            for (int i = 0; i < value.Length; i++)
-                list[i] = Bytes.FromHexString(value[i]);
-
-            return list;
-        }
+        
 
         return (block, witness, HoodiSpecProvider.Instance);
+    }
+
+    static ArrayPoolList<byte[]> ToArrayPoolList(string[] value)
+    {
+        ArrayPoolList<byte[]> list = new(value.Length, value.Length);
+
+        for (int i = 0; i < value.Length; i++)
+            list[i] = Bytes.FromHexString(value[i]);
+
+        return list;
     }
 }

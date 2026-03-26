@@ -1,6 +1,7 @@
 <Project>
 
   <PropertyGroup>
+    <!--<EnableZkEvm>true</EnableZkEvm>-->
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
     <DefineConstants Condition="'$(EnableZkEvm)' == 'true'">$(DefineConstants);ZK_EVM</DefineConstants>

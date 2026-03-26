@@ -10,6 +10,7 @@
     <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
     <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
     <Project Path="Nethermind.History/Nethermind.History.csproj" />
+    <Project Path="Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
     <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />

@@ -104,6 +104,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         long cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         Transaction transaction = CurrentTx!;
+
+        //ZiskBindings.IO.WriteLine("in build rec" + (transaction.Hash).ToString());
         TxReceipt txReceipt = new()
         {
             Logs = logEntries,
@@ -275,6 +277,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
         CurrentTx = tx;
+        
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
         return _currentTxTracer;
     }

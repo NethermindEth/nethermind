@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -119,8 +120,9 @@ public partial class BlockProcessor(
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts;
+        //ZiskBindings.IO.WriteLine(blockTransactionsExecutor.GetType().FullName + "before ProcessTransactions");
         receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-
+        //ZiskBindings.IO.WriteLine("after ProcessTransactions");
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();

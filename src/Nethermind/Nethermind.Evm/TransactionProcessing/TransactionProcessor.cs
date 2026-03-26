@@ -246,10 +246,11 @@ namespace Nethermind.Evm.TransactionProcessing
             //only main thread updates transaction
             if (!opts.HasFlag(ExecutionOptions.Warmup))
                 tx.SpentGas = spentGas.SpentGas;
-
+            
             // Finalize
             if (restore)
             {
+                //ZiskBindings.IO.WriteLine(Stopwatch.GetTimestamp() + "if" + tx.Hash.ToString());
                 WorldState.Reset(resetBlockChanges: false);
                 if (deleteCallerAccount)
                 {
@@ -269,34 +270,40 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
+                
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitRoots: !spec.IsEip658Enabled);
+                //ZiskBindings.IO.WriteLine(Stopwatch.GetTimestamp() + "else if" + tx.Hash.ToString());
             }
             else
             {
+                //ZiskBindings.IO.WriteLine(Stopwatch.GetTimestamp()+"else" +tx.Hash.ToString());
                 WorldState.ResetTransient();
             }
-
+            //ZiskBindings.IO.WriteLine("after restore " + tx.Hash.ToString());
             if (tracer.IsTracingReceipt)
             {
                 Hash256 stateRoot = null;
                 if (!spec.IsEip658Enabled)
                 {
+                    //ZiskBindings.IO.WriteLine("before RecalculateStateRoot");
                     WorldState.RecalculateStateRoot();
                     stateRoot = WorldState.StateRoot;
                 }
 
                 if (statusCode == StatusCode.Failure)
                 {
+                    //ZiskBindings.IO.WriteLine("before MarkAsFailed");
                     byte[] output = substate.ShouldRevert ? substate.Output.ToArray() : [];
                     tracer.MarkAsFailed(env.ExecutingAccount, spentGas, output, substate.Error, stateRoot);
                 }
                 else
                 {
+                    //ZiskBindings.IO.WriteLine("before MarkAsSuccess");
                     LogEntry[] logs = substate.Logs.Count != 0 ? substate.Logs.ToArray() : [];
                     tracer.MarkAsSuccess(env.ExecutingAccount, spentGas, substate.Output.ToArray(), logs, stateRoot);
                 }
             }
-
+            
             return substate.EvmExceptionType != EvmExceptionType.None
                 ? TransactionResult.EvmException(substate.EvmExceptionType, substate.SubstateError)
                 : TransactionResult.Ok;

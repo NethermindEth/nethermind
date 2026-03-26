@@ -294,10 +294,11 @@ public class BlockValidator(
     {
         Transaction[] transactions = block.Transactions;
 
+
         for (int txIndex = 0; txIndex < transactions.Length; txIndex++)
         {
             Transaction transaction = transactions[txIndex];
-
+            //ZiskBindings.IO.WriteLine("VAL "+transaction.Hash.ToString());
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec);
             if (!isWellFormed)
             {
