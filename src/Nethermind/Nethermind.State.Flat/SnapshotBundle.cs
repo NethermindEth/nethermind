@@ -216,7 +216,17 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryLoadStateRlp(path, hash, flags);
+        // Check readonly snapshots
+        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hash, out cached))
+        {
+            try
+            {
+                return cached.Rlp.ToArray();
+            }
+            finally { cached.Dispose(); }
+        }
+
+        return _readOnlySnapshotBundle.TryLoadStateRlpFromPersistence(path, hash, flags);
     }
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
@@ -264,7 +274,17 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
+        // Check readonly snapshots
+        if (_readOnlySnapshotBundle.TryFindStorageNodes((Hash256AsKey)address, path, hash, out cached))
+        {
+            try
+            {
+                return cached.Rlp.ToArray();
+            }
+            finally { cached.Dispose(); }
+        }
+
+        return _readOnlySnapshotBundle.TryLoadStorageRlpFromPersistence(address, path, hash, flags);
     }
 
     /// <summary>
@@ -310,14 +330,12 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
+        // Check ReadOnlySnapshotBundle snapshots
         Hash256 hashCommitment = hash.ToCommitment();
-        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hashCommitment, out TrieNode? roNode))
+        if (_readOnlySnapshotBundle.TryFindStateNodes(path, hashCommitment, out RefCountingTrieNode? roNode))
         {
-            if (roNode.Keccak != hash)
-                throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
-            if (roNode.FullRlp.IsNotNullOrEmpty)
-                return _transientResource.SetAndLeaseStateNode(path, hash, roNode.FullRlp.AsSpan());
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return roNode;
         }
 
         // Fall back to disk
@@ -375,14 +393,12 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        // Check TrieNodes in ReadOnlySnapshotBundle (persisted snapshots)
+        // Check ReadOnlySnapshotBundle snapshots
         Hash256 hashCommitment = hash.ToCommitment();
-        if (_readOnlySnapshotBundle.TryFindStorageNodes(addressHash, path, hashCommitment, out TrieNode? roNode))
+        if (_readOnlySnapshotBundle.TryFindStorageNodes(addressHash, path, hashCommitment, out RefCountingTrieNode? roNode))
         {
-            if (roNode.Keccak != hash)
-                throw new NodeHashMismatchException($"Storage node hash mismatch at path {path}. Expected: {hash}, Got: {roNode.Keccak}");
-            if (roNode.FullRlp.IsNotNullOrEmpty)
-                return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, roNode.FullRlp.AsSpan());
+            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
+            return roNode;
         }
 
         // Fall back to disk

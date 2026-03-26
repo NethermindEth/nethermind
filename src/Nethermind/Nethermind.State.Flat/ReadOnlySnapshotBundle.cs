@@ -124,16 +124,16 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out RefCountingTrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? refNode))
+            if (snapshots[i].TryGetStateNode(path, out RefCountingTrieNode? refNode) && refNode.TryAcquireLease())
             {
-                node = new TrieNode(NodeType.Unknown, refNode.Hash.ToCommitment(), refNode.Rlp.AsSpan());
+                node = refNode;
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
                 return true;
@@ -146,16 +146,16 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out RefCountingTrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? refNode))
+            if (snapshots[i].TryGetStorageNode(address, path, out RefCountingTrieNode? refNode) && refNode.TryAcquireLease())
             {
-                node = new TrieNode(NodeType.Unknown, refNode.Hash.ToCommitment(), refNode.Rlp.AsSpan());
+                node = refNode;
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
@@ -166,7 +166,7 @@ public sealed class ReadOnlySnapshotBundle(
         return false;
     }
 
-    public byte[]? TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStateRlpFromPersistence(in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
@@ -178,7 +178,7 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    public byte[]? TryLoadStorageRlpFromPersistence(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
     {
         GuardDispose();
 
