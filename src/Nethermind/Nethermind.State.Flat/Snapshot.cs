@@ -68,7 +68,7 @@ public class Snapshot(
 
 public sealed class SnapshotContent : IDisposable, IResettable
 {
-    private const int NodeSizeEstimate = 928; // RefCountingTrieNode estimated size
+    private const int NodeSizeEstimate = RefCountingTrieNode.EstimatedSize;
 
     // They dont actually need to be concurrent, but it makes commit fast by just passing the whole content.
     public readonly ConcurrentDictionary<AddressAsKey, Account?> Accounts = new();
