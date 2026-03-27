@@ -192,9 +192,6 @@ public class StatelessBlockTree(IReadOnlyCollection<BlockHeader> headers)
     public void RecalculateTreeLevels()
         => throw new NotSupportedException();
 
-    public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
-        => throw new NotSupportedException();
-
     public (long BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => throw new NotSupportedException();

@@ -44,9 +44,10 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             )
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
-            .AddSingleton<IBlockTree, BlockTree>()
-            .Bind<IBlockFinder, IBlockTree>()
-            .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
+            .AddSingleton<BlockTree>()
+            .Bind<IBlockTree, BlockTree>()
+            .Bind<IBlockFinder, BlockTree>()
+            .Bind<IBlockTreeHealer, BlockTree>()
             .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
 
         builder.AddSingleton<ILogIndexBuilder, LogIndexBuilder>()
