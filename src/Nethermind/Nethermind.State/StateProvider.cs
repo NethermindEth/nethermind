@@ -615,33 +615,37 @@ namespace Nethermind.State
             Task CommitCodeAsync(IWorldStateScopeProvider.ICodeDb codeDb)
             {
                 Dictionary<Hash256AsKey, byte[]> dict = Interlocked.Exchange(ref _codeBatch, null);
-                if (dict is null) return Task.CompletedTask;
+
+                if (dict is null)
+                    return Task.CompletedTask;
+
                 _codeBatchAlternate = default;
 
-                return Task.Run(() =>
+                void PersistCodeBatch()
                 {
-                    using (var batch = codeDb.BeginCodeWrite())
+                    using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                     {
                         // Insert ordered for improved performance
                         foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
-                        {
                             batch.Set(kvp.Key.Value, kvp.Value);
-                        }
                     }
 
                     // Mark all inserted codes as persisted
                     foreach (Hash256AsKey kvp in dict.Keys)
-                    {
                         _persistedCodeInsertFilter.Set(kvp.Value.ValueHash256);
-                    }
 
                     // Reuse Dictionary if not already re-initialized
                     dict.Clear();
+
                     if (Interlocked.CompareExchange(ref _codeBatch, dict, null) is null)
-                    {
                         _codeBatchAlternate = _codeBatch.GetAlternateLookup<ValueHash256>();
-                    }
-                });
+                }
+#if ZK_EVM
+                PersistCodeBatch();
+                return Task.CompletedTask;
+#else
+                return Task.Run(PersistCodeBatch);
+#endif
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
