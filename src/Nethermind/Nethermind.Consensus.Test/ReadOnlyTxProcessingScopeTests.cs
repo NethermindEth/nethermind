@@ -43,9 +43,11 @@ public class ReadOnlyTxProcessingScopeTests
 
         Task waitTask = Task.Run(() => BlockCachePreWarmer.WaitForAddressWarmer(doneEvent, TimeSpan.FromMilliseconds(100), block, new ILogger(logger)));
 
-        await Task.Delay(250);
-
-        logger.LogList.Should().Contain(log => log.Contains("Waiting for address warmer to finish", StringComparison.Ordinal));
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        while (!logger.LogList.Exists(log => log.Contains("Waiting for address warmer to finish", StringComparison.Ordinal)))
+        {
+            await Task.Delay(10, cts.Token);
+        }
         waitTask.IsCompleted.Should().BeFalse("the prewarmer must not report completion while the address warmer is still running");
 
         doneEvent.Set();

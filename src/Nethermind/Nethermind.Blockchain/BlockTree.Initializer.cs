@@ -381,8 +381,8 @@ public partial class BlockTree
             bool? hasRecoverableState = startBlock is null
                 ? null
                 : _persistedStateInfoProvider?.HasRecoverableStateForBlock(startBlock.Header);
-            string persistedStateDescription = _persistedStateInfoProvider?.TryGetPersistedStateInfo(out PersistedStateInfo stateInfo) == true
-                ? $"{stateInfo.BlockNumber} / {stateInfo.StateRoot}"
+            string persistedStateDescription = persistedStateInfoValue is PersistedStateInfo logStateInfo
+                ? $"{logStateInfo.BlockNumber} / {logStateInfo.StateRoot}"
                 : "<unavailable>";
 
             Logger.Info(

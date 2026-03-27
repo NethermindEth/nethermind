@@ -40,8 +40,8 @@ namespace Nethermind.Blockchain
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
-        private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
-        private static readonly byte[] StateHeadBlockHashDbEntryAddress = CreateMetadataAddress(1);
+        internal static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
+        internal static readonly byte[] StateHeadBlockHashDbEntryAddress = CreateMetadataAddress(1);
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
 
@@ -1745,9 +1745,9 @@ namespace Nethermind.Blockchain
             set
             {
                 _highestPersistedState = value;
-                using (_blockInfoDb.StartWriteBatch())
+                if (value.HasValue)
                 {
-                    if (value.HasValue)
+                    using (_blockInfoDb.StartWriteBatch())
                     {
                         _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
 

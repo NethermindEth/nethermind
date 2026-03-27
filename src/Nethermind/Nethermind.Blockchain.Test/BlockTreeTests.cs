@@ -2207,32 +2207,10 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_start_block_from_exact_persisted_boundary_hash_when_present()
     {
-        byte[] persistedBoundaryHashKey = new byte[16];
-        persistedBoundaryHashKey[^1] = 1;
-
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).TestObject;
-        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
-
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(genesis);
-        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(block1);
-        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(canonicalBlock2);
-        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2();
 
         tree.BestPersistedState = 2;
-        builder.BlockInfoDb.Set(persistedBoundaryHashKey, canonicalBlock2.Hash!.Bytes.ToArray());
+        builder.BlockInfoDb.Set(BlockTree.StateHeadBlockHashDbEntryAddress, canonicalBlock2.Hash!.Bytes.ToArray());
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -2245,30 +2223,11 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Loads_start_block_repairs_to_matching_flat_state_when_number_only_metadata_points_to_wrong_block()
     {
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).TestObject;
-        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
-
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(genesis);
-        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(block1);
-        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(canonicalBlock2);
-        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2();
 
         tree.BestPersistedState = 2;
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
             header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
 
@@ -2284,30 +2243,11 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_start_block_when_no_exact_repair_target_exists_fails_with_actionable_diagnostics()
     {
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).TestObject;
-        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
-
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(genesis);
-        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(block1);
-        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(canonicalBlock2);
-        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2();
 
         tree.BestPersistedState = 2;
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, TestItem.KeccakC),
             _ => false);
 
@@ -2327,30 +2267,11 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_start_block_failure_contains_persisted_boundary_and_flat_state_diagnostics()
     {
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).TestObject;
-        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
-
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(genesis);
-        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(block1);
-        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(canonicalBlock2);
-        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2();
 
         tree.BestPersistedState = 2;
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, TestItem.KeccakC),
             _ => false);
 
@@ -2372,30 +2293,14 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_start_block_when_persisted_boundary_is_invalid_walks_back_to_recoverable_canonical_block()
     {
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
-        BlockTree tree = builder.TestObject;
-        Block genesis = Build.A.Block.Genesis.TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
-        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakC).TestObject;
-
-        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(genesis);
-        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(block1);
-        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
-        tree.UpdateMainChain(canonicalBlock2);
-        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        (BlockTreeBuilder builder, BlockTree tree, _, Block block1, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2(
+            block1StateRoot: TestItem.KeccakA,
+            canonicalBlock2StateRoot: TestItem.KeccakB,
+            forkBlock2StateRoot: TestItem.KeccakC);
 
         tree.BestPersistedState = 2;
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, TestItem.KeccakD),
             header => header?.Number == block1.Number && header.StateRoot == block1.StateRoot);
 
@@ -2411,10 +2316,6 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_start_block_is_backward_compatible_when_only_number_metadata_exists()
     {
-        byte[] persistedBoundaryNumberKey = new byte[16];
-        byte[] persistedBoundaryHashKey = new byte[16];
-        persistedBoundaryHashKey[^1] = 1;
-
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead;
 
@@ -2430,12 +2331,10 @@ public class BlockTreeTests
         tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
         tree.UpdateMainChain(canonicalBlock2);
 
-        builder.BlockInfoDb.Remove(persistedBoundaryNumberKey);
-        builder.BlockInfoDb.Remove(persistedBoundaryHashKey);
         tree.BestPersistedState = canonicalBlock2.Number;
-        builder.BlockInfoDb.Remove(persistedBoundaryHashKey);
+        builder.BlockInfoDb.Remove(BlockTree.StateHeadBlockHashDbEntryAddress);
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
             header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
 
@@ -2451,13 +2350,11 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_start_block_repair_rewrites_number_and_hash_metadata_together()
     {
-        byte[] persistedBoundaryHashKey = new byte[16];
-        persistedBoundaryHashKey[^1] = 1;
-
-        BlockTreeBuilder builder = Build.A.BlockTree()
-            .WithoutSettingHead;
-
+        // This test does NOT clear HasBlockOnMainChain — the repair's BestPersistedState setter
+        // needs canonical info to write the hash metadata correctly.
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead;
         BlockTree tree = builder.TestObject;
+
         Block genesis = Build.A.Block.Genesis.TestObject;
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis).TestObject;
         Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
@@ -2471,10 +2368,11 @@ public class BlockTreeTests
         tree.UpdateMainChain(canonicalBlock2);
         tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
 
+        // Set stale metadata pointing to block1 while flat state is at canonicalBlock2
         tree.BestPersistedState = block1.Number;
-        builder.BlockInfoDb.Set(persistedBoundaryHashKey, block1.Hash!.Bytes.ToArray());
+        builder.BlockInfoDb.Set(BlockTree.StateHeadBlockHashDbEntryAddress, block1.Hash!.Bytes.ToArray());
 
-        IPersistedStateInfoProvider persistedStateInfoProvider = new StubPersistedStateInfoProvider(
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
             header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
 
@@ -2484,30 +2382,63 @@ public class BlockTreeTests
             .WithPersistedStateInfoProvider(persistedStateInfoProvider)
             .TestObject;
 
-        byte[] numberMetadata = builder.BlockInfoDb.Get(new byte[16])!;
+        byte[] numberMetadata = builder.BlockInfoDb.Get(BlockTree.StateHeadHashDbEntryAddress)!;
         long repairedNumber = new Rlp.ValueDecoderContext(numberMetadata).DecodeLong();
-        byte[] repairedHash = builder.BlockInfoDb.Get(persistedBoundaryHashKey)!;
+        byte[] repairedHash = builder.BlockInfoDb.Get(BlockTree.StateHeadBlockHashDbEntryAddress)!;
 
         Assert.That(loadedTree.BestPersistedState, Is.EqualTo(canonicalBlock2.Number));
         Assert.That(repairedNumber, Is.EqualTo(canonicalBlock2.Number));
         Assert.That(repairedHash, Is.EqualTo(canonicalBlock2.Hash!.Bytes.ToArray()));
     }
 
-    private sealed class StubPersistedStateInfoProvider(PersistedStateInfo? persistedStateInfo, Func<BlockHeader?, bool>? hasRecoverableState)
-        : IPersistedStateInfoProvider
+    /// <summary>
+    /// Builds a block tree with genesis → block1 → canonicalBlock2 + forkBlock2 (higher difficulty fork at block 2),
+    /// then clears the main chain flag at level 2 to simulate an ambiguous persisted boundary.
+    /// </summary>
+    private static (BlockTreeBuilder Builder, BlockTree Tree, Block Genesis, Block Block1, Block CanonicalBlock2, Block ForkBlock2) CreateTreeWithForkAtBlock2(
+        Hash256? block1StateRoot = null,
+        Hash256? canonicalBlock2StateRoot = null,
+        Hash256? forkBlock2StateRoot = null)
     {
-        public bool TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfoValue)
-        {
-            if (persistedStateInfo is PersistedStateInfo value)
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead;
+        BlockTree tree = builder.TestObject;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockBuilder block1Builder = Build.A.Block.WithNumber(1).WithDifficulty(1).WithTotalDifficulty(1L).WithParent(genesis);
+        if (block1StateRoot is not null) block1Builder = block1Builder.WithStateRoot(block1StateRoot);
+        Block block1 = block1Builder.TestObject;
+
+        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1).WithTotalDifficulty(2L).WithParent(block1)
+            .WithStateRoot(canonicalBlock2StateRoot ?? TestItem.KeccakA).TestObject;
+        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5).WithTotalDifficulty(6L).WithParent(block1)
+            .WithStateRoot(forkBlock2StateRoot ?? TestItem.KeccakB).TestObject;
+
+        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(genesis);
+        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(block1);
+        tree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(canonicalBlock2);
+        tree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
+
+        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
+        level2.HasBlockOnMainChain = false;
+        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+
+        return (builder, tree, genesis, block1, canonicalBlock2, forkBlock2);
+    }
+
+    private static IPersistedStateInfoProvider CreatePersistedStateInfoProvider(PersistedStateInfo persistedStateInfo, Func<BlockHeader?, bool> hasRecoverableState)
+    {
+        IPersistedStateInfoProvider provider = Substitute.For<IPersistedStateInfoProvider>();
+        provider.TryGetPersistedStateInfo(out Arg.Any<PersistedStateInfo>())
+            .Returns(callInfo =>
             {
-                persistedStateInfoValue = value;
+                callInfo[0] = persistedStateInfo;
                 return true;
-            }
-
-            persistedStateInfoValue = default;
-            return false;
-        }
-
-        public bool HasRecoverableStateForBlock(BlockHeader? blockHeader) => hasRecoverableState?.Invoke(blockHeader) ?? false;
+            });
+        provider.HasRecoverableStateForBlock(Arg.Any<BlockHeader?>())
+            .Returns(callInfo => hasRecoverableState((BlockHeader?)callInfo[0]));
+        return provider;
     }
 }
