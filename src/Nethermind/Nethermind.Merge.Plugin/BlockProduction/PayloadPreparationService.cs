@@ -144,29 +144,26 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             {
                 if (cts.IsCancellationRequested)
                 {
-                    return ReturnCurrent("improvement has been cancelled");
+                    // If cancelled, return previous
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, improvement has been cancelled");
+                    return currentContext;
                 }
-
                 if (!currentContext.ImprovementTask.IsCompleted)
                 {
-                    return ReturnCurrent("previous improvement hasn't finished");
+                    // If there is payload improvement and its not yet finished leave it be
+                    if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, previous improvement hasn't finished");
+                    return currentContext;
                 }
 
                 IBlockImprovementContext newContext = CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentContext.BlockFees, cts);
-
-                if (cts.IsCancellationRequested)
+                if (!cts.IsCancellationRequested)
+                {
+                    currentContext.Dispose();
+                    return newContext;
+                }
+                else
                 {
                     newContext.Dispose();
-                    return ReturnCurrent();
-                }
-
-                currentContext.Dispose();
-                return newContext;
-
-                IBlockImprovementContext ReturnCurrent(string? reason = null)
-                {
-                    if (_logger.IsTrace && reason is not null) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, {reason}");
-                    cts.Dispose();
                     return currentContext;
                 }
             });
@@ -188,7 +185,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
-
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
             CancellationToken token = cts.Token;
@@ -221,7 +217,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             }
             else
             {
-                cts.Dispose();
                 if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
             }
         });
@@ -331,7 +326,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
-                        context.Dispose();
+                        context.DisposeAndCancelOngoingImprovements();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -391,7 +386,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
-            using (blockContext)
+            try
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
@@ -406,7 +401,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
                         if (completedTask != timeout)
                         {
-                            cts.Cancel();
+                            await cts.CancelAsync();
                         }
                     }
                     else
@@ -414,13 +409,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         await blockContext.ImprovementTask;
                     }
                 }
-                else
-                {
-                    // Stop any on-going improvements as they won't be used
-                    blockContext.CancelOngoingImprovements();
-                }
 
                 return blockContext;
+            }
+            finally
+            {
+                // Stop any on-going improvements as they won't be used
+                blockContext.DisposeAndCancelOngoingImprovements();
             }
         }
 
@@ -431,6 +426,14 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         _timer.Stop();
         CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdown);
+
+        foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+        {
+            if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+            {
+                context.DisposeAndCancelOngoingImprovements();
+            }
+        }
     }
 
     public void CancelBlockProduction(string payloadId)
