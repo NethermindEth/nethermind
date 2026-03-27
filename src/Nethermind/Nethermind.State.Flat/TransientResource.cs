@@ -33,8 +33,13 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
     public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
     public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
 
+    public PreallocatedCappedArrayPool BufferPool = new();
+    public RefCountingNodeLeasePool LeasePool = new();
+
     public void Reset()
     {
+        LeasePool.Reset();
+        BufferPool.Reset();
         Nodes.Reset();
 
         if (PrewarmedAddresses.Count > PrewarmedAddresses.Capacity)

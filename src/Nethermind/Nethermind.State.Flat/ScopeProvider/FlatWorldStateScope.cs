@@ -32,8 +32,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly bool _recordDetailedMetrics;
 
     private readonly ConcurrencyController _concurrencyQuota;
-    private readonly PreallocatedCappedArrayPool? _bufferPool;
-    private readonly RefCountingNodeLeasePool? _leasePool;
     private readonly StateTree _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = new();
     private bool _isDisposed = false;
@@ -52,22 +50,18 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         IFlatDbConfig configuration,
         ITrieWarmer trieCacheWarmer,
         ILogManager logManager,
-        bool isReadOnly = false,
-        PreallocatedCappedArrayPool? bufferPool = null,
-        RefCountingNodeLeasePool? leasePool = null)
+        bool isReadOnly = false)
     {
         _currentStateId = currentStateId;
         _snapshotBundle = snapshotBundle;
         CodeDb = codeDb;
         _commitTarget = commitTarget;
-        _bufferPool = bufferPool;
-        _leasePool = leasePool;
 
         _concurrencyQuota = new ConcurrencyController(Environment.ProcessorCount); // Used during tree commit.
         _stateTree = new(
             new StateTrieStoreAdapter(snapshotBundle, _concurrencyQuota),
             logManager,
-            bufferPool
+            snapshotBundle.BufferPool
         )
         {
             RootHash = currentStateId.StateRoot.ToCommitment()
@@ -86,8 +80,6 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         if (Interlocked.CompareExchange(ref _isDisposed, true, false)) return;
         _snapshotBundle.Dispose();
-        _leasePool?.Reset();
-        _bufferPool?.Reset();
         _warmer.OnExitScope();
     }
 
@@ -168,7 +160,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             storageRoot,
             address,
             _logManager,
-            _bufferPool);
+            _snapshotBundle.BufferPool);
 
         return storage;
     }
@@ -209,6 +201,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         Task.WaitAll(commitTask.AsSpan());
 
+        // Clear tree node references before TransientResource is returned — their CappedArray byte[]
+        // are backed by the lease pool which gets reset when the TransientResource is returned.
+        // Re-setting RootHash re-resolves RootRef via FindCachedOrUnknown, dropping the old tree graph.
+        _stateTree.RootHash = _stateTree.RootHash;
         _storages.Clear();
 
         StateId newStateId = new(blockNumber, RootHash);

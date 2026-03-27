@@ -45,25 +45,18 @@ public sealed class SnapshotBundle : IDisposable
 
     internal ResourcePool.Usage _usage;
 
-    private readonly ICappedArrayPool? _bufferPool;
-    private readonly RefCountingNodeLeasePool? _leasePool;
-
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        SnapshotPooledList? snapshots = null,
-        ICappedArrayPool? bufferPool = null,
-        RefCountingNodeLeasePool? leasePool = null)
+        SnapshotPooledList? snapshots = null)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _usage = usage;
-        _bufferPool = bufferPool;
-        _leasePool = leasePool;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -82,15 +75,11 @@ public sealed class SnapshotBundle : IDisposable
     /// </summary>
     private CappedArray<byte> RentRlpOrCopy(RefCountingTrieNode node)
     {
-        if (_leasePool is not null && _leasePool.TryHoldLease(node))
+        if (_transientResource.LeasePool.TryHoldLease(node))
             return node.Rlp;
-        if (_bufferPool is not null)
-        {
-            CappedArray<byte> result = _bufferPool.Rent(node.RlpLength);
-            node.RlpSpan.CopyTo(result.AsSpan());
-            return result;
-        }
-        return new CappedArray<byte>(node.RlpToArray());
+        CappedArray<byte> result = _transientResource.BufferPool.Rent(node.RlpLength);
+        node.RlpSpan.CopyTo(result.AsSpan());
+        return result;
     }
 
     private void ExpandCurrentPooledContent()
@@ -251,10 +240,10 @@ public sealed class SnapshotBundle : IDisposable
             finally { cached.Dispose(); }
         }
 
-        CappedArray<byte> buffer = _bufferPool is not null ? _bufferPool.Rent(TrieNodeRlp.MaxRlpLength) : new CappedArray<byte>(new byte[TrieNodeRlp.MaxRlpLength]);
+        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(TrieNodeRlp.MaxRlpLength);
         int len = _readOnlySnapshotBundle.TryLoadStateRlpFromPersistence(path, hash, buffer.AsSpan(), flags);
         if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
-        if (_bufferPool is not null) _bufferPool.Return(buffer);
+        _transientResource.BufferPool.Return(buffer);
         return default;
     }
 
@@ -313,10 +302,10 @@ public sealed class SnapshotBundle : IDisposable
             finally { cached.Dispose(); }
         }
 
-        CappedArray<byte> buffer = _bufferPool is not null ? _bufferPool.Rent(TrieNodeRlp.MaxRlpLength) : new CappedArray<byte>(new byte[TrieNodeRlp.MaxRlpLength]);
+        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(TrieNodeRlp.MaxRlpLength);
         int len = _readOnlySnapshotBundle.TryLoadStorageRlpFromPersistence(address, path, hash, buffer.AsSpan(), flags);
         if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
-        if (_bufferPool is not null) _bufferPool.Return(buffer);
+        _transientResource.BufferPool.Return(buffer);
         return default;
     }
 
@@ -562,6 +551,9 @@ public sealed class SnapshotBundle : IDisposable
     // The trie warmer's PushSlotJob is slightly slow due to the wake up logic.
     // It is a net improvement to check and modify the bloom filter before calling the trie warmer push
     // as most of the slot should already be queued by prewarmer.
+    /// <summary>The buffer pool from the transient resource, for callers that need to pass it to tree constructors.</summary>
+    public PreallocatedCappedArrayPool BufferPool => _transientResource.BufferPool;
+
     public bool ShouldQueuePrewarm(Address address, UInt256? slot = null) => _transientResource.ShouldPrewarm(address, slot);
 
     public (Snapshot?, TransientResource?) CollectAndApplySnapshot(StateId from, StateId to, bool returnSnapshot = true)

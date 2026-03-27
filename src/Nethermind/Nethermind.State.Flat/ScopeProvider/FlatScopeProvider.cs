@@ -20,15 +20,13 @@ public class FlatScopeProvider(
     : IWorldStateScopeProvider
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
-    private readonly PreallocatedCappedArrayPool _bufferPool = new();
-    private readonly RefCountingNodeLeasePool _leasePool = new();
 
     public bool HasRoot(BlockHeader? baseBlock) => flatDbManager.HasStateForBlock(new StateId(baseBlock));
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         StateId currentState = new(baseBlock);
-        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage, bufferPool: _bufferPool, leasePool: _leasePool);
+        SnapshotBundle snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
 
         return new FlatWorldStateScope(
             currentState,
@@ -38,8 +36,6 @@ public class FlatScopeProvider(
             configuration,
             trieWarmer,
             logManager,
-            isReadOnly: isReadOnly,
-            bufferPool: _bufferPool,
-            leasePool: _leasePool);
+            isReadOnly: isReadOnly);
     }
 }

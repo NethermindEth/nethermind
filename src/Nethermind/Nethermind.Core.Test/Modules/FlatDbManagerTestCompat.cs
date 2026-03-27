@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
 using Nethermind.Trie.Pruning;
@@ -18,10 +17,10 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="flatDbManager"></param>
 internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbManager
 {
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, ICappedArrayPool? bufferPool = null, RefCountingNodeLeasePool? leasePool = null)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
     {
         IgnoreOnInvalidState(baseBlock);
-        return flatDbManager.GatherSnapshotBundle(baseBlock, usage, bufferPool, leasePool);
+        return flatDbManager.GatherSnapshotBundle(baseBlock, usage);
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
