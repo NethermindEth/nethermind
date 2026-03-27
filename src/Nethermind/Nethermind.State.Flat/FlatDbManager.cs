@@ -20,6 +20,7 @@ namespace Nethermind.State.Flat;
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private static readonly TimeSpan GatherGiveUpDeadline = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultCompactorEnqueueWarningDelay = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
@@ -55,6 +56,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly TimeSpan _compactorEnqueueWarningDelay;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -67,7 +69,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IPersistenceManager persistenceManager,
         IFlatDbConfig config,
         ILogManager logManager,
-        bool enableDetailedMetrics)
+        bool enableDetailedMetrics,
+        TimeSpan? compactorEnqueueWarningDelay = null)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -76,6 +79,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _compactorEnqueueWarningDelay = compactorEnqueueWarningDelay ?? DefaultCompactorEnqueueWarningDelay;
 
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
@@ -133,13 +137,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private ValueTask QueuePersistenceJob(StateId stateId, CancellationToken cancellationToken)
         => _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
-
-    private void ExecuteCompactAndPersistInline(StateId stateId, TransientResource transientResource)
-    {
-        PopulateTrieNodeCache(transientResource);
-        CompactSnapshot(stateId);
-        PersistIfNeeded(stateId);
-    }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
     {
@@ -366,16 +363,44 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             }
             else
             {
-                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
-
                 Metrics.CompactorQueueFullCount++;
-                if (_logger.IsWarn)
+                EnqueueCompactorJobWithWarnings(endBlock, persistedStateId);
+            }
+        }
+    }
+
+    private void EnqueueCompactorJobWithWarnings(StateId endBlock, StateId persistedStateId)
+    {
+        if (_cancelTokenSource.Token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        long stallStart = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            Task<bool> waitToWriteTask = _compactorJobs.Writer.WaitToWriteAsync(_cancelTokenSource.Token).AsTask();
+            if (waitToWriteTask.Wait(_compactorEnqueueWarningDelay))
+            {
+                if (!waitToWriteTask.Result || _cancelTokenSource.Token.IsCancellationRequested)
                 {
-                    _logger.Warn($"Compactor job stall! Insufficient reorg depth or too slow persistence! Persisted state: {persistedStateId}, snapshot target: {endBlock}. Executing inline drain.");
+                    return;
                 }
 
-                Metrics.InlineDrainActivationCount++;
-                ExecuteCompactAndPersistInline(endBlock, transientResource);
+                if (_compactorJobs.Writer.TryWrite(endBlock))
+                {
+                    return;
+                }
+
+                continue;
+            }
+
+            if (_logger.IsWarn)
+            {
+                _logger.Warn(
+                    $"Compactor job stall! Insufficient reorg depth or too slow persistence! " +
+                    $"Persisted state: {persistedStateId}, snapshot target: {endBlock}, " +
+                    $"waiting for enqueue for {Stopwatch.GetElapsedTime(stallStart)}.");
             }
         }
     }

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -51,7 +52,7 @@ public class FlatDbManagerTests
         _cts.Dispose();
     }
 
-    private FlatDbManager CreateManager() => new(
+    private FlatDbManager CreateManager(ILogManager? logManager = null, TimeSpan? compactorEnqueueWarningDelay = null) => new(
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
@@ -59,8 +60,9 @@ public class FlatDbManagerTests
         _snapshotRepository,
         _persistenceManager,
         _config,
-        LimboLogs.Instance,
-        enableDetailedMetrics: false);
+        logManager ?? LimboLogs.Instance,
+        enableDetailedMetrics: false,
+        compactorEnqueueWarningDelay: compactorEnqueueWarningDelay);
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -256,7 +258,7 @@ public class FlatDbManagerTests
     [Test]
     public async Task AddSnapshot_WhenCompactorQueueIsFull_CompletesWithinBoundedTime()
     {
-        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3) =
+        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3, _) =
             await SetupSaturatedCompactorQueue();
         await using (manager)
         {
@@ -267,7 +269,7 @@ public class FlatDbManagerTests
                 Task completedTask = await Task.WhenAny(thirdAddSnapshot, Task.Delay(TimeSpan.FromMilliseconds(500)));
                 bool completed = completedTask == thirdAddSnapshot;
 
-                Assert.That(completed, Is.True, "AddSnapshot should not remain blocked when the compactor queue is saturated.");
+                Assert.That(completed, Is.False, "AddSnapshot should wait for the background compactor pipeline instead of executing compaction inline.");
             }
             finally
             {
@@ -280,16 +282,22 @@ public class FlatDbManagerTests
     [Test]
     public async Task AddSnapshot_WhenQueueSaturated_EmitsBackpressureSignal()
     {
-        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3) =
+        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3, TestLogger testLogger) =
             await SetupSaturatedCompactorQueue();
         await using (manager)
         {
-            manager.AddSnapshot(snapshot3, resource3);
+            Task blockedAddSnapshot = Task.Run(() => manager.AddSnapshot(snapshot3, resource3));
 
+            Assert.That(
+                SpinWait.SpinUntil(
+                    () => testLogger.LogList.Exists(log => log.Contains("Compactor job stall!", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(2)),
+                Is.True,
+                "Expected a warning while waiting to enqueue a compactor job.");
             Assert.That(Metrics.CompactorQueueFullCount, Is.EqualTo(1));
-            Assert.That(Metrics.InlineDrainActivationCount, Is.EqualTo(1));
 
             releaseCompaction.TrySetResult();
+            await blockedAddSnapshot.WaitAsync(TimeSpan.FromSeconds(5));
         }
     }
 
@@ -297,7 +305,7 @@ public class FlatDbManagerTests
     /// Creates a FlatDbManager with MaxInFlightCompactJob=1, fills the queue with two snapshots (first blocks compaction),
     /// and returns the manager, a release handle, and a third snapshot ready to trigger backpressure.
     /// </summary>
-    private async Task<(FlatDbManager Manager, TaskCompletionSource ReleaseCompaction, Snapshot Snapshot3, TransientResource Resource3)> SetupSaturatedCompactorQueue()
+    private async Task<(FlatDbManager Manager, TaskCompletionSource ReleaseCompaction, Snapshot Snapshot3, TransientResource Resource3, TestLogger Logger)> SetupSaturatedCompactorQueue()
     {
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 1, InlineCompaction = false };
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(0));
@@ -324,12 +332,14 @@ public class FlatDbManagerTests
         (Snapshot snapshot2, TransientResource resource2) = CreateSnapshot(realResourcePool, 2, 3);
         (Snapshot snapshot3, TransientResource resource3) = CreateSnapshot(realResourcePool, 3, 4);
 
-        FlatDbManager manager = CreateManager();
+        TestLogger testLogger = new();
+        OneLoggerLogManager logManager = new(new ILogger(testLogger));
+        FlatDbManager manager = CreateManager(logManager, TimeSpan.FromMilliseconds(50));
         manager.AddSnapshot(snapshot1, resource1);
         await firstCompactionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         manager.AddSnapshot(snapshot2, resource2);
 
-        return (manager, releaseCompaction, snapshot3, resource3);
+        return (manager, releaseCompaction, snapshot3, resource3, testLogger);
     }
 
     private static (Snapshot Snapshot, TransientResource Resource) CreateSnapshot(ResourcePool resourcePool, long fromBlock, long toBlock)
