@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -156,6 +158,96 @@ public class StartupTreeFixerTests
         BlockVisitOutcome result = await fixer.VisitBlock(null!, CancellationToken.None);
 
         Assert.That(result, Is.EqualTo(BlockVisitOutcome.None));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Fixer_starts_from_repaired_head()
+    {
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block repairedHead = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+        Block queuedBlock = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(repairedHead).TestObject;
+
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        tree.SuggestBlock(repairedHead);
+        tree.SuggestBlock(queuedBlock);
+
+        tree.UpdateMainChain(block0);
+        tree.UpdateMainChain(block1);
+        tree.UpdateMainChain(repairedHead);
+
+        StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, Substitute.For<IStateReader>(), LimboNoErrorLogger.Instance);
+
+        Assert.That(fixer.StartLevelInclusive, Is.EqualTo(repairedHead.Number + 1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Fixer_with_repaired_head_and_recoverable_parent_suggests_blocks_normally()
+    {
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block repairedHead = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+        Block queuedBlock = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(repairedHead).TestObject;
+
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        tree.SuggestBlock(repairedHead);
+        tree.SuggestBlock(queuedBlock);
+
+        tree.UpdateMainChain(block0);
+        tree.UpdateMainChain(block1);
+        tree.UpdateMainChain(repairedHead);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(repairedHead.Header).Returns(true);
+
+        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateReader, LimboNoErrorLogger.Instance);
+        BlockVisitOutcome result = await fixer.VisitBlock(queuedBlock, CancellationToken.None);
+
+        Assert.That(result, Is.EqualTo(BlockVisitOutcome.Suggest));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Fixer_logs_error_when_head_does_not_match_persisted_state_info()
+    {
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).WithStateRoot(TestItem.KeccakB).TestObject;
+
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        tree.UpdateMainChain(block0);
+        tree.UpdateMainChain(block1);
+
+        TestLogger testLogger = new();
+        IPersistedStateInfoProvider persistedStateInfoProvider = Substitute.For<IPersistedStateInfoProvider>();
+        persistedStateInfoProvider.TryGetPersistedStateInfo(out Arg.Any<PersistedStateInfo>())
+            .Returns(callInfo =>
+            {
+                callInfo[0] = new PersistedStateInfo(block1.Number, TestItem.KeccakC);
+                return true;
+            });
+
+        _ = new StartupBlockTreeFixer(
+            new SyncConfig(),
+            tree,
+            Substitute.For<IStateReader>(),
+            new ILogger(testLogger),
+            persistedStateInfoProvider: persistedStateInfoProvider);
+
+        testLogger.LogList.Should().Contain(log => log.Contains("Startup head does not match persisted state info.", StringComparison.Ordinal));
     }
 
     private static void SuggestNumberOfBlocks(IBlockTree blockTree, int blockAmount)

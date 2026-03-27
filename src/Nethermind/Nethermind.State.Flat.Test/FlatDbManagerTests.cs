@@ -38,6 +38,8 @@ public class FlatDbManagerTests
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
+        Metrics.CompactorQueueFullCount = 0;
+        Metrics.InlineDrainActivationCount = 0;
     }
 
     [TearDown]
@@ -97,6 +99,19 @@ public class FlatDbManagerTests
         StateId stateId = CreateStateId(10);
         _snapshotRepository.HasState(stateId).Returns(false);
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+
+        await using FlatDbManager manager = CreateManager();
+        bool result = manager.HasStateForBlock(stateId);
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task HasStateForBlock_EarlierBlockNumberWithoutExactStateId_ReturnsFalse()
+    {
+        StateId stateId = CreateStateId(9, rootByte: 9);
+        _snapshotRepository.HasState(stateId).Returns(false);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(10, rootByte: 10));
 
         await using FlatDbManager manager = CreateManager();
         bool result = manager.HasStateForBlock(stateId);
@@ -189,5 +204,103 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenCompactorQueueIsFull_CompletesWithinBoundedTime()
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 1, InlineCompaction = false };
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(0));
+        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+
+        TaskCompletionSource firstCompactionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCompaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int compactionCallCount = 0;
+        _snapshotCompactor.DoCompactSnapshot(Arg.Any<StateId>())
+            .Returns(_ =>
+            {
+                int callCount = Interlocked.Increment(ref compactionCallCount);
+                if (callCount == 1)
+                {
+                    firstCompactionStarted.TrySetResult();
+                    releaseCompaction.Task.GetAwaiter().GetResult();
+                }
+
+                return false;
+            });
+
+        ResourcePool realResourcePool = new(_config);
+        (Snapshot snapshot1, TransientResource resource1) = CreateSnapshot(realResourcePool, 1, 2);
+        (Snapshot snapshot2, TransientResource resource2) = CreateSnapshot(realResourcePool, 2, 3);
+        (Snapshot snapshot3, TransientResource resource3) = CreateSnapshot(realResourcePool, 3, 4);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot1, resource1);
+        await firstCompactionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        manager.AddSnapshot(snapshot2, resource2);
+
+        Task thirdAddSnapshot = Task.Run(() => manager.AddSnapshot(snapshot3, resource3));
+
+        try
+        {
+            Task completedTask = await Task.WhenAny(thirdAddSnapshot, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            bool completed = completedTask == thirdAddSnapshot;
+
+            Assert.That(completed, Is.True, "AddSnapshot should not remain blocked when the compactor queue is saturated.");
+        }
+        finally
+        {
+            releaseCompaction.TrySetResult();
+            await thirdAddSnapshot.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenQueueSaturated_EmitsBackpressureSignal()
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 1, InlineCompaction = false };
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(0));
+        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+
+        TaskCompletionSource firstCompactionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCompaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int compactionCallCount = 0;
+        _snapshotCompactor.DoCompactSnapshot(Arg.Any<StateId>())
+            .Returns(_ =>
+            {
+                int callCount = Interlocked.Increment(ref compactionCallCount);
+                if (callCount == 1)
+                {
+                    firstCompactionStarted.TrySetResult();
+                    releaseCompaction.Task.GetAwaiter().GetResult();
+                }
+
+                return false;
+            });
+
+        ResourcePool realResourcePool = new(_config);
+        (Snapshot snapshot1, TransientResource resource1) = CreateSnapshot(realResourcePool, 1, 2);
+        (Snapshot snapshot2, TransientResource resource2) = CreateSnapshot(realResourcePool, 2, 3);
+        (Snapshot snapshot3, TransientResource resource3) = CreateSnapshot(realResourcePool, 3, 4);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot1, resource1);
+        await firstCompactionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        manager.AddSnapshot(snapshot2, resource2);
+        manager.AddSnapshot(snapshot3, resource3);
+
+        Assert.That(Metrics.CompactorQueueFullCount, Is.EqualTo(1));
+        Assert.That(Metrics.InlineDrainActivationCount, Is.EqualTo(1));
+
+        releaseCompaction.TrySetResult();
+    }
+
+    private static (Snapshot Snapshot, TransientResource Resource) CreateSnapshot(ResourcePool resourcePool, long fromBlock, long toBlock)
+    {
+        StateId snapshotFrom = CreateStateId(fromBlock);
+        StateId snapshotTo = CreateStateId(toBlock);
+        Snapshot snapshot = resourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        return (snapshot, transientResource);
     }
 }

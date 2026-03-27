@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -33,9 +34,28 @@ namespace Nethermind.Blockchain.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
+    private sealed class RecordingLogger : InterfaceLogger
+    {
+        private readonly ConcurrentQueue<string> _logs = new();
+
+        public IEnumerable<string> Logs => _logs;
+
+        public void Info(string text) => _logs.Enqueue(text);
+        public void Warn(string text) => _logs.Enqueue(text);
+        public void Debug(string text) => _logs.Enqueue(text);
+        public void Trace(string text) => _logs.Enqueue(text);
+        public void Error(string text, Exception? ex = null) => _logs.Enqueue(text);
+
+        public bool IsInfo { get; set; }
+        public bool IsWarn { get; set; } = true;
+        public bool IsDebug { get; set; }
+        public bool IsTrace { get; set; }
+        public bool IsError { get; set; } = true;
+    }
+
     private class ProcessingTestContext
     {
-        private readonly ILogManager _logManager = LimboLogs.Instance;
+        private readonly ILogManager _logManager;
 
         private class BranchProcessorMock : IBranchProcessor
         {
@@ -91,11 +111,13 @@ public class BlockchainProcessorTests
                 int nextBlock = 0;
                 while (true)
                 {
+                    token.ThrowIfCancellationRequested();
                     lock (_gate)
                     {
                         bool notYet = false;
                         for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                         {
+                            token.ThrowIfCancellationRequested();
                             BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
                             Block suggestedBlock = suggestedBlocks[i];
                             BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
@@ -201,8 +223,9 @@ public class BlockchainProcessorTests
         private const int ProcessingWait = 10_000;
         private const int MockRecheckInterval = 200;
 
-        public ProcessingTestContext(bool startProcessor)
+        public ProcessingTestContext(bool startProcessor, ILogManager? logManager = null, BlockchainProcessor.Options? options = null)
         {
+            _logManager = logManager ?? LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
             _stateReader = Substitute.For<IStateReader>();
 
@@ -211,7 +234,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, _logManager, options ?? BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -396,6 +419,12 @@ public class BlockchainProcessorTests
             return this;
         }
 
+        public ProcessingTestContext Allow(Block block)
+        {
+            _branchProcessor.Allow(block.Hash!);
+            return this;
+        }
+
         public ProcessingTestContext CountIs(int expectedCount)
         {
             Assert.That(() => _processor.Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
@@ -498,6 +527,8 @@ public class BlockchainProcessorTests
             _branchProcessor.Processed.Should().BeEquivalentTo(blocks.Select(b => b.Hash));
             return this;
         }
+
+        public Task StopAsync() => _processor.StopAsync(processRemainingBlocks: false);
 
         public ProcessingTestContext StateSyncedTo(Block block4D8)
         {
@@ -849,6 +880,138 @@ public class BlockchainProcessorTests
             .QueueIsEmpty(3);
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task ProcessBlock_WhenBlockTakesLongerThanThreshold_EmitsWatchdogWarning()
+    {
+        RecordingLogger testLogger = new();
+        BlockchainProcessor.Options options = new()
+        {
+            BlockProcessingWatchdogThreshold = TimeSpan.FromMilliseconds(200),
+            BlockProcessingWatchdogRepeatInterval = TimeSpan.FromSeconds(10),
+        };
+        ProcessingTestContext context = new(true, new OneLoggerLogManager(new(testLogger)), options);
+
+        try
+        {
+            context
+                .Suggested(_block0)
+                .Recovered(_block0)
+                .Sleep(500);
+
+            testLogger.Logs.Should().Contain(log => log.Contains("Block processing watchdog: block", StringComparison.Ordinal));
+        }
+        finally
+        {
+            context.Recovered(_block0);
+            context.Allow(_block0);
+            await context.StopAsync();
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BuildMaxBranchSizeReachedMessage_IncludesStartupDiagnostics()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithoutSettingHead;
+
+        BlockTree tree = builder.TestObject;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1L).WithTotalDifficulty(1L).WithParent(genesis).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(1L).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
+
+        tree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(genesis);
+        tree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(block1);
+        tree.SuggestBlock(block2).Should().Be(AddBlockResult.Added);
+        tree.UpdateMainChain(block2);
+
+        tree.BestPersistedState = block2.Number;
+        typeof(BlockTree)
+            .GetProperty(nameof(BlockTree.LastStartupBoundaryDiagnostics), BindingFlags.Instance | BindingFlags.Public)!
+            .SetValue(
+                tree,
+                new StartupBoundaryDiagnostics(
+                    block2.Number,
+                    block2.Hash,
+                    new PersistedStateInfo(block2.Number, block2.StateRoot),
+                    "validated against exact persisted state"));
+
+        Block suggestedBlock = Build.A.Block
+            .WithNumber(3)
+            .WithDifficulty(1L)
+            .WithTotalDifficulty(3L)
+            .WithParent(block2)
+            .WithStateRoot(TestItem.KeccakC)
+            .TestObject;
+
+        string message = BlockchainProcessor.BuildMaxBranchSizeReachedMessage(tree, suggestedBlock, block2, block2.Header);
+
+        message.Should().Contain("Maximum size of branch reached (8192)");
+        message.Should().Contain($"stored persisted boundary number={block2.Number}");
+        message.Should().Contain($"stored persisted boundary hash={block2.Hash}");
+        message.Should().Contain($"flat persisted state={block2.Number}/{block2.StateRoot}");
+        message.Should().Contain("startup reconciliation outcome=validated against exact persisted state");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Restart_with_ambiguous_persisted_boundary_repairs_and_processes_next_canonical_block()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree()
+            .WithoutSettingHead;
+
+        BlockTree sourceTree = builder.TestObject;
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1L).WithTotalDifficulty(1L).WithParent(genesis).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1L).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
+        Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5L).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakC).TestObject;
+
+        sourceTree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
+        sourceTree.UpdateMainChain(genesis);
+        sourceTree.SuggestBlock(block1).Should().Be(AddBlockResult.Added);
+        sourceTree.UpdateMainChain(block1);
+        sourceTree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
+        sourceTree.UpdateMainChain(canonicalBlock2);
+        sourceTree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
+
+        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
+        level2.HasBlockOnMainChain = false;
+        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+
+        sourceTree.BestPersistedState = canonicalBlock2.Number;
+
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
+            new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
+            header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
+
+        BlockTree loadedTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .WithPersistedStateInfoProvider(persistedStateInfoProvider)
+            .TestObject;
+
+        Block nextCanonicalBlock = Build.A.Block
+            .WithNumber(3)
+            .WithDifficulty(1L)
+            .WithTotalDifficulty(3L)
+            .WithParent(canonicalBlock2)
+            .WithStateRoot(TestItem.KeccakD)
+            .TestObject;
+
+        loadedTree.SuggestBlock(nextCanonicalBlock).Should().Be(AddBlockResult.Added);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
+        BlockchainProcessor processor = CreateProcessorForDirectProcess(loadedTree, stateReader);
+
+        Block? processedBlock = processor.Process(nextCanonicalBlock, ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
+
+        processedBlock.Should().NotBeNull();
+        processedBlock!.Hash.Should().Be(nextCanonicalBlock.Hash!);
+        loadedTree.Head!.Hash.Should().Be(nextCanonicalBlock.Hash!);
+    }
+
     [Test]
     public void ProcessingLongRangeFastSync_ProcessOnlyLastBlock()
     {
@@ -870,5 +1033,36 @@ public class BlockchainProcessorTests
                 _block1D2,
                 _block5D10
             );
+    }
+
+    private static BlockchainProcessor CreateProcessorForDirectProcess(IBlockTree blockTree, IStateReader stateReader)
+    {
+        IBranchProcessor branchProcessor = Substitute.For<IBranchProcessor>();
+        branchProcessor
+            .Process(Arg.Any<BlockHeader?>(), Arg.Any<IReadOnlyList<Block>>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo => ((IReadOnlyList<Block>)callInfo[1]).ToArray());
+
+        return new BlockchainProcessor(
+            blockTree,
+            branchProcessor,
+            Substitute.For<IBlockPreprocessorStep>(),
+            stateReader,
+            LimboLogs.Instance,
+            BlockchainProcessor.Options.Default,
+            Substitute.For<IProcessingStats>());
+    }
+
+    private static IPersistedStateInfoProvider CreatePersistedStateInfoProvider(PersistedStateInfo persistedStateInfo, Func<BlockHeader?, bool> hasRecoverableState)
+    {
+        IPersistedStateInfoProvider persistedStateInfoProvider = Substitute.For<IPersistedStateInfoProvider>();
+        persistedStateInfoProvider.TryGetPersistedStateInfo(out Arg.Any<PersistedStateInfo>())
+            .Returns(callInfo =>
+            {
+                callInfo[0] = persistedStateInfo;
+                return true;
+            });
+        persistedStateInfoProvider.HasRecoverableStateForBlock(Arg.Any<BlockHeader?>())
+            .Returns(callInfo => hasRecoverableState((BlockHeader?)callInfo[0]));
+        return persistedStateInfoProvider;
     }
 }

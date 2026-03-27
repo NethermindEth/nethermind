@@ -36,24 +36,28 @@ namespace Nethermind.Blockchain.Visitors
         private bool _firstBlockVisited = true;
         private bool _suggestBlocks = true;
         private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
+        private readonly IPersistedStateInfoProvider? _persistedStateInfoProvider;
 
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
             ILogger logger,
-            long batchSize = DefaultBatchSize)
+            long batchSize = DefaultBatchSize,
+            IPersistedStateInfoProvider? persistedStateInfoProvider = null)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTreeSuggestPacer = new BlockTreeSuggestPacer(_blockTree, batchSize, batchSize / 2);
             _stateReader = stateReader;
             _logger = logger;
+            _persistedStateInfoProvider = persistedStateInfoProvider;
 
             long assumedHead = _blockTree.Head?.Number ?? 0;
             _startNumber = Math.Max(_blockTree.SyncPivot.BlockNumber, assumedHead + 1);
             _blocksToLoad = (assumedHead + 1) >= _startNumber ? (_blockTree.BestKnownNumber - _startNumber + 1) : 0;
 
             _currentLevelNumber = _startNumber - 1; // because we always increment on entering
+            LogPersistedStateMismatch();
             LogPlannedOperation();
         }
 
@@ -240,6 +244,31 @@ namespace Nethermind.Blockchain.Visitors
                 if (_logger.IsInfo)
                     _logger.Info(
                         $"Found {_blocksToLoad} block tree levels to review for fixes starting from {StartLevelInclusive}");
+            }
+        }
+
+        private void LogPersistedStateMismatch()
+        {
+            if (_blockTree.Head is not { } head)
+            {
+                return;
+            }
+
+            if (_persistedStateInfoProvider?.TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo) != true)
+            {
+                return;
+            }
+
+            if (head.Number == persistedStateInfo.BlockNumber && head.StateRoot == persistedStateInfo.StateRoot)
+            {
+                return;
+            }
+
+            if (_logger.IsError)
+            {
+                _logger.Error(
+                    $"Startup head does not match persisted state info. Head={head.ToString(Block.Format.Short)} root={head.StateRoot}, " +
+                    $"persisted state={persistedStateInfo.BlockNumber}/{persistedStateInfo.StateRoot}.");
             }
         }
 

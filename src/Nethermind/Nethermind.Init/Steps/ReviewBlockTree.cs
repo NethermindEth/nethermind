@@ -22,7 +22,8 @@ namespace Nethermind.Init.Steps
         ISyncConfig syncConfig,
         IBlockProcessingQueue blockProcessingQueue,
         IBlockTree blockTree,
-        ILogManager logManager
+        ILogManager logManager,
+        IPersistedStateInfoProvider? persistedStateInfoProvider = null
     ) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger();
@@ -58,7 +59,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!);
+                using StartupBlockTreeFixer fixer = new(syncConfig, blockTree, worldStateManager!.GlobalStateReader, _logger!, persistedStateInfoProvider: persistedStateInfoProvider);
                 await blockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
                 {
                     if (t.IsFaulted)

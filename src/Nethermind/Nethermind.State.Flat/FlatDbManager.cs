@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -116,16 +117,28 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // We do this async because of the lock
+        CompactSnapshot(stateId);
+        await QueuePersistenceJob(stateId, cancellationToken);
+    }
+
+    private void CompactSnapshot(StateId stateId)
+    {
         _snapshotRepository.AddStateId(stateId);
 
         if (_snapshotCompactor.DoCompactSnapshot(stateId))
         {
             ClearReadOnlyBundleCache();
         }
+    }
 
-        // Trigger persistence job.
-        await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
+    private ValueTask QueuePersistenceJob(StateId stateId, CancellationToken cancellationToken)
+        => _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
+
+    private void ExecuteCompactAndPersistInline(StateId stateId, TransientResource transientResource)
+    {
+        PopulateTrieNodeCache(transientResource);
+        CompactSnapshot(stateId);
+        PersistIfNeeded(stateId);
     }
 
     private async Task RunPersistence(CancellationToken cancellationToken)
@@ -343,18 +356,26 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         else
         {
-            if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
+            if (_compactorJobs.Writer.TryWrite(endBlock))
             {
-                // Ignore it, just dispose
-                transientResource.Dispose();
+                if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
+                {
+                    // Ignore it, just dispose
+                    transientResource.Dispose();
+                }
             }
-
-            if (!_compactorJobs.Writer.TryWrite(endBlock))
+            else
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
-                if (_logger.IsWarn) _logger.Warn("Compactor job stall! Insufficient reorg depth or too slow persistence!");
-                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                Metrics.CompactorQueueFullCount++;
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn($"Compactor job stall! Insufficient reorg depth or too slow persistence! Persisted state: {persistedStateId}, snapshot target: {endBlock}. Executing inline drain.");
+                }
+
+                Metrics.InlineDrainActivationCount++;
+                ExecuteCompactAndPersistInline(endBlock, transientResource);
             }
         }
     }
@@ -404,10 +425,27 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public bool HasStateForBlock(in StateId stateId)
     {
+        // FlatDB recoverability is exact by StateId. Do not weaken this to block-number-only checks,
+        // otherwise startup can accept the wrong branch/root after persisted-boundary drift.
         if (_snapshotRepository.HasState(stateId)) return true;
         if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
         return false;
     }
+
+    public bool TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo)
+    {
+        StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        if (currentPersistedStateId == StateId.PreGenesis)
+        {
+            persistedStateInfo = default;
+            return false;
+        }
+
+        persistedStateInfo = new PersistedStateInfo(currentPersistedStateId.BlockNumber, currentPersistedStateId.StateRoot);
+        return true;
+    }
+
+    public bool HasRecoverableStateForBlock(BlockHeader? blockHeader) => HasStateForBlock(new StateId(blockHeader));
 
     public async ValueTask DisposeAsync()
     {

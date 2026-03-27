@@ -71,6 +71,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationTokenSource? _loopCancellationSource;
     private Task? _recoveryTask;
     private Task? _processorTask;
+    private Task? _watchdogTask;
     private DateTime _lastProcessedBlock;
 
     private int _currentRecoveryQueueSize;
@@ -78,6 +79,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
+    private Block? _currentProcessingWatchdogBlock;
+    private long _currentProcessingWatchdogStartTimestamp;
+    private int _watchdogWarningCount;
 
     public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? InvalidBlock;
     public event EventHandler<BlockStatistics>? NewProcessingStatistics;
@@ -198,6 +202,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _loopCancellationSource ??= new CancellationTokenSource();
         _recoveryTask = RunRecovery();
         _processorTask = RunProcessing();
+        _watchdogTask = RunProcessingWatchdog();
 
         if (_logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} started.");
 
@@ -218,6 +223,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
 
         _recoveryComplete = true;
+        CancellationTokenSource? loopCancellationSource = _loopCancellationSource;
         if (processRemainingBlocks)
         {
             _recoveryQueue.Writer.TryComplete();
@@ -226,12 +232,16 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         else
         {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _loopCancellationSource);
+            loopCancellationSource?.Cancel();
             _recoveryQueue.Writer.TryComplete();
             _blockQueue.Writer.TryComplete();
         }
 
         await Task.WhenAll(_recoveryTask ?? Task.CompletedTask, _processorTask ?? Task.CompletedTask);
+        loopCancellationSource?.Cancel();
+        await (_watchdogTask ?? Task.CompletedTask);
+        loopCancellationSource?.Dispose();
+        _loopCancellationSource = null;
         if (isStarted && _logger.IsInfo) _logger.Info($"{nameof(BlockchainProcessor)} shutdown complete.");
     }
 
@@ -318,6 +328,75 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
+    private async Task RunProcessingWatchdog()
+    {
+        TimeSpan threshold = _options.BlockProcessingWatchdogThreshold;
+        if (threshold <= TimeSpan.Zero)
+        {
+            return;
+        }
+
+        TimeSpan repeatInterval = _options.BlockProcessingWatchdogRepeatInterval <= TimeSpan.Zero
+            ? threshold
+            : _options.BlockProcessingWatchdogRepeatInterval;
+        TimeSpan pollInterval = threshold < TimeSpan.FromSeconds(1)
+            ? threshold
+            : TimeSpan.FromSeconds(1);
+        if (repeatInterval < pollInterval)
+        {
+            pollInterval = repeatInterval;
+        }
+
+        if (pollInterval <= TimeSpan.Zero)
+        {
+            pollInterval = TimeSpan.FromMilliseconds(100);
+        }
+
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(pollInterval, CancellationToken);
+
+                Block? currentBlock = Volatile.Read(ref _currentProcessingWatchdogBlock);
+                long currentStartTimestamp = Volatile.Read(ref _currentProcessingWatchdogStartTimestamp);
+                if (currentBlock is null || currentStartTimestamp == 0)
+                {
+                    continue;
+                }
+
+                TimeSpan elapsed = Stopwatch.GetElapsedTime(currentStartTimestamp);
+                int warningCount = Volatile.Read(ref _watchdogWarningCount);
+                TimeSpan nextWarningAt = threshold + TimeSpan.FromTicks(repeatInterval.Ticks * warningCount);
+                if (elapsed < nextWarningAt)
+                {
+                    continue;
+                }
+
+                if (!ReferenceEquals(currentBlock, Volatile.Read(ref _currentProcessingWatchdogBlock)) ||
+                    currentStartTimestamp != Volatile.Read(ref _currentProcessingWatchdogStartTimestamp))
+                {
+                    continue;
+                }
+
+                if (Interlocked.CompareExchange(ref _watchdogWarningCount, warningCount + 1, warningCount) != warningCount)
+                {
+                    continue;
+                }
+
+                if (_logger.IsWarn)
+                {
+                    _logger.Warn(
+                        $"Block processing watchdog: block {currentBlock.ToString(Block.Format.Short)} has been processing for {elapsed}. " +
+                        $"IsProcessingBlock={IsProcessingBlock}.");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private bool IsProcessingBlock { get => _isProcessingBlock; set { _isProcessingBlock = value; _blockTree.IsProcessingBlock = value; } }
 
     private async Task RunProcessingLoop()
@@ -354,6 +433,20 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
     }
 
+    private void StartProcessingWatchdog(Block block)
+    {
+        Volatile.Write(ref _currentProcessingWatchdogBlock, block);
+        Volatile.Write(ref _currentProcessingWatchdogStartTimestamp, Stopwatch.GetTimestamp());
+        Volatile.Write(ref _watchdogWarningCount, 0);
+    }
+
+    private void ClearProcessingWatchdog()
+    {
+        Volatile.Write(ref _currentProcessingWatchdogBlock, null);
+        Volatile.Write(ref _currentProcessingWatchdogStartTimestamp, 0);
+        Volatile.Write(ref _watchdogWarningCount, 0);
+    }
+
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
@@ -369,6 +462,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Block block = blockRef.Block;
                 if (isTrace) TraceProcessing(block);
 
+                StartProcessingWatchdog(block);
                 _stats.Start();
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
@@ -388,6 +482,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                ClearProcessingWatchdog();
                 Interlocked.Decrement(ref _queueCount);
             }
         }
@@ -811,8 +906,25 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => _logger.Trace($"State root lookup: {stateRoot}");
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowMaxBranchSizeReached()
-            => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+        void ThrowMaxBranchSizeReached() => throw new InvalidOperationException(
+            BuildMaxBranchSizeReachedMessage(_blockTree, suggestedBlock, toBeProcessed, branchingPoint));
+    }
+
+    internal static string BuildMaxBranchSizeReachedMessage(IBlockTree blockTree, Block suggestedBlock, Block? currentBlock, BlockHeader? branchingPoint)
+    {
+        StartupBoundaryDiagnostics? startupDiagnostics = (blockTree as BlockTree)?.LastStartupBoundaryDiagnostics;
+        PersistedStateInfo? persistedStateInfo = startupDiagnostics?.PersistedStateInfo;
+        return
+            $"Maximum size of branch reached ({MaxBranchSize}). This is unexpected. " +
+            $"Suggested block={suggestedBlock.ToString(Block.Format.Short)}, " +
+            $"current block={currentBlock?.ToString(Block.Format.Short) ?? "<null>"}, " +
+            $"branching point={branchingPoint?.ToString(BlockHeader.Format.Short) ?? "<null>"}, " +
+            $"head={blockTree.Head?.ToString(Block.Format.Short) ?? "<null>"} root={blockTree.Head?.StateRoot?.ToString() ?? "<null>"}, " +
+            $"best persisted state={blockTree.BestPersistedState?.ToString() ?? "<none>"}, " +
+            $"stored persisted boundary number={startupDiagnostics?.StoredPersistedBoundaryNumber?.ToString() ?? "<unavailable>"}, " +
+            $"stored persisted boundary hash={startupDiagnostics?.StoredPersistedBoundaryHash?.ToString() ?? "<unavailable>"}, " +
+            $"flat persisted state={(persistedStateInfo is PersistedStateInfo stateInfo ? $"{stateInfo.BlockNumber}/{stateInfo.StateRoot}" : "<unavailable>")}, " +
+            $"startup reconciliation outcome={startupDiagnostics?.ReconciliationOutcome ?? "<unavailable>"}";
     }
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
@@ -903,6 +1015,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         public static Options Default = new();
 
         public bool StoreReceiptsByDefault { get; set; } = true;
+        public TimeSpan BlockProcessingWatchdogThreshold { get; set; } = TimeSpan.FromSeconds(30);
+        public TimeSpan BlockProcessingWatchdogRepeatInterval { get; set; } = TimeSpan.FromSeconds(30);
 
         public DumpOptions DumpOptions { get; set; } = DumpOptions.None;
     }

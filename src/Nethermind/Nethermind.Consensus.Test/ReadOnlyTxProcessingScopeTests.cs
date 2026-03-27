@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -27,5 +32,23 @@ public class ReadOnlyTxProcessingScopeTests
         env.Dispose();
 
         closed.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task AddressWarmerWait_WhenWarmupDoesNotFinish_WarnsWithoutReportingCompletion()
+    {
+        using ManualResetEventSlim doneEvent = new(initialState: false);
+        TestLogger logger = new();
+        Block block = Build.A.Block.WithNumber(123).TestObject;
+
+        Task waitTask = Task.Run(() => BlockCachePreWarmer.WaitForAddressWarmer(doneEvent, TimeSpan.FromMilliseconds(100), block, new ILogger(logger)));
+
+        await Task.Delay(250);
+
+        logger.LogList.Should().Contain(log => log.Contains("Waiting for address warmer to finish", StringComparison.Ordinal));
+        waitTask.IsCompleted.Should().BeFalse("the prewarmer must not report completion while the address warmer is still running");
+
+        doneEvent.Set();
+        await waitTask.WaitAsync(TimeSpan.FromSeconds(5));
     }
 }

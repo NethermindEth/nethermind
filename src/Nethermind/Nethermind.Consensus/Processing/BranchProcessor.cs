@@ -33,6 +33,7 @@ public class BranchProcessor(
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
+    private static readonly TimeSpan PreWarmWaitWarningInterval = TimeSpan.FromSeconds(30);
     private readonly Action<Task> _clearCaches = _ => preWarmer?.ClearCaches();
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
@@ -193,9 +194,19 @@ public class BranchProcessor(
             worldStateCloser?.Dispose();
         }
 
-        static void WaitAndClear(ref Task? task)
+        void WaitAndClear(ref Task? task)
         {
-            task?.GetAwaiter().GetResult();
+            if (task is not null)
+            {
+                while (!task.Wait(PreWarmWaitWarningInterval))
+                {
+                    if (_logger.IsWarn)
+                    {
+                        _logger.Warn("Waiting for prewarmer task to finish before continuing block processing.");
+                    }
+                }
+            }
+
             task = null;
         }
     }

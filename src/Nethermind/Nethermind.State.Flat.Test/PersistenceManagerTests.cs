@@ -183,6 +183,24 @@ public class PersistenceManagerTests
         result.Dispose();
     }
 
+    [Test]
+    public void DetermineSnapshotToPersist_WhenFinalizationIsStale_ChoosesForcePersistCandidate()
+    {
+        StateId latest = CreateStateId(300);
+        StateId target = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot expectedSnapshot = CreateSnapshot(Block0, target, compacted: true);
+
+        Snapshot? result = _persistenceManager.DetermineSnapshotToPersist(latest);
+
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result!.From, Is.EqualTo(Block0));
+        Assert.That(result.To, Is.EqualTo(target));
+
+        result.Dispose();
+    }
+
     #endregion
 
     #region Edge Cases
@@ -385,6 +403,31 @@ public class PersistenceManagerTests
 
         // Verify current persisted state was updated
         Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(to));
+    }
+
+    [Test]
+    public void AddToPersistence_WhenForcePersisting_AdvancesCurrentPersistedStateMonotonically()
+    {
+        StateId state16 = CreateStateId(16, rootByte: 1);
+        StateId state32 = CreateStateId(32, rootByte: 2);
+        StateId latest = CreateStateId(300, rootByte: 3);
+
+        _finalizedStateProvider.SetFinalizedBlockNumber(10);
+
+        using Snapshot snapshot16 = CreateSnapshot(Block0, state16, compacted: true);
+        using Snapshot snapshot32 = CreateSnapshot(state16, state32, compacted: true);
+
+        IPersistence.IWriteBatch writeBatch = Substitute.For<IPersistence.IWriteBatch>();
+        _persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(writeBatch);
+
+        _persistenceManager.AddToPersistence(latest);
+
+        Assert.That(_persistenceManager.GetCurrentPersistedStateId(), Is.EqualTo(state32));
+        Received.InOrder(() =>
+        {
+            _persistence.CreateWriteBatch(Block0, state16);
+            _persistence.CreateWriteBatch(state16, state32);
+        });
     }
 
     #endregion

@@ -25,15 +25,23 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
 
 namespace Nethermind.Blockchain
 {
+    public readonly record struct StartupBoundaryDiagnostics(
+        long? StoredPersistedBoundaryNumber,
+        Hash256? StoredPersistedBoundaryHash,
+        PersistedStateInfo? PersistedStateInfo,
+        string ReconciliationOutcome);
+
     public partial class BlockTree : IBlockTree
     {
         // there is not much logic in the addressing here
         private static readonly byte[] StateHeadHashDbEntryAddress = new byte[16];
+        private static readonly byte[] StateHeadBlockHashDbEntryAddress = CreateMetadataAddress(1);
         internal static Hash256 DeletePointerAddressInDb = new(new BitArray(32 * 8, true).ToBytes());
         internal static Hash256 HeadAddressInDb = Keccak.Zero;
 
@@ -45,6 +53,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _metadataDb;
         private readonly IBadBlockStore _badBlockStore;
         private readonly IBlockAccessListStore _balStore;
+        private readonly IPersistedStateInfoProvider? _persistedStateInfoProvider;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -54,6 +63,7 @@ namespace Nethermind.Blockchain
         private readonly IBloomStorage _bloomStorage;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        public StartupBoundaryDiagnostics? LastStartupBoundaryDiagnostics { get; private set; }
 
         public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
@@ -120,6 +130,7 @@ namespace Nethermind.Blockchain
             IBloomStorage? bloomStorage,
             ISyncConfig? syncConfig,
             ILogManager? logManager,
+            IPersistedStateInfoProvider? persistedStateInfoProvider = null,
             long genesisBlockNumber = 0)
         {
             Logger = logManager?.GetClassLogger<BlockTree>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -129,6 +140,7 @@ namespace Nethermind.Blockchain
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
             _balStore = balStore ?? throw new ArgumentNullException(nameof(balStore));
+            _persistedStateInfoProvider = persistedStateInfoProvider;
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -191,6 +203,13 @@ namespace Nethermind.Blockchain
             {
                 ThisNodeInfo.AddInfo("Network ID   :", $"{NetworkId}");
             }
+        }
+
+        private static byte[] CreateMetadataAddress(byte marker)
+        {
+            byte[] address = new byte[16];
+            address[^1] = marker;
+            return address;
         }
 
         public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
@@ -1726,9 +1745,22 @@ namespace Nethermind.Blockchain
             set
             {
                 _highestPersistedState = value;
-                if (value.HasValue)
+                using (_blockInfoDb.StartWriteBatch())
                 {
-                    _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+                    if (value.HasValue)
+                    {
+                        _blockInfoDb.Set(StateHeadHashDbEntryAddress, Rlp.Encode(value.Value).Bytes);
+
+                        BlockInfo? canonicalInfo = FindCanonicalBlockInfo(value.Value);
+                        if (canonicalInfo?.BlockHash is Hash256 blockHash)
+                        {
+                            _blockInfoDb.PutSpan(StateHeadBlockHashDbEntryAddress, blockHash.Bytes);
+                        }
+                        else
+                        {
+                            _blockInfoDb.Remove(StateHeadBlockHashDbEntryAddress);
+                        }
+                    }
                 }
 
                 TryUpdateSyncPivot();

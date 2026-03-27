@@ -41,6 +41,7 @@ namespace Nethermind.Consensus.Processing
 
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
+                    token.ThrowIfCancellationRequested();
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);

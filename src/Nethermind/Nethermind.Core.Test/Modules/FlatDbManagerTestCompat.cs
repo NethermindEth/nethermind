@@ -3,7 +3,9 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -34,6 +36,11 @@ internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbMa
         IgnoreOnInvalidState(stateId);
         return flatDbManager.HasStateForBlock(stateId);
     }
+
+    public bool TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo) =>
+        flatDbManager.TryGetPersistedStateInfo(out persistedStateInfo);
+
+    public bool HasRecoverableStateForBlock(BlockHeader? blockHeader) => flatDbManager.HasRecoverableStateForBlock(blockHeader);
 
     private void IgnoreOnInvalidState(StateId stateId)
     {
