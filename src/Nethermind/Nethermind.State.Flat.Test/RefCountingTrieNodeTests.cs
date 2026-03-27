@@ -129,8 +129,7 @@ public class RefCountingTrieNodeTests
             Assert.That(branchRlp[offset], Is.EqualTo((byte)0xA0), $"Child {i} should point to hash ref prefix");
         }
 
-        // Value slot (index 16) is 0x80 (empty), so its offset should be 0
-        Assert.That(node.ChildOffsets[16], Is.EqualTo((short)0));
+        // ChildOffsetBuffer is now 16 entries (no value slot)
 
         node.Dispose();
     }

@@ -61,12 +61,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
         return total;
     }
 
-    private long GetTotalActiveMemory()
-    {
-        long total = 0;
-        for (int i = 0; i < ShardCount; i++) total += _shardTrackers[i].ActiveMemory;
-        return total;
-    }
+    private long GetTotalActiveMemory() =>
+        _pool.ActiveCount * RefCountingTrieNode.EstimatedSize;
 
     /// <summary>Per-shard trackers. Exposed so that <see cref="ChildCache"/> can use the same trackers.</summary>
     public RefCountingRlpNodePoolTracker[] ShardTrackers => _shardTrackers;
@@ -202,20 +198,12 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
     private void UpdateMetrics()
     {
-        long activeCount = GetTotalActiveCount();
         Nethermind.Trie.Pruning.Metrics.MemoryUsedByCache = GetTotalActiveMemory();
-        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = activeCount;
-
-        long branchCount = 0, extensionCount = 0, leafCount = 0;
-        for (int i = 0; i < ShardCount; i++)
-        {
-            branchCount += _shardTrackers[i].ActiveBranchCount;
-            extensionCount += _shardTrackers[i].ActiveExtensionCount;
-            leafCount += _shardTrackers[i].ActiveLeafCount;
-        }
-        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["branch"] = branchCount;
-        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["extension"] = extensionCount;
-        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["leaf"] = leafCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCount = _pool.ActiveCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["full_branch"] = _pool.ActiveFullBranchCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["branch"] = _pool.ActiveBranchCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["extension"] = _pool.ActiveExtensionCount;
+        Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["leaf"] = _pool.ActiveLeafCount;
     }
 
     /// <summary>

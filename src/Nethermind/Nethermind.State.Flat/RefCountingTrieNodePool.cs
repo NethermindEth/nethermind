@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -12,41 +13,101 @@ namespace Nethermind.State.Flat;
 
 /// <summary>
 /// Shared object pool for <see cref="RefCountingTrieNode"/> instances.
-/// 3 type-specific pools, each holding a RefCountingTrieNode with its byte[] buffer already attached.
-/// Single dequeue per Rent, single enqueue per Return.
+/// 4 type-specific ConcurrentQueues: full branch (532 bytes, no parse), regular branch, extension, leaf.
+/// Active node counts tracked per type at the pool level.
 /// </summary>
 public sealed class RefCountingTrieNodePool
 {
     public const int BranchBufferSize = 544;
     public const int ExtensionBufferSize = 96;
     public const int LeafBufferSize = 160;
+    private const int FullBranchRlpLength = 532;
 
+    private static readonly RefCountingTrieNode.ChildOffsetBuffer s_fullBranchOffsets = CreateFullBranchOffsets();
+
+    private static RefCountingTrieNode.ChildOffsetBuffer CreateFullBranchOffsets()
+    {
+        RefCountingTrieNode.ChildOffsetBuffer offsets = default;
+        for (int i = 0; i < 16; i++) offsets[i] = (short)(3 + i * 33);
+        return offsets;
+    }
+
+    private readonly ConcurrentQueue<RefCountingTrieNode> _fullBranchPool = new();
     private readonly ConcurrentQueue<RefCountingTrieNode> _branchPool = new();
     private readonly ConcurrentQueue<RefCountingTrieNode> _extensionPool = new();
     private readonly ConcurrentQueue<RefCountingTrieNode> _leafPool = new();
+
+    private long _activeFullBranchCount;
+    private long _activeBranchCount;
+    private long _activeExtensionCount;
+    private long _activeLeafCount;
+
+    public long ActiveFullBranchCount => Volatile.Read(ref _activeFullBranchCount);
+    public long ActiveBranchCount => Volatile.Read(ref _activeBranchCount);
+    public long ActiveExtensionCount => Volatile.Read(ref _activeExtensionCount);
+    public long ActiveLeafCount => Volatile.Read(ref _activeLeafCount);
+    public long ActiveCount => ActiveFullBranchCount + ActiveBranchCount + ActiveExtensionCount + ActiveLeafCount;
 
     public RefCountingTrieNodePool(int maxPooled = 4096) { }
 
     internal RefCountingTrieNode Rent(RefCountingRlpNodePoolTracker tracker, ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
-        NodeType nodeType = DetermineNodeType(rlp);
+        if (rlp.Length == FullBranchRlpLength)
+            return RentFullBranch(tracker, hash, rlp);
+
+        // Single-pass: classify and parse metadata
+        Span<short> offsets = stackalloc short[16];
+        NodeType nodeType = ClassifyAndParse(rlp, offsets);
+
         RefCountingTrieNode node = RentFromPool(nodeType);
         node.SetTracker(tracker);
 
         byte[] buffer = node.Rlp.UnderlyingArray!;
         rlp.CopyTo(buffer);
         node.Rlp = new CappedArray<byte>(buffer, rlp.Length);
-
         node.Initialize(hash, nodeType, node.Rlp);
-        ParseMetadata(node, rlp);
+        for (int i = 0; i < 16; i++)
+            node.ChildOffsets[i] = offsets[i];
+
+        IncrementActiveCount(nodeType);
+        return node;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private RefCountingTrieNode RentFullBranch(RefCountingRlpNodePoolTracker tracker, ValueHash256 hash, ReadOnlySpan<byte> rlp)
+    {
+        RefCountingTrieNode node;
+        if (!_fullBranchPool.TryDequeue(out node!))
+        {
+            Interlocked.Increment(ref Nethermind.Trie.Pruning.Metrics.CreatedPooledNodeCount);
+            node = new RefCountingTrieNode();
+            node.Rlp = new CappedArray<byte>(new byte[BranchBufferSize], 0);
+            node.ChildOffsets = s_fullBranchOffsets;
+        }
+
+        node.SetTracker(tracker);
+        byte[] buffer = node.Rlp.UnderlyingArray!;
+        rlp.CopyTo(buffer);
+        node.Rlp = new CappedArray<byte>(buffer, rlp.Length);
+        node.Initialize(hash, NodeType.Branch, node.Rlp);
+
+        Interlocked.Increment(ref _activeFullBranchCount);
         return node;
     }
 
     internal void Return(RefCountingTrieNode node)
     {
-        // Keep the buffer attached — it will be reused on next rent from the same pool
-        node.ChildOffsets = default;
-        ReturnToPool(node.NodeType, node);
+        DecrementActiveCount(node);
+        if (node.RlpLength == FullBranchRlpLength && node.NodeType == NodeType.Branch)
+        {
+            // Full branch: don't clear offsets — they're always the same
+            _fullBranchPool.Enqueue(node);
+        }
+        else
+        {
+            node.ChildOffsets = default;
+            ReturnToPool(node.NodeType, node);
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -80,49 +141,32 @@ public sealed class RefCountingTrieNodePool
         _ => _leafPool,
     };
 
-    private static void ParseMetadata(RefCountingTrieNode node, ReadOnlySpan<byte> rlp)
+    private void IncrementActiveCount(NodeType nodeType)
     {
-        if (node.NodeType == NodeType.Branch)
+        switch (nodeType)
         {
-            Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
-            int sequenceLength = ctx.ReadSequenceLength();
-            int endPosition = ctx.Position + sequenceLength;
-
-            for (int i = 0; i < 17 && ctx.Position < endPosition; i++)
-            {
-                byte prefix = rlp[ctx.Position];
-                if (prefix == 0x80)
-                {
-                    node.ChildOffsets[i] = 0;
-                    ctx.Position++;
-                }
-                else
-                {
-                    node.ChildOffsets[i] = (short)ctx.Position;
-                    ctx.SkipItem();
-                }
-            }
-        }
-        else if (node.NodeType == NodeType.Extension)
-        {
-            Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
-            ctx.ReadSequenceLength();
-
-            if (rlp[ctx.Position] < 0x80)
-            {
-                ctx.Position++;
-            }
-            else
-            {
-                (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
-                ctx.Position += contentLen;
-            }
-
-            node.ChildOffsets[0] = (short)ctx.Position;
+            case NodeType.Branch: Interlocked.Increment(ref _activeBranchCount); break;
+            case NodeType.Extension: Interlocked.Increment(ref _activeExtensionCount); break;
+            default: Interlocked.Increment(ref _activeLeafCount); break;
         }
     }
 
-    private static NodeType DetermineNodeType(ReadOnlySpan<byte> rlp)
+    private void DecrementActiveCount(RefCountingTrieNode node)
+    {
+        if (node.RlpLength == FullBranchRlpLength && node.NodeType == NodeType.Branch)
+            Interlocked.Decrement(ref _activeFullBranchCount);
+        else switch (node.NodeType)
+        {
+            case NodeType.Branch: Interlocked.Decrement(ref _activeBranchCount); break;
+            case NodeType.Extension: Interlocked.Decrement(ref _activeExtensionCount); break;
+            default: Interlocked.Decrement(ref _activeLeafCount); break;
+        }
+    }
+
+    /// <summary>
+    /// Single-pass: determine node type and parse child offsets.
+    /// </summary>
+    private static NodeType ClassifyAndParse(ReadOnlySpan<byte> rlp, Span<short> offsets)
     {
         if (rlp.IsEmpty) return NodeType.Leaf;
 
@@ -131,19 +175,48 @@ public sealed class RefCountingTrieNodePool
         int endPosition = ctx.Position + sequenceLength;
         int itemCount = ctx.PeekNumberOfItemsRemaining(endPosition, maxSearch: 3);
 
-        if (itemCount != 2) return NodeType.Branch;
+        if (itemCount != 2)
+        {
+            // Branch — parse 16 child offsets in the same pass
+            for (int i = 0; i < 16 && ctx.Position < endPosition; i++)
+            {
+                byte prefix = rlp[ctx.Position];
+                if (prefix == 0x80)
+                {
+                    offsets[i] = 0;
+                    ctx.Position++;
+                }
+                else
+                {
+                    offsets[i] = (short)ctx.Position;
+                    ctx.SkipItem();
+                }
+            }
+            return NodeType.Branch;
+        }
 
+        // 2-item node: extension or leaf
         byte firstByte;
         if (rlp[ctx.Position] < 0x80)
         {
             firstByte = rlp[ctx.Position];
+            ctx.Position++;
         }
         else
         {
             (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
             firstByte = rlp[ctx.Position];
+            ctx.Position += contentLen;
         }
 
-        return (firstByte & 0x20) != 0 ? NodeType.Leaf : NodeType.Extension;
+        bool isLeaf = (firstByte & 0x20) != 0;
+        if (!isLeaf)
+        {
+            // Extension: child offset is at current position
+            offsets[0] = (short)ctx.Position;
+            return NodeType.Extension;
+        }
+
+        return NodeType.Leaf;
     }
 }

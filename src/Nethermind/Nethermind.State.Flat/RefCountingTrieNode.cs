@@ -51,7 +51,7 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
     protected override void CleanUp()
     {
         Hash = default;
-        ChildOffsets = default;
+        // Don't clear ChildOffsets here — the pool handles it (full branches keep offsets across reuse)
         _tracker.Return(this);
     }
 
@@ -114,7 +114,7 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
         return rlp.Slice(offset, itemLength);
     }
 
-    [InlineArray(17)]
+    [InlineArray(16)]
     public struct ChildOffsetBuffer
     {
         private short _element;
