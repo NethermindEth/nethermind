@@ -45,8 +45,10 @@ public class BlockProcessorTests
 {
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        ILogManager? logManager = null)
     {
+        logManager ??= LimboLogs.Instance;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
@@ -57,8 +59,8 @@ public class BlockProcessorTests
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            logManager,
+            new WithdrawalProcessor(stateProvider, logManager),
             new ExecutionRequestsProcessor(transactionProcessor));
         BranchProcessor branchProcessor = new(
             processor,
@@ -66,7 +68,7 @@ public class BlockProcessorTests
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
+            logManager,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
@@ -282,6 +284,29 @@ public class BlockProcessorTests
             txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, cancellationTokenSource.Token));
 
         executeCount.Should().Be(1, "cancellation should be observed before starting the next transaction");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_does_not_warn_for_expected_shutdown_cancellation()
+    {
+        TestLogger testLogger = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
+            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance),
+            logManager: new OneLoggerLogManager(new(testLogger)));
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
+        using CancellationTokenSource cancellationTokenSource = new();
+        cancellationTokenSource.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            NullBlockTracer.Instance,
+            cancellationTokenSource.Token));
+
+        testLogger.LogList.Should().NotContain(log => log.Contains("while processing blocks.", StringComparison.Ordinal));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

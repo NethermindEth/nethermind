@@ -182,7 +182,11 @@ public class BranchProcessor(
         }
         catch (Exception ex) // try to restore at all cost
         {
-            if (_logger.IsWarn) _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            bool expectedCancellation = ex is OperationCanceledException && token.IsCancellationRequested;
+            if (!expectedCancellation && _logger.IsWarn)
+            {
+                _logger.Warn($"Encountered exception {ex} while processing blocks.");
+            }
             CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
             QueueClearCaches(preWarmTask);
             WaitAndClear(ref preWarmTask);
