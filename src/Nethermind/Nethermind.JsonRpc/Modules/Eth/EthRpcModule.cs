@@ -205,12 +205,15 @@ public partial class EthRpcModule(
         Dictionary<Address, UInt256[]> requests,
         BlockParameter? blockParameter = null)
     {
+        if (requests.Count == 0)
+            return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
+
         int totalSlots = 0;
         foreach (UInt256[] slots in requests.Values)
         {
             totalSlots += slots.Length;
             if (totalSlots > MaxGetStorageSlots)
-                return ResultWrapper<Dictionary<Address, byte[][]>>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
+                return TooManySlotsError();
         }
 
         if (totalSlots == 0)
@@ -232,13 +235,19 @@ public partial class EthRpcModule(
             for (int i = 0; i < slots.Length; i++)
             {
                 ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slots[i]);
-                values[i] = storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage.PadLeft(32);
+                byte[] slot = new byte[32];
+                if (!storage.IsEmpty)
+                    storage.CopyTo(slot.AsSpan(32 - storage.Length));
+                values[i] = slot;
             }
             result[entry.Key] = values;
         }
 
         return ResultWrapper<Dictionary<Address, byte[][]>>.Success(result);
     }
+
+    private static ResultWrapper<Dictionary<Address, byte[][]>> TooManySlotsError() =>
+        ResultWrapper<Dictionary<Address, byte[][]>>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
 
     public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {
