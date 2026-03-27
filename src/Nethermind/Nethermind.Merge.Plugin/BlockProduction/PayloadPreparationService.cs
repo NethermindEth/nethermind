@@ -174,20 +174,21 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
+        CancellationToken token = cts.Token;
         long added = _txPool.PendingTransactionsAdded;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
             b =>
             {
-                if (!cts.IsCancellationRequested)
+                if (!token.IsCancellationRequested)
                 {
                     LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
+
         blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
-            CancellationToken token = cts.Token;
             do
             {
                 if (token.IsCancellationRequested)
