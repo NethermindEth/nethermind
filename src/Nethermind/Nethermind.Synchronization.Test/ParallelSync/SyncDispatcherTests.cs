@@ -320,6 +320,58 @@ public class SyncDispatcherTests
         await executorTask;
     }
 
+    [Test]
+    public async Task DisposeAsync_unsubscribes_StateChanged_handler()
+    {
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+
+        // After dispose, the dispatcher's internal semaphores and countdown events
+        // are disposed. If the StateChanged handler were still subscribed, Activate()
+        // would trigger UpdateState which accesses those disposed resources.
+        // No throw confirms the handler was actually removed, not just that the
+        // callback happens to be harmless.
+        Assert.DoesNotThrow(syncFeed.Activate);
+    }
+
+    [Test]
+    public async Task DisposeAsync_double_dispose_does_not_throw()
+    {
+        (_, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+        await dispatcher.DisposeAsync();
+    }
+
+    [Test]
+    public async Task DisposeAsync_then_StateChanged_does_not_modify_dispatcher()
+    {
+        (TestSyncFeed syncFeed, SyncDispatcher<TestBatch> dispatcher) = CreateFeedAndDispatcher();
+
+        await dispatcher.DisposeAsync();
+
+        // Activate then Finish — if handler is still subscribed, this would
+        // modify internal state and potentially access disposed resources
+        syncFeed.Activate();
+        syncFeed.Finish();
+
+        // No exception means the handler was properly unsubscribed
+    }
+
+    private static (TestSyncFeed Feed, SyncDispatcher<TestBatch> Dispatcher) CreateFeedAndDispatcher()
+    {
+        TestSyncFeed syncFeed = new();
+        SyncDispatcher<TestBatch> dispatcher = new(
+            new TestSyncConfig(),
+            syncFeed,
+            new TestDownloader(),
+            new TestSyncPeerPool(),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance),
+            LimboLogs.Instance);
+        return (syncFeed, dispatcher);
+    }
+
     [Retry(tryCount: 5)]
     [TestCase(false, 1, 1, 8)]
     [TestCase(true, 1, 1, 24)]

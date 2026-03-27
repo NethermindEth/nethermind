@@ -128,8 +128,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
         {
             _blockWaitTasks.ForEach(static x => x.Value.ForEach(static waitTask =>
             {
-                waitTask.Value.CancellationRegistration.Dispose();
-                waitTask.Value.TimeoutCancellationRegistration.Dispose();
+                waitTask.Value.Dispose();
             }));
         }
     }
@@ -151,8 +150,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
                         waitTask.Tcs.SetException(new OperationCanceledException());
                     }
 
-                    waitTask.CancellationRegistration.Dispose();
-                    waitTask.TimeoutCancellationRegistration.Dispose();
+                    waitTask.Dispose();
                 }
 
                 slotWaitTasks.Remove(taskId);
