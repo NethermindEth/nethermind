@@ -203,7 +203,7 @@ public partial class EthRpcModule(
 
     public ResultWrapper<Dictionary<Address, byte[][]>> eth_getStorageValues(
         Dictionary<Address, UInt256[]> requests,
-        BlockParameter? blockParameter = null)
+        BlockParameter blockParameter)
     {
         if (requests.Count == 0)
             return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
