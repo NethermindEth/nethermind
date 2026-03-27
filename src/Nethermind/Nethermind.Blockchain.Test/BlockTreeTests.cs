@@ -2552,6 +2552,81 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_WhenBeaconSyncAndFcuCycleRepeatedTwice_ClearsStaleMarkersEachRound()
+    {
+        // Two full beacon-sync + FCU cycles at the same head height (H=1).
+        // Each round: beacon sync marks descendants canonical, then FCU reorgs to a new sibling.
+        // After each FCU, all stale markers from that round must be cleared before the next round.
+        //
+        // Round 1:
+        //   FCU(head): head=H=1
+        //   Beacon sync: desc1[0] (H=2), desc1[1] (H=3) marked canonical without updating Head.
+        //   FCU(sibling1): reorg to sibling1 at H=1 — stale desc1 markers must be cleared.
+        //
+        // Round 2 (starting from sibling1 as new head):
+        //   Beacon sync: desc2[0] (H=2), desc2[1] (H=3) from sibling1's chain, marked canonical.
+        //   FCU(sibling2): reorg to sibling2 at H=1 — stale desc2 markers must be cleared.
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+
+        Block head = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xAA]).TestObject;
+        blockTree.SuggestBlock(head);
+        blockTree.UpdateMainChain(new[] { head }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        // Round 1 — beacon sync marks two descendants of head canonical
+        Block[] desc1 = BuildAndSuggestChain(blockTree, head, 2);
+        foreach (Block d in desc1)
+        {
+            blockTree.UpdateMainChain(new[] { d }, wereProcessed: false);
+        }
+
+        blockTree.Head!.Hash.Should().Be(head.Hash!, "precondition: head stale at H=1 after round-1 beacon sync");
+        foreach (Block d in desc1)
+        {
+            blockTree.IsMainChain(d.Header).Should().BeTrue($"precondition: round-1 desc at H={d.Number} canonical via beacon sync");
+        }
+
+        // Round 1 FCU — reorg to sibling1 at H=1
+        Block sibling1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xBB]).TestObject;
+        blockTree.SuggestBlock(sibling1);
+        blockTree.UpdateMainChain(new[] { sibling1 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.Head!.Hash.Should().Be(sibling1.Hash!, "after round-1 FCU head must be sibling1");
+        foreach (Block d in desc1)
+        {
+            blockTree.IsMainChain(d.Header).Should().BeFalse($"round-1 stale marker at H={d.Number} must be cleared after FCU to sibling1");
+        }
+
+        // Round 2 — beacon sync marks two descendants of sibling1 canonical
+        Block[] desc2 = BuildAndSuggestChain(blockTree, sibling1, 2);
+        foreach (Block d in desc2)
+        {
+            blockTree.UpdateMainChain(new[] { d }, wereProcessed: false);
+        }
+
+        blockTree.Head!.Hash.Should().Be(sibling1.Hash!, "precondition: head stale at sibling1 after round-2 beacon sync");
+        foreach (Block d in desc2)
+        {
+            blockTree.IsMainChain(d.Header).Should().BeTrue($"precondition: round-2 desc at H={d.Number} canonical via beacon sync");
+        }
+
+        // Round 2 FCU — reorg to sibling2 at H=1
+        Block sibling2 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xCC]).TestObject;
+        blockTree.SuggestBlock(sibling2);
+        blockTree.UpdateMainChain(new[] { sibling2 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.Head!.Hash.Should().Be(sibling2.Hash!, "after round-2 FCU head must be sibling2");
+        foreach (Block d in desc2)
+        {
+            blockTree.IsMainChain(d.Header).Should().BeFalse($"round-2 stale marker at H={d.Number} must be cleared after FCU to sibling2");
+        }
+
+        // Sibling2 is canonical at H=1; head, sibling1 are orphaned
+        blockTree.IsMainChain(sibling2.Header).Should().BeTrue("sibling2 must be canonical at H=1");
+        blockTree.IsMainChain(head.Header).Should().BeFalse("original head must be orphaned");
+        blockTree.IsMainChain(sibling1.Header).Should().BeFalse("sibling1 must be orphaned");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void FindBlock_WhenBlockOrphanedAfterReorgInPoS_ReturnsNull()
     {
         // In PoS all blocks share the same cumulative TotalDifficulty (difficulty=0 per block).

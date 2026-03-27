@@ -192,14 +192,6 @@ namespace Nethermind.Blockchain
         void RecalculateTreeLevels();
 
         /// <summary>
-        /// Repairs canonical chain markers starting from <paramref name="startHash"/>, walking backward
-        /// up to <paramref name="maxBlockDepth"/> blocks. Also removes stale canonical markers above
-        /// <paramref name="startHash"/> left by the beacon-sync path. Safe to run at startup after
-        /// observing canonical mismatches (wrong <c>eth_getBlockByNumber</c> results).
-        /// </summary>
-        void HealCanonicalChain(Hash256 startHash, long maxBlockDepth);
-
-        /// <summary>
         /// Sync pivot is mainly concerned with old blocks and receipts.
         /// After sync pivot, blocks and headers should be continuous.
         /// Sync pivot should be guaranteed to be a finalized block, code should not need to be concerned of consensus

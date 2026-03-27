@@ -39,12 +39,13 @@ namespace Nethermind.Init.Steps
         private void HealCanonicalChainIfEnabled()
         {
             if (!initConfig.HealCanonicalChain) return;
+            if (blockTree is not BlockTree concreteBlockTree) return;
 
             Hash256? startHash = blockTree.Head?.Hash;
             if (startHash is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Healing canonical chain from head {startHash} (depth {initConfig.HealCanonicalChainDepth})...");
-                blockTree.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
+                concreteBlockTree.HealCanonicalChain(startHash, initConfig.HealCanonicalChainDepth);
             }
             else
             {
