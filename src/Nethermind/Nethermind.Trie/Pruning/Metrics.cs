@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -93,5 +94,13 @@ namespace Nethermind.Trie.Pruning
         [KeyIsLabel("node_type")]
         [Description("Number of active pooled trie nodes by type.")]
         public static ConcurrentDictionary<string, long> ActivePooledNodeCountByType { get; set; } = new();
+
+        [CounterMetric]
+        [Description("Total number of RefCountingTrieNode instances created (not reused from pool).")]
+        public static long CreatedPooledNodeCount;
+
+        [Description("Number of RefCountingTrieNode rented per block (observed at ChildCache reset).")]
+        [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 20)]
+        public static IMetricObserver RentedPooledNodeCountPerBlock { get; set; } = NoopMetricObserver.Instance;
     }
 }

@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -11,7 +11,9 @@ using Nethermind.Trie;
 namespace Nethermind.State.Flat;
 
 /// <summary>
-/// Shared object pool for <see cref="RefCountingTrieNode"/> instances and their type-specific byte[] RLP buffers.
+/// Shared object pool for <see cref="RefCountingTrieNode"/> instances.
+/// 3 type-specific pools, each holding a RefCountingTrieNode with its byte[] buffer already attached.
+/// Single dequeue per Rent, single enqueue per Return.
 /// </summary>
 public sealed class RefCountingTrieNodePool
 {
@@ -19,63 +21,64 @@ public sealed class RefCountingTrieNodePool
     public const int ExtensionBufferSize = 96;
     public const int LeafBufferSize = 160;
 
-    private readonly ObjectPool<RefCountingTrieNode> _shellPool;
-    private readonly ObjectPool<byte[]> _branchBufferPool;
-    private readonly ObjectPool<byte[]> _extensionBufferPool;
-    private readonly ObjectPool<byte[]> _leafBufferPool;
+    private readonly ConcurrentQueue<RefCountingTrieNode> _branchPool = new();
+    private readonly ConcurrentQueue<RefCountingTrieNode> _extensionPool = new();
+    private readonly ConcurrentQueue<RefCountingTrieNode> _leafPool = new();
 
-    public RefCountingTrieNodePool(int maxPooled = 4096)
-    {
-        _shellPool = new DefaultObjectPool<RefCountingTrieNode>(new ShellPolicy(), maxPooled);
-        _branchBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(BranchBufferSize), maxPooled);
-        _extensionBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(ExtensionBufferSize), maxPooled);
-        _leafBufferPool = new DefaultObjectPool<byte[]>(new ByteArrayPolicy(LeafBufferSize), maxPooled);
-    }
+    public RefCountingTrieNodePool(int maxPooled = 4096) { }
 
     internal RefCountingTrieNode Rent(RefCountingRlpNodePoolTracker tracker, ValueHash256 hash, ReadOnlySpan<byte> rlp)
     {
-        RefCountingTrieNode shell = _shellPool.Get();
-        shell.SetTracker(tracker);
-
         NodeType nodeType = DetermineNodeType(rlp);
-        byte[] buffer = RentBuffer(nodeType);
-        rlp.CopyTo(buffer);
-        CappedArray<byte> cappedRlp = new(buffer, rlp.Length);
+        RefCountingTrieNode node = RentFromPool(nodeType);
+        node.SetTracker(tracker);
 
-        shell.Initialize(hash, nodeType, cappedRlp);
-        ParseMetadata(shell, rlp);
-        return shell;
+        byte[] buffer = node.Rlp.UnderlyingArray!;
+        rlp.CopyTo(buffer);
+        node.Rlp = new CappedArray<byte>(buffer, rlp.Length);
+
+        node.Initialize(hash, nodeType, node.Rlp);
+        ParseMetadata(node, rlp);
+        return node;
     }
 
     internal void Return(RefCountingTrieNode node)
     {
-        byte[]? buffer = node.Rlp.UnderlyingArray;
-        if (buffer is not null)
-        {
-            ReturnBuffer(node.NodeType, buffer);
-        }
-        node.Rlp = default;
-        _shellPool.Return(node);
+        // Keep the buffer attached — it will be reused on next rent from the same pool
+        node.ChildOffsets = default;
+        ReturnToPool(node.NodeType, node);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private byte[] RentBuffer(NodeType nodeType) => nodeType switch
+    private RefCountingTrieNode RentFromPool(NodeType nodeType)
     {
-        NodeType.Branch => _branchBufferPool.Get(),
-        NodeType.Extension => _extensionBufferPool.Get(),
-        _ => _leafBufferPool.Get(),
+        ConcurrentQueue<RefCountingTrieNode> pool = GetPool(nodeType);
+        if (pool.TryDequeue(out RefCountingTrieNode? node))
+            return node;
+
+        Interlocked.Increment(ref Nethermind.Trie.Pruning.Metrics.CreatedPooledNodeCount);
+        RefCountingTrieNode fresh = new();
+        int bufferSize = nodeType switch
+        {
+            NodeType.Branch => BranchBufferSize,
+            NodeType.Extension => ExtensionBufferSize,
+            _ => LeafBufferSize,
+        };
+        fresh.Rlp = new CappedArray<byte>(new byte[bufferSize], 0);
+        return fresh;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ReturnToPool(NodeType nodeType, RefCountingTrieNode node) =>
+        GetPool(nodeType).Enqueue(node);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private ConcurrentQueue<RefCountingTrieNode> GetPool(NodeType nodeType) => nodeType switch
+    {
+        NodeType.Branch => _branchPool,
+        NodeType.Extension => _extensionPool,
+        _ => _leafPool,
     };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ReturnBuffer(NodeType nodeType, byte[] buffer)
-    {
-        switch (nodeType)
-        {
-            case NodeType.Branch: _branchBufferPool.Return(buffer); break;
-            case NodeType.Extension: _extensionBufferPool.Return(buffer); break;
-            default: _leafBufferPool.Return(buffer); break;
-        }
-    }
 
     private static void ParseMetadata(RefCountingTrieNode node, ReadOnlySpan<byte> rlp)
     {
@@ -142,17 +145,5 @@ public sealed class RefCountingTrieNodePool
         }
 
         return (firstByte & 0x20) != 0 ? NodeType.Leaf : NodeType.Extension;
-    }
-
-    private sealed class ShellPolicy : PooledObjectPolicy<RefCountingTrieNode>
-    {
-        public override RefCountingTrieNode Create() => new();
-        public override bool Return(RefCountingTrieNode obj) => true;
-    }
-
-    private sealed class ByteArrayPolicy(int size) : PooledObjectPolicy<byte[]>
-    {
-        public override byte[] Create() => new byte[size];
-        public override bool Return(byte[] obj) => obj.Length == size;
     }
 }

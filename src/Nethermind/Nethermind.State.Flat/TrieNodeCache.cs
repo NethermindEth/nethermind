@@ -230,6 +230,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
         private int[][] _hashCodes;
         private RefCountingRlpNodePoolTracker[] _shardTrackers;
         private int _count = 0;
+        private int _rentCount = 0;
         private int _mask;
         private int _shardSize;
 
@@ -268,6 +269,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public void Reset()
         {
+            int rented = Volatile.Read(ref _rentCount);
+            if (rented > 0) Nethermind.Trie.Pruning.Metrics.RentedPooledNodeCountPerBlock.Observe(rented);
+            _rentCount = 0;
+
             if (_count / UtilRatio > ShardCount * _shardSize)
             {
                 int newTarget = (int)(_count / UtilRatio);
@@ -322,6 +327,7 @@ public sealed class TrieNodeCache : ITrieNodeCache
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;
 
+            Interlocked.Increment(ref _rentCount);
             RefCountingTrieNode newNode = _shardTrackers[shard].Rent(hash, rlp);
             newNode.TryAcquireLease(); // Extra lease for caller (1→2): cache owns one, caller owns one
             _hashCodes[shard][idx] = hashCode;
