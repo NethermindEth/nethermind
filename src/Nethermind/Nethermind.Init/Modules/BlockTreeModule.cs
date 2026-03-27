@@ -40,13 +40,11 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
-
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
+            .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<ILogFinder, LogFinder>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
-
-            ;
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
 
         if (!receiptConfig.StoreReceipts)
         {

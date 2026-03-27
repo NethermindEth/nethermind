@@ -219,6 +219,8 @@ namespace Nethermind.PerfTest
             {
                 return _blockTree.DeleteChainSlice(startNumber, endNumber);
             }
+
+            public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
         }
 
         private const string DbBasePath = @"C:\perf_db";
