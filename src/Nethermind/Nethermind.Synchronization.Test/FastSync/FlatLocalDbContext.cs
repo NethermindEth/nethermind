@@ -54,7 +54,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
     {
         // For flat, sync finalization writes to persistence. Verify root node exists.
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         reader.TryLoadStateRlp(TreePath.Empty, buffer, ReadFlags.None).Should().BeGreaterThan(0, "root node should exist after flush");
     }
 
@@ -100,7 +100,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStateRlp(path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }
@@ -119,7 +119,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStorageRlp(address, path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }
@@ -137,7 +137,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStateRlp(path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }
@@ -176,7 +176,7 @@ public class FlatLocalDbContext(IPersistence persistence, ILogManager logManager
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStorageRlp(address, path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }

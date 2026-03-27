@@ -222,7 +222,7 @@ public sealed class SnapshotBundle : IDisposable
             finally { cached.Dispose(); }
         }
 
-        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(TrieNodeRlp.MaxRlpLength);
+        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(RefCountingTrieNode.MaxEthereumBranchRlpLength);
         int len = _readOnlySnapshotBundle.TryLoadStateRlpFromPersistence(path, hash, buffer.AsSpan(), flags);
         if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
         _transientResource.BufferPool.Return(buffer);
@@ -284,7 +284,7 @@ public sealed class SnapshotBundle : IDisposable
             finally { cached.Dispose(); }
         }
 
-        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(TrieNodeRlp.MaxRlpLength);
+        CappedArray<byte> buffer = _transientResource.BufferPool.Rent(RefCountingTrieNode.MaxEthereumBranchRlpLength);
         int len = _readOnlySnapshotBundle.TryLoadStorageRlpFromPersistence(address, path, hash, buffer.AsSpan(), flags);
         if (len > 0) return new CappedArray<byte>(buffer.UnderlyingArray!, len);
         _transientResource.BufferPool.Return(buffer);
@@ -340,9 +340,9 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[] rlpBuffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] rlpBuffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int rlpLen = _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hashCommitment, rlpBuffer, ReadFlags.None);
-        if (rlpLen > 0 && rlpLen <= TrieNodeRlp.MaxRlpLength)
+        if (rlpLen > 0 && rlpLen <= RefCountingTrieNode.MaxEthereumBranchRlpLength)
         {
             return _transientResource.SetAndLeaseStateNode(path, hash, rlpBuffer.AsSpan(0, rlpLen));
         }
@@ -397,9 +397,9 @@ public sealed class SnapshotBundle : IDisposable
         }
 
         // Fall back to disk
-        byte[] rlpBuffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] rlpBuffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int rlpLen = _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(addressHash, path, hashCommitment, rlpBuffer, ReadFlags.None);
-        if (rlpLen > 0 && rlpLen <= TrieNodeRlp.MaxRlpLength)
+        if (rlpLen > 0 && rlpLen <= RefCountingTrieNode.MaxEthereumBranchRlpLength)
         {
             return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, rlpBuffer.AsSpan(0, rlpLen));
         }

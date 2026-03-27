@@ -18,6 +18,9 @@ public sealed class RefCountingTrieNode : RefCountingDisposable
 {
     public const int EstimatedSize = 680;
 
+    /// <summary>Max RLP size for any Ethereum branch node: 3 (seq prefix) + 16 × 33 (hash refs) + 1 (empty value) = 532.</summary>
+    public const int MaxEthereumBranchRlpLength = 532;
+
     private RefCountingRlpNodePoolTracker _tracker = null!;
 
     public ValueHash256 Hash;

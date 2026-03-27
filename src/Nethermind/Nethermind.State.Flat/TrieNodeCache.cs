@@ -313,8 +313,8 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public RefCountingTrieNode SetAndLease(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> rlp)
         {
-            if (rlp.Length > TrieNodeRlp.MaxRlpLength)
-                throw new ArgumentException($"RLP too large: {rlp.Length} > {TrieNodeRlp.MaxRlpLength}");
+            if (rlp.Length > RefCountingTrieNode.MaxEthereumBranchRlpLength)
+                throw new ArgumentException($"RLP too large: {rlp.Length} > {RefCountingTrieNode.MaxEthereumBranchRlpLength}");
 
             (int shard, int hashCode) = GetShardAndHashCode(address, path);
             int idx = hashCode & _mask;

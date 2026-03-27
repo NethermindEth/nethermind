@@ -49,7 +49,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = _reader.TryLoadStateRlp(path, buffer, ReadFlags.None);
         return len > 0 && ValueKeccak.Compute(buffer.AsSpan(0, len)) == keccak;
     }
@@ -101,7 +101,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStateRlp(path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }
@@ -115,7 +115,7 @@ public class FlatSnapStateTree : ISnapTree<PathWithAccount>
             {
                 if (enableDoubleWriteCheck)
                 {
-                    byte[] checkBuf = new byte[TrieNodeRlp.MaxRlpLength];
+                    byte[] checkBuf = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
                     if (reader.TryLoadStateRlp(path, checkBuf, ReadFlags.None) > 0)
                         throw new Exception($"Double state rlp write. {path}");
                 }

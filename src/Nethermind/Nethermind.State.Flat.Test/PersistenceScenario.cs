@@ -45,14 +45,14 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
     private static byte[]? LoadStateRlp(IPersistence.IPersistenceReader reader, in TreePath path)
     {
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = reader.TryLoadStateRlp(path, buffer, ReadFlags.None);
         return len > 0 ? buffer[..len] : null;
     }
 
     private static byte[]? LoadStorageRlp(IPersistence.IPersistenceReader reader, Hash256 address, in TreePath path)
     {
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = reader.TryLoadStorageRlp(address, path, buffer, ReadFlags.None);
         return len > 0 ? buffer[..len] : null;
     }

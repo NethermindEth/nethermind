@@ -50,7 +50,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = _reader.TryLoadStorageRlp(_addressHash, path, buffer, ReadFlags.None);
         return len > 0 && ValueKeccak.Compute(buffer.AsSpan(0, len)) == keccak;
     }
@@ -107,7 +107,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStorageRlp(addressHash, path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }
@@ -121,7 +121,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
             {
                 if (enableDoubleWriteCheck)
                 {
-                    byte[] checkBuf = new byte[TrieNodeRlp.MaxRlpLength];
+                    byte[] checkBuf = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
                     if (reader.TryLoadStorageRlp(address, path, checkBuf, ReadFlags.None) > 0)
                         throw new Exception($"Double storage rlp write. {address} {path}");
                 }

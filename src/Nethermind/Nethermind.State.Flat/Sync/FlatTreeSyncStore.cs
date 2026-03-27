@@ -28,7 +28,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = address is null
             ? reader.TryLoadStateRlp(path, buffer, ReadFlags.None)
             : reader.TryLoadStorageRlp(address, path, buffer, ReadFlags.None);
@@ -70,7 +70,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
     private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
     {
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = address is null
             ? reader.TryLoadStateRlp(path, buffer, ReadFlags.None)
             : reader.TryLoadStorageRlp(address, path, buffer, ReadFlags.None);
@@ -282,7 +282,7 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
 
         public override CappedArray<byte> TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
-            byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+            byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
             int len = reader.TryLoadStateRlp(path, buffer, flags);
             return len > 0 ? new CappedArray<byte>(buffer, len) : default;
         }

@@ -52,7 +52,7 @@ public class RlpTrieTraversalTests
     {
         Hash256 h = hash.ToCommitment();
         CappedArray<byte> data = _trieStore.TryLoadRlp(path, h);
-        if (data.IsNull || data.Length > TrieNodeRlp.MaxRlpLength) return null;
+        if (data.IsNull || data.Length > RefCountingTrieNode.MaxEthereumBranchRlpLength) return null;
         Assert.That(Keccak.Compute(data.AsSpan()), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
         return _tracker.Rent(hash, data.AsSpan());
     };
@@ -67,7 +67,7 @@ public class RlpTrieTraversalTests
         {
             Hash256 h = hash.ToCommitment();
             CappedArray<byte> data = storageStore.TryLoadRlp(path, h);
-            if (data.IsNull || data.Length > TrieNodeRlp.MaxRlpLength) return null;
+            if (data.IsNull || data.Length > RefCountingTrieNode.MaxEthereumBranchRlpLength) return null;
             Assert.That(Keccak.Compute(data.AsSpan()), Is.EqualTo(h), $"RLP hash mismatch at path {path}");
             return _tracker.Rent(hash, data.AsSpan());
         };

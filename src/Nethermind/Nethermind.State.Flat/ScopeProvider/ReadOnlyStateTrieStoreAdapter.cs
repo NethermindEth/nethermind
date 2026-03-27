@@ -21,7 +21,7 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
             try { return new CappedArray<byte>(node.RlpToArray()); }
             finally { node.Dispose(); }
         }
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = bundle.TryLoadStateRlpFromPersistence(path, hash, buffer, flags);
         return len > 0 ? new CappedArray<byte>(buffer, len) : default;
     }
@@ -51,7 +51,7 @@ internal class ReadOnlyStorageTrieStoreAdapter(
             try { return new CappedArray<byte>(node.RlpToArray()); }
             finally { node.Dispose(); }
         }
-        byte[] buffer = new byte[TrieNodeRlp.MaxRlpLength];
+        byte[] buffer = new byte[RefCountingTrieNode.MaxEthereumBranchRlpLength];
         int len = bundle.TryLoadStorageRlpFromPersistence(addressHash, in path, hash, buffer, flags);
         return len > 0 ? new CappedArray<byte>(buffer, len) : default;
     }
