@@ -1,6 +1,9 @@
 name: Stress test BlockchainProcessorTests
 
 on:
+  push:
+    branches:
+      - fix/flaky-blockchain-processor-stress
   workflow_dispatch:
 
 env:
