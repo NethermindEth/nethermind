@@ -289,6 +289,9 @@ public class ReadOnlySnapshotBundleBenchmark
         if (_hitStorageNodes.Length == 0)
             throw new InvalidOperationException(
                 "No storage trie nodes found — storage tree commit may have failed");
+        if (_sameAccountStorageNodes.Length == 0)
+            throw new InvalidOperationException(
+                "No same-account storage trie nodes found for hot-contract pattern benchmark");
 
         // Verify miss keys are actually absent
         if (_bundle.GetAccount(_missAccounts[0]) is not null)
