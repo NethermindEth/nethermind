@@ -10,17 +10,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
-public class BlockImprovementContextFactory : IBlockImprovementContextFactory
+public class BlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout)
+    : IBlockImprovementContextFactory
 {
-    private readonly IBlockProducer _blockProducer;
-    private readonly TimeSpan _timeout;
-
-    public BlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout)
-    {
-        _blockProducer = blockProducer;
-        _timeout = timeout;
-    }
-
     public IBlockImprovementContext StartBlockImprovementContext(
         Block currentBestBlock,
         BlockHeader parentHeader,
@@ -28,5 +20,5 @@ public class BlockImprovementContextFactory : IBlockImprovementContextFactory
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
         CancellationTokenSource cts) =>
-        new BlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
+        new BlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
 }
