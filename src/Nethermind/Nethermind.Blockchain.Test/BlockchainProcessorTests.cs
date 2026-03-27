@@ -352,7 +352,7 @@ public class BlockchainProcessorTests
                     // Wait for Task.Run to fully finish the queue write.
                     // Times out harmlessly if block was processed inline via
                     // AllowSynchronousContinuations (task stuck in Process).
-                    suggestTask.Wait(50);
+                    suggestTask.Wait(100);
                 }
                 finally
                 {
