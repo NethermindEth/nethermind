@@ -34,6 +34,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Max reorg depth", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
 
+    [ConfigItem(Description = "Mid compact size (compact interval for growing-window scheme)", DefaultValue = "4")]
+    int MidCompactSize { get; set; }
+
     [ConfigItem(Description = "Minimum compact size (power of 2, floor for hierarchical compaction)", DefaultValue = "2")]
     int MinCompactSize { get; set; }
 
@@ -45,6 +48,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for processor count - 1, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
+
+    [ConfigItem(Description = "Use logarithmic (power-of-2) compaction scheme. When false, uses growing-window scheme with MidCompactSize.", DefaultValue = "true")]
+    bool UseLogarithmicCompaction { get; set; }
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }

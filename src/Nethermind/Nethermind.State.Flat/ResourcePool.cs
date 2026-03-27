@@ -28,6 +28,10 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         // Note: readonly here means it's never committed to the flat repo, but within the worldscope itself it may be committed.
         { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
 
+        // Two-tier pools for growing-window compaction scheme
+        { Usage.Compactor, new ResourcePoolCategory(Usage.Compactor, 4, 1) },
+        { Usage.MidCompactor, new ResourcePoolCategory(Usage.MidCompactor, 2, 1) },
+
         // Per-power-of-2 compact pools. Each level only has ~1 active snapshot at a time.
         { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 1) },
         { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 1) },
@@ -79,6 +83,8 @@ public class ResourcePool(IFlatDbConfig flatConfig) : IResourcePool
         MainBlockProcessing,
         PostMainBlockProcessing,
         ReadOnlyProcessingEnv,
+        Compactor,
+        MidCompactor,
         Compact2,
         Compact4,
         Compact8,
