@@ -16,7 +16,7 @@ public interface IBlockImprovementContext : IBlockProductionContext, IDisposable
 
     void DisposeAndCancelOngoingImprovements()
     {
-        Dispose();
         CancelOngoingImprovements();
+        Dispose();
     }
 }
