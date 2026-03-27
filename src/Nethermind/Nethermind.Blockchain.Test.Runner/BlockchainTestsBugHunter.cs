@@ -28,8 +28,6 @@ namespace Nethermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)
             {
-                Setup();
-
                 Console.Write($"{test,-120} ");
                 if (test.LoadFailure is not null)
                 {
@@ -53,7 +51,6 @@ namespace Nethermind.Blockchain.Test.Runner
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup();
                         await RunTest(test);
                     }
                 }

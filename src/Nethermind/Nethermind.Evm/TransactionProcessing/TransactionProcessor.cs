@@ -372,7 +372,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 s = new(authorizationTuple.AuthoritySignature.SAsSpan, isBigEndian: true);
             if (authorizationTuple.Authority is null
-                || s > Secp256K1Curve.HalfN
+                || s > SecP256k1Curve.HalfN
                 //V minus the offset can only be 1 or 0 since eip-155 does not apply to Setcode signatures
                 || authorizationTuple.AuthoritySignature.V - Signature.VOffset > 1)
             {
@@ -807,11 +807,6 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
             gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
-            if (gasConsumed.SpentGas < tx.GasLimit)
-            {
-                UInt256 refundAmount = (ulong)(tx.GasLimit - gasConsumed.SpentGas) * VirtualMachine.TxExecutionContext.GasPrice;
-                PayRefund(tx, refundAmount, spec);
-            }
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
@@ -837,7 +832,15 @@ namespace Nethermind.Evm.TransactionProcessing
             long blockGas = spentGas - intrinsicState;
             long blockStateGas = intrinsicState;
 
-            return new GasConsumed(spentGas, spentGas, blockGas, blockStateGas, spentGas);
+            GasConsumed gasConsumed = new(spentGas, spentGas, blockGas, blockStateGas, spentGas);
+
+            if (gasConsumed.SpentGas < tx.GasLimit)
+            {
+                UInt256 refundAmount = (ulong)(tx.GasLimit - gasConsumed.SpentGas) * VirtualMachine.TxExecutionContext.GasPrice;
+                PayRefund(tx, refundAmount, spec);
+            }
+
+            return gasConsumed;
         }
 
         protected virtual bool DeployContract(IReleaseSpec spec, Address codeOwner, in TransactionSubstate substate, in StackAccessTracker accessedItems, ref TGasPolicy unspentGas)

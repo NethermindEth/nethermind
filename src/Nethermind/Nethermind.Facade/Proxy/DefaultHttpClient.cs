@@ -67,7 +67,7 @@ namespace Nethermind.Facade.Proxy
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {endpoint} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
-                    await Task.Delay(_retryDelayMilliseconds);
+                    await Task.Delay(_retryDelayMilliseconds, cancellationToken);
                 }
             } while (currentRetry <= _retries);
 
@@ -80,29 +80,35 @@ namespace Nethermind.Facade.Proxy
             string json = payload is null ? "{}" : _jsonSerializer.Serialize(payload);
             if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {endpoint} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
             long startTime = Stopwatch.GetTimestamp();
-            HttpResponseMessage response;
-            switch (method)
+            HttpResponseMessage? response = null;
+            try
             {
-                case Method.Get:
-                    response = await _client.GetAsync(endpoint, cancellationToken);
-                    break;
-                case Method.Post:
-                    StringContent payloadContent = new(json, Encoding.UTF8, "application/json");
-                    response = await _client.PostAsync(endpoint, payloadContent, cancellationToken);
-                    break;
-                default:
-                    if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
+                switch (method)
+                {
+                    case Method.Get:
+                        response = await _client.GetAsync(endpoint, cancellationToken);
+                        break;
+                    case Method.Post:
+                        response = await _client.PostAsync(endpoint, new StringContent(json, Encoding.UTF8, "application/json"), cancellationToken);
+                        break;
+                    default:
+                        if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
+                        return default;
+                }
+                if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
+                if (!response.IsSuccessStatusCode)
+                {
                     return default;
+                }
+
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                return _jsonSerializer.Deserialize<T>(content);
             }
-            if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
-            if (!response.IsSuccessStatusCode)
+            finally
             {
-                return default;
+                response?.Dispose();
             }
-
-            string content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-            return _jsonSerializer.Deserialize<T>(content);
         }
 
         private enum Method

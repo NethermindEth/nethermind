@@ -47,6 +47,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public override void Dispose()
     {
+        _auRaBlockFinalizationManager.BlocksFinalized -= OnBlockFinalized;
         if (IsPostMerge)
         {
             _auRaBlockFinalizationManager.Dispose();
