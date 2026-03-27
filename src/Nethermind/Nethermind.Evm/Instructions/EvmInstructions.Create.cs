@@ -136,10 +136,14 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
             goto OutOfGas;
 
+        long stateGasBeforeCreate = 0;
+        bool createStateCharged = false;
         if (TEip8037.IsActive)
         {
+            stateGasBeforeCreate = TGasPolicy.GetStateGasUsed(in gas);
             if (!TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState))
                 goto OutOfGas;
+            createStateCharged = true;
 
             if (isOverMaxInitCode)
                 goto OutOfGas;
@@ -149,6 +153,11 @@ internal static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
+            if (TEip8037.IsActive && createStateCharged)
+            {
+                TGasPolicy.RefundStateGas(ref gas, GasCostOf.CreateState, stateGasBeforeCreate);
+                createStateCharged = false;
+            }
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
@@ -162,6 +171,11 @@ internal static partial class EvmInstructions
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
         if (value > balance)
         {
+            if (TEip8037.IsActive && createStateCharged)
+            {
+                TGasPolicy.RefundStateGas(ref gas, GasCostOf.CreateState, stateGasBeforeCreate);
+                createStateCharged = false;
+            }
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
@@ -172,6 +186,11 @@ internal static partial class EvmInstructions
         UInt256 maxNonce = ulong.MaxValue;
         if (accountNonce >= maxNonce)
         {
+            if (TEip8037.IsActive && createStateCharged)
+            {
+                TGasPolicy.RefundStateGas(ref gas, GasCostOf.CreateState, stateGasBeforeCreate);
+                createStateCharged = false;
+            }
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;
@@ -216,6 +235,11 @@ internal static partial class EvmInstructions
         // Collision behaves as an immediate exceptional halt — burned callGas counts as block_regular.
         if (state.IsNonZeroAccount(contractAddress, out bool accountExists))
         {
+            if (TEip8037.IsActive && createStateCharged)
+            {
+                TGasPolicy.RefundStateGas(ref gas, GasCostOf.CreateState, stateGasBeforeCreate);
+                createStateCharged = false;
+            }
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();
             goto None;

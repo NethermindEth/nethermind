@@ -185,7 +185,14 @@ internal static partial class EvmInstructions
             true => transferValue != 0 && state.IsDeadAccount(target),
         };
 
+        long stateGasBeforeNewAccount = 0;
+        bool newAccountStateCharged = false;
+        if (TEip8037.IsActive && chargesNewAccount)
+            stateGasBeforeNewAccount = TGasPolicy.GetStateGasUsed(in gas);
+
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+        if (TEip8037.IsActive && chargesNewAccount && !newAccountOutOfGas)
+            newAccountStateCharged = true;
 
         if (newAccountOutOfGas) goto OutOfGas;
 
@@ -228,6 +235,13 @@ internal static partial class EvmInstructions
         if (env.CallDepth >= MaxCallDepth ||
             (!transferValue.IsZero && state.GetBalance(env.ExecutingAccount) < transferValue))
         {
+            if (TEip8037.IsActive && newAccountStateCharged)
+            {
+                // Amsterdam CALL state gas must be returned when the call short-circuits
+                // before entering a child frame.
+                TGasPolicy.RefundStateGas(ref gas, GasCostOf.NewAccountState, stateGasBeforeNewAccount);
+            }
+
             // If the call cannot proceed, return an empty response and push zero on the stack.
             vm.ReturnDataBuffer = Array.Empty<byte>();
             stack.PushZero<TTracingInst>();

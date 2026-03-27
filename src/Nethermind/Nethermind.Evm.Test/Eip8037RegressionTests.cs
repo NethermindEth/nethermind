@@ -6,9 +6,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Test;
 
@@ -16,6 +18,69 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
+
+    [TestCase(false, TestName = "Eip8037_failed_nested_CREATE_balance_check_must_not_reduce_block_gas")]
+    [TestCase(true, TestName = "Eip8037_failed_nested_CREATE2_balance_check_must_not_reduce_block_gas")]
+    public void Eip8037_failed_nested_create_balance_check_must_not_reduce_block_gas(bool create2)
+    {
+        UInt256 impossibleValue = 101.Ether;
+        byte[] childInitCode = Prepare.EvmCode
+            .Op(Instruction.STOP)
+            .Done;
+
+        Prepare prepare = Prepare.EvmCode;
+        prepare = create2
+            ? prepare.Create2(childInitCode, [0x01], impossibleValue)
+            : prepare.Create(childInitCode, impossibleValue);
+
+        byte[] code = prepare
+            .Op(Instruction.POP)
+            .Op(Instruction.ADD)
+            .Done;
+
+        const long gasLimit = 500_000;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            code,
+            value: 0,
+            blockGasLimit: gasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(transaction.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(transaction.BlockGasUsed, Is.EqualTo(gasLimit));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasLimit));
+    }
+
+    [Test]
+    public void Eip8037_failed_new_account_call_balance_check_must_not_reduce_block_gas()
+    {
+        UInt256 impossibleValue = 101.Ether;
+        byte[] code = Prepare.EvmCode
+            .CallWithValue(TestItem.AddressC, 100_000, impossibleValue)
+            .Op(Instruction.POP)
+            .Op(Instruction.ADD)
+            .Done;
+
+        const long gasLimit = 300_000;
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            code,
+            value: 0,
+            blockGasLimit: gasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(transaction.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(transaction.BlockGasUsed, Is.EqualTo(gasLimit));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasLimit));
+    }
 
     /// <summary>
     /// When a nested CREATE's child frame has too little regular gas to cover both

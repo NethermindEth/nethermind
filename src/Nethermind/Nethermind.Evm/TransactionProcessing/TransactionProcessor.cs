@@ -946,10 +946,12 @@ namespace Nethermind.Evm.TransactionProcessing
             long spentGas = tx.GasLimit;
             long actualRefund = 0;
             long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicGasStandard);
+            long previousStateReservoir = TGasPolicy.GetStateReservoir(in gasAfterExecution);
+            long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
+            long codeInsertStateRefund = TGasPolicy.GetStateReservoir(in gasAfterExecution) - previousStateReservoir;
 
             if (!substate.IsError)
             {
-                long codeInsertRegularRefund = TGasPolicy.ApplyCodeInsertRefunds(ref gasAfterExecution, codeInsertRefunds, spec, stateGasFloor);
                 spentGas -= TGasPolicy.GetRemainingGas(in gasAfterExecution) + TGasPolicy.GetStateReservoir(in gasAfterExecution);
 
                 long totalToRefund = codeInsertRegularRefund;
@@ -962,8 +964,10 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (codeInsertRefunds > 0)
             {
-                // On error, only regular refund applies; state refund is not applied.
-                long codeInsertRegularRefund = TGasPolicy.GetCodeInsertRegularRefund(codeInsertRefunds, spec);
+                // EIP-7702 authorization processing happens before EVM execution and survives
+                // an exceptional halt, so its existing-authority state refund must be kept.
+                spentGas -= codeInsertStateRefund;
+
                 if (codeInsertRegularRefund > 0)
                 {
                     actualRefund = CalculateClaimableRefund(spentGas, codeInsertRegularRefund, spec);
