@@ -65,7 +65,7 @@ public sealed class EraWriter : IDisposable
         if (beaconRootsProvider is not null && specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
             _slotTime = new SlotTime(
-                specProvider.BeaconChainGenesisTimestamp.Value * MillisecondsPerSecond,
+                specProvider.BeaconChainGenesisTimestamp.Value * MillisecondsPerSecond, // genesis timestamp is in seconds; SlotTime expects milliseconds
                 new Timestamper(),
                 TimeSpan.FromSeconds(BeaconSlotSeconds),
                 TimeSpan.Zero);
@@ -88,7 +88,7 @@ public sealed class EraWriter : IDisposable
         if (_firstBlock)
         {
             _startNumber = block.Number;
-            _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp);
+            _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp, _specProvider);
             _firstBlock = false;
         }
         else if (block.Number != _startNumber + _encodedHeaders.Count)
@@ -122,7 +122,7 @@ public sealed class EraWriter : IDisposable
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
-            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond);
+            long slot = (long)_slotTime.GetSlot(block.Header.Timestamp * MillisecondsPerSecond); // block timestamp is in seconds; SlotTime expects milliseconds
             (ValueHash256 beaconBlockRoot, ValueHash256 stateRoot)? roots =
                 await _beaconRootsProvider.GetBeaconRoots(slot, cancellation);
             _blocksRootContext!.ProcessBlock(block, roots?.beaconBlockRoot, roots?.stateRoot);
@@ -198,6 +198,8 @@ public sealed class EraWriter : IDisposable
                 totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
             }
 
+            // Accumulator path proofs are only written for pre-merge blocks. Post-merge blocks
+            // are verified via CL-side beacon proofs that are not embedded in the era file.
             if (_preMergeBlockCount > 0)
             {
                 ProofDecoder proofDecoder = new();

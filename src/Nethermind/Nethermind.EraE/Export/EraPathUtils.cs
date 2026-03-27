@@ -59,4 +59,21 @@ public static class EraPathUtils
         Bytes.FromHexString(token, result.BytesAsSpan);
         return result;
     }
+
+    public static (long Epoch, ValueHash256 Hash) ParseChecksumEntry(string line)
+    {
+        ValueHash256 hash = ExtractHashFromChecksumEntry(line);
+
+        int nameStart = line.IndexOf(' ');
+        if (nameStart == -1)
+            throw new ArgumentException($"Invalid checksum entry (no filename): {line}");
+
+        string filename = line[(nameStart + 1)..].TrimStart();
+        string nameWithoutExt = Path.GetFileNameWithoutExtension(filename);
+        string[] parts = nameWithoutExt.Split(_separator);
+        if (parts.Length != 3 || !long.TryParse(parts[1], out long epoch))
+            throw new ArgumentException($"Invalid checksum entry filename: {filename}");
+
+        return (epoch, hash);
+    }
 }

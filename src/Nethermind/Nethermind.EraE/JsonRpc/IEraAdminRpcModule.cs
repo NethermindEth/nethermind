@@ -18,9 +18,9 @@ public interface IEraAdminRpcModule : IRpcModule
         [JsonRpcParameter(Description = "Destination path to export to.", ExampleValue = "/tmp/eraeexportdir")]
         string destinationPath,
         [JsonRpcParameter(Description = "Start block to export from.", ExampleValue = "0")]
-        int from,
+        long from,
         [JsonRpcParameter(Description = "Last block to export to. Set to 0 to export to head.", ExampleValue = "1000000")]
-        int to
+        long to
     );
 
     [JsonRpcMethod(
@@ -32,9 +32,9 @@ public interface IEraAdminRpcModule : IRpcModule
         [JsonRpcParameter(Description = "Source path to import from.", ExampleValue = "/tmp/eraedir")]
         string sourcePath,
         [JsonRpcParameter(Description = "Start block to import. Set to 0 for first available.", ExampleValue = "0")]
-        int from = 0,
+        long from = 0,
         [JsonRpcParameter(Description = "End block to import. Set to 0 for last available.", ExampleValue = "0")]
-        int to = 0,
+        long to = 0,
         [JsonRpcParameter(Description = "Accumulator file to trust. Set to null to skip accumulator verification.", ExampleValue = "null")]
         string? accumulatorFile = null
     );

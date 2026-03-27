@@ -16,7 +16,7 @@ public class BlocksRootContextTests
     [Test]
     public void Constructor_WithBlockNumberBelowParis_SetsHistoricalHashesAccumulatorType()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
 
         sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalHashesAccumulator);
     }
@@ -24,7 +24,9 @@ public class BlocksRootContextTests
     [Test]
     public void Constructor_WithParisBlockNumberAndPreShanghaiTimestamp_SetsHistoricalRootsType()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, 1_600_000_000UL);
+        MainnetSpecProvider specProvider = new();
+        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
 
         sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalRoots);
     }
@@ -32,7 +34,7 @@ public class BlocksRootContextTests
     [Test]
     public void Constructor_WithShanghaiBlockTimestamp_SetsHistoricalSummariesType()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp);
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
 
         sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalSummaries);
     }
@@ -40,7 +42,7 @@ public class BlocksRootContextTests
     [Test]
     public void ProcessBlock_InPreMergeContext_SetsPopulated()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
 
         sut.ProcessBlock(block);
@@ -51,7 +53,7 @@ public class BlocksRootContextTests
     [Test]
     public void AccumulatorRoot_WhenFinalizeContextNeverCalled_ThrowsInvalidOperationException()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
 
         sut.Invoking(c => _ = c.AccumulatorRoot).Should().Throw<InvalidOperationException>();
     }
@@ -59,7 +61,7 @@ public class BlocksRootContextTests
     [Test]
     public void AccumulatorRoot_WhenFinalizeContextCalledWithoutBlocks_ThrowsInvalidOperationException()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
 
         sut.FinalizeContext();
 
@@ -69,7 +71,9 @@ public class BlocksRootContextTests
     [Test]
     public void HistoricalRoot_WhenNotFinalized_ThrowsInvalidOperationException()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, 1_600_000_000UL);
+        MainnetSpecProvider specProvider = new();
+        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
 
         sut.Invoking(c => _ = c.HistoricalRoot).Should().Throw<InvalidOperationException>();
     }
@@ -77,7 +81,7 @@ public class BlocksRootContextTests
     [Test]
     public void HistoricalSummary_WhenNotFinalized_ThrowsInvalidOperationException()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp);
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
 
         sut.Invoking(c => _ = c.HistoricalSummary).Should().Throw<InvalidOperationException>();
     }
@@ -85,7 +89,7 @@ public class BlocksRootContextTests
     [Test]
     public void GetProof_BeforeFinalizeContext_ThrowsInvalidOperationException()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
         sut.ProcessBlock(block);
 
@@ -95,7 +99,7 @@ public class BlocksRootContextTests
     [Test]
     public void GetProof_AfterFinalizeContext_Returns15ElementProof()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
         sut.ProcessBlock(block);
         sut.FinalizeContext();
@@ -108,7 +112,7 @@ public class BlocksRootContextTests
     [Test]
     public void FinalizeContext_InPreMergeContext_SetsAccumulatorRoot()
     {
-        using BlocksRootContext sut = new(0);
+        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
         sut.ProcessBlock(block);
 
@@ -120,8 +124,10 @@ public class BlocksRootContextTests
     [Test]
     public void FinalizeContext_InHistoricalRootsContext_SetsHistoricalRoot()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, 1_600_000_000UL);
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber).TestObject;
+        MainnetSpecProvider specProvider = new();
+        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject;
         sut.ProcessBlock(block,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
             new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));
@@ -134,8 +140,8 @@ public class BlocksRootContextTests
     [Test]
     public void FinalizeContext_InHistoricalSummariesContext_SetsHistoricalSummary()
     {
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp);
-        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber).TestObject;
+        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, MainnetSpecProvider.ShanghaiBlockTimestamp, MainnetSpecProvider.Instance);
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject;
         sut.ProcessBlock(block,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
             new ValueHash256("0x1122334400000000000000000000000000000000000000000000000000000000"));

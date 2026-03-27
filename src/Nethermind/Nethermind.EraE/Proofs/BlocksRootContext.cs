@@ -9,7 +9,6 @@ using Nethermind.Core.Specs;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using Nethermind.Int256;
 using Nethermind.Serialization;
-using Nethermind.Specs;
 
 namespace Nethermind.EraE.Proofs;
 
@@ -22,9 +21,6 @@ public enum AccumulatorType
 
 public sealed class BlocksRootContext : IDisposable
 {
-    private static readonly ForkActivation ParisFork = new(MainnetSpecProvider.ParisBlockNumber);
-    private static readonly ForkActivation ShanghaiFork = new(long.MaxValue, MainnetSpecProvider.ShanghaiBlockTimestamp);
-
     private readonly ArrayPoolList<ValueHash256> _blockRoots = new(8192);
     private readonly ArrayPoolList<ValueHash256> _stateRoots = new(8192);
     private readonly ArrayPoolList<(Hash256 Hash, UInt256 Td)> _blockHashes = new(8192);
@@ -49,12 +45,12 @@ public sealed class BlocksRootContext : IDisposable
     public ValueHash256 HistoricalRoot =>
         _historicalRoot ?? throw new InvalidOperationException("Historical root not set or not finalized.");
 
-    public BlocksRootContext(long startingBlockNumber, ulong? startingBlockTimestamp = null)
+    public BlocksRootContext(long startingBlockNumber, ulong? startingBlockTimestamp = null, ISpecProvider? specProvider = null)
     {
         StartingBlockNumber = startingBlockNumber;
         StartingBlockTimestamp = startingBlockTimestamp;
         ForkActivation forkActivation = new(startingBlockNumber, startingBlockTimestamp);
-        AccumulatorType = GetAccumulatorType(forkActivation);
+        AccumulatorType = GetAccumulatorType(forkActivation, specProvider);
     }
 
     public void ProcessBlock(Block block, ValueHash256? beaconBlockRoot = null, ValueHash256? stateRoot = null)
@@ -130,13 +126,21 @@ public sealed class BlocksRootContext : IDisposable
         _blockHashes.Dispose();
     }
 
-    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation)
+    private static AccumulatorType GetAccumulatorType(ForkActivation forkActivation, ISpecProvider? specProvider)
     {
-        if (forkActivation < ParisFork)
+        if (specProvider is null)
             return AccumulatorType.HistoricalHashesAccumulator;
-        if (forkActivation < ShanghaiFork)
+
+        IReleaseSpec spec = specProvider.GetSpec(forkActivation);
+        if (spec.IsEip4895Enabled)
+            return AccumulatorType.HistoricalSummaries;
+
+        // Paris (The Merge) has no distinct execution-layer EIP flag; use MergeBlockNumber.
+        ForkActivation? mergeBlock = specProvider.MergeBlockNumber;
+        if (mergeBlock.HasValue && forkActivation.BlockNumber >= mergeBlock.Value.BlockNumber)
             return AccumulatorType.HistoricalRoots;
-        return AccumulatorType.HistoricalSummaries;
+
+        return AccumulatorType.HistoricalHashesAccumulator;
     }
 
     private static ValueHash256 UInt256ToHash(ref UInt256 value)

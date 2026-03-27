@@ -13,7 +13,7 @@ public enum BlockHeaderProofType : byte
 
 public record BlockHeaderProof
 {
-    public BlockHeaderProofType? ProofType { get; init; }
+    public BlockHeaderProofType ProofType { get; init; }
     public ValueHash256[]? HashesAccumulator { get; init; }
     public ValueHash256[]? BeaconBlockProof { get; init; }
     public ValueHash256[]? ExecutionBlockProof { get; init; }

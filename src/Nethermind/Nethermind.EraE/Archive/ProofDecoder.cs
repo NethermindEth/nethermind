@@ -59,11 +59,11 @@ public class ProofDecoder : IRlpValueDecoder<BlockHeaderProof?>, IRlpStreamEncod
         byte[] payload = EncodePayload(headerProof);
 
         int contentLength =
-            Rlp.LengthOf((byte)headerProof.ProofType!) +
+            Rlp.LengthOf((byte)headerProof.ProofType) +
             Rlp.LengthOf(payload);
 
         rlpStream.StartSequence(contentLength);
-        rlpStream.Encode((byte)headerProof.ProofType!);
+        rlpStream.Encode((byte)headerProof.ProofType);
         rlpStream.Encode(payload);
     }
 
@@ -88,7 +88,7 @@ public class ProofDecoder : IRlpValueDecoder<BlockHeaderProof?>, IRlpStreamEncod
 
         int payloadLength = GetPayloadLength(item);
         int contentLength =
-            Rlp.LengthOf((byte)item.ProofType!) +
+            Rlp.LengthOf((byte)item.ProofType) +
             Rlp.LengthOfByteString(payloadLength, 0);
 
         return Rlp.LengthOfSequence(contentLength);

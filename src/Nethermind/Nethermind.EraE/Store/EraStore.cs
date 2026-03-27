@@ -26,7 +26,7 @@ public sealed class EraStore : IEraStore
     private readonly Proofs.Validator? _validator;
 
     private readonly Dictionary<long, string> _epochs;
-    private readonly ValueHash256[] _checksums;
+    private readonly Dictionary<long, ValueHash256> _checksumsByEpoch;
 
     private readonly ConcurrentDictionary<long, bool> _verifiedEpochs = new();
     private readonly ConcurrentDictionary<long, SemaphoreSlim> _epochLocks = new();
@@ -71,9 +71,12 @@ public sealed class EraStore : IEraStore
         _maxOpenFile = Environment.ProcessorCount * 2;
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
 
-        _checksums = fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName))
-            .Select(static chk => EraPathUtils.ExtractHashFromChecksumEntry(chk))
-            .ToArray();
+        _checksumsByEpoch = new Dictionary<long, ValueHash256>();
+        foreach (string line in fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName)))
+        {
+            (long checksumEpoch, ValueHash256 hash) = EraPathUtils.ParseChecksumEntry(line);
+            _checksumsByEpoch[checksumEpoch] = hash;
+        }
 
         bool hasEraFile = false;
         _epochs = new Dictionary<long, string>();
@@ -125,10 +128,13 @@ public sealed class EraStore : IEraStore
             // Double-check: another worker may have verified this epoch while we were waiting
             if (_verifiedEpochs.TryGetValue(epoch, out verified) && verified) return;
 
+            // Both tasks share the same EraReader. E2StoreReader uses RandomAccess (positional I/O)
+            // so concurrent reads from different offsets are safe without additional locking.
             Task checksumTask = Task.Run(() =>
             {
                 ValueHash256 actual = reader.CalculateChecksum();
-                ValueHash256 expected = _checksums[epoch - FirstEpoch];
+                if (!_checksumsByEpoch.TryGetValue(epoch, out ValueHash256 expected))
+                    throw new EraVerificationException($"No checksum entry found for epoch {epoch}.");
                 if (actual != expected)
                     throw new EraVerificationException($"Checksum mismatch for epoch {epoch}. Got {actual}, expected {expected}.");
             }, cancellation);

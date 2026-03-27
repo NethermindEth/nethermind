@@ -12,11 +12,16 @@ public class HistoricalSummariesRpcProvider(
     int maxRetries = 3) : IHistoricalSummariesProvider
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30));
+    private readonly SemaphoreSlim _lock = new(1, 1);
     private const string Endpoint = "/eth/v2/debug/beacon/states";
 
     private HistoricalSummary[] _cachedSummaries = [];
 
-    public void Dispose() => _client.Dispose();
+    public void Dispose()
+    {
+        _client.Dispose();
+        _lock.Dispose();
+    }
 
     public async Task<HistoricalSummary?> GetHistoricalSummary(
         int index,
@@ -35,8 +40,19 @@ public class HistoricalSummariesRpcProvider(
         if (_cachedSummaries.Length > 0 && !forceRefresh)
             return _cachedSummaries;
 
-        _cachedSummaries = await LoadWithRetryAsync(stateId, cancellationToken).ConfigureAwait(false);
-        return _cachedSummaries;
+        await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (_cachedSummaries.Length > 0 && !forceRefresh)
+                return _cachedSummaries;
+
+            _cachedSummaries = await LoadWithRetryAsync(stateId, cancellationToken).ConfigureAwait(false);
+            return _cachedSummaries;
+        }
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     private Task<HistoricalSummary[]> LoadWithRetryAsync(
