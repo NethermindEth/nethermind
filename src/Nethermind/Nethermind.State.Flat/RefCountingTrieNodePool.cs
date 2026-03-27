@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Buffers;
@@ -185,6 +186,29 @@ public sealed class RefCountingTrieNodePool
         }
     }
 
+    /// <summary>Parse item offsets using ulong empty-skip trick. Returns item count.</summary>
+    private static int ParseOffsets(ReadOnlySpan<byte> rlp, Span<short> offsets, ref Rlp.ValueDecoderContext ctx, int endPosition)
+    {
+        int i = 0;
+        while (i < 16 && ctx.Position < endPosition)
+        {
+            ulong val = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetReference(rlp), ctx.Position));
+            int emptyCount = Math.Min(BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8, 16 - i);
+            if (emptyCount > 0)
+            {
+                ctx.Position += emptyCount;
+                i += emptyCount;
+                continue;
+            }
+
+            offsets[i] = (short)ctx.Position;
+            ctx.SkipItem();
+            i++;
+        }
+        // Skip value slot (item 17) for branches — don't care about it
+        return i;
+    }
+
     /// <summary>
     /// Single-pass: determine node type and parse child offsets.
     /// </summary>
@@ -195,50 +219,24 @@ public sealed class RefCountingTrieNodePool
         Rlp.ValueDecoderContext ctx = rlp.AsRlpValueContext();
         int sequenceLength = ctx.ReadSequenceLength();
         int endPosition = ctx.Position + sequenceLength;
-        int itemCount = ctx.PeekNumberOfItemsRemaining(endPosition, maxSearch: 3);
 
-        if (itemCount != 2)
+        // Parse all items using the ulong trick. Count how many we got.
+        int itemCount = ParseOffsets(rlp, offsets, ref ctx, endPosition);
+
+        if (itemCount > 2) return NodeType.Branch;
+
+        // 2-item node: check compact key prefix at offsets[0] to distinguish ext vs leaf
+        short keyOffset = offsets[0];
+        byte firstByte = rlp[keyOffset] < 0x80 ? rlp[keyOffset] : rlp[keyOffset + (rlp[keyOffset] < 0xB8 ? 1 : 2 + rlp[keyOffset] - 0xB7)];
+        if ((firstByte & 0x20) != 0)
         {
-            // Branch — parse 16 child offsets in the same pass
-            for (int i = 0; i < 16 && ctx.Position < endPosition; i++)
-            {
-                byte prefix = rlp[ctx.Position];
-                if (prefix == 0x80)
-                {
-                    offsets[i] = 0;
-                    ctx.Position++;
-                }
-                else
-                {
-                    offsets[i] = (short)ctx.Position;
-                    ctx.SkipItem();
-                }
-            }
-            return NodeType.Branch;
+            offsets[0] = 0; // leaf has no child offset
+            return NodeType.Leaf;
         }
 
-        // 2-item node: extension or leaf
-        byte firstByte;
-        if (rlp[ctx.Position] < 0x80)
-        {
-            firstByte = rlp[ctx.Position];
-            ctx.Position++;
-        }
-        else
-        {
-            (int prefixLen, int contentLen) = ctx.ReadPrefixAndContentLength();
-            firstByte = rlp[ctx.Position];
-            ctx.Position += contentLen;
-        }
-
-        bool isLeaf = (firstByte & 0x20) != 0;
-        if (!isLeaf)
-        {
-            // Extension: child offset is at current position
-            offsets[0] = (short)ctx.Position;
-            return NodeType.Extension;
-        }
-
-        return NodeType.Leaf;
+        // Extension: child offset is at offsets[1], move it to offsets[0]
+        offsets[0] = offsets[1];
+        offsets[1] = 0;
+        return NodeType.Extension;
     }
 }

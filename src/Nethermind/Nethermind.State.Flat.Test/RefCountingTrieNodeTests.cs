@@ -185,4 +185,75 @@ public class RefCountingTrieNodeTests
         node2.Dispose();
     }
 
+    /// <summary>
+    /// Builds a sparse branch with only <paramref name="hashRefCount"/> hash ref children,
+    /// rest are empty (0x80). Children at indices 0..hashRefCount-1 are hash refs.
+    /// </summary>
+    private static byte[] BuildSparseBranchRlp(int hashRefCount)
+    {
+        int contentLen = hashRefCount * 33 + (16 - hashRefCount) + 1; // hash refs + empties + value
+        int prefixLen = contentLen < 56 ? 1 : contentLen < 256 ? 2 : 3;
+        byte[] rlp = new byte[prefixLen + contentLen];
+        int pos = 0;
+        if (prefixLen == 1)
+        {
+            rlp[pos++] = (byte)(0xC0 + contentLen);
+        }
+        else if (prefixLen == 2)
+        {
+            rlp[pos++] = 0xF8;
+            rlp[pos++] = (byte)contentLen;
+        }
+        else
+        {
+            rlp[pos++] = 0xF9;
+            rlp[pos++] = (byte)(contentLen >> 8);
+            rlp[pos++] = (byte)(contentLen & 0xFF);
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            if (i < hashRefCount)
+            {
+                rlp[pos++] = 0xA0;
+                for (int j = 0; j < 32; j++) rlp[pos++] = (byte)(i + j);
+            }
+            else
+            {
+                rlp[pos++] = 0x80;
+            }
+        }
+        rlp[pos] = 0x80; // empty value
+        return rlp;
+    }
+
+    [Test]
+    [TestCase(0, Description = "All empties")]
+    [TestCase(2, Description = "2 hash refs + 14 empties")]
+    [TestCase(4, Description = "4 hash refs + 12 empties")]
+    [TestCase(8, Description = "8 hash refs + 8 empties")]
+    [TestCase(14, Description = "14 hash refs + 2 empties")]
+    public void SparseBranch_CorrectOffsets(int hashRefCount)
+    {
+        byte[] rlp = BuildSparseBranchRlp(hashRefCount);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+
+        RefCountingTrieNode node = _tracker.Rent(hash, rlp);
+        Assert.That(node.NodeType, Is.EqualTo(NodeType.Branch));
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (i < hashRefCount)
+            {
+                Assert.That(node.ChildOffsets[i], Is.GreaterThan((short)0), $"Child {i} should have offset");
+                Assert.That(rlp[node.ChildOffsets[i]], Is.EqualTo((byte)0xA0), $"Child {i} should point to hash ref");
+            }
+            else
+            {
+                Assert.That(node.ChildOffsets[i], Is.EqualTo((short)0), $"Child {i} should be empty");
+            }
+        }
+
+        node.Dispose();
+    }
+
 }
