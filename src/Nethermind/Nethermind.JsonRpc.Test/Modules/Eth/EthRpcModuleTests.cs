@@ -464,7 +464,7 @@ public partial class EthRpcModuleTests
     {
         string addressA = TestItem.AddressA.Bytes.ToHexString(true);
         string addressB = TestItem.AddressB.Bytes.ToHexString(true);
-        string zero   = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
         string abcdef = "0x0000000000000000000000000000000000000000000000000000000000abcdef";
 
         yield return new TestCaseData(
@@ -507,9 +507,9 @@ public partial class EthRpcModuleTests
     }
 
     [TestCase("earliest", TestName = "Eth_get_storage_values_WhenEarliestBlock_ReturnsStorageValue")]
-    [TestCase("latest",   TestName = "Eth_get_storage_values_WhenLatestBlock_ReturnsStorageValue")]
-    [TestCase("pending",  TestName = "Eth_get_storage_values_WhenPendingBlock_ReturnsStorageValue")]
-    [TestCase("0x0",      TestName = "Eth_get_storage_values_WhenBlockByNumber_ReturnsStorageValue")]
+    [TestCase("latest", TestName = "Eth_get_storage_values_WhenLatestBlock_ReturnsStorageValue")]
+    [TestCase("pending", TestName = "Eth_get_storage_values_WhenPendingBlock_ReturnsStorageValue")]
+    [TestCase("0x0", TestName = "Eth_get_storage_values_WhenBlockByNumber_ReturnsStorageValue")]
     public async Task Eth_get_storage_values_WhenBlockParameterProvided_ReturnsStorageValue(string blockParameter)
     {
         using Context ctx = await Context.Create();
