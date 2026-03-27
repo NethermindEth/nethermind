@@ -147,7 +147,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         if (!_recoveryComplete)
         {
             Interlocked.Increment(ref _queueCount);
-            BlockAdded?.Invoke(this, new BlockEventArgs(block));
 
             _lastProcessedBlock = DateTime.UtcNow;
             try
@@ -159,9 +158,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     {
                         Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
                         _recoveryQueue.Writer.TryWrite(blockRef);
+                        BlockAdded?.Invoke(this, new BlockEventArgs(block));
                     }
                     else
                     {
+                        // Must fire before TryWrite — AllowSynchronousContinuations may inline
+                        // the processing loop and never return.
+                        BlockAdded?.Invoke(this, new BlockEventArgs(block));
                         // Skip recovery queue if nothing in queue
                         if (!_blockQueue.Writer.TryWrite(blockRef))
                         {

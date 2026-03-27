@@ -26,6 +26,11 @@ namespace Nethermind.Consensus.Processing
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
 
+        /// <summary>
+        /// Fired after a block has been enqueued to the processing pipeline.
+        /// Guaranteed to fire only after the queue write, so the block is
+        /// already in the queue when this event is raised.
+        /// </summary>
         event EventHandler<BlockEventArgs> BlockAdded;
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
