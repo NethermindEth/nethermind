@@ -35,6 +35,58 @@ public class Eip7954Tests : VirtualMachineTestsBase
     [TestCase(CodeSizeConstants.MaxCodeSizeEip7954 + 1, ExpectedResult = StatusCode.Failure, TestName = "Code_deposit_above_new_limit_fails")]
     public byte Code_deposit_size_validation(int deployedCodeSize) => ExecuteDeployTransaction(Timestamp, deployedCodeSize).StatusCode;
 
+    [TestCase(false, TestName = "Over_max_initcode_via_CREATE_spends_all_tx_gas_but_excludes_create_state_from_block_gas")]
+    [TestCase(true, TestName = "Over_max_initcode_via_CREATE2_spends_all_tx_gas_but_excludes_create_state_from_block_gas")]
+    public void Over_max_initcode_via_create_spends_all_tx_gas_but_excludes_create_state_from_block_gas(bool create2)
+    {
+        const long gasLimit = 0x1000000;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            PrepareOverMaxInitCodeCreate(create2),
+            blockGasLimit: gasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+        Assert.That(transaction.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(transaction.BlockGasUsed, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasLimit - GasCostOf.CreateState));
+    }
+
+    [TestCase(false, TestName = "Over_max_initcode_via_CREATE_with_too_little_gas_for_regular_costs_keeps_full_block_gas")]
+    [TestCase(true, TestName = "Over_max_initcode_via_CREATE2_with_too_little_gas_for_regular_costs_keeps_full_block_gas")]
+    public void Over_max_initcode_via_create_with_too_little_gas_for_regular_costs_keeps_full_block_gas(bool create2)
+    {
+        const long gasLimit = 160_000;
+
+        (Block block, Transaction transaction) = PrepareTx(
+            Activation,
+            gasLimit,
+            PrepareOverMaxInitCodeCreate(create2),
+            blockGasLimit: gasLimit);
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        TransactionResult result = _processor.Execute(
+            transaction,
+            new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+            tracer);
+
+        Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.OutOfGas)));
+        Assert.That(transaction.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(transaction.BlockGasUsed, Is.EqualTo(gasLimit));
+        Assert.That(block.Header.GasUsed, Is.EqualTo(gasLimit));
+    }
+
     private TransactionResult ExecuteRawCreateTransaction(ulong timestamp, int initCodeSize)
     {
         byte[] initCode = new byte[initCodeSize];
@@ -93,5 +145,22 @@ public class Eip7954Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, Amsterdam.NoEip8037Instance), tracer);
         return tracer;
+    }
+
+    private byte[] PrepareOverMaxInitCodeCreate(bool create2)
+    {
+        int initCodeLength = checked((int)Spec.MaxInitCodeSize + 1);
+        Prepare prepare = Prepare.EvmCode;
+        if (create2)
+        {
+            prepare = prepare.PushData(0);
+        }
+
+        return prepare
+            .PushData(initCodeLength)
+            .PushData(0)
+            .PushData(0)
+            .Op(create2 ? Instruction.CREATE2 : Instruction.CREATE)
+            .Done;
     }
 }
