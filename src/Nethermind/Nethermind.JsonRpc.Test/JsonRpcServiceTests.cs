@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -12,11 +14,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
@@ -57,6 +61,31 @@ public class JsonRpcServiceTests
         var pool = new SingletonModulePool<T>(new SingletonFactory<T>(module), true);
 
         return TestRequestWithPool(pool, method, parameters);
+    }
+
+    private async Task<JsonRpcResponse> TestRequestWithoutParamsAsync<T>(T module, string method) where T : class, IRpcModule
+    {
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig()
+            {
+                EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
+            }))
+            .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
+            .AddScoped<T>(module)
+            .Build();
+
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        JsonRpcRequest request = new()
+        {
+            JsonRpc = "2.0",
+            Method = method,
+            Id = 67
+        };
+
+        using JsonRpcContext context = new(RpcEndpoint.Http);
+        JsonRpcResponse response = await service.SendRequestAsync(request, context);
+        Assert.That(response.Id, Is.EqualTo(request.Id));
+        return response;
     }
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
@@ -111,6 +140,19 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x1"));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
+    }
+
+    [Test]
+    public async Task Admin_peers_is_working_when_params_property_is_missing()
+    {
+        IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
+        adminRpcModule.admin_peers(false).Returns(ResultWrapper<PeerInfo[]>.Success(Array.Empty<PeerInfo>()));
+
+        JsonRpcSuccessResponse? response = await TestRequestWithoutParamsAsync(adminRpcModule, "admin_peers") as JsonRpcSuccessResponse;
+
+        response.Should().NotBeNull();
+        response!.Result.Should().BeEquivalentTo(Array.Empty<PeerInfo>());
+        adminRpcModule.Received(1).admin_peers(false);
     }
 
     [Test]

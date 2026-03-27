@@ -461,21 +461,25 @@ public sealed class JsonRpcService : IJsonRpcService
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return (Array.Empty<object>(), false);
+        if (totalLength == 0) return ([], false);
 
         object[] executionParameters = new object[totalLength];
 
         bool hasMissing = missingParamsCount != 0;
         int i = 0;
-        var enumerator = providedParameters.EnumerateArray();
-        while (enumerator.MoveNext())
-        {
-            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
-            executionParameters[i] = parameter;
-            hasMissing |= ReferenceEquals(parameter, Type.Missing);
-            i++;
+        if (providedParametersLength > 0)
+        {
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            while (enumerator.MoveNext())
+            {
+                ExpectedParameter expectedParameter = expectedParameters[i];
+
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
+            }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)
