@@ -19,4 +19,9 @@ public class OrderedComponents<T>
     {
         _components.Insert(0, item);
     }
+
+    public void Clear()
+    {
+        _components.Clear();
+    }
 }
