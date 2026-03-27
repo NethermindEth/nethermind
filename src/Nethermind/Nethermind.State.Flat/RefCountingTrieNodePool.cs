@@ -42,6 +42,11 @@ public sealed class RefCountingTrieNodePool
     private long _activeExtensionCount;
     private long _activeLeafCount;
 
+    private long _rentedFullBranchCount;
+    private long _rentedBranchCount;
+    private long _rentedExtensionCount;
+    private long _rentedLeafCount;
+
     public long ActiveFullBranchCount => Volatile.Read(ref _activeFullBranchCount);
     public long ActiveBranchCount => Volatile.Read(ref _activeBranchCount);
     public long ActiveExtensionCount => Volatile.Read(ref _activeExtensionCount);
@@ -70,6 +75,7 @@ public sealed class RefCountingTrieNodePool
             node.ChildOffsets[i] = offsets[i];
 
         IncrementActiveCount(nodeType);
+        IncrementRentCount(nodeType);
         return node;
     }
 
@@ -92,6 +98,7 @@ public sealed class RefCountingTrieNodePool
         node.Initialize(hash, NodeType.Branch, node.Rlp);
 
         Interlocked.Increment(ref _activeFullBranchCount);
+        Interlocked.Increment(ref _rentedFullBranchCount);
         return node;
     }
 
@@ -140,6 +147,21 @@ public sealed class RefCountingTrieNodePool
         NodeType.Extension => _extensionPool,
         _ => _leafPool,
     };
+
+    public long RentedFullBranchCount => Volatile.Read(ref _rentedFullBranchCount);
+    public long RentedBranchCount => Volatile.Read(ref _rentedBranchCount);
+    public long RentedExtensionCount => Volatile.Read(ref _rentedExtensionCount);
+    public long RentedLeafCount => Volatile.Read(ref _rentedLeafCount);
+
+    private void IncrementRentCount(NodeType nodeType)
+    {
+        switch (nodeType)
+        {
+            case NodeType.Branch: Interlocked.Increment(ref _rentedBranchCount); break;
+            case NodeType.Extension: Interlocked.Increment(ref _rentedExtensionCount); break;
+            default: Interlocked.Increment(ref _rentedLeafCount); break;
+        }
+    }
 
     private void IncrementActiveCount(NodeType nodeType)
     {

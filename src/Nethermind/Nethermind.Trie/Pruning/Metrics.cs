@@ -99,6 +99,11 @@ namespace Nethermind.Trie.Pruning
         [Description("Total number of RefCountingTrieNode instances created (not reused from pool).")]
         public static long CreatedPooledNodeCount;
 
+        [CounterMetric]
+        [KeyIsLabel("node_type")]
+        [Description("Total number of RefCountingTrieNode rented from pool by type.")]
+        public static ConcurrentDictionary<string, long> RentedPooledNodeCountByType { get; set; } = new();
+
         [Description("Number of RefCountingTrieNode rented per block (observed at ChildCache reset).")]
         [ExponentialPowerHistogramMetric(Start = 1, Factor = 2, Count = 20)]
         public static IMetricObserver RentedPooledNodeCountPerBlock { get; set; } = NoopMetricObserver.Instance;

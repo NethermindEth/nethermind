@@ -204,6 +204,10 @@ public sealed class TrieNodeCache : ITrieNodeCache
         Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["branch"] = _pool.ActiveBranchCount;
         Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["extension"] = _pool.ActiveExtensionCount;
         Nethermind.Trie.Pruning.Metrics.ActivePooledNodeCountByType["leaf"] = _pool.ActiveLeafCount;
+        Nethermind.Trie.Pruning.Metrics.RentedPooledNodeCountByType["full_branch"] = _pool.RentedFullBranchCount;
+        Nethermind.Trie.Pruning.Metrics.RentedPooledNodeCountByType["branch"] = _pool.RentedBranchCount;
+        Nethermind.Trie.Pruning.Metrics.RentedPooledNodeCountByType["extension"] = _pool.RentedExtensionCount;
+        Nethermind.Trie.Pruning.Metrics.RentedPooledNodeCountByType["leaf"] = _pool.RentedLeafCount;
     }
 
     /// <summary>
