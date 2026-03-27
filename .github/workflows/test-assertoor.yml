@@ -2,8 +2,6 @@ name: Assertoor tests
 
 on:
   workflow_dispatch:
-  push:
-    branches: [fix/assertoor-validator-exit-test]
   workflow_run:
     workflows: ["Publish Docker image"]
     branches: [master]
