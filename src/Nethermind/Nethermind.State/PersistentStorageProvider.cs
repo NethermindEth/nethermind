@@ -15,21 +15,18 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
-using Nethermind.Logging;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 namespace Nethermind.State;
-
-using Nethermind.Core.Cpu;
 
 /// <summary>
 /// Manages persistent storage allowing for snapshotting and restoring
 /// Persists data to ITrieStore
 /// </summary>
-internal sealed class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
+internal sealed partial class PersistentStorageProvider(StateProvider stateProvider, ILogManager logManager)
     : PartialStorageProviderBase(logManager)
 {
     private IWorldStateScopeProvider.IScope _currentScope;
@@ -221,85 +218,40 @@ internal sealed class PersistentStorageProvider(StateProvider stateProvider, ILo
         if (_toUpdateRoots.Count == 0)
             return;
 
-        void UpdateRootHashesSingleThread()
-        {
-            foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
-            {
-                if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
-                {
-                    // Wasn't updated don't recalculate
-                    continue;
-                }
-
-                PerContractState contractState = kvp.Value;
-
-                (int writes, int skipped) = contractState.ProcessStorageChanges(
-                    writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
-
-                ReportMetrics(writes, skipped);
-            }
-        }
-
-        static void ReportMetrics(int writes, int skipped)
-        {
-            if (skipped > 0)
-                Db.Metrics.IncrementStorageSkippedWrites(skipped);
-
-            if (writes > 0)
-                Db.Metrics.IncrementStorageTreeWrites(writes);
-        }
-
-#if !ZK_EVM
-        void UpdateRootHashesMultiThread()
-        {
-            // We can recalculate the roots in parallel as they are all independent tries
-            using ArrayPoolList<(AddressAsKey Key, PerContractState ContractState, IWorldStateScopeProvider.IStorageWriteBatch WriteBatch)> storages = _storages
-                // Only consider contracts that actually have pending changes
-                .Where(kv => _toUpdateRoots.TryGetValue(kv.Key, out bool hasChanges) && hasChanges)
-                // Schedule larger changes first to help balance the work
-                .OrderByDescending(kv => kv.Value.EstimatedChanges)
-                .Select((kv) => (
-                    kv.Key,
-                    kv.Value,
-                    writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.EstimatedChanges)
-                ))
-                .ToPooledList(_storages.Count);
-
-            ParallelUnbalancedWork.For(
-                0,
-                storages.Count,
-                RuntimeInformation.ParallelOptionsPhysicalCoresUpTo16,
-                (storages, toUpdateRoots: _toUpdateRoots, writes: 0, skips: 0),
-                static (i, state) =>
-                {
-                    ref var kvp = ref state.storages.GetRef(i);
-                    (int writes, int skipped) = kvp.ContractState.ProcessStorageChanges(kvp.WriteBatch);
-                    if (writes == 0)
-                    {
-                        // Mark as no changes; we set as false rather than removing so
-                        // as not to modify the non-concurrent collection without synchronization
-                        state.toUpdateRoots[kvp.Key] = false;
-                    }
-                    else
-                    {
-                        state.writes += writes;
-                    }
-
-                    state.skips += skipped;
-
-                    return state;
-                },
-                (state) => ReportMetrics(state.writes, state.skips));
-        }
-
-        // Is overhead of parallel foreach worth it?
-        if (_toUpdateRoots.Count >= 3)
-            UpdateRootHashesMultiThread();
-        else
-#endif
-            UpdateRootHashesSingleThread();
+        UpdateRootHashes(writeBatch);
 
         _toUpdateRoots.Clear();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private partial void UpdateRootHashes(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch);
+
+    private void UpdateRootHashesSingleThread(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+    {
+        foreach (KeyValuePair<AddressAsKey, PerContractState> kvp in _storages)
+        {
+            if (!_toUpdateRoots.TryGetValue(kvp.Key, out bool hasChanges) || !hasChanges)
+            {
+                // Wasn't updated don't recalculate
+                continue;
+            }
+
+            PerContractState contractState = kvp.Value;
+
+            (int writes, int skipped) = contractState.ProcessStorageChanges(
+                writeBatch.CreateStorageWriteBatch(kvp.Key, kvp.Value.EstimatedChanges));
+
+            ReportMetrics(writes, skipped);
+        }
+    }
+
+    private static void ReportMetrics(int writes, int skipped)
+    {
+        if (skipped > 0)
+            Db.Metrics.IncrementStorageSkippedWrites(skipped);
+
+        if (writes > 0)
+            Db.Metrics.IncrementStorageTreeWrites(writes);
     }
 
     public void ClearStorageMap()
