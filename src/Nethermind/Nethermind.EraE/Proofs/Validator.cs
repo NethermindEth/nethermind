@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
@@ -12,6 +12,7 @@ namespace Nethermind.EraE.Proofs;
 
 public class Validator
 {
+    private readonly ISpecProvider _specProvider;
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
     private readonly IReadOnlyList<ValueHash256>? _trustedAccumulators;
     private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
@@ -20,7 +21,6 @@ public class Validator
     private const int SlotsPerHistoricalRoot = 8192;
     private const int GenIndexExecutionBlockProofBellatrix = 3228;
     private const int GenIndexExecutionBlockProofDeneb = 6444;
-    private const ulong DenebSlot = 8_626_176;
 
     public Validator(
         ISpecProvider specProvider,
@@ -29,6 +29,7 @@ public class Validator
         IHistoricalSummariesProvider? historicalSummariesProvider,
         IBlocksConfig? blocksConfig = null)
     {
+        _specProvider = specProvider;
         if (specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
             ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;
@@ -100,9 +101,6 @@ public class Validator
         }
     }
 
-    private bool IsDeneb(ulong blockTimestamp) =>
-        _slotTime is not null && _slotTime.GetSlot(blockTimestamp) >= DenebSlot;
-
     private bool TrustedAccumulatorsProvided() =>
         _trustedAccumulators is { Count: > 0 };
 
@@ -165,7 +163,7 @@ public class Validator
         if (!VerifyProof(proof.BeaconBlockRoot!.Value, proof.BeaconBlockProof!, 13, genIndex, blockSummaryRoot.Value))
             throw new EraVerificationException("Computed block root does not match stored historical block summary root.");
 
-        bool valid = IsDeneb(block.Header.Timestamp)
+        bool valid = _specProvider.GetSpec(block.Header).IsEip4844Enabled
             ? VerifyExecutionBlockProofPostDeneb(block, proof)
             : VerifyExecutionBlockProof(block, proof);
         if (!valid)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -52,7 +52,7 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
 
             ValueHash256? stateRoot = await FetchStateRootAsync(slot, ct).ConfigureAwait(false);
             if (!stateRoot.HasValue)
-                return default((ValueHash256, ValueHash256)?);
+                return default;
 
             return (blockRoot.Value, stateRoot.Value);
         }, _maxRetries, cancellationToken);

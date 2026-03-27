@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.EraE.Config;
+using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Export;
 using Nethermind.EraE.Import;
 using Nethermind.History;
@@ -30,13 +31,13 @@ public class EraCliRunnerTests
     }
 
     [Test]
-    public void Run_WithImportDirectoryAndUseAncientBarriers_ThrowsInvalidOperationException()
+    public void Run_WithImportDirectoryAndUseAncientBarriers_ThrowsEraException()
     {
         IEraEConfig eraConfig = new EraEConfig { ImportDirectory = "import dir" };
         IHistoryConfig historyConfig = new HistoryConfig { Pruning = PruningModes.UseAncientBarriers };
         EraCliRunner cliRunner = new(eraConfig, historyConfig, Substitute.For<IEraImporter>(), Substitute.For<IEraExporter>());
 
-        Assert.That(() => cliRunner.Run(default), Throws.TypeOf<InvalidOperationException>());
+        Assert.That(() => cliRunner.Run(default), Throws.TypeOf<EraException>());
     }
 
     [Test]

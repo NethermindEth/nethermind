@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
@@ -190,8 +190,7 @@ public sealed class E2StoreReader : IDisposable
 
         if (blockNumber < _startBlock || blockNumber >= _startBlock + _blockCount)
             throw new ArgumentOutOfRangeException(nameof(blockNumber), $"Block {blockNumber} is outside range [{_startBlock}, {_startBlock + _blockCount - 1}].");
-        if (componentIdx >= _componentCount)
-            throw new ArgumentOutOfRangeException(nameof(componentIdx));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(componentIdx, _componentCount);
 
         long blockIdx = blockNumber - _startBlock;
         // Offset table starts at: indexEntryStart + EntryHeaderSize + IndexFieldSize (starting_number)

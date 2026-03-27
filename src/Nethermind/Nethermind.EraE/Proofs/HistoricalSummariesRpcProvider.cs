@@ -1,45 +1,36 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
 
 namespace Nethermind.EraE.Proofs;
 
-public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
+public class HistoricalSummariesRpcProvider(
+    Uri baseUrl,
+    HttpClient? httpClient = null,
+    TimeSpan? requestTimeout = null,
+    int maxRetries = 3) : IHistoricalSummariesProvider
 {
-    private readonly BeaconApiHttpClient _client;
-    private readonly Uri _baseUrl;
-    private readonly int _maxRetries;
+    private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30));
     private const string Endpoint = "/eth/v2/debug/beacon/states";
 
     private HistoricalSummary[] _cachedSummaries = [];
-
-    public HistoricalSummariesRpcProvider(
-        Uri baseUrl,
-        HttpClient? httpClient = null,
-        TimeSpan? requestTimeout = null,
-        int maxRetries = 3)
-    {
-        _baseUrl = baseUrl;
-        _client = new BeaconApiHttpClient(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30));
-        _maxRetries = maxRetries;
-    }
 
     public void Dispose() => _client.Dispose();
 
     public async Task<HistoricalSummary?> GetHistoricalSummary(
         int index,
-        CancellationToken cancellationToken = default,
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        CancellationToken cancellationToken = default)
     {
-        HistoricalSummary[] summaries = await GetHistoricalSummariesAsync("head", cancellationToken, forceRefresh).ConfigureAwait(false);
+        HistoricalSummary[] summaries = await GetHistoricalSummariesAsync("head", forceRefresh, cancellationToken).ConfigureAwait(false);
         return summaries.Length > index ? summaries[index] : null;
     }
 
     public async Task<HistoricalSummary[]> GetHistoricalSummariesAsync(
         string stateId = "head",
-        CancellationToken cancellationToken = default,
-        bool forceRefresh = false)
+        bool forceRefresh = false,
+        CancellationToken cancellationToken = default)
     {
         if (_cachedSummaries.Length > 0 && !forceRefresh)
             return _cachedSummaries;
@@ -53,14 +44,14 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
         CancellationToken cancellationToken) =>
         BeaconApiRetry.RetryAsync(
             ct => LoadHistoricalSummariesAsync(stateId, ct),
-            _maxRetries,
+            maxRetries,
             cancellationToken);
 
     private async Task<HistoricalSummary[]> LoadHistoricalSummariesAsync(
         string stateId,
         CancellationToken cancellationToken)
     {
-        Uri fullUri = new(_baseUrl, $"{Endpoint}/{stateId}");
+        Uri fullUri = new(baseUrl, $"{Endpoint}/{stateId}");
         using JsonDocument? document = await _client.GetAsync(fullUri, cancellationToken).ConfigureAwait(false);
         return document is null ? [] : ParseHistoricalSummaries(document.RootElement);
     }
@@ -92,6 +83,6 @@ public class HistoricalSummariesRpcProvider : IHistoricalSummariesProvider
             summaries.Add(HistoricalSummary.From(blockSummaryRoot, stateSummaryRoot));
         }
 
-        return summaries.ToArray();
+        return [.. summaries];
     }
 }

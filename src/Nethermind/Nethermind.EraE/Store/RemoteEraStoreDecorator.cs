@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
@@ -162,7 +162,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
             _verifiedEpochs.TryAdd(epoch, destinationPath);
             return destinationPath;
         }
-        catch
+        catch (Exception)
         {
             if (File.Exists(destinationPath))
                 File.Delete(destinationPath);

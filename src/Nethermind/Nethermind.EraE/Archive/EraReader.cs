@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -19,23 +19,18 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Archive;
 
-public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
+public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
     private readonly ReceiptMessageDecoder _fullReceiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    private readonly E2StoreReader _fileReader = e2;
 
     public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName)) { }
-
-    public EraReader(E2StoreReader e2)
-    {
-        _fileReader = e2;
-    }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
@@ -88,10 +83,13 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
 
         ConcurrentQueue<long> blockNumbers = new();
         for (long n = startBlock; n <= _fileReader.LastBlock; n++)
+        {
             blockNumbers.Enqueue(n);
+        }
 
         Task[] workers = new Task[verifyConcurrency];
         for (int i = 0; i < verifyConcurrency; i++)
+        {
             workers[i] = Task.Run(async () =>
             {
                 while (blockNumbers.TryDequeue(out long blockNumber))
@@ -113,6 +111,7 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
                     blockMeta[idx] = (block.Header.Hash!, block.TotalDifficulty ?? UInt256.Zero, !block.Header.IsPostMerge);
                 }
             }, cancellation);
+        }
 
         await Task.WhenAll(workers);
 
@@ -200,7 +199,9 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
 
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < count; i++)
+        {
             receipts[i] = DecodeOneSlimReceipt(ref ctx);
+        }
 
         return receipts;
     }
@@ -240,7 +241,9 @@ public sealed class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposa
         int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd);
         LogEntry[] logs = new LogEntry[logCount];
         for (int i = 0; i < logCount; i++)
+        {
             logs[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+        }
         receipt.Logs = logs;
 
         ctx.Position = receiptEnd;

@@ -49,25 +49,29 @@ public class AccumulatorCalculator : IDisposable
         proof[0] = new ValueHash256(_totalDifficulties[blockIndex].ToLittleEndian());
 
         // Build the flat binary tree over MaxEra1Size HeaderRecord roots.
-        byte[] flatTree = new byte[2 * EraWriter.MaxEra1Size * 32];
+        using ArrayPoolList<byte> flatTreeBuffer = new(2 * EraWriter.MaxEra1Size * 32, 2 * EraWriter.MaxEra1Size * 32);
+        Span<byte> flatTree = flatTreeBuffer.AsSpan();
+        flatTree.Clear();
         for (int i = 0; i < count; i++)
-            _roots[i].Span.CopyTo(flatTree.AsSpan((EraWriter.MaxEra1Size + i) * 32, 32));
+        {
+            _roots[i].Span.CopyTo(flatTree.Slice((EraWriter.MaxEra1Size + i) * 32, 32));
+        }
 
         Span<byte> combined = stackalloc byte[64];
         for (int i = EraWriter.MaxEra1Size - 1; i >= 1; i--)
         {
-            ReadOnlySpan<byte> left = flatTree.AsSpan(2 * i * 32, 32);
-            ReadOnlySpan<byte> right = flatTree.AsSpan((2 * i + 1) * 32, 32);
+            ReadOnlySpan<byte> left = flatTree.Slice(2 * i * 32, 32);
+            ReadOnlySpan<byte> right = flatTree.Slice((2 * i + 1) * 32, 32);
             left.CopyTo(combined);
             right.CopyTo(combined[32..]);
-            SHA256.TryHashData(combined, flatTree.AsSpan(i * 32, 32), out _);
+            SHA256.TryHashData(combined, flatTree.Slice(i * 32, 32), out _);
         }
 
         int current = EraWriter.MaxEra1Size + blockIndex;
         for (int i = 0; i < TreeDepth; i++)
         {
             int sibling = current ^ 1;
-            proof[1 + i] = new ValueHash256(flatTree.AsSpan(sibling * 32, 32));
+            proof[1 + i] = new ValueHash256(flatTree.Slice(sibling * 32, 32));
             current >>= 1;
         }
 

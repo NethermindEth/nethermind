@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
@@ -144,7 +144,6 @@ public sealed class EraWriter : IDisposable
             _totalDifficulties.Add(UInt256.Zero);
             _hasPostMergeBlocks = true;
         }
-
     }
 
     public async Task<(ValueHash256 AccumulatorRoot, ValueHash256 Checksum)> Finalize(CancellationToken cancellation = default)

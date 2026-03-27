@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
@@ -55,6 +55,7 @@ public class EraEModule : Module
                     ctx.Resolve<IBlockValidator>(),
                     ctx.Resolve<IFileSystem>(),
                     config,
+                    ctx.Resolve<ILogManager>(),
                     ctx.ResolveOptional<Validator>(),
                     remoteClient);
             })

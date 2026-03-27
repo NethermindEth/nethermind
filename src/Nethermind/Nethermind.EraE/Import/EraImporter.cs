@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
@@ -54,20 +54,18 @@ public class EraImporter(
         using IEraStore eraStore = eraStoreFactory.Create(src, trustedAccumulators);
 
         long lastBlockInStore = eraStore.LastBlock;
-        if (to == 0) to = long.MaxValue;
-        if (to != long.MaxValue && lastBlockInStore < to)
-            throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
-        if (to == long.MaxValue)
+        if (to is 0 or long.MaxValue)
             to = lastBlockInStore;
+        else if (to > lastBlockInStore)
+            throw new EraImportException($"Store highest block {lastBlockInStore} is lower than requested end {to}.");
 
         long firstBlockInStore = eraStore.FirstBlock;
-        if (from == 0 && firstBlockInStore != 0)
+        if (from == 0)
             from = firstBlockInStore;
         else if (from < firstBlockInStore)
             throw new EraImportException($"Store first block {firstBlockInStore} is higher than requested start {from}.");
         if (from > to)
             throw new ArgumentException($"Start block ({from}) must not be after end block ({to}).");
-
 
         receiptsDb.Tune(ITunableDb.TuneType.HeavyWrite);
         blocksDb.Tune(ITunableDb.TuneType.HeavyWrite);
@@ -117,14 +115,18 @@ public class EraImporter(
             int concurrency = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency;
             Task[] workers = new Task[concurrency];
             for (int i = 0; i < concurrency; i++)
+            {
                 workers[i] = Task.Run(async () =>
                 {
                     while (partitionStartBlocks.TryDequeue(out long partStart))
                     {
                         for (long j = 0; j < partitionSize; j++)
+                        {
                             await ImportBlock(partStart + j);
+                        }
                     }
                 });
+            }
 
             await Task.WhenAll(workers);
         }

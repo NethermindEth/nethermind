@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.EraE.Config;
 using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Proofs;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE.Store;
 
@@ -16,10 +17,13 @@ public class EraStoreFactory(
     IBlockValidator blockValidator,
     IFileSystem fileSystem,
     IEraEConfig eraConfig,
+    ILogManager logManager,
     Validator? validator = null,
     IRemoteEraClient? remoteClient = null
 ) : IEraStoreFactory
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<EraStoreFactory>();
+
     public IEraStore Create(string src, ISet<ValueHash256>? trustedAccumulators)
     {
         IEraStore? localStore = null;
@@ -38,7 +42,7 @@ public class EraStoreFactory(
         }
         catch (Exception e) when (remoteClient is not null && e is EraException or FileNotFoundException or DirectoryNotFoundException)
         {
-            // No local era files — remote will supply them on demand.
+            if (_logger.IsDebug) _logger.Debug($"No local EraE files found in '{src}': {e.Message}. Remote will supply them on demand.");
         }
 
         if (remoteClient is null)
@@ -56,4 +60,3 @@ public class EraStoreFactory(
         return new RemoteEraStoreDecorator(localStore, remoteClient, downloadDir, eraConfig.MaxEraSize);
     }
 }
-

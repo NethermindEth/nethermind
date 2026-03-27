@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
@@ -131,14 +131,14 @@ public sealed class EraStore : IEraStore
                 ValueHash256 expected = _checksums[epoch - FirstEpoch];
                 if (actual != expected)
                     throw new EraVerificationException($"Checksum mismatch for epoch {epoch}. Got {actual}, expected {expected}.");
-            });
+            }, cancellation);
 
             Task accumulatorTask = Task.Run(async () =>
             {
                 ValueHash256 accRoot = await reader.VerifyContent(_specProvider, _blockValidator, _verifyConcurrency, _validator, cancellation).ConfigureAwait(false);
                 if (_trustedAccumulators != null && accRoot != default && !_trustedAccumulators.Contains(accRoot))
                     throw new EraVerificationException($"AccumulatorRoot {accRoot} for epoch {epoch} is not trusted.");
-            });
+            }, cancellation);
 
             await Task.WhenAll(checksumTask, accumulatorTask).ConfigureAwait(false);
             _verifiedEpochs.TryAdd(epoch, true);

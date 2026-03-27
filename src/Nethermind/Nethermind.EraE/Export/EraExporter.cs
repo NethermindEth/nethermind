@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
@@ -35,6 +35,9 @@ public class EraExporter(
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums_sha256.txt";
+
+    private const int ProgressLogInterval = 10000;
+    private const int RetryDelayMs = 100;
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
     {
@@ -132,7 +135,7 @@ public class EraExporter(
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
 
-                    if ((Interlocked.Increment(ref totalProcessed) % 10000) == 0)
+                    if ((Interlocked.Increment(ref totalProcessed) % ProgressLogInterval) == 0)
                     {
                         progress.Update(totalProcessed);
                         progress.LogProgress();
@@ -158,7 +161,7 @@ public class EraExporter(
                 }
                 catch (IOException) when (attempt < 3)
                 {
-                    await Task.Delay(100 * (attempt + 1), cancel);
+                    await Task.Delay(RetryDelayMs * (attempt + 1), cancel);
                 }
             }
         }
@@ -172,9 +175,7 @@ public class EraExporter(
         for (int i = 0; i < hashes.Count; i++)
         {
             cancellation.ThrowIfCancellationRequested();
-            await writer.WriteAsync(hashes[i].ToString(false));
-            await writer.WriteAsync("  ");
-            await writer.WriteLineAsync(fileNames[i]);
+            await writer.WriteLineAsync($"{hashes[i].ToString(false)}  {fileNames[i]}");
         }
     }
 }

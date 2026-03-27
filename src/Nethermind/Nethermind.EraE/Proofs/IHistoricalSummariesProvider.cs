@@ -1,20 +1,14 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.EraE.Proofs;
 
-public struct HistoricalSummary
+public struct HistoricalSummary(ValueHash256 blockSummaryRoot, ValueHash256 stateSummaryRoot)
 {
-    public ValueHash256 BlockSummaryRoot { get; set; }
-    public ValueHash256 StateSummaryRoot { get; set; }
-
-    public HistoricalSummary(ValueHash256 blockSummaryRoot, ValueHash256 stateSummaryRoot)
-    {
-        BlockSummaryRoot = blockSummaryRoot;
-        StateSummaryRoot = stateSummaryRoot;
-    }
+    public ValueHash256 BlockSummaryRoot { get; set; } = blockSummaryRoot;
+    public ValueHash256 StateSummaryRoot { get; set; } = stateSummaryRoot;
 
     public static HistoricalSummary From(string blockSummaryRootHex, string stateSummaryRootHex) =>
         new(new ValueHash256(blockSummaryRootHex), new ValueHash256(stateSummaryRootHex));
@@ -22,6 +16,6 @@ public struct HistoricalSummary
 
 public interface IHistoricalSummariesProvider : IDisposable
 {
-    Task<HistoricalSummary?> GetHistoricalSummary(int index, CancellationToken cancellationToken = default, bool forceRefresh = false);
-    Task<HistoricalSummary[]> GetHistoricalSummariesAsync(string stateId = "head", CancellationToken cancellationToken = default, bool forceRefresh = false);
+    Task<HistoricalSummary?> GetHistoricalSummary(int index, bool forceRefresh = false, CancellationToken cancellationToken = default);
+    Task<HistoricalSummary[]> GetHistoricalSummariesAsync(string stateId = "head", bool forceRefresh = false, CancellationToken cancellationToken = default);
 }

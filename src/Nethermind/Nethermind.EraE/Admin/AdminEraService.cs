@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
@@ -9,26 +9,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Admin;
 
-public class AdminEraService : IAdminEraService
+public class AdminEraService(
+    IEraImporter eraImporter,
+    IEraExporter eraExporter,
+    IProcessExitSource processExit,
+    ILogManager logManager) : IAdminEraService
 {
-    private readonly ILogger _logger;
-    private readonly IEraImporter _eraImporter;
-    private readonly IEraExporter _eraExporter;
-    private readonly IProcessExitSource _processExit;
+    private readonly ILogger _logger = logManager.GetClassLogger();
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
-
-    public AdminEraService(
-        IEraImporter eraImporter,
-        IEraExporter eraExporter,
-        IProcessExitSource processExit,
-        ILogManager logManager)
-    {
-        _eraImporter = eraImporter;
-        _eraExporter = eraExporter;
-        _processExit = processExit;
-        _logger = logManager.GetClassLogger();
-    }
 
     public ResultWrapper<string> ExportHistory(string destination, long from, long to)
     {
@@ -36,11 +25,11 @@ public class AdminEraService : IAdminEraService
             return ResultWrapper<string>.Fail("An export job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => _eraExporter.Export(destination, from, to, ct),
+            ct => eraExporter.Export(destination, from, to, ct),
             $"EraE export was cancelled. Archives in '{destination}' may be incomplete.",
             "EraE export error",
             _logger,
-            _processExit.Token,
+            processExit.Token,
             () => Interlocked.Exchange(ref _canEnterExport, 1));
 
         return ResultWrapper<string>.Success("Started EraE export task.");
@@ -52,11 +41,11 @@ public class AdminEraService : IAdminEraService
             return ResultWrapper<string>.Fail("An import job is already running.");
 
         _ = EraJobRunner.RunProtected(
-            ct => _eraImporter.Import(source, from, to, accumulatorFile, ct),
+            ct => eraImporter.Import(source, from, to, accumulatorFile, ct),
             $"EraE import was cancelled. State from '{source}' may be incomplete.",
             "EraE import error",
             _logger,
-            _processExit.Token,
+            processExit.Token,
             () => Interlocked.Exchange(ref _canEnterImport, 1));
 
         return ResultWrapper<string>.Success("Started EraE import task.");
