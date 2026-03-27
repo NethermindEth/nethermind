@@ -331,6 +331,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return;
             }
 
+            Feed.StateChanged -= SyncFeedOnStateChanged;
             await _cancellationTokenSource.CancelAsync();
             SignalActiveTask();
             if (!_activeTasks.Wait(_activeTaskDisposeTimeout))

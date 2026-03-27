@@ -454,3 +454,4 @@ keystore/
 
 # Worktrees
 .worktrees/
+/.dotnet-cli

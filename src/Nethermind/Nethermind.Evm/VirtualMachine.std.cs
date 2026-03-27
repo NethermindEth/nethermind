@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if !ZK_EVM
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -46,4 +45,3 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
     protected virtual delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] GenerateOpCodes<TTracingInst>(IReleaseSpec spec) where TTracingInst : struct, IFlag =>
         EvmInstructions.GenerateOpCodes<TGasPolicy, TTracingInst>(spec);
 }
-#endif

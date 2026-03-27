@@ -20,7 +20,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     private readonly IBoostRelay _boostRelay;
     private readonly IStateReader _stateReader;
     private readonly FeesTracer _feesTracer = new();
-    private readonly CancellationTokenSource _improvementCancellation;
+    private CancellationTokenSource? _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
 
@@ -80,5 +80,5 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         CancellationTokenExtensions.CancelDisposeAndClear(ref _timeOutCancellation);
     }
 
-    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+    public void CancelOngoingImprovements() => CancellationTokenExtensions.CancelDisposeAndClear(ref _improvementCancellation);
 }

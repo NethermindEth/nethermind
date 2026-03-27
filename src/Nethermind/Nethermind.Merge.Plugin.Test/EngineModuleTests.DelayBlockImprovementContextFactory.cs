@@ -15,22 +15,12 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    private class DelayBlockImprovementContextFactory : IBlockImprovementContextFactory
+    private class DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
+        : IBlockImprovementContextFactory
     {
-        private readonly IBlockProducer _blockProducer;
-        private readonly TimeSpan _timeout;
-        private readonly TimeSpan _delay;
-
-        public DelayBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout, TimeSpan delay)
-        {
-            _blockProducer = blockProducer;
-            _timeout = timeout;
-            _delay = delay;
-        }
-
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
         UInt256 currentBlockFees, CancellationTokenSource cts) =>
-            new DelayBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _delay, startDateTime, cts);
+            new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts);
     }
 
     /// <summary>
@@ -38,8 +28,7 @@ public partial class EngineModuleTests
     /// Subsequent contexts block indefinitely until cancelled, making tests
     /// deterministic without artificial time delays.
     /// </summary>
-    private class FirstOnlyBlockImprovementContextFactory(
-        IBlockProducer blockProducer, TimeSpan timeout) : IBlockImprovementContextFactory
+    private class FirstOnlyBlockImprovementContextFactory(IBlockProducer blockProducer, TimeSpan timeout) : IBlockImprovementContextFactory
     {
         private int _callCount;
 
@@ -58,7 +47,7 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
-        private readonly CancellationTokenSource _improvementCancellation;
+        private CancellationTokenSource? _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
@@ -102,7 +91,7 @@ public partial class EngineModuleTests
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
 
-        public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+        public void CancelOngoingImprovements() => CancellationTokenExtensions.CancelDisposeAndClear(ref _improvementCancellation);
 
         public void Dispose()
         {

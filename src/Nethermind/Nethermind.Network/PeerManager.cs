@@ -355,7 +355,7 @@ namespace Nethermind.Network
                     }
                     else
                     {
-                        await Task.Delay(1000);
+                        await Task.Delay(1000, _cancellationTokenSource.Token);
                     }
                 }
 
@@ -453,7 +453,7 @@ namespace Nethermind.Network
 
             // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
             // a lower delay probably won't do much.
-            await Task.Delay(TimeSpan.FromSeconds(1));
+            await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
             return null;
         }
 

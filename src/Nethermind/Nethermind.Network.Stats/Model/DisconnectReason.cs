@@ -23,6 +23,7 @@ public enum DisconnectReason : byte
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
     BackgroundTaskFailure,
+    ConnectionReset,
     Exception,
 
     // Non sync, non connection related disconnect
@@ -34,6 +35,7 @@ public enum DisconnectReason : byte
     InvalidForkId,
     ProtocolInitTimeout,
     TxFlooding,
+    InvalidTxReceived,
     NoCapabilityMatched,
     ClientFiltered,
     AppClosing,
@@ -105,6 +107,8 @@ public static class DisconnectReasonExtension
             DisconnectReason.IdentitySameAsSelf => EthDisconnectReason.IdentitySameAsSelf,
             DisconnectReason.ReceiveMessageTimeout => EthDisconnectReason.ReceiveMessageTimeout,
             DisconnectReason.MultipleHeaderDependencies => EthDisconnectReason.MultipleHeaderDependencies,
+            DisconnectReason.ConnectionReset => EthDisconnectReason.TcpSubSystemError,
+            DisconnectReason.InvalidTxReceived => EthDisconnectReason.Other,
             _ => EthDisconnectReason.Other,
         };
     }
