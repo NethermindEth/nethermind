@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat;
 /// </summary>
 public sealed class RefCountingTrieNodePool
 {
-    public const int BranchBufferSize = 544;
+    public const int BranchBufferSize = 532;
     public const int ExtensionBufferSize = 96;
     public const int LeafBufferSize = 160;
     private const int FullBranchRlpLength = 532;
