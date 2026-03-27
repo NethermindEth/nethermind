@@ -193,7 +193,7 @@ namespace Nethermind.Consensus.Processing
 
             public void ProcessWithdrawals(Block block, IReleaseSpec spec)
             {
-                new WithdrawalProcessor(_parallelWorldState[^1], logManager).ProcessWithdrawals(block, spec);
+                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(_parallelWorldState[^1], logManager)).ProcessWithdrawals(block, spec);
             }
 
             public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
