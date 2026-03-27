@@ -98,7 +98,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 namespace Nethermind.Serialization;
 {Whitespace}
-public partial class SszEncoding
+internal partial class SszEncoding
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -263,7 +263,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 namespace Nethermind.Serialization;
 {Whitespace}
-public partial class SszEncoding
+internal partial class SszEncoding
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -479,7 +479,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 namespace Nethermind.Serialization;
 {Whitespace}
-public partial class SszEncoding
+internal partial class SszEncoding
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
