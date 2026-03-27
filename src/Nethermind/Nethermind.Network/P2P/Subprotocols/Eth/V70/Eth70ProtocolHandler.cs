@@ -77,10 +77,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
     private void Handle(ReceiptsMessage70 msg, long size) => _receiptsRequests70.Handle(msg.RequestId, msg, size);
 
-    private async Task<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
+    internal async Task<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        ReceiptsResponse response = await FulfillReceiptsRequest(getReceiptsMessage, cancellationToken);
-        return new ReceiptsMessage70(getReceiptsMessage.RequestId, new(response.TxReceipts), response.LastBlockIncomplete);
+        using GetReceiptsMessage70 message = getReceiptsMessage;
+        ReceiptsResponse response = await FulfillReceiptsRequest(message, cancellationToken);
+        return new ReceiptsMessage70(message.RequestId, new(response.TxReceipts), response.LastBlockIncomplete);
     }
 
     private Task<ReceiptsResponse> FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
