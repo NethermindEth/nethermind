@@ -7,31 +7,20 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.EraE.Proofs;
 
 [SszSerializable]
-public struct SSZBytes32
-{
-    [SszVector(32)]
-    public byte[] Data { get; set; }
-
-    public readonly ValueHash256 Hash => new(Data);
-
-    public static SSZBytes32 From(ValueHash256 hash) => new() { Data = hash.ToByteArray() };
-}
-
-[SszSerializable]
 public struct HistoricalBatch
 {
     [SszVector(8192)]
-    public SSZBytes32[] BlockRoots { get; set; }
+    public SszBytes32[] BlockRoots { get; set; }
 
     [SszVector(8192)]
-    public SSZBytes32[] StateRoots { get; set; }
+    public SszBytes32[] StateRoots { get; set; }
 
     public static HistoricalBatch From(ReadOnlySpan<ValueHash256> blockRoots, ReadOnlySpan<ValueHash256> stateRoots)
     {
-        SSZBytes32[] blockRootsData = new SSZBytes32[blockRoots.Length];
-        for (int i = 0; i < blockRoots.Length; i++) blockRootsData[i] = SSZBytes32.From(blockRoots[i]);
-        SSZBytes32[] stateRootsData = new SSZBytes32[stateRoots.Length];
-        for (int i = 0; i < stateRoots.Length; i++) stateRootsData[i] = SSZBytes32.From(stateRoots[i]);
+        SszBytes32[] blockRootsData = new SszBytes32[blockRoots.Length];
+        for (int i = 0; i < blockRoots.Length; i++) blockRootsData[i] = SszBytes32.From(blockRoots[i]);
+        SszBytes32[] stateRootsData = new SszBytes32[stateRoots.Length];
+        for (int i = 0; i < stateRoots.Length; i++) stateRootsData[i] = SszBytes32.From(stateRoots[i]);
         return new() { BlockRoots = blockRootsData, StateRoots = stateRootsData };
     }
 }
@@ -40,12 +29,12 @@ public struct HistoricalBatch
 public struct ValueHash256Vector
 {
     [SszVector(8192)]
-    public SSZBytes32[] Data { get; set; }
+    public SszBytes32[] Data { get; set; }
 
     public static ValueHash256Vector From(ReadOnlySpan<ValueHash256> hashesAccumulator)
     {
-        SSZBytes32[] data = new SSZBytes32[hashesAccumulator.Length];
-        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SSZBytes32.From(hashesAccumulator[i]);
+        SszBytes32[] data = new SszBytes32[hashesAccumulator.Length];
+        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SszBytes32.From(hashesAccumulator[i]);
         return new() { Data = data };
     }
 
@@ -61,7 +50,7 @@ public struct ValueHash256Vector
 public struct BlockProofHistoricalHashesAccumulator
 {
     [SszVector(15)]
-    public SSZBytes32[] Data { get; set; }
+    public SszBytes32[] Data { get; set; }
 
     public readonly ValueHash256[] HashesAccumulator
     {
@@ -75,8 +64,8 @@ public struct BlockProofHistoricalHashesAccumulator
 
     public static BlockProofHistoricalHashesAccumulator From(ReadOnlySpan<ValueHash256> hashesAccumulator)
     {
-        SSZBytes32[] data = new SSZBytes32[hashesAccumulator.Length];
-        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SSZBytes32.From(hashesAccumulator[i]);
+        SszBytes32[] data = new SszBytes32[hashesAccumulator.Length];
+        for (int i = 0; i < hashesAccumulator.Length; i++) data[i] = SszBytes32.From(hashesAccumulator[i]);
         return new() { Data = data };
     }
 }
@@ -85,7 +74,7 @@ public struct BlockProofHistoricalHashesAccumulator
 public struct BlockProofHistoricalRoots
 {
     [SszVector(14)]
-    public SSZBytes32[] BeaconBlockProofData { get; set; }
+    public SszBytes32[] BeaconBlockProofData { get; set; }
 
     public readonly ValueHash256[] BeaconBlockProof
     {
@@ -97,11 +86,11 @@ public struct BlockProofHistoricalRoots
         }
     }
 
-    public SSZBytes32 BeaconBlockRootData { get; set; }
+    public SszBytes32 BeaconBlockRootData { get; set; }
     public readonly ValueHash256 BeaconBlockRoot => BeaconBlockRootData.Hash;
 
     [SszVector(11)]
-    public SSZBytes32[] ExecutionBlockProofData { get; set; }
+    public SszBytes32[] ExecutionBlockProofData { get; set; }
 
     public readonly ValueHash256[] ExecutionBlockProof
     {
@@ -117,14 +106,14 @@ public struct BlockProofHistoricalRoots
 
     public static BlockProofHistoricalRoots From(ReadOnlySpan<ValueHash256> beaconBlockProof, ValueHash256 beaconBlockRoot, ReadOnlySpan<ValueHash256> executionBlockProof, long slot)
     {
-        SSZBytes32[] beaconData = new SSZBytes32[beaconBlockProof.Length];
-        for (int i = 0; i < beaconBlockProof.Length; i++) beaconData[i] = SSZBytes32.From(beaconBlockProof[i]);
-        SSZBytes32[] execData = new SSZBytes32[executionBlockProof.Length];
-        for (int i = 0; i < executionBlockProof.Length; i++) execData[i] = SSZBytes32.From(executionBlockProof[i]);
+        SszBytes32[] beaconData = new SszBytes32[beaconBlockProof.Length];
+        for (int i = 0; i < beaconBlockProof.Length; i++) beaconData[i] = SszBytes32.From(beaconBlockProof[i]);
+        SszBytes32[] execData = new SszBytes32[executionBlockProof.Length];
+        for (int i = 0; i < executionBlockProof.Length; i++) execData[i] = SszBytes32.From(executionBlockProof[i]);
         return new()
         {
             BeaconBlockProofData = beaconData,
-            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot),
+            BeaconBlockRootData = SszBytes32.From(beaconBlockRoot),
             ExecutionBlockProofData = execData,
             Slot = slot
         };
@@ -135,7 +124,7 @@ public struct BlockProofHistoricalRoots
 public struct BlockProofHistoricalSummaries
 {
     [SszVector(13)]
-    public SSZBytes32[] BeaconBlockProofData { get; set; }
+    public SszBytes32[] BeaconBlockProofData { get; set; }
 
     public readonly ValueHash256[] BeaconBlockProof
     {
@@ -147,11 +136,11 @@ public struct BlockProofHistoricalSummaries
         }
     }
 
-    public SSZBytes32 BeaconBlockRootData { get; set; }
+    public SszBytes32 BeaconBlockRootData { get; set; }
     public readonly ValueHash256 BeaconBlockRoot => BeaconBlockRootData.Hash;
 
     [SszList(12)]
-    public SSZBytes32[] ExecutionBlockProofData { get; set; }
+    public SszBytes32[] ExecutionBlockProofData { get; set; }
 
     public readonly ValueHash256[] ExecutionBlockProof
     {
@@ -167,14 +156,14 @@ public struct BlockProofHistoricalSummaries
 
     public static BlockProofHistoricalSummaries From(ReadOnlySpan<ValueHash256> beaconBlockProof, ValueHash256 beaconBlockRoot, ReadOnlySpan<ValueHash256> executionBlockProof, long slot)
     {
-        SSZBytes32[] beaconData = new SSZBytes32[beaconBlockProof.Length];
-        for (int i = 0; i < beaconBlockProof.Length; i++) beaconData[i] = SSZBytes32.From(beaconBlockProof[i]);
-        SSZBytes32[] execData = new SSZBytes32[executionBlockProof.Length];
-        for (int i = 0; i < executionBlockProof.Length; i++) execData[i] = SSZBytes32.From(executionBlockProof[i]);
+        SszBytes32[] beaconData = new SszBytes32[beaconBlockProof.Length];
+        for (int i = 0; i < beaconBlockProof.Length; i++) beaconData[i] = SszBytes32.From(beaconBlockProof[i]);
+        SszBytes32[] execData = new SszBytes32[executionBlockProof.Length];
+        for (int i = 0; i < executionBlockProof.Length; i++) execData[i] = SszBytes32.From(executionBlockProof[i]);
         return new()
         {
             BeaconBlockProofData = beaconData,
-            BeaconBlockRootData = SSZBytes32.From(beaconBlockRoot),
+            BeaconBlockRootData = SszBytes32.From(beaconBlockRoot),
             ExecutionBlockProofData = execData,
             Slot = slot
         };

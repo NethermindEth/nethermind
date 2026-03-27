@@ -73,6 +73,14 @@ class SszType
             Name = "BitArray",
             Kind = Kind.Basic,
         });
+
+        BasicTypes.Add(new SszType
+        {
+            Namespace = "Nethermind.Serialization.Ssz",
+            Name = "SszBytes32",
+            Kind = Kind.Basic,
+            StaticLength = 32,
+        });
     }
 
     public static List<SszType> BasicTypes { get; set; } = [];

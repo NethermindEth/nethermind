@@ -199,21 +199,17 @@ public sealed class EraWriter : IDisposable
                 totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
             }
 
-            // All Proof entries for pre-merge blocks (section-ordered, before TotalDifficulty).
-            // Post-merge proofs (HistoricalRoots / HistoricalSummaries) require beacon roots and are deferred.
-            // NOTE: go-ethereum execdb marks Proof entries as "not yet supported" and does not write them.
-            // Commented out to maintain binary compatibility with ethpandaops-exported files.
-            // if (_preMergeBlockCount > 0)
-            // {
-            //     ProofDecoder proofDecoder = new();
-            //     for (int i = 0; i < _preMergeBlockCount; i++)
-            //     {
-            //         ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
-            //         BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
-            //         byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
-            //         totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
-            //     }
-            // }
+            if (_preMergeBlockCount > 0)
+            {
+                ProofDecoder proofDecoder = new();
+                for (int i = 0; i < _preMergeBlockCount; i++)
+                {
+                    ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
+                    BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
+                    byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
+                    totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
+                }
+            }
 
             // All TotalDifficulty entries (pre-merge and transition epochs)
             if (needsTd)
