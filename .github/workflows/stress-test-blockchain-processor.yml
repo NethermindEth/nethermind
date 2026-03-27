@@ -47,7 +47,7 @@ jobs:
           DOTNET_EnableHWIntrinsic: "0"
         run: |
           failures=0
-          total=8
+          total=16
           for i in $(seq 1 $total); do
             echo "=== Iteration $i ==="
             dotnet test --project Nethermind.Blockchain.Test.csproj -c release --no-build \
