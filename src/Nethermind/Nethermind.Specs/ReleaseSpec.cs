@@ -122,6 +122,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7594Enabled { get; set; }
     Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
     Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
+    public bool IsEip7782Enabled { get; set; }
     public bool IsEip7939Enabled { get; set; }
     public bool IsRip7728Enabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;

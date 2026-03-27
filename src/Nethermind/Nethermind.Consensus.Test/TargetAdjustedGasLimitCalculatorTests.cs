@@ -49,6 +49,40 @@ namespace Nethermind.Consensus.Test
         }
 
         [Test]
+        public void Is_halved_on_eip7782_activation_block()
+        {
+            int forkBlock = 5;
+            long parentGasLimit = 30_000_000;
+
+            OverridableReleaseSpec preForkSpec = new(Prague.Instance) { IsEip7782Enabled = false };
+            OverridableReleaseSpec postForkSpec = new(Prague.Instance) { IsEip7782Enabled = true };
+            TestSpecProvider specProvider = new(preForkSpec) { NextForkSpec = postForkSpec, ForkOnBlockNumber = forkBlock };
+
+            TargetAdjustedGasLimitCalculator calculator = new(specProvider, new BlocksConfig());
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(forkBlock - 1).WithGasLimit(parentGasLimit).TestObject;
+
+            long gasLimit = calculator.GetGasLimit(parent);
+
+            Assert.That(gasLimit, Is.EqualTo(parentGasLimit / 2));
+        }
+
+        [TestCase(20_000_000, 60_000_000, 20_019_530)]
+        [TestCase(50_000_000, 60_000_000, 49_951_173)]
+        [TestCase(30_000_000, 60_000_000, 30_000_000)]
+        public void Is_target_halved_when_eip7782_enabled_steady_state(long currentGasLimit, long targetGasLimit, long expectedGasLimit)
+        {
+            OverridableReleaseSpec postForkSpec = new(Prague.Instance) { IsEip7782Enabled = true };
+            TestSpecProvider specProvider = new(postForkSpec);
+
+            TargetAdjustedGasLimitCalculator calculator = new(specProvider, new BlocksConfig { TargetBlockGasLimit = targetGasLimit });
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(10).WithGasLimit(currentGasLimit).TestObject;
+
+            long gasLimit = calculator.GetGasLimit(parent);
+
+            gasLimit.Should().Be(expectedGasLimit);
+        }
+
+        [Test]
         public void DoesNot_go_below_minimum()
         {
             int londonBlock = 5;

@@ -118,6 +118,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7594Enabled { get; set; } = spec.IsEip7594Enabled;
         Array? IReleaseSpec.EvmInstructionsNoTrace { get => field ?? spec.EvmInstructionsNoTrace; set; }
         Array? IReleaseSpec.EvmInstructionsTraced { get => field ?? spec.EvmInstructionsTraced; set; }
+        public bool IsEip7782Enabled { get; set; } = spec.IsEip7782Enabled;
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;

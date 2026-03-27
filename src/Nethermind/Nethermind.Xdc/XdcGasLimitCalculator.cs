@@ -12,12 +12,12 @@ namespace Nethermind.Xdc;
 internal class XdcGasLimitCalculator(ISpecProvider specProvider, IBlocksConfig blocksConfig) : IGasLimitCalculator
 {
     private readonly TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new TargetAdjustedGasLimitCalculator(specProvider, blocksConfig);
-    public long GetGasLimit(BlockHeader parentHeader)
+    public long GetGasLimit(BlockHeader parentHeader, ulong? newBlockTimestamp = null)
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(parentHeader.Number + 1);
         if (spec.IsDynamicGasLimitBlock)
         {
-            return targetAdjustedGasLimitCalculator.GetGasLimit(parentHeader);
+            return targetAdjustedGasLimitCalculator.GetGasLimit(parentHeader, newBlockTimestamp);
         }
         return blocksConfig.TargetBlockGasLimit ?? XdcConstants.DefaultTargetGasLimit;
     }
