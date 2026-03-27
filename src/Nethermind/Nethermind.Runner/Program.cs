@@ -578,7 +578,7 @@ static class BasicOptions
         Option<bool> option = new("--force-resync")
         {
             Description = "Deletes all database files except peer and discovery data, forcing a full resync on startup.",
-            DefaultValueFactory = _ => false
+            DefaultValueFactory = _ => true
         };
 
         option.Validators.Add(result =>
