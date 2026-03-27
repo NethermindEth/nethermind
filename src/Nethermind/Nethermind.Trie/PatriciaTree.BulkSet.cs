@@ -59,8 +59,11 @@ public partial class PatriciaTree
     /// <param name="flags"></param>
     public void BulkSet(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags = Flags.None)
     {
-        if (entries.Count == 0) return;
-
+        if (entries.Count == 0)
+            return;
+#if ZK_EVM
+        flags |= Flags.DoNotParallelize;
+#endif
         using ArrayPoolListRef<BulkSetEntry> sortBuffer = new(entries.Count, entries.Count);
 
         Context ctx = new()
@@ -69,8 +72,10 @@ public partial class PatriciaTree
             OriginalEntriesArray = entries.UnsafeGetInternalArray(),
         };
 
-        if (_traverseStack is null) _traverseStack = new Stack<TraverseStack>();
-        else if (_traverseStack.Count > 0) _traverseStack.Clear();
+        if (_traverseStack is null)
+            _traverseStack = new Stack<TraverseStack>();
+        else if (_traverseStack.Count > 0)
+            _traverseStack.Clear();
 
         TreePath path = TreePath.Empty;
 
@@ -111,9 +116,6 @@ public partial class PatriciaTree
         int flipCount,
         Flags flags)
     {
-#if ZK_EVM
-        flags |= Flags.DoNotParallelize;
-#endif
         TrieNode? originalNode = node;
 
         if (entries.Length == 1)
