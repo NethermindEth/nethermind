@@ -37,25 +37,9 @@ public class BlockchainProcessorTests
     {
         private readonly ILogManager _logManager = LimboLogs.Instance;
 
-        // Thread-safe per-instance trace log for debugging race conditions.
-        private readonly string _traceLogPath = $"/tmp/bpt-trace-{Guid.NewGuid():N}.log";
-        private readonly object _traceLock = new();
-        private readonly long _traceStart = Environment.TickCount64;
-
-        private void Trace(string msg)
-        {
-            long elapsed = Environment.TickCount64 - _traceStart;
-            string line = $"[{elapsed,7}ms] [T{Environment.CurrentManagedThreadId,3}] {msg}";
-            lock (_traceLock)
-            {
-                System.IO.File.AppendAllText(_traceLogPath, line + "\n");
-            }
-        }
-
         private class BranchProcessorMock : IBranchProcessor
         {
             private readonly ILogger _logger;
-            private readonly Action<string> _trace;
 
             private readonly ConcurrentHashSet<Hash256> _allowed = new();
 
@@ -67,16 +51,14 @@ public class BlockchainProcessorTests
 
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
-            public BranchProcessorMock(ILogManager logManager, IStateReader stateReader, Action<string> trace)
+            public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
                 _logger = logManager.GetClassLogger();
-                _trace = trace;
                 stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
             public void Allow(Hash256 hash)
             {
-                _trace($"BranchProcessor.Allow({hash.ToString()[..12]})");
                 _logger.Info($"Allowing {hash} to process");
                 lock (_gate)
                 {
@@ -87,7 +69,6 @@ public class BlockchainProcessorTests
 
             public void AllowToFail(Hash256 hash)
             {
-                _trace($"BranchProcessor.AllowToFail({hash.ToString()[..12]})");
                 _logger.Info($"Allowing {hash} to fail");
                 lock (_gate)
                 {
@@ -106,7 +87,6 @@ public class BlockchainProcessorTests
 
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
 
-                _trace($"BranchProcessor.Process() called with {suggestedBlocks.Count} blocks: [{string.Join(", ", suggestedBlocks.Select(b => b.ToString(Block.Format.Short)))}]");
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
                 int nextBlock = 0;
                 while (true)
@@ -124,17 +104,14 @@ public class BlockchainProcessorTests
                             {
                                 if (_allowedToFail.TryRemove(hash))
                                 {
-                                    _trace($"BranchProcessor: block {suggestedBlock.ToString(Block.Format.Short)} FAIL (in allowedToFail)");
                                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
                                     throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                                 }
 
-                                _trace($"BranchProcessor: block {suggestedBlock.ToString(Block.Format.Short)} NOT YET (not in allowed or allowedToFail), waiting 200ms");
                                 notYet = true;
                                 break;
                             }
 
-                            _trace($"BranchProcessor: block {suggestedBlock.ToString(Block.Format.Short)} ALLOWED, processing");
                             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
                             nextBlock = i + 1;
                         }
@@ -145,7 +122,6 @@ public class BlockchainProcessorTests
                         }
                         else
                         {
-                            _trace($"BranchProcessor: all blocks processed, returning");
                             _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
                             return suggestedBlocks.ToArray();
                         }
@@ -160,23 +136,15 @@ public class BlockchainProcessorTests
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
         }
 
-        private class RecoveryStepMock : IBlockPreprocessorStep
+        private class RecoveryStepMock(ILogManager logManager) : IBlockPreprocessorStep
         {
-            private readonly ILogger _logger;
-            private readonly Action<string> _trace;
+            private readonly ILogger _logger = logManager.GetClassLogger();
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
-            public RecoveryStepMock(ILogManager logManager, Action<string> trace)
-            {
-                _logger = logManager.GetClassLogger();
-                _trace = trace;
-            }
-
             public void Allow(Hash256 hash)
             {
-                _trace($"Recovery.Allow({hash.ToString()[..12]})");
                 _logger.Info($"Allowing {hash} to recover");
                 lock (_gate)
                 {
@@ -187,16 +155,13 @@ public class BlockchainProcessorTests
 
             public void RecoverData(Block block)
             {
-                _trace($"Recovery.RecoverData({block.ToString(Block.Format.Short)}) enter, Author={block.Author}");
                 _logger.Info($"Recovering data for {block.ToString(Block.Format.Short)}");
                 if (block.Author is not null)
                 {
-                    _trace($"Recovery.RecoverData({block.ToString(Block.Format.Short)}) already recovered, returning");
                     _logger.Info($"Data was already there for {block.ToString(Block.Format.Short)}");
                     return;
                 }
 
-                int waitCount = 0;
                 while (true)
                 {
                     lock (_gate)
@@ -206,19 +171,14 @@ public class BlockchainProcessorTests
                         {
                             if (_allowedToFail.ContainsKey(blockHash))
                             {
-                                _trace($"Recovery.RecoverData({block.ToString(Block.Format.Short)}) FAIL");
                                 _allowedToFail.Remove(blockHash, out _);
                                 throw new Exception();
                             }
 
-                            waitCount++;
-                            if (waitCount % 50 == 1)
-                                _trace($"Recovery.RecoverData({block.ToString(Block.Format.Short)}) waiting (count={waitCount})");
                             Monitor.Wait(_gate, MockRecheckInterval);
                             continue;
                         }
 
-                        _trace($"Recovery.RecoverData({block.ToString(Block.Format.Short)}) done after {waitCount} waits");
                         block.Header.Author = Address.Zero;
                         _allowed.Remove(blockHash, out _);
                         return;
@@ -246,15 +206,12 @@ public class BlockchainProcessorTests
             _logger = _logManager.GetClassLogger();
             _stateReader = Substitute.For<IStateReader>();
 
-            Trace($"=== ProcessingTestContext created, logFile={_traceLogPath} ===");
-
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .TestObject;
-            _branchProcessor = new BranchProcessorMock(_logManager, _stateReader, Trace);
-            _recoveryStep = new RecoveryStepMock(_logManager, Trace);
+            _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
+            _recoveryStep = new RecoveryStepMock(_logManager);
             _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
-            _processor.DebugTrace = Trace;
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -264,14 +221,8 @@ public class BlockchainProcessorTests
                 _queueEmptyResetEvent.Set();
             };
 
-            _processor.BlockAdded += (_, args) =>
-            {
-                Trace($"BlockchainProcessor.BlockAdded: {args.Block.ToString(Block.Format.Short)}, queueCount={_processor.Count}");
-            };
-
             _blockTree.NewHeadBlock += (_, args) =>
             {
-                Trace($"NewHeadBlock: {args.Block.ToString(Block.Format.Short)}");
                 _logger.Info($"Finished waiting for {args.Block.ToString(Block.Format.Short)} as block became the new head block");
                 _resetEvent.Set();
             };
@@ -307,13 +258,10 @@ public class BlockchainProcessorTests
                 }
             };
 
-            Trace($"Processed({block.ToString(Block.Format.Short)}) enter");
-            long procStart = Environment.TickCount64;
+            _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to process");
             _branchProcessor.Allow(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
-            long procElapsed = Environment.TickCount64 - procStart;
-            Trace($"Processed({block.ToString(Block.Format.Short)}) done: {procElapsed}ms, wasProcessed={wasProcessed}");
-            Assert.That(wasProcessed, Is.True, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)} (waited {procElapsed}ms, trace={_traceLogPath})");
+            Assert.That(wasProcessed, Is.True, $"Expected this block to get processed but it was not: {block.ToString(Block.Format.Short)}");
 
             return new AfterBlock(_logManager, this, block);
         }
@@ -340,13 +288,10 @@ public class BlockchainProcessorTests
                 }
             };
 
-            Trace($"ProcessedFail({block.ToString(Block.Format.Short)}) enter");
-            long failStart = Environment.TickCount64;
+            _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to fail processing");
             _branchProcessor.AllowToFail(block.Hash!);
             processedEvent.WaitOne(ProcessingWait);
-            long failElapsed = Environment.TickCount64 - failStart;
-            Trace($"ProcessedFail({block.ToString(Block.Format.Short)}) done: {failElapsed}ms, wasProcessed={wasProcessed}");
-            Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)} (waited {failElapsed}ms, trace={_traceLogPath})");
+            Assert.That(wasProcessed, Is.True, $"Block was never processed {block.ToString(Block.Format.Short)}");
             Assert.That(_blockTree.Head?.Hash, Is.EqualTo(_headBefore), $"Processing did not fail - {block.ToString(Block.Format.Short)} became a new head block");
             _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to fail processing");
             return new AfterBlock(_logManager, this, block);
@@ -377,20 +322,13 @@ public class BlockchainProcessorTests
                 }
 
                 _processor.BlockAdded += OnBlockAdded;
-                long sugStart = Environment.TickCount64;
-                Trace($"Suggested({block.ToString(Block.Format.Short)}) enter, queueCount={_processor.Count}");
                 try
                 {
-                    // Track when Task.Run fully completes (after Enqueue + queue write).
-                    // suggestCompleted may resolve early via OnBlockAdded (before queue write),
-                    // so we also wait for the task itself to ensure ordering.
-                    Task suggestTask = Task.Run(() =>
+                    Task.Run(() =>
                     {
                         try
                         {
-                            Trace($"Suggested({block.ToString(Block.Format.Short)}) Task.Run calling SuggestBlock");
                             AddBlockResult result = _blockTree.SuggestBlock(block, options);
-                            Trace($"Suggested({block.ToString(Block.Format.Short)}) SuggestBlock returned {result}");
                             if (result != AddBlockResult.Added)
                             {
                                 _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
@@ -402,18 +340,10 @@ public class BlockchainProcessorTests
                             suggestCompleted.TrySetResult();
                         }
                     });
-                    // Wait for BlockAdded (or Task.Run completion) first — this unblocks
-                    // even if the block gets processed inline via AllowSynchronousContinuations.
-                    bool completed = suggestCompleted.Task.Wait(ProcessingWait);
-                    // Then give the Task.Run a brief window to finish the queue write.
-                    // If it was inline-processed, this will time out harmlessly (task is stuck
-                    // in BranchProcessor.Process waiting for Allow).
-                    suggestTask.Wait(50);
-                    long sugElapsed = Environment.TickCount64 - sugStart;
-                    Trace($"Suggested({block.ToString(Block.Format.Short)}) done: {sugElapsed}ms, completed={completed}, taskDone={suggestTask.IsCompleted}");
-                    Assert.That(completed,
+                    Assert.That(
+                        suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
-                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion after {sugElapsed}ms (trace={_traceLogPath})");
+                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
                 }
                 finally
                 {
@@ -462,7 +392,6 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext Recovered(Block block)
         {
-            Trace($"Recovered({block.ToString(Block.Format.Short)}) called");
             _recoveryStep.Allow(block.Hash!);
             return this;
         }
@@ -517,25 +446,21 @@ public class BlockchainProcessorTests
 
             public ProcessingTestContext BecomesNewHead()
             {
-                processingTestContext.Trace($"BecomesNewHead({block.ToString(Block.Format.Short)}) enter, currentHead={processingTestContext._blockTree.Head?.Hash?.ToString()[..12] ?? "null"}");
-                long start = Environment.TickCount64;
-                long deadline = start + ProcessingWait;
-                int iterations = 0;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to become the new head block");
+                // Loop on the auto-reset event: a single WaitOne may consume a stale or
+                // unrelated NewHeadBlock signal, so keep waiting until the expected block
+                // is the head or the overall timeout expires.
+                long deadline = Environment.TickCount64 + ProcessingWait;
                 while (processingTestContext._blockTree.Head?.Hash != block.Header.Hash)
                 {
                     long remaining = deadline - Environment.TickCount64;
                     if (remaining <= 0)
                         break;
                     processingTestContext._resetEvent.WaitOne((int)remaining);
-                    iterations++;
                 }
 
-                long elapsed = Environment.TickCount64 - start;
-                bool matched = processingTestContext._blockTree.Head?.Hash == block.Header.Hash;
-                processingTestContext.Trace($"BecomesNewHead({block.ToString(Block.Format.Short)}) done: {elapsed}ms, iterations={iterations}, matched={matched}, head={processingTestContext._blockTree.Head?.Hash?.ToString()[..12] ?? "null"}");
-
                 Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(block.Header.Hash),
-                    $"Expected {block.ToString(Block.Format.Short)} to become the head after {elapsed}ms (trace={processingTestContext._traceLogPath})");
+                    $"Expected {block.ToString(Block.Format.Short)} to become the head");
                 return processingTestContext;
             }
 
@@ -550,16 +475,14 @@ public class BlockchainProcessorTests
 
             public ProcessingTestContext IsDeletedAsInvalid()
             {
-                processingTestContext.Trace($"IsDeletedAsInvalid({block.ToString(Block.Format.Short)}) enter");
-                long delStart = Environment.TickCount64;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted");
                 // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
                 processingTestContext._resetEvent.WaitOne(IgnoreWait);
                 Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
                 // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
                 Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
-                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid (trace={processingTestContext._traceLogPath})");
-                long delElapsed = Environment.TickCount64 - delStart;
-                processingTestContext.Trace($"IsDeletedAsInvalid({block.ToString(Block.Format.Short)}) done: {delElapsed}ms");
+                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
                 return processingTestContext;
             }
         }

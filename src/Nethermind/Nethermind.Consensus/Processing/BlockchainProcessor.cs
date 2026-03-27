@@ -157,13 +157,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
                     if (_queueCount > 1)
                     {
-                        DebugTrace?.Invoke($"Enqueue: {block.ToString(Block.Format.Short)} → recovery queue (queueCount={_queueCount}, isInDb={blockRef.IsInDb})");
                         Interlocked.Add(ref _currentRecoveryQueueSize, block.Transactions.Length);
                         _recoveryQueue.Writer.TryWrite(blockRef);
                     }
                     else
                     {
-                        DebugTrace?.Invoke($"Enqueue: {block.ToString(Block.Format.Short)} → block queue DIRECT (queueCount={_queueCount}, isInDb={blockRef.IsInDb})");
                         // Skip recovery queue if nothing in queue
                         if (!_blockQueue.Writer.TryWrite(blockRef))
                         {
@@ -270,15 +268,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             try
             {
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
-                DebugTrace?.Invoke($"RecoveryLoop: dequeued {blockRef.Block.ToString(Block.Format.Short)}, calling RecoverData");
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
                 _recoveryStep.RecoverData(blockRef.Block);
-                DebugTrace?.Invoke($"RecoveryLoop: {blockRef.Block.ToString(Block.Format.Short)} recovered, forwarding to block queue");
 
                 try
                 {
                     await _blockQueue.Writer.WriteAsync(blockRef);
-                    DebugTrace?.Invoke($"RecoveryLoop: {blockRef.Block.ToString(Block.Format.Short)} written to block queue");
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -359,8 +354,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
     }
 
-    internal Action<string>? DebugTrace { get; set; }
-
     private void ProcessBlocks()
     {
         bool isTrace = _logger.IsTrace;
@@ -374,13 +367,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
 
                 Block block = blockRef.Block;
-                DebugTrace?.Invoke($"ProcessBlocks: dequeued {block.ToString(Block.Format.Short)}, TD={block.TotalDifficulty}, headTD={_blockTree.Head?.TotalDifficulty}, queueCount={_queueCount}");
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
-
-                DebugTrace?.Invoke($"ProcessBlocks: {block.ToString(Block.Format.Short)} result={processedBlock?.ToString(Block.Format.Short) ?? "null"}, error={error ?? "none"}");
 
                 if (processedBlock is null)
                 {
@@ -462,8 +452,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             suggestedBlock.IsGenesis
             || _blockTree.IsBetterThanHead(suggestedBlock.Header)
             || options.ContainsFlag(ProcessingOptions.ForceProcessing);
-
-        DebugTrace?.Invoke($"Process: {suggestedBlock.ToString(Block.Format.Short)} shouldProcess={shouldProcess}, isGenesis={suggestedBlock.IsGenesis}, isBetterThanHead={_blockTree.IsBetterThanHead(suggestedBlock.Header)}, TD={totalDifficulty}, headTD={_blockTree.Head?.TotalDifficulty}, head={_blockTree.Head?.ToString(Block.Format.Short)}");
 
         if (!shouldProcess)
         {
