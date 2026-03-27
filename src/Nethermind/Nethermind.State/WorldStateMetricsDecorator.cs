@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
+using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.State;
 
@@ -22,21 +24,36 @@ public class WorldStateMetricsDecorator(IWorldState innerWorldState) : WrappedWo
     {
         long start = Stopwatch.GetTimestamp();
         _innerWorldState.RecalculateStateRoot();
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
+        StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
+        EvmMetrics.IncrementStateHashTime(ticks);
+        EvmMetrics.IncrementStateRootTime(ticks);
     }
 
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true)
     {
         long start = Stopwatch.GetTimestamp();
         _innerWorldState.Commit(releaseSpec, tracer, isGenesis, commitRoots);
+        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
         if (commitRoots)
-            StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        {
+            StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
+            EvmMetrics.IncrementStateHashTime(ticks);
+            EvmMetrics.IncrementStorageMerkleTime(ticks);
+        }
+        else
+        {
+            EvmMetrics.IncrementCommitTime(ticks);
+        }
     }
 
     public override void CommitTree(long blockNumber)
     {
         long start = Stopwatch.GetTimestamp();
         _innerWorldState.CommitTree(blockNumber);
-        StateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+        long ticks = Stopwatch.GetElapsedTime(start).Ticks;
+        StateMerkleizationTime += ticks / (double)TimeSpan.TicksPerMillisecond;
+        EvmMetrics.IncrementStateHashTime(ticks);
+        EvmMetrics.IncrementStateRootTime(ticks);
     }
 }

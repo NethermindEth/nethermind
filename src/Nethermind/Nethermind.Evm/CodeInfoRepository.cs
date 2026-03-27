@@ -81,6 +81,9 @@ public class CodeInfoRepository : ICodeInfoRepository
             MissingCode(in codeHash);
         }
 
+        Metrics.IncrementCodeReads();
+        Metrics.IncrementCodeBytesRead(code.Length);
+
         return CodeInfoFactory.CreateCodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
@@ -121,7 +124,20 @@ public class CodeInfoRepository : ICodeInfoRepository
             codeHash = ValueKeccak.OfAnEmptyString;
         }
 
-        return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        bool result = worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
+        if (result)
+        {
+            if (codeSource != Address.Zero)
+            {
+                Metrics.IncrementEip7702DelegationsSet();
+            }
+            else
+            {
+                Metrics.IncrementEip7702DelegationsCleared();
+            }
+        }
+
+        return result;
     }
 
     /// <summary>

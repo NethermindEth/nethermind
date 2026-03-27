@@ -39,11 +39,23 @@ namespace Nethermind.Consensus.Processing
                     _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
                 }
 
+                bool capturePerTx = PerTxTimingCollector.IsEnabled;
+                if (capturePerTx)
+                {
+                    PerTxTimingCollector.Prepare(block.Transactions.Length);
+                }
+
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
+
+                    long txStart = capturePerTx ? Stopwatch.GetTimestamp() : 0;
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                    if (capturePerTx)
+                    {
+                        PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
+                    }
 
                     if (gasRemaining is not null)
                     {

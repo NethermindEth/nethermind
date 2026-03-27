@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -130,14 +131,18 @@ public partial class BlockProcessor(
 
         _stateProvider.Commit(spec, commitRoots: false);
 
+        long bloomsStart = Stopwatch.GetTimestamp();
         CalculateBlooms(receipts);
+        Evm.Metrics.IncrementBloomsTime(Stopwatch.GetElapsedTime(bloomsStart).Ticks);
 
         if (spec.IsEip4844Enabled)
         {
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
+        long receiptsRootStart = Stopwatch.GetTimestamp();
         header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        Evm.Metrics.IncrementReceiptsRootTime(Stopwatch.GetElapsedTime(receiptsRootStart).Ticks);
 
         ApplyMinerRewards(block, blockTracer, spec);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
