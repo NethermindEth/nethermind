@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
-using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Archive;
@@ -105,32 +100,6 @@ public class AccumulatorCalculatorTests
         Assert.That(sut.GetProof(blockIndex)[0].ToByteArray(), Is.EqualTo(expected));
     }
 
-    [TestCase(0, 1)]
-    [TestCase(0, 3)]
-    [TestCase(2, 5)]
-    public Task GetProof_WhenValidatedByValidator_Succeeds(int blockIndex, int totalBlocks)
-    {
-        Block[] blocks = Enumerable.Range(0, totalBlocks)
-            .Select(i => Build.A.Block
-                .WithNumber(i)
-                .WithTotalDifficulty((UInt256)(i * 100 + 1))
-                .TestObject)
-            .ToArray();
-
-        using AccumulatorCalculator sut = new();
-        for (int i = 0; i < totalBlocks; i++)
-            sut.Add(blocks[i].Hash!, blocks[i].TotalDifficulty!.Value);
-
-        ValueHash256 root = sut.ComputeRoot();
-        ValueHash256[] proof = sut.GetProof(blockIndex);
-
-        Validator validator = BuildValidator(root);
-        BlockHeaderProof headerProof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proof };
-
-        Assert.That(async () => await validator.VerifyContent(blocks[blockIndex], headerProof), Throws.Nothing);
-        return Task.CompletedTask;
-    }
-
     [Test]
     public void GetProof_WithDifferentIndices_ReturnDifferentProofs()
     {
@@ -145,10 +114,4 @@ public class AccumulatorCalculatorTests
         Assert.That(proof0[1], Is.Not.EqualTo(proof1[1]));
     }
 
-    private static Validator BuildValidator(ValueHash256 trustedRoot)
-    {
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        specProvider.BeaconChainGenesisTimestamp.Returns((ulong?)1606824023UL);
-        return new Validator(specProvider, new List<ValueHash256> { trustedRoot }, null, null);
-    }
 }

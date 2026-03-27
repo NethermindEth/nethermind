@@ -87,29 +87,6 @@ public class BlocksRootContextTests
     }
 
     [Test]
-    public void GetProof_BeforeFinalizeContext_ThrowsInvalidOperationException()
-    {
-        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
-        sut.ProcessBlock(block);
-
-        sut.Invoking(c => c.GetProof(0)).Should().Throw<InvalidOperationException>();
-    }
-
-    [Test]
-    public void GetProof_AfterFinalizeContext_Returns15ElementProof()
-    {
-        using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);
-        Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(1L).TestObject;
-        sut.ProcessBlock(block);
-        sut.FinalizeContext();
-
-        ValueHash256[] proof = sut.GetProof(0);
-
-        proof.Should().HaveCount(15);
-    }
-
-    [Test]
     public void FinalizeContext_InPreMergeContext_SetsAccumulatorRoot()
     {
         using BlocksRootContext sut = new(0, specProvider: MainnetSpecProvider.Instance);

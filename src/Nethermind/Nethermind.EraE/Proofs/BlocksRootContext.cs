@@ -111,13 +111,6 @@ public sealed class BlocksRootContext : IDisposable
         }
     }
 
-    public ValueHash256[] GetProof(int blockIndex)
-    {
-        if (_accumulatorCalculator is null)
-            throw new InvalidOperationException("FinalizeContext must be called before GetProof.");
-        return _accumulatorCalculator.GetProof(blockIndex);
-    }
-
     public void Dispose()
     {
         _accumulatorCalculator?.Dispose();

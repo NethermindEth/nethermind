@@ -75,7 +75,7 @@ public class EraFileFormatComplianceTests
     }
 
     [Test]
-    public async Task File_PreMergeEpoch_SectionOrderIsHeaderBodyReceiptsProofTdAccumulatorIndex()
+    public async Task File_PreMergeEpoch_SectionOrderIsHeaderBodyReceiptsTdAccumulatorIndex()
     {
         const int blockCount = 2;
         using TestEraFile file = await TestEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
@@ -89,11 +89,9 @@ public class EraFileFormatComplianceTests
         types.LastIndexOf(TypeCompressedBody).Should().BeLessThan(
             types.IndexOf(TypeCompressedSlimReceipts), "all bodies must precede any receipts per spec");
 
+        // Receipts before TotalDifficulty
         types.LastIndexOf(TypeCompressedSlimReceipts).Should().BeLessThan(
-            types.IndexOf(TypeProof), "all receipts must precede any proof entries per spec");
-
-        types.LastIndexOf(TypeProof).Should().BeLessThan(
-            types.IndexOf(TypeTotalDifficulty), "proof entries must precede TotalDifficulty per spec");
+            types.IndexOf(TypeTotalDifficulty), "all receipts must precede TotalDifficulty per spec");
 
         // TotalDifficulty before AccumulatorRoot
         types.LastIndexOf(TypeTotalDifficulty).Should().BeLessThan(
@@ -105,12 +103,11 @@ public class EraFileFormatComplianceTests
     }
 
     [Test]
-    public async Task File_PostMergeEpoch_HasNoProofTdOrAccumulatorEntries()
+    public async Task File_PostMergeEpoch_HasNoTdOrAccumulatorEntries()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
         List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
 
-        types.Should().NotContain(TypeProof, "post-merge epochs have no Proof entries");
         types.Should().NotContain(TypeTotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
         types.Should().NotContain(TypeAccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
     }
@@ -125,7 +122,6 @@ public class EraFileFormatComplianceTests
         types.Count(t => t == TypeCompressedHeader).Should().Be(blockCount);
         types.Count(t => t == TypeCompressedBody).Should().Be(blockCount);
         types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(blockCount);
-        types.Count(t => t == TypeProof).Should().Be(blockCount);
         types.Count(t => t == TypeTotalDifficulty).Should().Be(blockCount);
         types.Count(t => t == TypeAccumulatorRoot).Should().Be(1);
         types.Count(t => t == TypeComponentIndex).Should().Be(1);

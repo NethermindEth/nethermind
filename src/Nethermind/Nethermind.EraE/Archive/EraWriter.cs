@@ -198,20 +198,6 @@ public sealed class EraWriter : IDisposable
                 totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
             }
 
-            // Accumulator path proofs are only written for pre-merge blocks. Post-merge blocks
-            // are verified via CL-side beacon proofs that are not embedded in the era file.
-            if (_preMergeBlockCount > 0)
-            {
-                ProofDecoder proofDecoder = new();
-                for (int i = 0; i < _preMergeBlockCount; i++)
-                {
-                    ValueHash256[] proofPath = _blocksRootContext!.GetProof(i);
-                    BlockHeaderProof proof = new() { ProofType = BlockHeaderProofType.BlockProofHistoricalHashesAccumulator, HashesAccumulator = proofPath };
-                    byte[] rlpBytes = proofDecoder.Encode(proof).Bytes;
-                    totalWritten += await _e2StoreWriter.WriteEntryAsSnappy(EntryTypes.Proof, rlpBytes, cancellation);
-                }
-            }
-
             // All TotalDifficulty entries (pre-merge and transition epochs)
             if (needsTd)
             {
