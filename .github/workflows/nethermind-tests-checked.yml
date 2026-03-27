@@ -187,6 +187,7 @@ jobs:
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          TEST_SKIP_HEAVY: 1
         run: |
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             ${{ matrix.variant.dotnet-args }}

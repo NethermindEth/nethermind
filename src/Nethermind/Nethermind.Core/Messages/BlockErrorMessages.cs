@@ -165,6 +165,9 @@ public static class BlockErrorMessages
     public static string InvalidBlockLevelAccessListHash(Hash256 expected, Hash256 actual) =>
         $"InvalidBlockLevelAccessListHash: Expected {expected}, got {actual}";
 
+    public static string BlockAccessListGasLimitExceeded(int itemCount, long gasLimit) =>
+        $"BlockAccessListGasLimitExceeded: BAL item count {itemCount} exceeds gas limit {gasLimit}.";
+
     public static string ReceiptCountMismatch(int expectedCount, int actualCount) =>
         $"ReceiptCountMismatch: Expected {expectedCount} receipts to match transaction count, but got {actualCount}.";
 

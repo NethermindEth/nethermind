@@ -23,17 +23,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
+            RlpByteArrayList? list = null;
 
-            ctx.ReadSequenceLength();
-            long requestId = ctx.DecodeLong();
+            try
+            {
+                ctx.ReadSequenceLength();
+                long requestId = ctx.DecodeLong();
 
-            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
 
-            return new ByteCodesMessage(list) { RequestId = requestId };
+                return new ByteCodesMessage(list) { RequestId = requestId };
+            }
+            catch
+            {
+                list?.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
     }
 }
