@@ -15,7 +15,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
-    private CancellationTokenSource? _improvementCancellation;
+    private readonly CancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
@@ -73,7 +73,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
-    public void CancelOngoingImprovements() => CancellationTokenExtensions.CancelDisposeAndClear(ref _improvementCancellation);
+    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
 
     public void Dispose()
     {

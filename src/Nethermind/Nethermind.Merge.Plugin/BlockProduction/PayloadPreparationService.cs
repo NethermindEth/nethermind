@@ -329,7 +329,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
-                        context.CancelOngoingImprovements();
                         context.Dispose();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
@@ -411,7 +410,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                     else
                     {
                         await blockContext.ImprovementTask;
-                        blockContext.CancelOngoingImprovements();
                     }
                 }
                 else
@@ -431,15 +429,6 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         _timer.Stop();
         _shutdown.Cancel();
-
-        foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
-        {
-            if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
-            {
-                context.CancelOngoingImprovements();
-                context.Dispose();
-            }
-        }
     }
 
     public void CancelBlockProduction(string payloadId)
