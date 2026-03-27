@@ -3,21 +3,6 @@ name: Sync PR Gate (Hoodi)
 on:
   pull_request:
     branches: [master]
-  workflow_dispatch:
-    inputs:
-      ref:
-        description: "Branch or SHA to test"
-        default: ""
-        required: false
-      mode:
-        description: "Sync mode to run"
-        type: choice
-        options:
-          - Both
-          - HalfPath
-          - Flat
-        default: Both
-        required: true
 
 concurrency:
   group: sync-pr-${{ github.head_ref || github.ref }}
@@ -54,7 +39,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.inputs.ref || github.sha }}
+          ref: ${{ github.sha }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
