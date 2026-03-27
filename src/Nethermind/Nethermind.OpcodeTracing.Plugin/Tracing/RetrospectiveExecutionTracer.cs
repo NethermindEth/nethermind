@@ -90,9 +90,8 @@ public sealed class RetrospectiveExecutionTracer
             _logger.Info($"RetrospectiveExecution tracing with MaxDegreeOfParallelism={_maxDegreeOfParallelism}");
         }
 
-        // Create enumerable of block numbers for processing
-        var blockNumbers = Enumerable.Range(0, (int)range.Count)
-            .Select(i => range.StartBlock + i);
+        // Generate block numbers without int cast to avoid overflow for large ranges
+        IEnumerable<long> blockNumbers = GenerateBlockNumbers(range);
 
         // Configure parallel processing options
         var parallelOptions = new ParallelOptions
@@ -107,6 +106,14 @@ public sealed class RetrospectiveExecutionTracer
             ProcessBlockSync(blockNumber, progress, ct);
             return ValueTask.CompletedTask;
         }).ConfigureAwait(false);
+    }
+
+    private static IEnumerable<long> GenerateBlockNumbers(BlockRange range)
+    {
+        for (long i = range.StartBlock; i <= range.EndBlock; i++)
+        {
+            yield return i;
+        }
     }
 
     /// <summary>
@@ -191,12 +198,15 @@ public sealed class RetrospectiveExecutionTracer
             // Create isolated processing scope based on parent state
             using IReadOnlyTxProcessingScope scope = txProcessorSource.Build(parentHeader);
 
+            // Clone the header to avoid mutating the shared cached instance from BlockTree
+            BlockHeader tracingHeader = block.Header.Clone();
+
             // Get spec and calculate blob base fee for this block
-            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+            IReleaseSpec spec = _specProvider.GetSpec(tracingHeader);
             UInt256 blobBaseFee = UInt256.Zero;
-            if (spec.IsEip4844Enabled && block.Header.ExcessBlobGas.HasValue)
+            if (spec.IsEip4844Enabled && tracingHeader.ExcessBlobGas.HasValue)
             {
-                BlobGasCalculator.TryCalculateFeePerBlobGas(block.Header, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(tracingHeader, spec.BlobBaseFeeUpdateFraction, out blobBaseFee);
             }
 
             // Recover sender addresses from ECDSA signatures - transactions from database don't have sender set
@@ -205,58 +215,49 @@ public sealed class RetrospectiveExecutionTracer
                 tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
 
-            // Reset GasUsed to 0 for tracing - the finalized header has the total gas used,
+            // Reset GasUsed to 0 for tracing on the cloned header - the finalized header has the total gas used,
             // but ValidateGas() checks against remaining gas (GasLimit - GasUsed).
             // Without this reset, all transactions fail the gas limit check.
-            long originalGasUsed = block.Header.GasUsed;
-            block.Header.GasUsed = 0;
+            tracingHeader.GasUsed = 0;
 
             if (_logger.IsDebug)
             {
-                _logger.Debug($"Processing block {block.Number} with {block.Transactions.Length} txs (original GasUsed: {originalGasUsed}, GasLimit: {block.Header.GasLimit})");
+                _logger.Debug($"Processing block {block.Number} with {block.Transactions.Length} txs (original GasUsed: {block.Header.GasUsed}, GasLimit: {tracingHeader.GasLimit})");
             }
 
             long blockTotalOpcodes = 0;
             int successfulTxs = 0;
             int failedTxs = 0;
 
-            try
+            // Create block execution context using the cloned header
+            BlockExecutionContext blockExecutionContext = new(tracingHeader, spec, blobBaseFee);
+
+            // Process each transaction in the block
+            foreach (Transaction tx in block.Transactions)
             {
-                // Create block execution context
-                BlockExecutionContext blockExecutionContext = new(block.Header, spec, blobBaseFee);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                // Process each transaction in the block
-                foreach (Transaction tx in block.Transactions)
+                // Create opcode counting tracer for this transaction
+                OpcodeCountingTxTracer txTracer = new();
+
+                // Execute transaction with tracing
+                TransactionResult result = scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
+
+                if (result.TransactionExecuted)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    // Create opcode counting tracer for this transaction
-                    OpcodeCountingTxTracer txTracer = new();
-
-                    // Execute transaction with tracing
-                    TransactionResult result = scope.TransactionProcessor.Trace(tx, in blockExecutionContext, txTracer);
-
-                    if (result.TransactionExecuted)
+                    successfulTxs++;
+                    // Accumulate opcode counts from this transaction
+                    txTracer.AccumulateInto(blockOpcodes);
+                    blockTotalOpcodes += txTracer.TotalOpcodes;
+                }
+                else
+                {
+                    failedTxs++;
+                    if (_logger.IsDebug)
                     {
-                        successfulTxs++;
-                        // Accumulate opcode counts from this transaction
-                        txTracer.AccumulateInto(blockOpcodes);
-                        blockTotalOpcodes += txTracer.TotalOpcodes;
-                    }
-                    else
-                    {
-                        failedTxs++;
-                        if (_logger.IsDebug)
-                        {
-                            _logger.Debug($"Block {block.Number} tx {tx.Hash} failed: {result.ErrorDescription}");
-                        }
+                        _logger.Debug($"Block {block.Number} tx {tx.Hash} failed: {result.ErrorDescription}");
                     }
                 }
-            }
-            finally
-            {
-                // Restore original GasUsed value
-                block.Header.GasUsed = originalGasUsed;
             }
 
             if (_logger.IsDebug)

@@ -195,18 +195,23 @@ public sealed class OpcodeTraceRecorder : IDisposable, IAsyncDisposable
             long effectiveStart = _traceConfig.EffectiveStartBlock;
             long effectiveEnd = _traceConfig.EffectiveEndBlock;
 
-            if (_config.Blocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
+            if (_config.RecentBlocks.HasValue && !_config.StartBlock.HasValue && !_config.EndBlock.HasValue)
             {
                 long currentTip = api.BlockTree?.Head?.Number ?? 0;
                 effectiveStart = currentTip + 1;
-                effectiveEnd = currentTip + _config.Blocks.Value;
+                effectiveEnd = currentTip + _config.RecentBlocks.Value;
 
-                // Update progress tracker with new range
+                // Update progress tracker and trace config with new range
                 _progress = new TracingProgress(effectiveStart, effectiveEnd);
+                _traceConfig = _traceConfig with
+                {
+                    EffectiveStartBlock = effectiveStart,
+                    EffectiveEndBlock = effectiveEnd
+                };
 
                 if (_logger.IsInfo)
                 {
-                    _logger.Info($"RealTime mode with Blocks={_config.Blocks.Value}: recalculated range to {effectiveStart}-{effectiveEnd} (current tip: {currentTip})");
+                    _logger.Info($"RealTime mode with RecentBlocks={_config.RecentBlocks.Value}: recalculated range to {effectiveStart}-{effectiveEnd} (current tip: {currentTip})");
                 }
             }
 
