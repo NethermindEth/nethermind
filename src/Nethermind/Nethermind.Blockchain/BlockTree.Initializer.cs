@@ -8,11 +8,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain;
 
 public partial class BlockTree
 {
+    private const string PersistedBoundaryRepairLogMarker = "PERSISTED-BOUNDARY-REPAIR";
     private bool _tryToRecoverFromHeaderBelowBodyCorruption = false;
 
     public void RecalculateTreeLevels()
@@ -322,14 +324,21 @@ public partial class BlockTree
     private void LoadStartBlock()
     {
         Block? startBlock = null;
+        string reconciliationOutcome = "startup boundary unavailable";
         byte[] persistedNumberData = _blockInfoDb.Get(StateHeadHashDbEntryAddress);
+        byte[]? persistedHashData = _blockInfoDb.Get(StateHeadBlockHashDbEntryAddress);
         BestPersistedState = persistedNumberData is null ? null : new Rlp.ValueDecoderContext(persistedNumberData).DecodeLong();
         long? persistedNumber = BestPersistedState;
+        Hash256? persistedHash = persistedHashData is null ? null : new Hash256(persistedHashData);
         if (persistedNumber is not null)
         {
-            startBlock = FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
+            startBlock = TryLoadStartBlockFromExactBoundary(persistedNumber.Value, persistedHash)
+                ?? FindBlock(persistedNumber.Value, BlockTreeLookupOptions.None);
             if (Logger.IsInfo) Logger.Info(
                 $"Start block loaded from reorg boundary - {persistedNumber} - {startBlock?.ToString(Block.Format.Short)}");
+            reconciliationOutcome = persistedHash is null
+                ? "loaded from number-only persisted boundary metadata"
+                : "loaded from exact persisted-boundary hash metadata";
         }
         else
         {
@@ -338,7 +347,54 @@ public partial class BlockTree
             {
                 startBlock = FindBlock(new Hash256(data), BlockTreeLookupOptions.None);
                 if (Logger.IsInfo) Logger.Info($"Start block loaded from HEAD - {startBlock?.ToString(Block.Format.Short)}");
+                reconciliationOutcome = "loaded from legacy HEAD metadata";
             }
+        }
+
+        PersistedStateInfo? persistedStateInfoValue = null;
+        if (_persistedStateInfoProvider?.TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo) == true)
+        {
+            persistedStateInfoValue = persistedStateInfo;
+        }
+
+        bool isCanonicalStartBlock = startBlock is not null && IsCanonical(startBlock);
+
+        if (persistedStateInfoValue is PersistedStateInfo exactPersistedState &&
+            startBlock is not null &&
+            (!MatchesPersistedState(startBlock, exactPersistedState) || !isCanonicalStartBlock))
+        {
+            startBlock = RepairPersistedBoundary(startBlock, persistedNumber, persistedHash, exactPersistedState, out reconciliationOutcome);
+        }
+        else if (persistedStateInfoValue is PersistedStateInfo)
+        {
+            reconciliationOutcome = "validated against exact persisted state and canonical chain";
+        }
+        else if (startBlock is not null)
+        {
+            reconciliationOutcome = "persisted state info unavailable";
+        }
+
+        if (Logger.IsInfo)
+        {
+            BlockInfo? canonicalInfo = startBlock is null ? null : FindCanonicalBlockInfo(startBlock.Number);
+            bool? isCanonical = startBlock is null || startBlock.Hash is null
+                ? null
+                : canonicalInfo?.BlockHash == startBlock.Hash;
+            bool? hasRecoverableState = startBlock is null
+                ? null
+                : _persistedStateInfoProvider?.HasRecoverableStateForBlock(startBlock.Header);
+            string persistedStateDescription = persistedStateInfoValue is PersistedStateInfo logStateInfo
+                ? $"{logStateInfo.BlockNumber} / {logStateInfo.StateRoot}"
+                : "<unavailable>";
+
+            Logger.Info(
+                "Startup state diagnostics: " +
+                $"stored persisted boundary number={persistedNumber?.ToString() ?? "<none>"}, " +
+                $"stored persisted boundary hash={persistedHash?.ToString() ?? "<none>"}, " +
+                $"flat persisted state={persistedStateDescription}, " +
+                $"restored block={(startBlock?.ToString(Block.Format.Short) ?? "<none>")}, " +
+                $"restored canonical={isCanonical?.ToString() ?? "<n/a>"}, " +
+                $"restored recoverable={hasRecoverableState?.ToString() ?? "<n/a>"}.");
         }
 
         if (startBlock is not null)
@@ -349,7 +405,129 @@ public partial class BlockTree
             }
 
             SetHeadBlock(startBlock.Hash);
+            if (Logger.IsInfo)
+            {
+                Logger.Info($"Startup head set to {Head?.ToString(Block.Format.Short)}, state root: {Head?.StateRoot}.");
+            }
         }
+
+        LastStartupBoundaryDiagnostics = new StartupBoundaryDiagnostics(
+            persistedNumber,
+            persistedHash,
+            persistedStateInfoValue,
+            reconciliationOutcome);
+    }
+
+    private Block? TryLoadStartBlockFromExactBoundary(long persistedNumber, Hash256? persistedHash)
+    {
+        if (persistedHash is null)
+        {
+            return null;
+        }
+
+        Block? exactBlock = FindBlock(persistedHash, BlockTreeLookupOptions.None);
+        if (exactBlock is null)
+        {
+            if (Logger.IsWarn)
+            {
+                Logger.Warn($"Stored persisted boundary hash {persistedHash} could not be resolved at startup.");
+            }
+
+            return null;
+        }
+
+        if (exactBlock.Number != persistedNumber)
+        {
+            if (Logger.IsWarn)
+            {
+                Logger.Warn(
+                    $"Stored persisted boundary hash {persistedHash} resolved to block number {exactBlock.Number}, expected {persistedNumber}. Falling back to repair.");
+            }
+
+            return null;
+        }
+
+        return exactBlock;
+    }
+
+    private static bool MatchesPersistedState(Block block, PersistedStateInfo persistedStateInfo) =>
+        block.Number == persistedStateInfo.BlockNumber &&
+        block.StateRoot == persistedStateInfo.StateRoot;
+
+    private bool IsCanonical(Block block) =>
+        block.Hash is not null &&
+        FindCanonicalBlockInfo(block.Number)?.BlockHash == block.Hash;
+
+    private Block RepairPersistedBoundary(Block restoredBlock, long? persistedNumber, Hash256? persistedHash, PersistedStateInfo persistedStateInfo, out string reconciliationOutcome)
+    {
+        bool promotedRestoredBlockToMainChain = false;
+        Block? repairedBlock = null;
+        if (MatchesPersistedState(restoredBlock, persistedStateInfo))
+        {
+            repairedBlock = restoredBlock;
+            if (!IsCanonical(repairedBlock))
+            {
+                PromoteStartupBoundaryToMainChain(repairedBlock);
+                promotedRestoredBlockToMainChain = true;
+            }
+        }
+        else
+        {
+            repairedBlock = FindCanonicalBlockByStateRoot(persistedStateInfo.BlockNumber, persistedStateInfo.StateRoot);
+        }
+
+        if (repairedBlock is null)
+        {
+            reconciliationOutcome = "repair failed";
+            throw new InvalidDataException(
+                $"{PersistedBoundaryRepairLogMarker}: failed to repair persisted boundary. " +
+                $"stored number={persistedNumber?.ToString() ?? "<none>"}, stored hash={persistedHash?.ToString() ?? "<none>"}, " +
+                $"restored block={restoredBlock.ToString(Block.Format.Short)}, " +
+                $"flat persisted state={persistedStateInfo.BlockNumber}/{persistedStateInfo.StateRoot}, " +
+                "no canonical block matched the exact persisted flat-state identity.");
+        }
+
+        if (Logger.IsWarn)
+        {
+            string repairAction = promotedRestoredBlockToMainChain
+                ? $"persisted boundary promoted to main chain at {repairedBlock.ToString(Block.Format.Short)}"
+                : $"persisted boundary repaired from {restoredBlock.ToString(Block.Format.Short)} to {repairedBlock.ToString(Block.Format.Short)}";
+            Logger.Warn($"{PersistedBoundaryRepairLogMarker}: {repairAction}.");
+        }
+
+        reconciliationOutcome = promotedRestoredBlockToMainChain
+            ? $"promoted exact persisted-state block to main chain at {repairedBlock.ToString(Block.Format.Short)}"
+            : $"repaired to {repairedBlock.ToString(Block.Format.Short)}";
+        BestPersistedState = repairedBlock.Number;
+        return repairedBlock;
+    }
+
+    private Block? FindCanonicalBlockByStateRoot(long blockNumber, ValueHash256 stateRoot)
+    {
+        BlockInfo? canonicalInfo = FindCanonicalBlockInfo(blockNumber);
+        if (canonicalInfo?.BlockHash is not Hash256 blockHash)
+        {
+            return null;
+        }
+
+        Block? canonicalBlock = FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
+        return canonicalBlock?.StateRoot == stateRoot ? canonicalBlock : null;
+    }
+
+    private void PromoteStartupBoundaryToMainChain(Block block)
+    {
+        ChainLevelInfo? level = LoadLevel(block.Number) ?? throw new InvalidDataException(
+            $"Missing chain level at number {block.Number} while promoting startup boundary.");
+        int? index = level.FindIndex(block.Hash) ?? throw new InvalidDataException(
+            $"Unable to find startup boundary block {block.ToString(Block.Format.Short)} on its chain level.");
+
+        if (index.Value != 0)
+        {
+            level.SwapToMain(index.Value);
+        }
+
+        level.HasBlockOnMainChain = true;
+        _chainLevelInfoRepository.PersistLevel(block.Number, level);
     }
 
     private void SetHeadBlock(Hash256 headHash)

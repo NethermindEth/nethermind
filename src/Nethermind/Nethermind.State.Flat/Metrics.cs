@@ -85,4 +85,14 @@ public static class Metrics
     [ExponentialPowerHistogramMetric(Start = 1, Factor = 1.5, Count = 1, LabelNames = [])]
     public static IMetricObserver CompactTime { get; set; } = new NoopMetricObserver();
 
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of times the compactor queue was full when adding a snapshot")]
+    public static long CompactorQueueFullCount { get; set; }
+
+    [DetailedMetric]
+    [CounterMetric]
+    [Description("Number of times AddSnapshot had to execute compaction and persistence inline")]
+    public static long InlineDrainActivationCount { get; set; }
+
 }

@@ -6,7 +6,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat;
 
-public interface IFlatDbManager : IFlatCommitTarget
+public interface IFlatDbManager : IFlatCommitTarget, IPersistedStateInfoProvider
 {
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage);

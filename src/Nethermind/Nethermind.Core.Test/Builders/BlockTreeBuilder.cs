@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
@@ -34,6 +35,7 @@ namespace Nethermind.Core.Test.Builders
         private Hash256? _stateRoot;
         private Func<Block, Hash256>? _stateRootGen;
         private Func<Block, Transaction, IEnumerable<LogEntry>>? _logCreationFunction;
+        private IPersistedStateInfoProvider? _persistedStateInfoProvider;
 
         private bool _onlyHeaders;
         private bool _noHead = false;
@@ -76,7 +78,8 @@ namespace Nethermind.Core.Test.Builders
                         _specProvider,
                         BloomStorage,
                         SyncConfig,
-                        LimboLogs.Instance);
+                        LimboLogs.Instance,
+                        _persistedStateInfoProvider);
                 }
 
                 return _blockTree;
@@ -523,6 +526,12 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithSyncConfig(ISyncConfig syncConfig)
         {
             SyncConfig = syncConfig;
+            return this;
+        }
+
+        public BlockTreeBuilder WithPersistedStateInfoProvider(IPersistedStateInfoProvider persistedStateInfoProvider)
+        {
+            _persistedStateInfoProvider = persistedStateInfoProvider;
             return this;
         }
 

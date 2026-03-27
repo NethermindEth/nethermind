@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -19,6 +20,7 @@ namespace Nethermind.State.Flat;
 public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 {
     private static readonly TimeSpan GatherGiveUpDeadline = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DefaultCompactorEnqueueWarningDelay = TimeSpan.FromSeconds(10);
 
     private readonly ILogger _logger;
     private readonly IPersistenceManager _persistenceManager;
@@ -54,6 +56,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly TimeSpan _compactorEnqueueWarningDelay;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -66,7 +69,8 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         IPersistenceManager persistenceManager,
         IFlatDbConfig config,
         ILogManager logManager,
-        bool enableDetailedMetrics)
+        bool enableDetailedMetrics,
+        TimeSpan? compactorEnqueueWarningDelay = null)
     {
         _trieNodeCache = trieNodeCache;
         _snapshotCompactor = snapshotCompactor;
@@ -75,6 +79,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _compactorEnqueueWarningDelay = compactorEnqueueWarningDelay ?? DefaultCompactorEnqueueWarningDelay;
 
         _compactSize = config.CompactSize;
         _inlineCompaction = config.InlineCompaction;
@@ -116,17 +121,22 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunCompactJob(StateId stateId, CancellationToken cancellationToken)
     {
-        // We do this async because of the lock
+        CompactSnapshot(stateId);
+        await QueuePersistenceJob(stateId, cancellationToken);
+    }
+
+    private void CompactSnapshot(StateId stateId)
+    {
         _snapshotRepository.AddStateId(stateId);
 
         if (_snapshotCompactor.DoCompactSnapshot(stateId))
         {
             ClearReadOnlyBundleCache();
         }
-
-        // Trigger persistence job.
-        await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
     }
+
+    private ValueTask QueuePersistenceJob(StateId stateId, CancellationToken cancellationToken)
+        => _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
 
     private async Task RunPersistence(CancellationToken cancellationToken)
     {
@@ -343,18 +353,54 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
         else
         {
-            if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
+            if (_compactorJobs.Writer.TryWrite(endBlock))
             {
-                // Ignore it, just dispose
-                transientResource.Dispose();
+                if (!_populateTrieNodeCacheJobs.Writer.TryWrite(transientResource))
+                {
+                    // Ignore it, just dispose
+                    transientResource.Dispose();
+                }
+            }
+            else
+            {
+                Metrics.CompactorQueueFullCount++;
+                EnqueueCompactorJobWithWarnings(endBlock, persistedStateId);
+            }
+        }
+    }
+
+    private void EnqueueCompactorJobWithWarnings(StateId endBlock, StateId persistedStateId)
+    {
+        if (_cancelTokenSource.Token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        long stallStart = Stopwatch.GetTimestamp();
+        while (true)
+        {
+            Task<bool> waitToWriteTask = _compactorJobs.Writer.WaitToWriteAsync(_cancelTokenSource.Token).AsTask();
+            if (waitToWriteTask.Wait(_compactorEnqueueWarningDelay))
+            {
+                if (!waitToWriteTask.Result || _cancelTokenSource.Token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                if (_compactorJobs.Writer.TryWrite(endBlock))
+                {
+                    return;
+                }
+
+                continue;
             }
 
-            if (!_compactorJobs.Writer.TryWrite(endBlock))
+            if (_logger.IsWarn)
             {
-                if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
-
-                if (_logger.IsWarn) _logger.Warn("Compactor job stall! Insufficient reorg depth or too slow persistence!");
-                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                _logger.Warn(
+                    $"Compactor job stall! Insufficient reorg depth or too slow persistence! " +
+                    $"Persisted state: {persistedStateId}, snapshot target: {endBlock}, " +
+                    $"waiting for enqueue for {Stopwatch.GetElapsedTime(stallStart)}.");
             }
         }
     }
@@ -404,10 +450,27 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     public bool HasStateForBlock(in StateId stateId)
     {
+        // FlatDB recoverability is exact by StateId. Do not weaken this to block-number-only checks,
+        // otherwise startup can accept the wrong branch/root after persisted-boundary drift.
         if (_snapshotRepository.HasState(stateId)) return true;
         if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
         return false;
     }
+
+    public bool TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo)
+    {
+        StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        if (currentPersistedStateId == StateId.PreGenesis)
+        {
+            persistedStateInfo = default;
+            return false;
+        }
+
+        persistedStateInfo = new PersistedStateInfo(currentPersistedStateId.BlockNumber, currentPersistedStateId.StateRoot);
+        return true;
+    }
+
+    public bool HasRecoverableStateForBlock(BlockHeader? blockHeader) => HasStateForBlock(new StateId(blockHeader));
 
     public async ValueTask DisposeAsync()
     {

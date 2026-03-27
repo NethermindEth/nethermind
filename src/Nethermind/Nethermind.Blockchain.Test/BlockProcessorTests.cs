@@ -45,8 +45,10 @@ public class BlockProcessorTests
 {
     private static (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) CreateProcessorAndBranch(
         IRewardCalculator? rewardCalculator = null,
-        IBlockCachePreWarmer? preWarmer = null)
+        IBlockCachePreWarmer? preWarmer = null,
+        ILogManager? logManager = null)
     {
+        logManager ??= LimboLogs.Instance;
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
@@ -57,8 +59,8 @@ public class BlockProcessorTests
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashStore>(),
-            LimboLogs.Instance,
-            new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+            logManager,
+            new WithdrawalProcessor(stateProvider, logManager),
             new ExecutionRequestsProcessor(transactionProcessor));
         BranchProcessor branchProcessor = new(
             processor,
@@ -66,7 +68,7 @@ public class BlockProcessorTests
             stateProvider,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
             Substitute.For<IBlockhashProvider>(),
-            LimboLogs.Instance,
+            logManager,
             preWarmer);
 
         return (processor, branchProcessor, stateProvider);
@@ -180,6 +182,31 @@ public class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task BranchProcessor_waits_for_prewarmer_task_before_returning()
+    {
+        BlockingPreWarmer preWarmer = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(preWarmer: preWarmer);
+
+        BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(3, MuirGlacier.Instance).TestObject;
+
+        Task<Block[]> processingTask = Task.Run(() => branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance));
+
+        await preWarmer.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Task completedTask = await Task.WhenAny(processingTask, Task.Delay(TimeSpan.FromMilliseconds(300)));
+        completedTask.Should().NotBe(processingTask, "BranchProcessor must not continue while the prewarmer task is still running");
+
+        preWarmer.Release();
+        Block[] processedBlocks = await processingTask.WaitAsync(TimeSpan.FromSeconds(5));
+        processedBlocks.Should().HaveCount(1);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_unsubscribes_from_TransactionsExecuted_after_processing()
     {
         (BlockProcessor processor, BranchProcessor branchProcessor, IWorldState stateProvider) = CreateProcessorAndBranch();
@@ -231,6 +258,55 @@ public class BlockProcessorTests
         txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
 
         stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockValidationTransactionsExecutor_stops_between_transactions_when_cancelled()
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        CancellationTokenSource cancellationTokenSource = new();
+        int executeCount = 0;
+
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(_ =>
+        {
+            executeCount++;
+            cancellationTokenSource.Cancel();
+            return TransactionResult.Ok;
+        });
+
+        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
+        Block block = Build.A.Block.WithTransactions(2, MuirGlacier.Instance).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        Assert.Throws<OperationCanceledException>(() =>
+            txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, cancellationTokenSource.Token));
+
+        executeCount.Should().Be(1, "cancellation should be observed before starting the next transaction");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BranchProcessor_does_not_warn_for_expected_shutdown_cancellation()
+    {
+        TestLogger testLogger = new();
+        (_, BranchProcessor branchProcessor, _) = CreateProcessorAndBranch(
+            rewardCalculator: new RewardCalculator(MainnetSpecProvider.Instance),
+            logManager: new OneLoggerLogManager(new(testLogger)));
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        Block block = Build.A.Block.WithTransactions(1, MuirGlacier.Instance).WithHeader(header).TestObject;
+        using CancellationTokenSource cancellationTokenSource = new();
+        cancellationTokenSource.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => branchProcessor.Process(
+            null,
+            new List<Block> { block },
+            ProcessingOptions.None,
+            NullBlockTracer.Instance,
+            cancellationTokenSource.Token));
+
+        testLogger.LogList.Should().NotContain(log => log.Contains("while processing blocks.", StringComparison.Ordinal));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -300,6 +376,25 @@ public class BlockProcessorTests
             CapturedToken = cancellationToken;
             return Task.CompletedTask;
         }
+
+        public CacheType ClearCaches() => default;
+    }
+
+    private sealed class BlockingPreWarmer : IBlockCachePreWarmer
+    {
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started => _started;
+
+        public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec,
+            CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
+        {
+            _started.TrySetResult();
+            return _release.Task;
+        }
+
+        public void Release() => _release.TrySetResult();
 
         public CacheType ClearCaches() => default;
     }

@@ -33,6 +33,8 @@ public sealed class BlockCachePreWarmer(
     ILogManager logManager
 ) : IBlockCachePreWarmer
 {
+    internal static readonly TimeSpan AddressWarmerWaitWarningInterval = TimeSpan.FromSeconds(30);
+
     private readonly int _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches), Environment.ProcessorCount * 2);
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
@@ -87,6 +89,17 @@ public sealed class BlockCachePreWarmer(
         cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
+    }
+
+    internal static void WaitForAddressWarmer(ManualResetEventSlim doneEvent, TimeSpan warningInterval, Block block, ILogger logger)
+    {
+        while (!doneEvent.Wait(warningInterval))
+        {
+            if (logger.IsWarn)
+            {
+                logger.Warn($"Waiting for address warmer to finish for block {block.ToString(Block.Format.Short)}.");
+            }
+        }
     }
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
@@ -284,7 +297,7 @@ public sealed class BlockCachePreWarmer(
         private readonly ArrayPoolList<AccessList>? SystemTxAccessLists = GetAccessLists(block, spec, systemAccessLists);
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
-        public void Wait() => _doneEvent.Wait();
+        public void Wait() => WaitForAddressWarmer(_doneEvent, AddressWarmerWaitWarningInterval, Block, PreWarmer._logger);
 
         public void Dispose() => _doneEvent.Dispose();
 

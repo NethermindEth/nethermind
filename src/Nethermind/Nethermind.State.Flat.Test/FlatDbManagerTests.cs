@@ -5,6 +5,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -38,6 +41,8 @@ public class FlatDbManagerTests
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
         _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true };
+        Metrics.CompactorQueueFullCount = 0;
+        Metrics.InlineDrainActivationCount = 0;
     }
 
     [TearDown]
@@ -47,7 +52,7 @@ public class FlatDbManagerTests
         _cts.Dispose();
     }
 
-    private FlatDbManager CreateManager() => new(
+    private FlatDbManager CreateManager(ILogManager? logManager = null, TimeSpan? compactorEnqueueWarningDelay = null) => new(
         _resourcePool,
         _processExitSource,
         _trieNodeCache,
@@ -55,8 +60,9 @@ public class FlatDbManagerTests
         _snapshotRepository,
         _persistenceManager,
         _config,
-        LimboLogs.Instance,
-        enableDetailedMetrics: false);
+        logManager ?? LimboLogs.Instance,
+        enableDetailedMetrics: false,
+        compactorEnqueueWarningDelay: compactorEnqueueWarningDelay);
 
     private static StateId CreateStateId(long blockNumber, byte rootByte = 0)
     {
@@ -102,6 +108,64 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task HasStateForBlock_EarlierBlockNumberWithoutExactStateId_ReturnsFalse()
+    {
+        StateId stateId = CreateStateId(9, rootByte: 9);
+        _snapshotRepository.HasState(stateId).Returns(false);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(10, rootByte: 10));
+
+        await using FlatDbManager manager = CreateManager();
+        bool result = manager.HasStateForBlock(stateId);
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public void FlatPersistedStateInfoProvider_TryGetPersistedStateInfo_ReadsCurrentStateFromPersistence()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId currentState = CreateStateId(12, rootByte: 4);
+        reader.CurrentState.Returns(currentState);
+        persistence.CreateReader().Returns(reader);
+
+        FlatPersistedStateInfoProvider provider = new(persistence, _snapshotRepository);
+
+        bool result = provider.TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo);
+
+        Assert.That(result, Is.True);
+        Assert.That(persistedStateInfo.BlockNumber, Is.EqualTo(currentState.BlockNumber));
+        Assert.That(persistedStateInfo.StateRoot, Is.EqualTo(currentState.StateRoot));
+    }
+
+    [Test]
+    public void FlatPersistedStateInfoProvider_HasRecoverableStateForBlock_UsesSnapshotsAndExactPersistedState()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId currentState = CreateStateId(12, rootByte: 4);
+        reader.CurrentState.Returns(currentState);
+        persistence.CreateReader().Returns(reader);
+
+        BlockHeader snapshotHeader = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
+        BlockHeader persistedHeader = Build.A.BlockHeader.WithNumber(currentState.BlockNumber).WithStateRoot(TestItem.KeccakB).TestObject;
+        BlockHeader missingHeader = Build.A.BlockHeader.WithNumber(10).WithStateRoot(TestItem.KeccakC).TestObject;
+
+        currentState = new StateId(persistedHeader);
+        reader.CurrentState.Returns(currentState);
+
+        _snapshotRepository.HasState(new StateId(snapshotHeader)).Returns(true);
+        _snapshotRepository.HasState(new StateId(persistedHeader)).Returns(false);
+        _snapshotRepository.HasState(new StateId(missingHeader)).Returns(false);
+
+        FlatPersistedStateInfoProvider provider = new(persistence, _snapshotRepository);
+
+        Assert.That(provider.HasRecoverableStateForBlock(snapshotHeader), Is.True);
+        Assert.That(provider.HasRecoverableStateForBlock(persistedHeader), Is.True);
+        Assert.That(provider.HasRecoverableStateForBlock(missingHeader), Is.False);
     }
 
     [Test]
@@ -189,5 +253,101 @@ public class FlatDbManagerTests
         manager.AddSnapshot(snapshot, transientResource);
 
         _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenCompactorQueueIsFull_CompletesWithinBoundedTime()
+    {
+        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3, _) =
+            await SetupSaturatedCompactorQueue();
+        await using (manager)
+        {
+            Task thirdAddSnapshot = Task.Run(() => manager.AddSnapshot(snapshot3, resource3));
+
+            try
+            {
+                Task completedTask = await Task.WhenAny(thirdAddSnapshot, Task.Delay(TimeSpan.FromMilliseconds(500)));
+                bool completed = completedTask == thirdAddSnapshot;
+
+                Assert.That(completed, Is.False, "AddSnapshot should wait for the background compactor pipeline instead of executing compaction inline.");
+            }
+            finally
+            {
+                releaseCompaction.TrySetResult();
+                await thirdAddSnapshot.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+    }
+
+    [Test]
+    public async Task AddSnapshot_WhenQueueSaturated_EmitsBackpressureSignal()
+    {
+        (FlatDbManager manager, TaskCompletionSource releaseCompaction, Snapshot snapshot3, TransientResource resource3, TestLogger testLogger) =
+            await SetupSaturatedCompactorQueue();
+        await using (manager)
+        {
+            Task blockedAddSnapshot = Task.Run(() => manager.AddSnapshot(snapshot3, resource3));
+
+            Assert.That(
+                SpinWait.SpinUntil(
+                    () => testLogger.LogList.Exists(log => log.Contains("Compactor job stall!", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(2)),
+                Is.True,
+                "Expected a warning while waiting to enqueue a compactor job.");
+            Assert.That(Metrics.CompactorQueueFullCount, Is.EqualTo(1));
+
+            releaseCompaction.TrySetResult();
+            await blockedAddSnapshot.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    /// <summary>
+    /// Creates a FlatDbManager with MaxInFlightCompactJob=1, fills the queue with two snapshots (first blocks compaction),
+    /// and returns the manager, a release handle, and a third snapshot ready to trigger backpressure.
+    /// </summary>
+    private async Task<(FlatDbManager Manager, TaskCompletionSource ReleaseCompaction, Snapshot Snapshot3, TransientResource Resource3, TestLogger Logger)> SetupSaturatedCompactorQueue()
+    {
+        _config = new FlatDbConfig { CompactSize = 16, MaxInFlightCompactJob = 1, InlineCompaction = false };
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(0));
+        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+
+        TaskCompletionSource firstCompactionStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseCompaction = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int compactionCallCount = 0;
+        _snapshotCompactor.DoCompactSnapshot(Arg.Any<StateId>())
+            .Returns(_ =>
+            {
+                int callCount = Interlocked.Increment(ref compactionCallCount);
+                if (callCount == 1)
+                {
+                    firstCompactionStarted.TrySetResult();
+                    releaseCompaction.Task.GetAwaiter().GetResult();
+                }
+
+                return false;
+            });
+
+        ResourcePool realResourcePool = new(_config);
+        (Snapshot snapshot1, TransientResource resource1) = CreateSnapshot(realResourcePool, 1, 2);
+        (Snapshot snapshot2, TransientResource resource2) = CreateSnapshot(realResourcePool, 2, 3);
+        (Snapshot snapshot3, TransientResource resource3) = CreateSnapshot(realResourcePool, 3, 4);
+
+        TestLogger testLogger = new();
+        OneLoggerLogManager logManager = new(new ILogger(testLogger));
+        FlatDbManager manager = CreateManager(logManager, TimeSpan.FromMilliseconds(50));
+        manager.AddSnapshot(snapshot1, resource1);
+        await firstCompactionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        manager.AddSnapshot(snapshot2, resource2);
+
+        return (manager, releaseCompaction, snapshot3, resource3, testLogger);
+    }
+
+    private static (Snapshot Snapshot, TransientResource Resource) CreateSnapshot(ResourcePool resourcePool, long fromBlock, long toBlock)
+    {
+        StateId snapshotFrom = CreateStateId(fromBlock);
+        StateId snapshotTo = CreateStateId(toBlock);
+        Snapshot snapshot = resourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = resourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+        return (snapshot, transientResource);
     }
 }
