@@ -149,6 +149,11 @@ namespace Nethermind.Blockchain.Visitors
 
         async Task<BlockVisitOutcome> IBlockTreeVisitor.VisitBlock(Block block, CancellationToken cancellationToken)
         {
+            if (block is null)
+            {
+                return BlockVisitOutcome.None;
+            }
+
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;

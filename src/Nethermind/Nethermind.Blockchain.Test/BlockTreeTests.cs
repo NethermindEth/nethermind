@@ -2319,7 +2319,7 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Load_start_block_when_number_only_restore_matches_state_but_is_not_canonical_fails_loudly()
+    public void Load_start_block_when_number_only_restore_matches_exact_persisted_state_promotes_it_to_main_chain()
     {
         (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, Block forkBlock2) = CreateTreeWithForkAtBlock2(
             canonicalBlock2StateRoot: TestItem.KeccakA,
@@ -2328,22 +2328,19 @@ public class BlockTreeTests
         tree.BestPersistedState = canonicalBlock2.Number;
 
         IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
-            new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
-            header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
+            new PersistedStateInfo(forkBlock2.Number, forkBlock2.StateRoot),
+            header => header?.Number == forkBlock2.Number && header.StateRoot == forkBlock2.StateRoot);
 
         Assert.That(forkBlock2.StateRoot, Is.EqualTo(canonicalBlock2.StateRoot), "sanity check");
 
-        TestDelegate act = () =>
-        {
-            _ = Build.A.BlockTree()
-                .WithoutSettingHead
-                .WithDatabaseFrom(builder)
-                .WithPersistedStateInfoProvider(persistedStateInfoProvider)
-                .TestObject;
-        };
+        BlockTree loadedTree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .WithDatabaseFrom(builder)
+            .WithPersistedStateInfoProvider(persistedStateInfoProvider)
+            .TestObject;
 
-        Assert.That(act, Throws.TypeOf<InvalidDataException>()
-            .With.Message.Contains("PERSISTED-BOUNDARY-REPAIR"));
+        Assert.That(loadedTree.Head?.Hash, Is.EqualTo(forkBlock2.Hash), "Startup should promote the exact persisted-state block when number-only metadata restores the wrong main-chain marker.");
+        Assert.That(loadedTree.FindCanonicalBlockInfo(forkBlock2.Number)?.BlockHash, Is.EqualTo(forkBlock2.Hash), "The promoted persisted-state block should become canonical at its level.");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
