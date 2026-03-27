@@ -4,13 +4,12 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Cpu;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.State;
 
 namespace Nethermind.State;
-
-using Nethermind.Core.Cpu;
 
 internal sealed partial class PersistentStorageProvider
 {
