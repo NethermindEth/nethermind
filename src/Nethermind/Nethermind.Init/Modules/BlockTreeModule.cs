@@ -40,14 +40,12 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
                 new ReceiptsRecovery(ecdsa, specProvider, !receiptConfig.CompactReceiptStore))
             .AddSingleton<IReceiptFinder, FullInfoReceiptFinder>()
             .AddSingleton<IHistoryPruner, HistoryPruner>()
-
+            .AddSingleton<BlockTree>()
             .AddSingleton<IBlockTree, BlockTree>()
             .Bind<IBlockFinder, IBlockTree>()
+            .AddSingleton<IBlockTreeHealer, IBlockTree>((bt) => (IBlockTreeHealer)bt)
             .AddSingleton<ILogFinder, LogFinder>()
-            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly())
-
-            ;
-
+            .AddSingleton<IReadOnlyBlockTree, IBlockTree>((bt) => bt.AsReadOnly());
         if (!receiptConfig.StoreReceipts)
         {
             builder.AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance);
@@ -63,8 +61,6 @@ public class BlockTreeModule(IReceiptConfig receiptConfig) : Autofac.Module
                 Bloom.ByteLength);
     }
 
-    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig)
-    {
-        return new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
-    }
+    private IBadBlockStore CreateBadBlockStore([KeyFilter(DbNames.BadBlocks)] IDb badBlockDb, IInitConfig initConfig) =>
+        new BadBlockStore(badBlockDb, initConfig.BadBlocksStored ?? 100);
 }
