@@ -179,22 +179,49 @@ public partial class PatriciaTree
                 jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child, null);
             }
 
-            Parallel.For(0, TrieNode.BranchesCount,
-                ParallelUnbalancedWork.DefaultOptions,
-                GetTraverseStack,
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
+            void BuildChildSubtree(int i, Stack<TraverseStack> workerTraverseStack)
+            {
+                (int startIdx, int count, int nib, TreePath childPath, TrieNode? child, _) = jobs[i];
+
+                Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                TrieNode? newChild = BulkSet(
+                    in closureCtx,
+                    workerTraverseStack,
+                    jobEntries,
+                    bufferEntries,
+                    ref childPath,
+                    child,
+                    flipCount,
+                    flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
+
+                jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+            }
+#if ZK_EVM
+            Stack<TraverseStack> workerTraverseStack = GetTraverseStack();
+
+            try
+            {
+                for (int i = 0; i < TrieNode.BranchesCount; i++)
+                    BuildChildSubtree(i, workerTraverseStack);
+            }
+            finally
+            {
+                ReturnTraverseStack(workerTraverseStack);
+            }
+#else
+            Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions, GetTraverseStack,
                 (i, _, workerTraverseStack) =>
                 {
-                    (int startIdx, int count, int nib, TreePath childPath, TrieNode child, TrieNode? outNode) = jobs[i];
-
-                    Span<BulkSetEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
-                    Span<BulkSetEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
-
-                    TrieNode? newChild = BulkSet(in closureCtx, workerTraverseStack, jobEntries, bufferEntries, ref childPath, child, flipCount, flags & ~Flags.DoNotParallelize); // Only parallelize at top level.
-                    jobs[i] = (startIdx, count, nib, childPath, child, newChild); // Just need the child actually...
+                    BuildChildSubtree(i, workerTraverseStack);
 
                     return workerTraverseStack;
-                }, ReturnTraverseStack);
-
+                },
+                ReturnTraverseStack
+            );
+#endif
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 TrieNode? child = jobs[i].currentChild;
