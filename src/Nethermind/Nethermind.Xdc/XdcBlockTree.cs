@@ -34,7 +34,7 @@ internal class XdcBlockTree : BlockTree
         IBloomStorage? bloomStorage,
         ISyncConfig? syncConfig,
         ILogManager? logManager,
-        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber)
+        long genesisBlockNumber = 0) : base(blockStore, headerDb, blockInfoDb, metadataDb, badBlockStore, balStore, chainLevelInfoRepository, specProvider, bloomStorage, syncConfig, logManager, genesisBlockNumber: genesisBlockNumber)
     {
         _xdcConsensus = xdcConsensus;
     }
