@@ -25,8 +25,8 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IDisposable BeginScope(BlockHeader? baseBlock);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
-    new UInt256 GetBalance(Address address, int? blockAccessIndex = null);
-    new ValueHash256 GetCodeHash(Address address, int? blockAccessIndex = null);
+    new UInt256 GetBalance(Address address);
+    new ValueHash256 GetCodeHash(Address address);
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>
@@ -34,35 +34,35 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell, int? blockAccessIndex = null);
+    byte[] GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell, int? blockAccessIndex = null);
+    ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null);
+    void Set(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? blockAccessIndex = null);
+    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue, int? blockAccessIndex = null);
+    void SetTransientState(in StorageCell storageCell, byte[] newValue);
 
     /// <summary>
     /// Reset all storage
@@ -78,7 +78,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// If <see cref="newTransactionStart"/> is true and there are already changes in <see cref="IStorageProvider"/> then next call to
     /// <see cref="GetOriginal"/> will use changes before this snapshot as original values for this new transaction.
     /// </remarks>
-    Snapshot TakeSnapshot(bool newTransactionStart = false, int? blockAccessIndex = null);
+    Snapshot TakeSnapshot(bool newTransactionStart = false);
 
     Snapshot IJournal<Snapshot>.TakeSnapshot() => TakeSnapshot();
 
@@ -90,14 +90,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// Clear all storage at specified address
     /// </summary>
     /// <param name="address">Contract address</param>
-    void ClearStorage(Address address, int? blockAccessIndex = null);
+    void ClearStorage(Address address);
 
     void RecalculateStateRoot();
 
-    void DeleteAccount(Address address, int? blockAccessIndex = null);
+    void DeleteAccount(Address address);
 
-    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null);
-    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? blockAccessIndex = null);
+    void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
+    void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
     // void CreateEmptyAccountIfDeleted(Address address);
 
     /// <summary>
@@ -111,30 +111,30 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <param name="isGenesis">Indicates whether the insertion is part of the genesis block setup.</param>
     /// <returns>True if the code was inserted to the database at that hash; otherwise false if it was already there.
     /// Note: This is different from whether the account has its hash updated</returns>
-    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? blockAccessIndex = null);
+    bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
-    // void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    // bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
+    bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    // void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? blockAccessIndex = null);
+    // void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? blockAccessIndex = null);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance);
 
-    // void IncrementNonce(Address address, UInt256 delta, int? blockAccessIndex = null);
-    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? blockAccessIndex = null);
+    // void IncrementNonce(Address address, UInt256 delta);
+    void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce);
 
     void DecrementNonce(Address address, UInt256 delta);
 
-    // void IncrementNonce(Address address, int? blockAccessIndex = null) => IncrementNonce(address, UInt256.One, blockAccessIndex);
+    // void IncrementNonce(Address address) => IncrementNonce(address, UInt256.One, blockAccessIndex);
 
     void DecrementNonce(Address address) => DecrementNonce(address, UInt256.One);
 
-    void SetNonce(Address address, in UInt256 nonce, int? blockAccessIndex = null);
+    void SetNonce(Address address, in UInt256 nonce);
 
     /* snapshots */
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true);
@@ -147,14 +147,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     ArrayPoolList<AddressAsKey>? GetAccountChanges();
 
-    void ResetTransient(int? blockAccessIndex = null);
+    void ResetTransient();
 
     // See https://eips.ethereum.org/EIPS/eip-7610
-    bool IsNonZeroAccount(Address address, out bool accountExists, int? blockAccessIndex = null)
+    bool IsNonZeroAccount(Address address, out bool accountExists)
     {
-        accountExists = AccountExists(address, blockAccessIndex);
+        accountExists = AccountExists(address);
         return accountExists
-            && (IsContract(address, blockAccessIndex) || !GetNonce(address, blockAccessIndex).IsZero || !IsStorageEmpty(address, blockAccessIndex));
+            && (IsContract(address) || !GetNonce(address).IsZero || !IsStorageEmpty(address));
     }
-
 }
