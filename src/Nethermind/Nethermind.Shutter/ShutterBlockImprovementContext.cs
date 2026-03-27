@@ -144,12 +144,13 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         using var txTimeout = new CancellationTokenSource((int)waitTime);
-        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementToken, txTimeout.Token);
+        CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementToken, txTimeout.Token);
+        _linkedCancellation = linkedCancellation;
 
         try
         {
-            _linkedCancellation.Token.ThrowIfCancellationRequested();
-            await _txSignal.WaitForTransactions(slot, _linkedCancellation.Token);
+            linkedCancellation.Token.ThrowIfCancellationRequested();
+            await _txSignal.WaitForTransactions(slot, linkedCancellation.Token);
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {

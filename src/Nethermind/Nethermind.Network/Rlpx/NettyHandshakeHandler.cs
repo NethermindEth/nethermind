@@ -210,6 +210,7 @@ namespace Nethermind.Network.Rlpx
                     Metrics.HandshakeTimeouts++;
                     if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
                     //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                    _initCompletionSource.TrySetCanceled();
                     await _channel.DisconnectAsync();
                 }
             }
