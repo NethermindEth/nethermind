@@ -83,7 +83,6 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                         if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                         {
                             Interlocked.Decrement(ref _requestCount);
-                            request.Message.TryDispose();
                             // Unblock waiting thread.
                             request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                         }
