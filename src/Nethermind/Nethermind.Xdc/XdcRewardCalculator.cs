@@ -10,6 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Evm.TransactionProcessing;
@@ -17,12 +18,11 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Xdc
 {
     /// <summary>
-    /// Reward model (current mainnet):
+    /// Reward model:
     /// - Rewards are paid only at epoch checkpoints (number % EpochLength == 0).
-    /// - For now we **ignore** TIPUpgradeReward behavior because on mainnet
-    ///   the upgrade activation is set far in the future (effectively “not active”).
-    ///   When TIPUpgradeReward activates, protector/observer beneficiaries must be added.
-    /// - Current split implemented here: 90% to masternode owner, 10% to foundation.
+    /// - Pre-upgrade: proportional split of spec.Reward across masternode signatures.
+    /// - TIP-upgrade: fixed per-signer rewards for masternode/protector/observer.
+    /// - Holder split remains 90% owner, 10% foundation for each signer reward.
     /// </summary>
     public class XdcRewardCalculator : IRewardCalculator
     {
@@ -80,19 +80,34 @@ namespace Nethermind.Xdc
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
-            var (masternodeSigners, _, _) = GetSigningTxCount(xdcHeader, spec);
-
-            UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
-            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-
             UInt256 totalFoundationWalletReward = UInt256.Zero;
             var rewards = new List<BlockReward>();
-            foreach (var (signer, reward) in rewardSigners)
+            var (masternodeSigners, protectorSigners, observerSigners) = GetSigningTxCount(xdcHeader, spec);
+
+            bool isTipUpgradeRewardEnabled = xdcHeader.Number >= spec.TipUpgradeRewardBlock;
+            if (!isTipUpgradeRewardEnabled)
             {
-                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, xdcHeader);
-                totalFoundationWalletReward += foundationWalletReward;
-                rewards.Add(holderReward);
+                UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
+                Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
+                AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward);
             }
+            else
+            {
+                Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
+                    ConvertEtherToWei(spec.MasternodeReward),
+                    masternodeSigners);
+                Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
+                    ConvertEtherToWei(spec.ProtectorReward),
+                    protectorSigners);
+                Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
+                    ConvertEtherToWei(spec.ObserverReward),
+                    observerSigners);
+
+                AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward);
+                AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward);
+                AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward);
+            }
+
             if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
             return rewards.ToArray();
         }
@@ -201,6 +216,21 @@ namespace Nethermind.Xdc
                 signers[addr] += 1;
         }
 
+        private static UInt256 ConvertEtherToWei(double rewardInEther)
+        {
+            if (rewardInEther <= 0)
+                return UInt256.Zero;
+
+            decimal weiPerEther = decimal.Parse(
+                Unit.Ether.ToString(CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture);
+            decimal ether = decimal.Parse(
+                rewardInEther.ToString("R", CultureInfo.InvariantCulture),
+                CultureInfo.InvariantCulture);
+            decimal wei = decimal.Truncate(ether * weiPerEther);
+            return UInt256.Parse(wei.ToString(CultureInfo.InvariantCulture));
+        }
+
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
         {
             ReadOnlySpan<byte> span = data.Span;
@@ -227,6 +257,22 @@ namespace Nethermind.Xdc
                 UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);
                 rewardSigners.Add(signer, reward);
             }
+            return rewardSigners;
+        }
+
+        private Dictionary<Address, UInt256> CalculateFixedRewardForSigners(
+            UInt256 rewardPerSigner,
+            Dictionary<Address, long> signers)
+        {
+            var rewardSigners = new Dictionary<Address, UInt256>();
+            if (rewardPerSigner == UInt256.Zero)
+                return rewardSigners;
+
+            foreach ((Address signer, long signerCount) in signers)
+            {
+                rewardSigners[signer] = rewardPerSigner;
+            }
+
             return rewardSigners;
         }
 
@@ -269,6 +315,20 @@ namespace Nethermind.Xdc
             UInt256 foundationReward = reward / 10;
 
             return (new BlockReward(owner, masterReward), foundationReward);
+        }
+
+        private void AddDistributedRewards(
+            XdcBlockHeader header,
+            Dictionary<Address, UInt256> rewardSigners,
+            List<BlockReward> rewards,
+            ref UInt256 totalFoundationWalletReward)
+        {
+            foreach ((Address signer, UInt256 reward) in rewardSigners)
+            {
+                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, header);
+                totalFoundationWalletReward += foundationWalletReward;
+                rewards.Add(holderReward);
+            }
         }
     }
 }
