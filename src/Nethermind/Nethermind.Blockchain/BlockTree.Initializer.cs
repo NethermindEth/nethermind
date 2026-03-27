@@ -357,15 +357,17 @@ public partial class BlockTree
             persistedStateInfoValue = persistedStateInfo;
         }
 
+        bool isCanonicalStartBlock = startBlock is not null && IsCanonical(startBlock);
+
         if (persistedStateInfoValue is PersistedStateInfo exactPersistedState &&
             startBlock is not null &&
-            !MatchesPersistedState(startBlock, exactPersistedState))
+            (!MatchesPersistedState(startBlock, exactPersistedState) || !isCanonicalStartBlock))
         {
             startBlock = RepairPersistedBoundary(startBlock, persistedNumber, persistedHash, exactPersistedState, out reconciliationOutcome);
         }
         else if (persistedStateInfoValue is PersistedStateInfo)
         {
-            reconciliationOutcome = "validated against exact persisted state";
+            reconciliationOutcome = "validated against exact persisted state and canonical chain";
         }
         else if (startBlock is not null)
         {
@@ -452,10 +454,27 @@ public partial class BlockTree
         block.Number == persistedStateInfo.BlockNumber &&
         block.StateRoot == persistedStateInfo.StateRoot;
 
+    private bool IsCanonical(Block block) =>
+        block.Hash is not null &&
+        FindCanonicalBlockInfo(block.Number)?.BlockHash == block.Hash;
+
     private Block RepairPersistedBoundary(Block restoredBlock, long? persistedNumber, Hash256? persistedHash, PersistedStateInfo persistedStateInfo, out string reconciliationOutcome)
     {
-        Block? repairedBlock = FindBlockByStateRoot(persistedStateInfo.BlockNumber, persistedStateInfo.StateRoot) ??
-            FindRecoverableCanonicalBoundary(Math.Min(restoredBlock.Number, persistedStateInfo.BlockNumber));
+        bool promotedRestoredBlockToMainChain = false;
+        Block? repairedBlock = null;
+        if (MatchesPersistedState(restoredBlock, persistedStateInfo))
+        {
+            repairedBlock = restoredBlock;
+            if (!IsCanonical(repairedBlock))
+            {
+                PromoteStartupBoundaryToMainChain(repairedBlock);
+                promotedRestoredBlockToMainChain = true;
+            }
+        }
+        else
+        {
+            repairedBlock = FindCanonicalBlockByStateRoot(persistedStateInfo.BlockNumber, persistedStateInfo.StateRoot);
+        }
 
         if (repairedBlock is null)
         {
@@ -464,59 +483,51 @@ public partial class BlockTree
                 $"{PersistedBoundaryRepairLogMarker}: failed to repair persisted boundary. " +
                 $"stored number={persistedNumber?.ToString() ?? "<none>"}, stored hash={persistedHash?.ToString() ?? "<none>"}, " +
                 $"restored block={restoredBlock.ToString(Block.Format.Short)}, " +
-                $"flat persisted state={persistedStateInfo.BlockNumber}/{persistedStateInfo.StateRoot}.");
+                $"flat persisted state={persistedStateInfo.BlockNumber}/{persistedStateInfo.StateRoot}, " +
+                "no canonical block matched the exact persisted flat-state identity.");
         }
 
         if (Logger.IsWarn)
         {
-            Logger.Warn(
-                $"{PersistedBoundaryRepairLogMarker}: persisted boundary repaired from {restoredBlock.ToString(Block.Format.Short)} " +
-                $"to {repairedBlock.ToString(Block.Format.Short)}.");
+            string repairAction = promotedRestoredBlockToMainChain
+                ? $"persisted boundary promoted to main chain at {repairedBlock.ToString(Block.Format.Short)}"
+                : $"persisted boundary repaired from {restoredBlock.ToString(Block.Format.Short)} to {repairedBlock.ToString(Block.Format.Short)}";
+            Logger.Warn($"{PersistedBoundaryRepairLogMarker}: {repairAction}.");
         }
 
-        reconciliationOutcome = $"repaired to {repairedBlock.ToString(Block.Format.Short)}";
+        reconciliationOutcome = promotedRestoredBlockToMainChain
+            ? $"promoted exact persisted-state block to main chain at {repairedBlock.ToString(Block.Format.Short)}"
+            : $"repaired to {repairedBlock.ToString(Block.Format.Short)}";
         BestPersistedState = repairedBlock.Number;
         return repairedBlock;
     }
 
-    private Block? FindBlockByStateRoot(long blockNumber, ValueHash256 stateRoot)
+    private Block? FindCanonicalBlockByStateRoot(long blockNumber, ValueHash256 stateRoot)
     {
-        ChainLevelInfo? level = LoadLevel(blockNumber);
-        if (level is null)
+        BlockInfo? canonicalInfo = FindCanonicalBlockInfo(blockNumber);
+        if (canonicalInfo?.BlockHash is not Hash256 blockHash)
         {
             return null;
         }
 
-        foreach (BlockInfo blockInfo in level.BlockInfos)
-        {
-            Block? block = FindBlock(blockInfo.BlockHash, BlockTreeLookupOptions.None, blockNumber);
-            if (block?.StateRoot == stateRoot)
-            {
-                return block;
-            }
-        }
-
-        return null;
+        Block? canonicalBlock = FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
+        return canonicalBlock?.StateRoot == stateRoot ? canonicalBlock : null;
     }
 
-    private Block? FindRecoverableCanonicalBoundary(long startNumber)
+    private void PromoteStartupBoundaryToMainChain(Block block)
     {
-        for (long number = startNumber; number >= _genesisBlockNumber; number--)
-        {
-            BlockInfo? canonicalInfo = FindCanonicalBlockInfo(number);
-            if (canonicalInfo?.BlockHash is not Hash256 blockHash)
-            {
-                continue;
-            }
+        ChainLevelInfo? level = LoadLevel(block.Number) ?? throw new InvalidDataException(
+            $"Missing chain level at number {block.Number} while promoting startup boundary.");
+        int? index = level.FindIndex(block.Hash) ?? throw new InvalidDataException(
+            $"Unable to find startup boundary block {block.ToString(Block.Format.Short)} on its chain level.");
 
-            Block? canonicalBlock = FindBlock(blockHash, BlockTreeLookupOptions.None, number);
-            if (canonicalBlock is not null && _persistedStateInfoProvider?.HasRecoverableStateForBlock(canonicalBlock.Header) == true)
-            {
-                return canonicalBlock;
-            }
+        if (index.Value != 0)
+        {
+            level.SwapToMain(index.Value);
         }
 
-        return null;
+        level.HasBlockOnMainChain = true;
+        _chainLevelInfoRepository.PersistLevel(block.Number, level);
     }
 
     private void SetHeadBlock(Hash256 headHash)

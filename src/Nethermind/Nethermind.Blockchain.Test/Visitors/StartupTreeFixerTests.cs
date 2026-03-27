@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -209,11 +211,70 @@ public class StartupTreeFixerTests
 
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.HasStateForBlock(repairedHead.Header).Returns(true);
+        List<Hash256> suggestedBlocks = [];
+        EventHandler<BlockEventArgs> handler = (_, args) => suggestedBlocks.Add(args.Block.Hash!);
+        tree.NewBestSuggestedBlock += handler;
 
-        IBlockTreeVisitor fixer = new StartupBlockTreeFixer(new SyncConfig(), tree, stateReader, LimboNoErrorLogger.Instance);
-        BlockVisitOutcome result = await fixer.VisitBlock(queuedBlock, CancellationToken.None);
+        try
+        {
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, stateReader, LimboNoErrorLogger.Instance);
+            await tree.Accept(fixer, CancellationToken.None);
+        }
+        finally
+        {
+            tree.NewBestSuggestedBlock -= handler;
+        }
 
-        Assert.That(result, Is.EqualTo(BlockVisitOutcome.Suggest));
+        suggestedBlocks.Should().Equal(queuedBlock.Hash!);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Fixer_only_suggests_blocks_that_descend_from_repaired_head()
+    {
+        BlockTree tree = Build.A.BlockTree()
+            .WithoutSettingHead
+            .TestObject;
+
+        Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Block repairedHead = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block staleForkHead = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
+        Block canonicalBlock3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(repairedHead).WithStateRoot(TestItem.KeccakB).TestObject;
+        Block staleBlock3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(staleForkHead).WithStateRoot(TestItem.KeccakC).TestObject;
+        Block canonicalBlock4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(canonicalBlock3).WithStateRoot(TestItem.KeccakD).TestObject;
+        Block staleBlock4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(staleBlock3).WithStateRoot(TestItem.KeccakE).TestObject;
+
+        tree.SuggestBlock(block0);
+        tree.SuggestBlock(block1);
+        tree.SuggestBlock(repairedHead);
+        tree.SuggestBlock(staleForkHead);
+        tree.SuggestBlock(canonicalBlock3);
+        tree.SuggestBlock(staleBlock3);
+        tree.SuggestBlock(canonicalBlock4);
+        tree.SuggestBlock(staleBlock4);
+
+        tree.UpdateMainChain(block0);
+        tree.UpdateMainChain(block1);
+        tree.UpdateMainChain(repairedHead);
+
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        stateReader.HasStateForBlock(repairedHead.Header).Returns(true);
+
+        List<Hash256> suggestedBlocks = [];
+        EventHandler<BlockEventArgs> handler = (_, args) => suggestedBlocks.Add(args.Block.Hash!);
+        tree.NewBestSuggestedBlock += handler;
+
+        try
+        {
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), tree, stateReader, LimboNoErrorLogger.Instance, 16);
+            await tree.Accept(fixer, CancellationToken.None);
+        }
+        finally
+        {
+            tree.NewBestSuggestedBlock -= handler;
+        }
+
+        suggestedBlocks.Should().Equal(canonicalBlock3.Hash!, canonicalBlock4.Hash!);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

@@ -5,6 +5,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -117,6 +119,51 @@ public class FlatDbManagerTests
         bool result = manager.HasStateForBlock(stateId);
 
         Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public void FlatPersistedStateInfoProvider_TryGetPersistedStateInfo_ReadsCurrentStateFromPersistence()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId currentState = CreateStateId(12, rootByte: 4);
+        reader.CurrentState.Returns(currentState);
+        persistence.CreateReader().Returns(reader);
+
+        FlatPersistedStateInfoProvider provider = new(persistence, _snapshotRepository);
+
+        bool result = provider.TryGetPersistedStateInfo(out PersistedStateInfo persistedStateInfo);
+
+        Assert.That(result, Is.True);
+        Assert.That(persistedStateInfo.BlockNumber, Is.EqualTo(currentState.BlockNumber));
+        Assert.That(persistedStateInfo.StateRoot, Is.EqualTo(currentState.StateRoot));
+    }
+
+    [Test]
+    public void FlatPersistedStateInfoProvider_HasRecoverableStateForBlock_UsesSnapshotsAndExactPersistedState()
+    {
+        IPersistence persistence = Substitute.For<IPersistence>();
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        StateId currentState = CreateStateId(12, rootByte: 4);
+        reader.CurrentState.Returns(currentState);
+        persistence.CreateReader().Returns(reader);
+
+        BlockHeader snapshotHeader = Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
+        BlockHeader persistedHeader = Build.A.BlockHeader.WithNumber(currentState.BlockNumber).WithStateRoot(TestItem.KeccakB).TestObject;
+        BlockHeader missingHeader = Build.A.BlockHeader.WithNumber(10).WithStateRoot(TestItem.KeccakC).TestObject;
+
+        currentState = new StateId(persistedHeader);
+        reader.CurrentState.Returns(currentState);
+
+        _snapshotRepository.HasState(new StateId(snapshotHeader)).Returns(true);
+        _snapshotRepository.HasState(new StateId(persistedHeader)).Returns(false);
+        _snapshotRepository.HasState(new StateId(missingHeader)).Returns(false);
+
+        FlatPersistedStateInfoProvider provider = new(persistence, _snapshotRepository);
+
+        Assert.That(provider.HasRecoverableStateForBlock(snapshotHeader), Is.True);
+        Assert.That(provider.HasRecoverableStateForBlock(persistedHeader), Is.True);
+        Assert.That(provider.HasRecoverableStateForBlock(missingHeader), Is.False);
     }
 
     [Test]

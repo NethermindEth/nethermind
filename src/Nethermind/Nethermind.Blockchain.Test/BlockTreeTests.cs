@@ -2221,15 +2221,15 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Loads_start_block_repairs_to_matching_flat_state_when_number_only_metadata_points_to_wrong_block()
+    public void Load_start_block_when_number_only_restore_points_to_exact_persisted_state_promotes_it_to_main_chain()
     {
-        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2();
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, Block forkBlock2) = CreateTreeWithForkAtBlock2();
 
         tree.BestPersistedState = 2;
 
         IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
-            new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
-            header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
+            new PersistedStateInfo(forkBlock2.Number, forkBlock2.StateRoot),
+            header => header?.Number == forkBlock2.Number && header.StateRoot == forkBlock2.StateRoot);
 
         BlockTree loadedTree = Build.A.BlockTree()
             .WithoutSettingHead
@@ -2237,7 +2237,8 @@ public class BlockTreeTests
             .WithPersistedStateInfoProvider(persistedStateInfoProvider)
             .TestObject;
 
-        Assert.That(loadedTree.Head?.Hash, Is.EqualTo(canonicalBlock2.Hash), "Startup repair should restore the block matching the exact persisted flat state.");
+        Assert.That(loadedTree.Head?.Hash, Is.EqualTo(forkBlock2.Hash), "Startup should promote the exact persisted-state block to main chain when main-chain markers are stale.");
+        Assert.That(loadedTree.FindCanonicalBlockInfo(forkBlock2.Number)?.BlockHash, Is.EqualTo(forkBlock2.Hash), "The promoted boundary should become the canonical block at its level.");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -2291,9 +2292,9 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Load_start_block_when_persisted_boundary_is_invalid_walks_back_to_recoverable_canonical_block()
+    public void Load_start_block_when_persisted_boundary_is_invalid_fails_without_exact_canonical_match()
     {
-        (BlockTreeBuilder builder, BlockTree tree, _, Block block1, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2(
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, _) = CreateTreeWithForkAtBlock2(
             block1StateRoot: TestItem.KeccakA,
             canonicalBlock2StateRoot: TestItem.KeccakB,
             forkBlock2StateRoot: TestItem.KeccakC);
@@ -2302,15 +2303,47 @@ public class BlockTreeTests
 
         IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, TestItem.KeccakD),
-            header => header?.Number == block1.Number && header.StateRoot == block1.StateRoot);
+            _ => false);
 
-        BlockTree loadedTree = Build.A.BlockTree()
-            .WithoutSettingHead
-            .WithDatabaseFrom(builder)
-            .WithPersistedStateInfoProvider(persistedStateInfoProvider)
-            .TestObject;
+        TestDelegate act = () =>
+        {
+            _ = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithPersistedStateInfoProvider(persistedStateInfoProvider)
+                .TestObject;
+        };
 
-        Assert.That(loadedTree.Head?.Hash, Is.EqualTo(block1.Hash), "Repair should fall back to the nearest recoverable canonical block when the stored boundary is invalid.");
+        Assert.That(act, Throws.TypeOf<InvalidDataException>()
+            .With.Message.Contains("PERSISTED-BOUNDARY-REPAIR"));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Load_start_block_when_number_only_restore_matches_state_but_is_not_canonical_fails_loudly()
+    {
+        (BlockTreeBuilder builder, BlockTree tree, _, _, Block canonicalBlock2, Block forkBlock2) = CreateTreeWithForkAtBlock2(
+            canonicalBlock2StateRoot: TestItem.KeccakA,
+            forkBlock2StateRoot: TestItem.KeccakA);
+
+        tree.BestPersistedState = canonicalBlock2.Number;
+
+        IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
+            new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
+            header => header?.Number == canonicalBlock2.Number && header.StateRoot == canonicalBlock2.StateRoot);
+
+        Assert.That(forkBlock2.StateRoot, Is.EqualTo(canonicalBlock2.StateRoot), "sanity check");
+
+        TestDelegate act = () =>
+        {
+            _ = Build.A.BlockTree()
+                .WithoutSettingHead
+                .WithDatabaseFrom(builder)
+                .WithPersistedStateInfoProvider(persistedStateInfoProvider)
+                .TestObject;
+        };
+
+        Assert.That(act, Throws.TypeOf<InvalidDataException>()
+            .With.Message.Contains("PERSISTED-BOUNDARY-REPAIR"));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

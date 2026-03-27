@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -33,8 +34,9 @@ namespace Nethermind.Blockchain.Visitors
         private long? _lastProcessedLevel;
         private long? _processingGapStart;
 
-        private bool _firstBlockVisited = true;
         private bool _suggestBlocks = true;
+        private HashSet<Hash256> _eligibleParentHashes = [];
+        private HashSet<Hash256> _suggestedBlockHashesInCurrentLevel = [];
         private readonly BlockTreeSuggestPacer _blockTreeSuggestPacer;
         private readonly IPersistedStateInfoProvider? _persistedStateInfoProvider;
 
@@ -77,9 +79,15 @@ namespace Nethermind.Blockchain.Visitors
 
             _blocksCheckedInCurrentLevel = 0;
             _bodiesInCurrentLevel = 0;
+            _suggestedBlockHashesInCurrentLevel = [];
 
             _currentLevelNumber++;
             _currentLevel = chainLevelInfo;
+            _eligibleParentHashes = GetEligibleParentHashesForLevel();
+            if (_currentLevelNumber == StartLevelInclusive)
+            {
+                _suggestBlocks = CanSuggestBlocksFromHead();
+            }
 
             if ((_currentLevelNumber - StartLevelInclusive) % 1000 == 0)
             {
@@ -145,12 +153,10 @@ namespace Nethermind.Blockchain.Visitors
             _blocksCheckedInCurrentLevel++;
             _bodiesInCurrentLevel++;
 
-            if (_firstBlockVisited)
+            if (!_suggestBlocks || !ShouldSuggestBlock(block))
             {
-                _suggestBlocks = CanSuggestBlocks(block);
+                return BlockVisitOutcome.None;
             }
-
-            if (!_suggestBlocks) return BlockVisitOutcome.None;
 
             Task waitSuggestQueue = _blockTreeSuggestPacer.WaitForQueue(block.Number, cancellationToken);
 
@@ -164,6 +170,11 @@ namespace Nethermind.Blockchain.Visitors
                 }
 
                 await waitSuggestQueue;
+            }
+
+            if (block.Hash is not null)
+            {
+                _suggestedBlockHashesInCurrentLevel.Add(block.Hash);
             }
 
             return BlockVisitOutcome.Suggest;
@@ -203,6 +214,7 @@ namespace Nethermind.Blockchain.Visitors
                 return Task.FromResult(LevelVisitOutcome.DeleteLevel);
             }
 
+            _eligibleParentHashes = _suggestedBlockHashesInCurrentLevel;
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
@@ -215,22 +227,42 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        private bool CanSuggestBlocks(Block block)
+        private bool CanSuggestBlocksFromHead()
         {
-            _firstBlockVisited = false;
-            if (block?.ParentHash is not null)
+            Block? head = _blockTree.Head;
+            return head is not null &&
+                head.StateRoot is not null &&
+                _stateReader.HasStateForBlock(head.Header);
+        }
+
+        private HashSet<Hash256> GetEligibleParentHashesForLevel()
+        {
+            if (_currentLevelNumber == StartLevelInclusive)
             {
-                BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                if (parentHeader is null || parentHeader.StateRoot is null ||
-                    !_stateReader.HasStateForBlock(parentHeader))
-                    return false;
+                return _blockTree.Head?.Hash is Hash256 headHash ? [headHash] : [];
             }
-            else
+
+            return _eligibleParentHashes.Count == 0 ? [] : [.. _eligibleParentHashes];
+        }
+
+        private bool ShouldSuggestBlock(Block block)
+        {
+            if (block.ParentHash is null || !_eligibleParentHashes.Contains(block.ParentHash))
             {
                 return false;
             }
 
-            return true;
+            if (_currentLevelNumber != StartLevelInclusive)
+            {
+                return true;
+            }
+
+            BlockHeader? parentHeader = _blockTree.Head?.Hash == block.ParentHash
+                ? _blockTree.Head?.Header
+                : _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            return parentHeader is not null &&
+                parentHeader.StateRoot is not null &&
+                _stateReader.HasStateForBlock(parentHeader);
         }
 
         private void LogPlannedOperation()

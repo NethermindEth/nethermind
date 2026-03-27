@@ -11,7 +11,9 @@ using System.Threading.Tasks;
 using Autofac;
 using ConcurrentCollections;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Visitors;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -935,7 +937,7 @@ public class BlockchainProcessorTests
                     block2.Number,
                     block2.Hash,
                     new PersistedStateInfo(block2.Number, block2.StateRoot),
-                    "validated against exact persisted state"));
+                    "validated against exact persisted state and canonical chain"));
 
         Block suggestedBlock = Build.A.Block
             .WithNumber(3)
@@ -951,11 +953,11 @@ public class BlockchainProcessorTests
         message.Should().Contain($"stored persisted boundary number={block2.Number}");
         message.Should().Contain($"stored persisted boundary hash={block2.Hash}");
         message.Should().Contain($"flat persisted state={block2.Number}/{block2.StateRoot}");
-        message.Should().Contain("startup reconciliation outcome=validated against exact persisted state");
+        message.Should().Contain("startup reconciliation outcome=validated against exact persisted state and canonical chain");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Restart_with_ambiguous_persisted_boundary_repairs_and_processes_next_canonical_block()
+    public async Task Restart_with_exact_persisted_boundary_hash_replays_only_canonical_descendants_from_loaded_head()
     {
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithoutSettingHead;
@@ -965,6 +967,20 @@ public class BlockchainProcessorTests
         Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(1L).WithTotalDifficulty(1L).WithParent(genesis).WithStateRoot(TestItem.KeccakA).TestObject;
         Block canonicalBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(1L).WithTotalDifficulty(2L).WithParent(block1).WithStateRoot(TestItem.KeccakB).TestObject;
         Block forkBlock2 = Build.A.Block.WithNumber(2).WithDifficulty(5L).WithTotalDifficulty(6L).WithParent(block1).WithStateRoot(TestItem.KeccakC).TestObject;
+        Block nextCanonicalBlock = Build.A.Block
+            .WithNumber(3)
+            .WithDifficulty(1L)
+            .WithTotalDifficulty(3L)
+            .WithParent(canonicalBlock2)
+            .WithStateRoot(TestItem.KeccakD)
+            .TestObject;
+        Block staleBlock3 = Build.A.Block
+            .WithNumber(3)
+            .WithDifficulty(6L)
+            .WithTotalDifficulty(12L)
+            .WithParent(forkBlock2)
+            .WithStateRoot(TestItem.KeccakE)
+            .TestObject;
 
         sourceTree.SuggestBlock(genesis).Should().Be(AddBlockResult.Added);
         sourceTree.UpdateMainChain(genesis);
@@ -973,12 +989,11 @@ public class BlockchainProcessorTests
         sourceTree.SuggestBlock(canonicalBlock2).Should().Be(AddBlockResult.Added);
         sourceTree.UpdateMainChain(canonicalBlock2);
         sourceTree.SuggestBlock(forkBlock2).Should().Be(AddBlockResult.Added);
-
-        ChainLevelInfo level2 = builder.ChainLevelInfoRepository.LoadLevel(2)!;
-        level2.HasBlockOnMainChain = false;
-        builder.ChainLevelInfoRepository.PersistLevel(2, level2);
+        sourceTree.SuggestBlock(nextCanonicalBlock).Should().Be(AddBlockResult.Added);
+        sourceTree.SuggestBlock(staleBlock3).Should().Be(AddBlockResult.Added);
 
         sourceTree.BestPersistedState = canonicalBlock2.Number;
+        builder.BlockInfoDb.Set(BlockTree.StateHeadBlockHashDbEntryAddress, canonicalBlock2.Hash!.Bytes.ToArray());
 
         IPersistedStateInfoProvider persistedStateInfoProvider = CreatePersistedStateInfoProvider(
             new PersistedStateInfo(canonicalBlock2.Number, canonicalBlock2.StateRoot),
@@ -990,26 +1005,25 @@ public class BlockchainProcessorTests
             .WithPersistedStateInfoProvider(persistedStateInfoProvider)
             .TestObject;
 
-        Block nextCanonicalBlock = Build.A.Block
-            .WithNumber(3)
-            .WithDifficulty(1L)
-            .WithTotalDifficulty(3L)
-            .WithParent(canonicalBlock2)
-            .WithStateRoot(TestItem.KeccakD)
-            .TestObject;
-
-        loadedTree.SuggestBlock(nextCanonicalBlock).Should().Be(AddBlockResult.Added);
-
         IStateReader stateReader = Substitute.For<IStateReader>();
-        stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        stateReader.HasStateForBlock(canonicalBlock2.Header).Returns(true);
 
-        BlockchainProcessor processor = CreateProcessorForDirectProcess(loadedTree, stateReader);
+        List<Hash256> suggestedBlocks = [];
+        EventHandler<BlockEventArgs> handler = (_, args) => suggestedBlocks.Add(args.Block.Hash!);
+        loadedTree.NewBestSuggestedBlock += handler;
 
-        Block? processedBlock = processor.Process(nextCanonicalBlock, ProcessingOptions.None, NullBlockTracer.Instance, CancellationToken.None);
+        try
+        {
+            StartupBlockTreeFixer fixer = new(new SyncConfig(), loadedTree, stateReader, LimboNoErrorLogger.Instance, 16, persistedStateInfoProvider);
+            await loadedTree.Accept(fixer, CancellationToken.None);
+        }
+        finally
+        {
+            loadedTree.NewBestSuggestedBlock -= handler;
+        }
 
-        processedBlock.Should().NotBeNull();
-        processedBlock!.Hash.Should().Be(nextCanonicalBlock.Hash!);
-        loadedTree.Head!.Hash.Should().Be(nextCanonicalBlock.Hash!);
+        loadedTree.Head!.Hash.Should().Be(canonicalBlock2.Hash!);
+        suggestedBlocks.Should().Equal(nextCanonicalBlock.Hash!);
     }
 
     [Test]
