@@ -767,9 +767,11 @@ namespace Nethermind.Blockchain
                 return level.BlockInfos[0].BlockHash;
             }
 
+            bool IsPostMerge(Block? block) => SpecProvider.TerminalTotalDifficulty is { } ttd
+                                              && (block?.TotalDifficulty ?? UInt256.Zero) >= ttd;
+
             // Post-merge: TD never increases, so the best-TD fallback cannot distinguish canonical from orphaned.
-            if (SpecProvider.TerminalTotalDifficulty is not null
-                && (Head?.TotalDifficulty ?? UInt256.Zero) >= SpecProvider.TerminalTotalDifficulty)
+            if (IsPostMerge(Head))
             {
                 return null;
             }
@@ -1083,7 +1085,7 @@ namespace Nethermind.Blockchain
             long blocksWalked = 0L;
             BlockHeader? current = start;
 
-            while (current is not null && blocksWalked <= maxBlockDepth)
+            while (blocksWalked <= maxBlockDepth)
             {
                 ChainLevelInfo? level = LoadLevel(current.Number);
                 if (level is not null)
@@ -1127,15 +1129,9 @@ namespace Nethermind.Blockchain
 
         private void TryUpdateSyncPivot()
         {
-            BlockHeader? newPivotHeader = null;
-            if (FinalizedHash is not null)
-            {
-                newPivotHeader = FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical);
-            }
-            else
-            {
-                newPivotHeader = FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
-            }
+            BlockHeader? newPivotHeader = FinalizedHash is not null
+                ? FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical)
+                : FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
 
             if (newPivotHeader is null)
             {
