@@ -460,6 +460,14 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    [TestCaseSource(nameof(EthGetStorageValuesCases))]
+    public async Task Eth_get_storage_values(Dictionary<Address, UInt256[]> requests, string expected)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, "latest");
+        Assert.That(serialized, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task Eth_get_block_number()
     {
@@ -1767,6 +1775,31 @@ public partial class EthRpcModuleTests
         return (byteCode, AccessListForRpc.FromAccessList(accessList));
     }
 
+    private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
+    {
+        string addressA = TestItem.AddressA.Bytes.ToHexString(true);
+        string addressB = TestItem.AddressB.Bytes.ToHexString(true);
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = [UInt256.One] },
+                $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressA}\":[\"0x0000000000000000000000000000000000000000000000000000000000abcdef\"]}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_single_slot");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]>(),
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"empty request\"},\"id\":67}")
+            .SetName("Eth_get_storage_values_empty_request_returns_error");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = Enumerable.Range(0, EthRpcModule.MaxGetStorageSlots + 1).Select(i => (UInt256)i).ToArray() },
+                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"too many slots (max {EthRpcModule.MaxGetStorageSlots})\"}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_too_many_slots_returns_error");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressB] = [UInt256.Zero] },
+                $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressB}\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"]}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_unknown_account_returns_zeros");
+    }
 
     protected class Context : IDisposable
     {

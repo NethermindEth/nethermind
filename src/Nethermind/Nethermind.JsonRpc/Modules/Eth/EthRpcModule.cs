@@ -71,6 +71,7 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
+    public const int MaxGetStorageSlots = 1024;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -198,6 +199,45 @@ public partial class EthRpcModule(
             var hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
+    }
+
+    public ResultWrapper<Dictionary<Address, byte[][]>> eth_getStorageValues(
+        Dictionary<Address, UInt256[]> requests,
+        BlockParameter? blockParameter = null)
+    {
+        int totalSlots = 0;
+        foreach (UInt256[] slots in requests.Values)
+        {
+            totalSlots += slots.Length;
+            if (totalSlots > MaxGetStorageSlots)
+                return ResultWrapper<Dictionary<Address, byte[][]>>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
+        }
+
+        if (totalSlots == 0)
+            return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
+
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+            return GetFailureResult<Dictionary<Address, byte[][]>, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<Dictionary<Address, byte[][]>>(header);
+
+        Dictionary<Address, byte[][]> result = new(requests.Count);
+        foreach (KeyValuePair<Address, UInt256[]> entry in requests)
+        {
+            UInt256[] slots = entry.Value;
+            byte[][] values = new byte[slots.Length][];
+            for (int i = 0; i < slots.Length; i++)
+            {
+                ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slots[i]);
+                values[i] = storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage.PadLeft(32);
+            }
+            result[entry.Key] = values;
+        }
+
+        return ResultWrapper<Dictionary<Address, byte[][]>>.Success(result);
     }
 
     public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
