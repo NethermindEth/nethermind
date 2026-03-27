@@ -324,7 +324,12 @@ public class BlockchainProcessorTests
                 _processor.BlockAdded += OnBlockAdded;
                 try
                 {
-                    Task.Run(() =>
+                    // Capture the task so we can wait for the full Enqueue (including
+                    // queue write) to complete, not just the BlockAdded event which
+                    // fires before the write. Without this, consecutive Suggested()
+                    // calls can race their Task.Run threads to TryWrite, causing
+                    // blocks to enter the recovery queue out of order.
+                    Task suggestTask = Task.Run(() =>
                     {
                         try
                         {
@@ -344,6 +349,10 @@ public class BlockchainProcessorTests
                         suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
                         $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
+                    // Wait for Task.Run to fully finish the queue write.
+                    // Times out harmlessly if block was processed inline via
+                    // AllowSynchronousContinuations (task stuck in Process).
+                    suggestTask.Wait(50);
                 }
                 finally
                 {
