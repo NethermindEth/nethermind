@@ -11,6 +11,8 @@ participants_matrix:
    - cl_type: nimbus
 network_params:
   preset: "minimal"
+  min_validator_withdrawability_delay: 1
+  shard_committee_period: 1
 additional_services:
   - assertoor
 <ASSERTOOR_PARAMS_PLACEHOLDER>
