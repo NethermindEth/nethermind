@@ -31,8 +31,6 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<AddressAsKey, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private ConcurrentDictionary<TreePath, TrieNode> _readStateNodes = null!;
-    private ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -61,8 +59,6 @@ public sealed class SnapshotBundle : IDisposable
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
         _transientResource.Nodes.SetShardTrackers(trieNodeCache.ShardTrackers);
-        _readStateNodes = _transientResource.ReadStateNodes;
-        _readStorageNodes = _transientResource.ReadStorageNodes;
 
         ExpandCurrentPooledContent();
 
@@ -160,28 +156,14 @@ public sealed class SnapshotBundle : IDisposable
     {
         GuardDispose();
 
-        if (_readStateNodes.TryGetValue(path, out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return node;
-        }
-
-        // Create a lazy unknown node; resolved via TryLoadStateRlp which checks all caches and local snapshots.
-        return _readStateNodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
+        return new TrieNode(NodeType.Unknown, hash);
     }
 
     public TrieNode FindStorageNodeOrUnknown(Hash256 address, in TreePath path, Hash256 hash)
     {
         GuardDispose();
 
-        if (_readStorageNodes.TryGetValue(((Hash256AsKey)address, path), out TrieNode? node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return node;
-        }
-
-        // Create a lazy unknown node; resolved via TryLoadStorageRlp which checks all caches and local snapshots.
-        return _readStorageNodes.GetOrAdd(((Hash256AsKey)address, path), new TrieNode(NodeType.Unknown, hash));
+        return new TrieNode(NodeType.Unknown, hash);
     }
 
     public CappedArray<byte> TryLoadStateRlp(in TreePath path, Hash256 hash, ReadFlags flags)
@@ -339,9 +321,6 @@ public sealed class SnapshotBundle : IDisposable
             return changedNode;
         }
 
-        // Check read TrieNode dictionary
-        if (TryRentFromTrieNode(_readStateNodes, path, hash, out node)) return node;
-
         // Check snapshots for RefCountingTrieNode
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -399,13 +378,6 @@ public sealed class SnapshotBundle : IDisposable
             return changedNode;
         }
 
-        // Check read TrieNode dictionary
-        if (_readStorageNodes.TryGetValue((addressHash, path), out TrieNode? readNode) && readNode.Keccak == hash && readNode.FullRlp.IsNotNullOrEmpty)
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            return _transientResource.SetAndLeaseStorageNode(addressHash, path, hash, readNode.FullRlp.AsSpan());
-        }
-
         // Check snapshots for RefCountingTrieNode
         for (int i = _snapshots.Count - 1; i >= 0; i--)
         {
@@ -435,20 +407,6 @@ public sealed class SnapshotBundle : IDisposable
         return null;
     }
 
-    private bool TryRentFromTrieNode(
-        ConcurrentDictionary<TreePath, TrieNode> dict, in TreePath path, in ValueHash256 hash,
-        [NotNullWhen(true)] out RefCountingTrieNode? node)
-    {
-        node = null;
-        if (!dict.TryGetValue(path, out TrieNode? trieNode)) return false;
-        if (trieNode.Keccak != hash)
-            throw new NodeHashMismatchException($"State node hash mismatch at path {path}. Expected: {hash}, Got: {trieNode.Keccak}");
-        if (!trieNode.FullRlp.IsNotNullOrEmpty) return false;
-        Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-        node = _transientResource.SetAndLeaseStateNode(path, hash, trieNode.FullRlp.AsSpan());
-        return true;
-    }
-
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
@@ -463,7 +421,6 @@ public sealed class SnapshotBundle : IDisposable
             RefCountingTrieNode? old = _changedStateNodes.GetValueOrDefault(path);
             _changedStateNodes[path] = rcNode;
             old?.Dispose();
-            _readStateNodes[path] = newNode;
         }
     }
 
@@ -481,7 +438,6 @@ public sealed class SnapshotBundle : IDisposable
             RefCountingTrieNode? old = _changedStorageNodes.GetValueOrDefault((addr, path));
             _changedStorageNodes[(addr, path)] = rcNode;
             old?.Dispose();
-            _readStorageNodes[((Hash256AsKey)addr, path)] = newNode;
         }
     }
 
@@ -586,9 +542,6 @@ public sealed class SnapshotBundle : IDisposable
             _transientResource.Nodes.SetShardTrackers(_trieNodeCache.ShardTrackers);
             _trieChanged = false;
 
-            _readStateNodes = _transientResource.ReadStateNodes;
-            _readStorageNodes = _transientResource.ReadStorageNodes;
-
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
@@ -620,8 +573,6 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _changedStorageNodes = null!;
-        _readStateNodes = null!;
-        _readStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);

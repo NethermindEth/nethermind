@@ -30,9 +30,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
-    public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
-
     public PreallocatedCappedArrayPool BufferPool = new();
     public RefCountingNodeLeasePool LeasePool = new();
 
@@ -56,8 +53,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             PrewarmedAddresses.Clear();
         }
 
-        ReadStateNodes.NoResizeClear();
-        ReadStorageNodes.NoResizeClear();
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot)
