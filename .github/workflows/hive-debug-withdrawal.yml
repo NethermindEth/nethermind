@@ -1,0 +1,147 @@
+name: "Hive debug: withdrawal hang thread dump"
+
+on:
+  push:
+    branches: [debug/hive-withdrawal-hang]
+  workflow_dispatch:
+
+jobs:
+  debug-withdrawal-hang:
+    name: Capture thread dump on withdrawal test hang
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out Nethermind
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Nethermind Docker image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+
+      - name: Check out Hive
+        uses: actions/checkout@v6
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Patch Hive for thread dump on hang
+        run: |
+          # Patch Dockerfile — add dotnet-dump and diagnostics
+          cat > hive/clients/nethermind/Dockerfile << 'EOF'
+          FROM nethermind:test-${{ github.sha }}
+          RUN apt-get update && apt-get install -y jq curl procps && \
+              apt-get clean && rm -rf /var/lib/apt/lists/*
+          RUN curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 9.0 --install-dir /usr/share/dotnet && \
+              /usr/share/dotnet/dotnet tool install --global dotnet-dump
+          ENV PATH="$PATH:/root/.dotnet/tools"
+          ENV DOTNET_EnableDiagnostics=1
+          ENV COMPlus_EnableDiagnostics=1
+          RUN /nethermind/nethermind --version | head -1 | sed 's/Version:[[:space:]]*\(.*\)/\1/' > /version.txt
+          ADD genesis.json /genesis.json
+          ADD mapper.jq /mapper.jq
+          ADD mkconfig.jq /mkconfig.jq
+          ADD nethermind.sh /nethermind.sh
+          ADD enode.sh /hive-bin/enode.sh
+          RUN chmod +x /nethermind.sh /hive-bin/enode.sh
+          EXPOSE 8545 30303 30303/udp
+          ENV NETHERMIND_HIVECONFIG_ENABLED=true
+          ENTRYPOINT ["/nethermind.sh"]
+          EOF
+
+          # Patch nethermind.sh — add watchdog that captures thread dump on hang
+          cp hive/clients/nethermind/nethermind.sh hive/clients/nethermind/nethermind.sh.orig
+          head -n 104 hive/clients/nethermind/nethermind.sh.orig > hive/clients/nethermind/nethermind.sh
+          cat >> hive/clients/nethermind/nethermind.sh << 'WATCHDOG'
+
+          # === WATCHDOG: capture thread dump when Nethermind hangs ===
+          HANG_TIMEOUT=20
+          LAST_OUTPUT=$(mktemp)
+          date +%s > "$LAST_OUTPUT"
+          echo "[watchdog] Active (timeout=${HANG_TIMEOUT}s)"
+
+          /nethermind/nethermind --config /configs/test.json $LOG_FLAG 2>&1 | while IFS= read -r line; do
+              echo "$line"
+              date +%s > "$LAST_OUTPUT"
+          done &
+          PIPE_PID=$!
+          sleep 5
+
+          CAPTURED=0
+          while kill -0 "$PIPE_PID" 2>/dev/null; do
+              sleep 2
+              [ "$CAPTURED" -eq 1 ] && continue
+              LAST=$(cat "$LAST_OUTPUT" 2>/dev/null || echo 0)
+              NOW=$(date +%s)
+              SILENT=$((NOW - LAST))
+              if [ "$SILENT" -ge "$HANG_TIMEOUT" ]; then
+                  echo "::error::[watchdog] HANG DETECTED: no output for ${SILENT}s"
+                  NM_PID=$(pgrep -f "nethermind.*--config" | head -1 || true)
+                  if [ -n "$NM_PID" ]; then
+                      DUMPFILE="/tmp/nethermind-hang.dmp"
+                      echo "[watchdog] Collecting dump of PID $NM_PID"
+                      dotnet-dump collect -p "$NM_PID" -o "$DUMPFILE" --type Full 2>&1 || true
+                      if [ -f "$DUMPFILE" ]; then
+                          echo "::group::Thread stacks (clrstack -all)"
+                          echo -e "clrstack -all\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -3000
+                          echo "::endgroup::"
+                          echo "::group::Sync blocks (locks)"
+                          echo -e "syncblk\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -200
+                          echo "::endgroup::"
+                          echo "::group::Thread pool"
+                          echo -e "threadpool\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -100
+                          echo "::endgroup::"
+                          CAPTURED=1
+                      fi
+                  else
+                      echo "[watchdog] Cannot find Nethermind PID"
+                      ps aux
+                  fi
+              fi
+          done
+          wait "$PIPE_PID" 2>/dev/null || true
+          WATCHDOG
+
+          chmod +x hive/clients/nethermind/nethermind.sh
+
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+
+      - name: Run withdrawal test (engine-withdrawals only)
+        continue-on-error: true
+        working-directory: hive
+        run: |
+          ./hive --client nethermind \
+            --sim ethereum/engine \
+            --sim.limit "engine-withdrawals" \
+            --sim.loglevel 5 \
+            --sim.parallelism 4
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-withdrawal-debug-${{ github.run_number }}
+          path: hive/workspace
+          retention-days: 14
+
+      - name: Print results
+        if: always()
+        run: |
+          rm -f hive/workspace/logs/hive.json
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json" || true
