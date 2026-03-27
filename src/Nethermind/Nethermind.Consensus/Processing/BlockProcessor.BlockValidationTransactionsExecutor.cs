@@ -31,7 +31,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using static Nethermind.State.ParallelWorldState;
+using static Nethermind.State.BlockAccessListBasedWorldState;
 using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing
@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Processing
             private BlockAccessList[] _intermediateBlockAccessLists;
             private ITransactionProcessorAdapter[] _transactionProcessorAdapters;
             private ITransactionProcessor[] _transactionProcessors;
-            private ParallelWorldState[] _parallelWorldState;
+            private TracedAccessWorldState[] _parallelWorldState;
             private TxReceipt[] _txReceipts;
             private const int GasValidationChunkSize = 8;
             private long _gasUsed;
@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.Processing
                 int len = block.Transactions.Length;
                 _transactionProcessorAdapters = new ITransactionProcessorAdapter[len + 2];
                 _transactionProcessors = new ITransactionProcessor[len + 2];
-                _parallelWorldState = new ParallelWorldState[len + 2];
+                _parallelWorldState = new TracedAccessWorldState[len + 2];
                 _intermediateBlockAccessLists = new BlockAccessList[len + 2];
 
                 for (int i = 0; i < len + 2; i++)
@@ -88,7 +88,7 @@ namespace Nethermind.Consensus.Processing
                     };
                     _intermediateBlockAccessLists[i] = bal;
 
-                    (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, ParallelWorldState parallelWorldState) = CreateTransactionProcessor(block, i, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
+                    (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, TracedAccessWorldState parallelWorldState) = CreateTransactionProcessor(block, i, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
                     _transactionProcessors[i] = transactionProcessor;
                     _transactionProcessorAdapters[i] = transactionProcessorAdapter;
                     _parallelWorldState[i] = parallelWorldState;
@@ -107,16 +107,17 @@ namespace Nethermind.Consensus.Processing
                 return _txReceipts;
             }
 
-            private (ExecuteTransactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy>, ParallelWorldState) CreateTransactionProcessor(Block block, int balIndex, bool isBuildingBlock)
+            private (ExecuteTransactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy>, TracedAccessWorldState) CreateTransactionProcessor(Block block, int balIndex, bool isBuildingBlock)
             {
                 VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, balIndex, block, _intermediateBlockAccessLists[balIndex], GeneratedBlockAccessList, new(logManager), isBuildingBlock);
-                EthereumCodeInfoRepository codeInfoRepository = new(parallelWorldState);
-                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
+                BlockAccessListBasedWorldState balWorldState = new(stateProvider, balIndex, block, new(logManager));
+                TracedAccessWorldState tracedWorldState = new(balWorldState);
+                EthereumCodeInfoRepository codeInfoRepository = new(tracedWorldState);
+                TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, tracedWorldState, virtualMachine, codeInfoRepository, logManager);
                 ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
                 transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
 
-                return (transactionProcessorAdapter, transactionProcessor, parallelWorldState);
+                return (transactionProcessorAdapter, transactionProcessor, tracedWorldState);
             }
 
             private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)

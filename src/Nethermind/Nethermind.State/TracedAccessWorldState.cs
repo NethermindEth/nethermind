@@ -15,9 +15,8 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState, int blockAccessIndex) : WrappedWorldState(innerWorldState), IPreBlockCaches
+public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
-    public int BlockAccessIndex { get; } = blockAccessIndex;
     private readonly BlockAccessList _generatingBlockAccessList = new();
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
