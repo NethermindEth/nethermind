@@ -7,7 +7,7 @@ using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain
 {
-    public partial class BlockTree
+    public partial class BlockTree : IBlockTreeHealer
     {
         public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)
         {
