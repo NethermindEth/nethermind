@@ -324,7 +324,7 @@ public class BlockchainProcessorTests
                 _processor.BlockAdded += OnBlockAdded;
                 try
                 {
-                    Task.Run(() =>
+                    Task suggestTask = Task.Run(() =>
                     {
                         try
                         {
@@ -344,6 +344,20 @@ public class BlockchainProcessorTests
                         suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
                         $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
+                    // Give the Task.Run time to finish the queue write inside
+                    // Enqueue(). BlockAdded fires before the recovery queue write,
+                    // so suggestCompleted resolving does not mean the block is in
+                    // the queue yet. Without this, consecutive Suggested() calls
+                    // can race their Task.Run threads to TryWrite, reordering
+                    // blocks in the recovery queue.
+                    //
+                    // Bounded to 100ms to avoid deadlock: when _queueCount == 1,
+                    // AllowSynchronousContinuations can inline ProcessBlocks() on
+                    // the Task.Run thread, which blocks until the test calls
+                    // Allow(). An infinite wait would deadlock. The timeout
+                    // expiring is harmless — single-block enqueues have no
+                    // ordering concern.
+                    suggestTask.Wait(100);
                 }
                 finally
                 {
