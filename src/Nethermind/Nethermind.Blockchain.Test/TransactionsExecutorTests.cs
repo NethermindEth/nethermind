@@ -353,7 +353,7 @@ namespace Nethermind.Blockchain.Test
             ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
 
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance, IBlockAccessListBuilder.None);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, IBlockAccessListBuilder.None, LimboLogs.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());

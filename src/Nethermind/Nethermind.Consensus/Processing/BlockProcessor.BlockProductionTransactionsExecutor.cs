@@ -27,8 +27,8 @@ namespace Nethermind.Consensus.Processing
             ITransactionProcessorAdapter transactionProcessor,
             IWorldState stateProvider,
             IBlockProductionTransactionPicker txPicker,
-            ILogManager logManager,
-            IBlockAccessListBuilder balBuilder)
+            IBlockAccessListBuilder balBuilder,
+            ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
             private readonly IBlockAccessListBuilder _balBuilder = balBuilder;

@@ -164,8 +164,8 @@ public class StartBlockProducerAuRa(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
-            logManager,
-            balBuilder);
+            balBuilder,
+            logManager);
 
         return new AuRaBlockProcessor(
             specProvider,
