@@ -48,6 +48,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
+    private readonly TimeSpan _compactorStallTimeout;
 
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
@@ -65,6 +66,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         ISnapshotRepository snapshotRepository,
         IPersistenceManager persistenceManager,
         IFlatDbConfig config,
+        IBlocksConfig blocksConfig,
         ILogManager logManager,
         bool enableDetailedMetrics)
     {
@@ -77,6 +79,12 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _enableDetailedMetrics = enableDetailedMetrics;
 
         _compactSize = config.CompactSize;
+
+        // We assume that the state must be able to be persisted in half the slot time at the very
+        // least. If block processing is stalled for longer than this, persistence is simply too slow
+        // for the network. The timeout is 0.5 * blockTime * compactSize because persistence persists
+        // compactSize blocks at a time.
+        _compactorStallTimeout = TimeSpan.FromSeconds(0.5 * blocksConfig.SecondsPerSlot * _compactSize);
         _inlineCompaction = config.InlineCompaction;
 
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
@@ -353,8 +361,32 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             {
                 if (_cancelTokenSource.Token.IsCancellationRequested) return; // When cancelled the queue stop
 
-                if (_logger.IsWarn) _logger.Warn("Compactor job stall! Insufficient reorg depth or too slow persistence!");
-                _compactorJobs.Writer.WriteAsync(endBlock).AsTask().Wait();
+                // This wait only occurs after several blocks have already entered the queue without blocking,
+                // so attempting to not block here to avoid blocking block processing is redundant.
+                using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                timeoutCts.CancelAfter(_compactorStallTimeout);
+                try
+                {
+                    _compactorJobs.Writer.WriteAsync(endBlock, timeoutCts.Token).AsTask().Wait();
+                }
+                catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                {
+                    // After the initial stall, retry with shorter intervals so logs become more urgent.
+                    while (true)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
+                        using CancellationTokenSource retryCts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                        retryCts.CancelAfter(TimeSpan.FromSeconds(5));
+                        try
+                        {
+                            _compactorJobs.Writer.WriteAsync(endBlock, retryCts.Token).AsTask().Wait();
+                            break;
+                        }
+                        catch (AggregateException retryEx) when (retryEx.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                        {
+                        }
+                    }
+                }
             }
         }
     }
