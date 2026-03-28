@@ -126,8 +126,6 @@ namespace Nethermind.Trie
                 return data;
             }
 
-            private static int _processorCount = Environment.ProcessorCount;
-
             [DoesNotReturn, StackTraceHidden]
             private static void ThrowNullKey(TrieNode node)
             {
@@ -152,7 +150,7 @@ namespace Nethermind.Trie
 
                 static bool UseParallel(bool canBeParallel, TrieNode item)
                 {
-                    if (_processorCount <= 1 || !canBeParallel)
+                    if (Environment.ProcessorCount <= 1 || !canBeParallel)
                     {
                         return false;
                     }
