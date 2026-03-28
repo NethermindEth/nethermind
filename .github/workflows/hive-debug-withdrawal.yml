@@ -129,7 +129,7 @@ jobs:
           ./hive --client nethermind \
             --sim ethereum/engine \
             --sim.limit "engine-withdrawals" \
-            --sim.loglevel 5 \
+            --sim.loglevel 3 \
             --sim.parallelism 4
 
       - name: Upload results
