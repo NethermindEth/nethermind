@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using NUnit.Framework;
@@ -36,7 +37,7 @@ public class ResourcePoolTests
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         SnapshotContent content1 = _resourcePool.GetSnapshotContent(usage);
 
-        content1.Accounts[new AddressAsKey(new Address("0x1234567890123456789012345678901234567890"))] = new Account(1, 2);
+        content1.Accounts[new Address("0x1234567890123456789012345678901234567890")] = new Account(1, 2);
         Assert.That(content1.Accounts, Is.Not.Empty);
 
         _resourcePool.ReturnSnapshotContent(usage, content1);
