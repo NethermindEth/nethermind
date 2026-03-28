@@ -36,6 +36,12 @@ namespace Nethermind.Trie
 
         public TrieType TrieType { get; init; }
 
+        /// <summary>
+        /// ReadFlags to pass when resolving trie nodes. State/storage tries set HintStateTrie
+        /// to enable the 532-byte full-branch fast path in DecodeRlp.
+        /// </summary>
+        private ReadFlags ResolveReadFlags => TrieType is TrieType.State or TrieType.Storage ? ReadFlags.HintStateTrie : ReadFlags.None;
+
         private Stack<TraverseStack>? _traverseStack;
         public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
@@ -58,7 +64,7 @@ namespace Nethermind.Trie
         {
             get
             {
-                RootRef?.ResolveNode(TrieStore, TreePath.Empty);
+                RootRef?.ResolveNode(TrieStore, TreePath.Empty, ResolveReadFlags);
                 return RootRef;
             }
         }
@@ -582,7 +588,7 @@ namespace Nethermind.Trie
                     break;
                 }
 
-                node.ResolveNode(TrieStore, path);
+                node.ResolveNode(TrieStore, path, ResolveReadFlags);
 
                 if (node.IsLeaf || node.IsExtension)
                 {
@@ -800,7 +806,7 @@ namespace Nethermind.Trie
             if (onlyChildIdx == -1) return null; // No child at all.
 
             path.AppendMut(onlyChildIdx);
-            onlyChildNode.ResolveNode(TrieStore, path);
+            onlyChildNode.ResolveNode(TrieStore, path, ResolveReadFlags);
             path.TruncateOne();
 
             if (onlyChildNode.IsBranch)
@@ -892,7 +898,7 @@ namespace Nethermind.Trie
                         return default;
                     }
 
-                    node.ResolveNode(TrieStore, path);
+                    node.ResolveNode(TrieStore, path, ResolveReadFlags);
 
                     if (isNodeRead && remainingKey.Length == 0)
                     {
@@ -956,7 +962,7 @@ namespace Nethermind.Trie
 
                     // Call FindCachedOrUnknown on some path.
                     if (node.IsSealed && node.Keccak is not null && path.Length % 2 == 1) node = TrieStore.FindCachedOrUnknown(path, node!.Keccak);
-                    node.ResolveNode(TrieStore, path);
+                    node.ResolveNode(TrieStore, path, ResolveReadFlags);
 
                     if (node.IsLeaf || node.IsExtension)
                     {
@@ -1068,7 +1074,7 @@ namespace Nethermind.Trie
                 {
                     TreePath emptyPath = TreePath.Empty;
                     rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
-                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath, ResolveReadFlags))
                     {
                         visitor.VisitMissingNode(default, rootHash);
                         return false;

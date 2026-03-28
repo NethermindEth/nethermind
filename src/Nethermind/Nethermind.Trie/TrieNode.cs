@@ -4,7 +4,9 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +28,10 @@ namespace Nethermind.Trie
     public sealed partial class TrieNode
     {
         internal const int BranchesCount = 16;
+
+        // 16 × (1 prefix + 32 hash) + 1 empty value + 3 sequence prefix = 532.
+        // Inline children are < 32 bytes, so branches with inlines are shorter. 532 is the exact max.
+        private const int FullBranchRlpLength = 532;
 #if DEBUG
         private static int _idCounter;
 
@@ -444,7 +450,7 @@ namespace Nethermind.Trie
                 IsPersisted = true;
             }
 
-            if (!DecodeRlp(new ValueRlpStream(rlp), bufferPool, out int numberOfItems))
+            if (!DecodeRlp(new ValueRlpStream(rlp), bufferPool, readFlags, out int numberOfItems))
             {
                 ThrowUnexpectedNumberOfItems(numberOfItems, path);
             }
@@ -505,7 +511,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(new ValueRlpStream(rlp), bufferPool, out _);
+                return DecodeRlp(new ValueRlpStream(rlp), bufferPool, readFlags, out _);
             }
             catch (RlpException)
             {
@@ -513,9 +519,18 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, ReadFlags readFlags, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
+
+            // Full-branch fast path: state/storage trie nodes of exactly 532 bytes are always
+            // full branches (16 hash-ref children + empty value). Skip item counting entirely.
+            if ((readFlags & ReadFlags.HintStateTrie) != 0 && rlpStream.Length == FullBranchRlpLength)
+            {
+                _nodeData = new BranchData();
+                itemsCount = 17;
+                return true;
+            }
 
             rlpStream.ReadSequenceLength();
 
@@ -1299,6 +1314,13 @@ namespace Nethermind.Trie
 
         private void SeekChildNotNull(ref ValueRlpStream rlpStream, int index)
         {
+            // Full-branch fast path: all 16 children at fixed 33-byte offsets
+            if (rlpStream.Length == FullBranchRlpLength)
+            {
+                rlpStream.Position = 3 + index * 33;
+                return;
+            }
+
             rlpStream.Reset();
             rlpStream.SkipLength();
             if (index == 0 && IsExtension)
@@ -1308,9 +1330,23 @@ namespace Nethermind.Trie
                 index = 1;
             }
 
-            for (int i = 0; i < index; i++)
+            // Inline ulong empty-skip: read 8 bytes, XOR to detect 0x80, bulk-skip empties
+            int i = 0;
+            while (i < index)
             {
+                ulong val = Unsafe.ReadUnaligned<ulong>(
+                    ref Unsafe.Add(ref MemoryMarshal.GetReference(rlpStream.Data), rlpStream.Position));
+                int emptyCount = Math.Min(
+                    BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8,
+                    index - i);
+                if (emptyCount > 0)
+                {
+                    rlpStream.Position += emptyCount;
+                    i += emptyCount;
+                    continue;
+                }
                 rlpStream.SkipItem();
+                i++;
             }
         }
 
@@ -1393,12 +1429,45 @@ namespace Nethermind.Trie
             }
 
             ValueRlpStream rlpStream = new(rlp);
+
+            // Full-branch fast path: all 16 children are hash refs at fixed offsets
+            if (rlp.Length == FullBranchRlpLength)
+            {
+                path.AppendMut(0);
+                for (int i = 0; i < 16; i++)
+                {
+                    path.SetLast(i);
+                    rlpStream.Position = 3 + i * 33;
+                    Hash256 keccak = rlpStream.DecodeKeccak();
+                    TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                    chCount++;
+                    output[i] = child;
+                }
+
+                path.TruncateOne();
+                return chCount;
+            }
+
             rlpStream.Reset();
             rlpStream.SkipLength();
 
             path.AppendMut(0);
-            for (int i = 0; i < 16; i++)
+            int ci = 0;
+            while (ci < 16)
             {
+                // Inline ulong empty-skip: read 8 bytes, XOR to detect 0x80, bulk-skip empties
+                ulong val = Unsafe.ReadUnaligned<ulong>(
+                    ref Unsafe.Add(ref MemoryMarshal.GetReference(rlpStream.Data), rlpStream.Position));
+                int emptyCount = Math.Min(
+                    BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8,
+                    16 - ci);
+                if (emptyCount > 0)
+                {
+                    rlpStream.Position += emptyCount;
+                    ci += emptyCount;
+                    continue;
+                }
+
                 int prefix = rlpStream.PeekByte();
 
                 switch (prefix)
@@ -1407,16 +1476,16 @@ namespace Nethermind.Trie
                     case 128:
                         {
                             rlpStream.Position++;
-                            output[i] = null;
+                            output[ci] = null;
                             break;
                         }
                     case 160:
                         {
-                            path.SetLast(i);
+                            path.SetLast(ci);
                             Hash256 keccak = rlpStream.DecodeKeccak();
                             TrieNode child = tree.FindCachedOrUnknown(path, keccak);
                             chCount++;
-                            output[i] = child;
+                            output[ci] = child;
 
                             break;
                         }
@@ -1426,10 +1495,11 @@ namespace Nethermind.Trie
                             TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
                             rlpStream.SkipItem();
                             chCount++;
-                            output[i] = child;
+                            output[ci] = child;
                             break;
                         }
                 }
+                ci++;
             }
 
             path.TruncateOne();
@@ -1494,7 +1564,18 @@ namespace Nethermind.Trie
                         if (_currentStreamIndex.HasValue && _currentStreamIndex <= i)
                         {
                             int toSkip = i - _currentStreamIndex.Value;
-                            for (int j = 0; j < toSkip; j++) _rlpStream.SkipItem();
+                            int j = 0;
+                            while (j < toSkip)
+                            {
+                                ulong val = Unsafe.ReadUnaligned<ulong>(
+                                    ref Unsafe.Add(ref MemoryMarshal.GetReference(_rlpStream.Data), _rlpStream.Position));
+                                int emptyCount = Math.Min(
+                                    BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8,
+                                    toSkip - j);
+                                if (emptyCount > 0) { _rlpStream.Position += emptyCount; j += emptyCount; continue; }
+                                _rlpStream.SkipItem();
+                                j++;
+                            }
                             _currentStreamIndex += toSkip;
                         }
                         else
@@ -1509,7 +1590,18 @@ namespace Nethermind.Trie
                             }
                             else
                             {
-                                for (int j = 0; j < i; j++) _rlpStream.SkipItem();
+                                int j = 0;
+                                while (j < i)
+                                {
+                                    ulong val = Unsafe.ReadUnaligned<ulong>(
+                                        ref Unsafe.Add(ref MemoryMarshal.GetReference(_rlpStream.Data), _rlpStream.Position));
+                                    int emptyCount = Math.Min(
+                                        BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8,
+                                        i - j);
+                                    if (emptyCount > 0) { _rlpStream.Position += emptyCount; j += emptyCount; continue; }
+                                    _rlpStream.SkipItem();
+                                    j++;
+                                }
                             }
 
                             _currentStreamIndex = i;

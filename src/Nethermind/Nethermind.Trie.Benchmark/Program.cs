@@ -15,7 +15,8 @@ namespace Nethermind.Trie.Benchmark
                 .Run(args, new DebugInProcessConfig());
 #else
         {
-            BenchmarkRunner.Run<TreeStoreBenchmark>();
+            BenchmarkRunner.Run<TrieNodeRlpSkipBenchmark>();
+            // BenchmarkRunner.Run<TreeStoreBenchmark>();
             // BenchmarkRunner.Run<CacheBenchmark>();
             // BenchmarkRunner.Run<TrieNodeBenchmark>();
             Console.ReadLine();

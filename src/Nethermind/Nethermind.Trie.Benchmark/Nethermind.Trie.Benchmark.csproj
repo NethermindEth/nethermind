@@ -2,6 +2,7 @@
 
     <PropertyGroup>
       <OutputType>Exe</OutputType>
+      <GenerateTestingPlatformEntryPoint>false</GenerateTestingPlatformEntryPoint>
     </PropertyGroup>
 
     <ItemGroup>
@@ -11,6 +12,13 @@
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Trie\Nethermind.Trie.csproj" />
+    </ItemGroup>
+
+    <!-- Exclude pre-existing broken benchmarks -->
+    <ItemGroup>
+      <Compile Remove="TreeCommitterBenchmark.cs" />
+      <Compile Remove="TrieNodeBenchmark.cs" />
+      <Compile Remove="CacheBenchmark.cs" />
     </ItemGroup>
 
 </Project>

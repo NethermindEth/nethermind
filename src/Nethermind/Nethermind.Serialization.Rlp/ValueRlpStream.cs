@@ -206,6 +206,14 @@ public ref struct ValueRlpStream(CappedArray<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipItem() => SkipBytes(PeekNextRlpLength());
 
+    /// <summary>
+    /// Bulk-skips consecutive empty (0x80) RLP items using a ulong comparison trick.
+    /// Returns the number of items skipped (0 if the next item is not empty).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int SkipConsecutiveEmptyItems(int maxToSkip)
+        => RlpHelpers.SkipConsecutiveEmptyBytes(Data, ref _position, maxToSkip);
+
     public void Reset() => _position = 0;
 
     public override readonly string ToString() => $"[{nameof(RlpStream)}|{_position}/{Data.Length}]";

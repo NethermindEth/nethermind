@@ -1232,4 +1232,161 @@ public class TrieNodeTests
 
         failed.Should().BeFalse("seqlock corruption detected: invalid length or torn read");
     }
+
+    [TestCase(0)]
+    [TestCase(2)]
+    [TestCase(4)]
+    [TestCase(8)]
+    [TestCase(16)]
+    public void Sparse_branch_IsChildNull_returns_correct_results(int populatedCount)
+    {
+        (byte[] rlp, bool[] populated) = BuildSparseBranchRlp(populatedCount);
+        TrieNode node = new(NodeType.Branch, rlp);
+
+        for (int i = 0; i < 16; i++)
+        {
+            node.IsChildNull(i).Should().Be(!populated[i], $"child {i}");
+        }
+    }
+
+    [TestCase(0)]
+    [TestCase(2)]
+    [TestCase(4)]
+    [TestCase(8)]
+    [TestCase(16)]
+    public void Sparse_branch_ResolveAllChildBranch_returns_correct_count(int populatedCount)
+    {
+        (byte[] rlp, bool[] populated) = BuildSparseBranchRlp(populatedCount);
+        TrieNode node = new(NodeType.Branch, rlp);
+
+        TreePath path = TreePath.Empty;
+        TrieNode?[] output = new TrieNode?[16];
+        int count = node.ResolveAllChildBranch(NullTrieNodeResolver.Instance, ref path, output);
+
+        count.Should().Be(populatedCount);
+        for (int i = 0; i < 16; i++)
+        {
+            if (populated[i])
+            {
+                output[i].Should().NotBeNull($"child {i}");
+            }
+            else
+            {
+                output[i].Should().BeNull($"child {i}");
+            }
+        }
+    }
+
+    [Test]
+    public void Full_branch_fast_path_532_byte_DecodeRlp()
+    {
+        // Build a full branch (16 hash-ref children) — should be exactly 532 bytes
+        (byte[] rlp, _) = BuildSparseBranchRlp(16);
+        rlp.Length.Should().Be(532, "full branch must be exactly 532 bytes");
+
+        // Decode with HintStateTrie — triggers the fast path
+        TrieNode node = new(NodeType.Unknown, rlp);
+        TreePath path = TreePath.Empty;
+        node.ResolveUnknownNode(NullTrieNodeResolver.Instance, path, ReadFlags.HintStateTrie);
+
+        node.NodeType.Should().Be(NodeType.Branch);
+
+        // All 16 children should be non-null
+        for (int i = 0; i < 16; i++)
+        {
+            node.IsChildNull(i).Should().BeFalse($"child {i}");
+        }
+    }
+
+    [Test]
+    public void Full_branch_SeekChildNotNull_uses_direct_offsets()
+    {
+        // Build full branch and verify each child resolves correctly
+        (byte[] rlp, _) = BuildSparseBranchRlp(16);
+        TrieNode node = new(NodeType.Branch, rlp);
+
+        TreePath path = TreePath.Empty;
+        TrieNode?[] output = new TrieNode?[16];
+        int count = node.ResolveAllChildBranch(NullTrieNodeResolver.Instance, ref path, output);
+
+        count.Should().Be(16);
+        for (int i = 0; i < 16; i++)
+        {
+            output[i].Should().NotBeNull($"child {i}");
+        }
+    }
+
+    [Test]
+    public void Sparse_branch_empties_cross_8byte_boundary()
+    {
+        // Empties at indices 5-12 (crosses the ulong boundary)
+        TrieNode node = new(NodeType.Branch);
+        Context ctx = new();
+        node.SetChild(0, ctx.HeavyLeaf);
+        node.SetChild(4, ctx.HeavyLeaf);
+        node.SetChild(13, ctx.HeavyLeaf);
+        node.SetChild(15, ctx.HeavyLeaf);
+
+        TreePath emptyPath = TreePath.Empty;
+        CappedArray<byte> rlp = node.RlpEncode(NullTrieNodeResolver.Instance, ref emptyPath);
+        TrieNode restored = new(NodeType.Branch, rlp);
+
+        for (int i = 0; i < 16; i++)
+        {
+            bool shouldBeNull = i != 0 && i != 4 && i != 13 && i != 15;
+            restored.IsChildNull(i).Should().Be(shouldBeNull, $"child {i}");
+        }
+    }
+
+    /// <summary>
+    /// Builds branch RLP with hash-ref children at evenly distributed indices.
+    /// Returns the RLP bytes and a bool[] indicating which indices are populated.
+    /// </summary>
+    private static (byte[] rlp, bool[] populated) BuildSparseBranchRlp(int populatedCount)
+    {
+        bool[] populated = new bool[16];
+
+        // Distribute populated children evenly
+        if (populatedCount == 16)
+        {
+            for (int i = 0; i < 16; i++) populated[i] = true;
+        }
+        else
+        {
+            int step = populatedCount > 0 ? 16 / populatedCount : 0;
+            int placed = 0;
+            for (int i = 0; i < 16 && placed < populatedCount; i += step > 0 ? step : 1)
+            {
+                populated[i] = true;
+                placed++;
+            }
+        }
+
+        // Calculate content length
+        int contentLength = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            contentLength += populated[i] ? 33 : 1; // hash ref = 33 bytes, empty = 1 byte
+        }
+        contentLength += 1; // empty value
+
+        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        rlpStream.StartSequence(contentLength);
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (populated[i])
+            {
+                byte[] hash = Keccak.Compute([(byte)i]).Bytes.ToArray();
+                rlpStream.Encode(hash);
+            }
+            else
+            {
+                rlpStream.Encode(Array.Empty<byte>());
+            }
+        }
+
+        rlpStream.Encode(Array.Empty<byte>()); // empty value
+        return (rlpStream.Data.ToArray()!, populated);
+    }
 }

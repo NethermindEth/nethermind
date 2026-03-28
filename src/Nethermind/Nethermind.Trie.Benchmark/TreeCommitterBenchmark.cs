@@ -1,5 +1,6 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Jobs;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;

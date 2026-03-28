@@ -200,6 +200,11 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 16,
+
+        // Hint that this is a state/storage trie node. Enables the 532-byte full-branch fast path
+        // in TrieNode.DecodeRlp — safe because state/storage leaves never reach 532 bytes.
+        // Receipt/transaction tries must NOT set this flag.
+        HintStateTrie = 32,
     }
 
     [Flags]

@@ -123,7 +123,7 @@ public partial class PatriciaTree
         }
         else
         {
-            node.ResolveNode(TrieStore, path);
+            node.ResolveNode(TrieStore, path, ResolveReadFlags);
 
             if (!node.IsBranch)
             {

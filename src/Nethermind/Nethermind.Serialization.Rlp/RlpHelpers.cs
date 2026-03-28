@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -163,10 +164,60 @@ internal static class RlpHelpers
         int numberOfItems = 0;
         while (position < end && numberOfItems < maxSearch)
         {
+            // Fast path for empty (0x80) items — avoids lookup table overhead
+            if (data[position] == 0x80)
+            {
+                position++;
+                numberOfItems++;
+                continue;
+            }
+
             position += PeekNextRlpLength(data, position);
             numberOfItems++;
         }
         return numberOfItems;
+    }
+
+    /// <summary>
+    /// Counts and skips consecutive 0x80 (empty RLP item) bytes starting at
+    /// <paramref name="position"/>. Advances <paramref name="position"/> by the count.
+    /// Uses ulong bulk comparison when at least 8 bytes remain; falls back to
+    /// single-byte comparison near the end of the span.
+    /// </summary>
+    /// <remarks>
+    /// Safety: Unsafe.ReadUnaligned reads 8 bytes — the <c>remaining &gt;= 8</c> guard
+    /// ensures no read past the span boundary.
+    /// On little-endian, TrailingZeroCount processes bytes in memory order.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int SkipConsecutiveEmptyBytes(ReadOnlySpan<byte> data, ref int position, int maxToSkip)
+    {
+        int remaining = data.Length - position;
+        int skipped = 0;
+
+        // Bulk path: read 8 bytes at once, XOR to detect 0x80, count trailing matches
+        while (skipped < maxToSkip && remaining >= 8)
+        {
+            ulong val = Unsafe.ReadUnaligned<ulong>(
+                ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position));
+            int emptyCount = Math.Min(
+                BitOperations.TrailingZeroCount(val ^ 0x8080808080808080UL) / 8,
+                maxToSkip - skipped);
+            if (emptyCount == 0) break;
+            position += emptyCount;
+            skipped += emptyCount;
+            remaining -= emptyCount;
+        }
+
+        // Tail: byte-by-byte when fewer than 8 bytes remain
+        while (skipped < maxToSkip && remaining > 0 && data[position] == 0x80)
+        {
+            position++;
+            skipped++;
+            remaining--;
+        }
+
+        return skipped;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
