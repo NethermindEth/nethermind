@@ -69,51 +69,44 @@ jobs:
           cat >> hive/clients/nethermind/nethermind.sh << 'WATCHDOG'
 
           # === WATCHDOG: capture thread dump when Nethermind hangs ===
-          HANG_TIMEOUT=20
-          LAST_OUTPUT=$(mktemp)
-          date +%s > "$LAST_OUTPUT"
+          HANG_TIMEOUT=15
+          TSFILE=/tmp/last_output_ts
+          date +%s > "$TSFILE"
           echo "[watchdog] Active (timeout=${HANG_TIMEOUT}s)"
 
-          /nethermind/nethermind --config /configs/test.json $LOG_FLAG 2>&1 | while IFS= read -r line; do
-              echo "$line"
-              date +%s > "$LAST_OUTPUT"
-          done &
-          PIPE_PID=$!
-          sleep 5
+          # Run Nethermind, updating timestamp file on each output line.
+          # Use process substitution to avoid subshell variable scoping issues with pipes.
+          /nethermind/nethermind --config /configs/test.json $LOG_FLAG > >(while IFS= read -r line; do echo "$line"; date +%s > "$TSFILE"; done) 2>&1 &
+          NM_PID=$!
+          sleep 3
+          echo "[watchdog] Nethermind PID=$NM_PID"
 
           CAPTURED=0
-          while kill -0 "$PIPE_PID" 2>/dev/null; do
+          while kill -0 "$NM_PID" 2>/dev/null; do
               sleep 2
               [ "$CAPTURED" -eq 1 ] && continue
-              LAST=$(cat "$LAST_OUTPUT" 2>/dev/null || echo 0)
+              LAST=$(cat "$TSFILE" 2>/dev/null || echo 0)
               NOW=$(date +%s)
               SILENT=$((NOW - LAST))
               if [ "$SILENT" -ge "$HANG_TIMEOUT" ]; then
-                  echo "::error::[watchdog] HANG DETECTED: no output for ${SILENT}s"
-                  NM_PID=$(pgrep -f "nethermind.*--config" | head -1 || true)
-                  if [ -n "$NM_PID" ]; then
-                      DUMPFILE="/tmp/nethermind-hang.dmp"
-                      echo "[watchdog] Collecting dump of PID $NM_PID"
-                      dotnet-dump collect -p "$NM_PID" -o "$DUMPFILE" --type Full 2>&1 || true
-                      if [ -f "$DUMPFILE" ]; then
-                          echo "::group::Thread stacks (clrstack -all)"
-                          echo -e "clrstack -all\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -3000
-                          echo "::endgroup::"
-                          echo "::group::Sync blocks (locks)"
-                          echo -e "syncblk\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -200
-                          echo "::endgroup::"
-                          echo "::group::Thread pool"
-                          echo -e "threadpool\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -100
-                          echo "::endgroup::"
-                          CAPTURED=1
-                      fi
-                  else
-                      echo "[watchdog] Cannot find Nethermind PID"
-                      ps aux
+                  echo "[watchdog] *** HANG DETECTED: no output for ${SILENT}s ***"
+                  DUMPFILE="/tmp/nethermind-hang.dmp"
+                  echo "[watchdog] Collecting heap dump of PID $NM_PID..."
+                  dotnet-dump collect -p "$NM_PID" -o "$DUMPFILE" --type Heap 2>&1
+                  echo "[watchdog] Dump collect exit=$?, size=$(ls -lh "$DUMPFILE" 2>/dev/null | awk '{print $5}')"
+                  if [ -f "$DUMPFILE" ]; then
+                      echo "[watchdog] ===== THREAD STACKS ====="
+                      echo -e "clrstack -all\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -3000
+                      echo "[watchdog] ===== SYNC BLOCKS ====="
+                      echo -e "syncblk\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -200
+                      echo "[watchdog] ===== THREAD POOL ====="
+                      echo -e "threadpool\nexit" | dotnet-dump analyze "$DUMPFILE" 2>&1 | head -100
+                      echo "[watchdog] ===== DUMP ANALYSIS COMPLETE ====="
+                      CAPTURED=1
                   fi
               fi
           done
-          wait "$PIPE_PID" 2>/dev/null || true
+          wait "$NM_PID" 2>/dev/null || true
           WATCHDOG
 
           chmod +x hive/clients/nethermind/nethermind.sh
