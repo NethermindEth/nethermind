@@ -351,6 +351,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
     {
+        _mergeSyncController.AllowBeaconHeaderSync();
         bool isSyncInitialized = _mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
         _beaconPivot.ProcessDestination = blockHeader;
         _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
