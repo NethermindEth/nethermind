@@ -1,20 +1,22 @@
-name: "Hive test: engine suite with parallelism 2"
+name: "Hive: engine suite (withdrawal parallelism fix)"
 
 on:
   push:
     branches: [debug/hive-withdrawal-hang]
   workflow_dispatch:
+    inputs:
+      log-level:
+        description: Log level
+        required: true
+        default: '3'
+        type: choice
+        options: ['0', '1', '2', '3', '4', '5']
 
 jobs:
-  test:
-    name: Build and run tests
+  build:
+    name: Build Docker image
     runs-on: ubuntu-latest
     steps:
-      - name: Set up parameters
-        run: |
-          echo "LOG_LEVEL=3" >> $GITHUB_ENV
-          echo "PARALLELISM=2" >> $GITHUB_ENV
-
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
         with:
@@ -33,6 +35,48 @@ jobs:
           tags: nethermind:test-${{ github.sha }}
           outputs: type=docker,dest=/tmp/image.tar
 
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar
+          retention-days: 1
+
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: "engine: withdrawal tests (parallelism 2)"
+            suite: ethereum/engine
+            limit: "engine-withdrawals"
+            parallelism: 2
+          - name: "engine: non-withdrawal tests (parallelism 4)"
+            suite: ethereum/engine
+            limit: "engine-(api|auth|exchange-capabilities|cancun)"
+            parallelism: 4
+    steps:
+      - name: Set up parameters
+        run: |
+          echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
+
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
       - name: Check out Hive repository
         uses: actions/checkout@v6
         with:
@@ -47,23 +91,21 @@ jobs:
         working-directory: hive
         run: go build .
 
-      - name: Load Docker image
-        run: docker load --input /tmp/image.tar
-
       - name: Run Hive
         continue-on-error: true
         working-directory: hive
         run: |
           ./hive --client nethermind \
-            --sim ethereum/engine \
+            --sim ${{ matrix.suite }} \
             --sim.loglevel $LOG_LEVEL \
-            --sim.parallelism $PARALLELISM
+            --sim.parallelism ${{ matrix.parallelism }} \
+            --sim.limit "${{ matrix.limit }}"
 
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: results-${{ github.run_number }}-${{ github.run_attempt }}
+          name: results-${{ matrix.name }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
           retention-days: 7
 
