@@ -1,4 +1,4 @@
-name: "Hive: engine suite (withdrawal parallelism fix)"
+name: "Hive: all suites (withdrawal parallelism fix)"
 
 on:
   push:
@@ -58,6 +58,18 @@ jobs:
             suite: ethereum/engine
             limit: "engine-(api|auth|exchange-capabilities|cancun)"
             parallelism: 4
+          - name: "graphql (parallelism 4)"
+            suite: ethereum/graphql
+            limit: ""
+            parallelism: 4
+          - name: "rpc-compat (parallelism 4)"
+            suite: ethereum/rpc-compat
+            limit: ""
+            parallelism: 4
+          - name: "sync (parallelism 4)"
+            suite: ethereum/sync
+            limit: ""
+            parallelism: 4
     steps:
       - name: Set up parameters
         run: |
@@ -95,11 +107,12 @@ jobs:
         continue-on-error: true
         working-directory: hive
         run: |
-          ./hive --client nethermind \
-            --sim ${{ matrix.suite }} \
-            --sim.loglevel $LOG_LEVEL \
-            --sim.parallelism ${{ matrix.parallelism }} \
-            --sim.limit "${{ matrix.limit }}"
+          HIVE_ARGS="--client nethermind
+            --sim ${{ matrix.suite }}
+            --sim.loglevel $LOG_LEVEL
+            --sim.parallelism ${{ matrix.parallelism }}"
+          [[ -n "${{ matrix.limit }}" ]] && HIVE_ARGS+=" --sim.limit ${{ matrix.limit }}"
+          ./hive $HIVE_ARGS
 
       - name: Upload results
         if: always()
