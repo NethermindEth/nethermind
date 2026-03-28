@@ -144,6 +144,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
                     ctx.Resolve<Func<Network.P2P.ISession, P2PProtocolHandler>>(),
                     Protocol.P2P))
 
+            .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer!)
+
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
             .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
             .AddProtocolHandler<Subprotocols.NodeData.NodeDataProtocolHandler>()
