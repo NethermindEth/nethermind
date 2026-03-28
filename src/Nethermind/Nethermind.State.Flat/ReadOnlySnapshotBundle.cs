@@ -38,11 +38,11 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
 
-    public Account? GetAccount(Address address)
+    public Account? GetAccount(Address address) => GetAccount(address, address);
+
+    public Account? GetAccount(Address address, HashedKey<Address> key)
     {
         GuardDispose();
-
-        AddressAsKey key = address;
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
@@ -70,9 +70,10 @@ public sealed class ReadOnlySnapshotBundle(
 
     public int DetermineSelfDestructSnapshotIdx(Address address)
     {
+        HashedKey<Address> key = new(address);
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].HasSelfDestruct(address))
+            if (snapshots[i].HasSelfDestruct(key))
             {
                 return i;
             }
@@ -81,14 +82,17 @@ public sealed class ReadOnlySnapshotBundle(
         return -1;
     }
 
-    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx)
+    public byte[]? GetSlot(Address address, in UInt256 index, int selfDestructStateIdx) =>
+        GetSlot(selfDestructStateIdx, (address, index));
+
+    public byte[]? GetSlot(int selfDestructStateIdx, HashedKey<(Address, UInt256)> key)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorage(address, index, out SlotValue? slotValue))
+            if (snapshots[i].TryGetStorage(key, out SlotValue? slotValue))
             {
                 byte[]? res = slotValue?.ToEvmBytes();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabel);
@@ -104,7 +108,7 @@ public sealed class ReadOnlySnapshotBundle(
         SlotValue outSlotValue = new();
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        persistenceReader.TryGetSlot(address, index, ref outSlotValue);
+        persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue);
         byte[]? value = outSlotValue.ToEvmBytes();
 
         if (recordDetailedMetrics)
@@ -122,14 +126,17 @@ public sealed class ReadOnlySnapshotBundle(
         return value;
     }
 
-    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryFindStateNodes(path, out node);
+
+    public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStateNode(path, out node))
+            if (snapshots[i].TryGetStateNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
@@ -143,14 +150,17 @@ public sealed class ReadOnlySnapshotBundle(
 
     // Note: No self-destruct boundary check needed for trie nodes. Trie iteration starts from the storage root hash,
     // so if storage was self-destructed, the new root is different and orphaned nodes won't be traversed.
-    public bool TryFindStorageNodes(Hash256AsKey address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node)
+    public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
+        TryFindStorageNodes((address, path), out node);
+
+    public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(address, path, out node))
+            if (snapshots[i].TryGetStorageNode(key, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
