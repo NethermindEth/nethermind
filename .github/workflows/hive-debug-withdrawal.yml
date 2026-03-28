@@ -123,7 +123,7 @@ jobs:
             --sim ethereum/engine \
             --sim.limit "engine-withdrawals" \
             --sim.loglevel 3 \
-            --sim.parallelism 4
+            --sim.parallelism 2
 
       - name: Upload results
         if: always()
