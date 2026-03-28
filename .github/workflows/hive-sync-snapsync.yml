@@ -1,0 +1,75 @@
+name: Hive sync (snapsync)
+
+on:
+  push:
+    branches:
+      - fix/snap-server-di-registration
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Hive snapsync test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Nethermind repository
+        uses: actions/checkout@v6
+        with:
+          path: nethermind
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        env:
+          DOCKER_BUILD_SUMMARY: false
+        with:
+          context: nethermind
+          file: nethermind/Dockerfile
+          tags: nethermind:test-${{ github.sha }}
+          outputs: type=docker,dest=/tmp/image.tar
+
+      - name: Check out Hive repository
+        uses: actions/checkout@v6
+        with:
+          repository: ethereum/hive
+          ref: master
+          path: hive
+
+      - name: Patch Hive Dockerfile
+        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build Hive
+        working-directory: hive
+        run: go build .
+
+      - name: Load Docker image
+        run: docker load --input /tmp/image.tar
+
+      - name: Run snapsync test
+        working-directory: hive
+        run: |
+          ./hive --client nethermind \
+            --sim ethereum/sync \
+            --sim.limit "snapsync" \
+            --sim.loglevel 3 \
+            --sim.parallelism 1
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hive-snapsync-results-${{ github.run_number }}
+          path: hive/workspace
+          retention-days: 7
+
+      - name: Print results
+        if: always()
+        run: |
+          rm -f hive/workspace/logs/hive.json
+          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
