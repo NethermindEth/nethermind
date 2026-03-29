@@ -68,8 +68,8 @@ jobs:
             {
               echo 'matrix<<MATRIX_END'
               echo '[
-                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2},
-                {"suite":"ethereum/engine", "limit":"engine-[^w]"},
+                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2, "name":"engine-withdrawals"},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]", "name":"engine-other"},
                 {"suite":"ethereum/graphql"},
                 {"suite":"ethereum/rpc-compat"},
                 {"suite":"ethereum/sync"}
@@ -81,7 +81,7 @@ jobs:
           fi
 
   test:
-    name: Build and run tests (${{ matrix.suite }}${{ matrix.limit && format(' – {0}', matrix.limit) || '' }})
+    name: Build and run tests (${{ matrix.name || matrix.suite }})
     needs: setup
     runs-on: ubuntu-latest
     strategy:
