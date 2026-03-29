@@ -114,7 +114,7 @@ public sealed class AssociativeKeyCache<TKey>
 
     private bool SetCore(in TKey key, int baseIdx, long hashPart)
     {
-        // Retry with fresh epoch if Clear() races — never drop an insert silently.
+        // Retry with fresh epoch if Clear() races at any point — never drop an insert.
         while (true)
         {
             long epochTag = ReadEpoch(ref _epochAndCount);
@@ -152,7 +152,7 @@ public sealed class AssociativeKeyCache<TKey>
                 }
             }
 
-            // If epoch changed (concurrent Clear), rescan with the new epoch
+            // Early retry if epoch already changed before we pick a slot
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
             long timestamp = Stopwatch.GetTimestamp();
@@ -177,6 +177,12 @@ public sealed class AssociativeKeyCache<TKey>
 
             WriteEntry(ref te, existing, in key, tagToStore, timestamp);
             AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
+
+            // Final check: if Clear() raced after the write, the entry has a stale epoch
+            // tag and is invisible to readers. AdjustCountIfEpoch already skipped the
+            // count update (epoch mismatch). Retry to write with the current epoch.
+            if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
+
             return true;
         }
     }
