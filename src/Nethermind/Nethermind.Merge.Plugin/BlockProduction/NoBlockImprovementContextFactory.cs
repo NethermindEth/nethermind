@@ -21,6 +21,7 @@ public class NoBlockImprovementContextFactory : IBlockImprovementContextFactory
         UInt256 currentBlockFees,
         SharedCancellationTokenSource cts)
     {
+        cts.CancelAndDispose();
         return new NoBlockImprovementContext(currentBestBlock, UInt256.Zero, startDateTime);
     }
 }
