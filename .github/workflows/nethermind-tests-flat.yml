@@ -36,7 +36,6 @@ jobs:
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
-          - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
