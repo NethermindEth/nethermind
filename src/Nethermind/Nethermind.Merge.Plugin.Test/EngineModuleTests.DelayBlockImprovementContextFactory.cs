@@ -12,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
-
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
