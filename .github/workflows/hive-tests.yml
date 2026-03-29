@@ -3,7 +3,7 @@ name: Hive tests
 on:
   push:
     tags: ['*']
-    branches: [master]
+    branches: [fix/hive-reduce-parallelism]
   workflow_dispatch:
     inputs:
       test-suite:
@@ -48,25 +48,50 @@ on:
         default: master
         type: string
 
+env:
+  DEFAULT_PARALLELISM: 4
+
 jobs:
+  setup:
+    name: Set up test matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - id: matrix
+        run: |
+          if [[ "${{ github.event_name }}" == "push" || "${{ github.event.inputs.test-suite }}" == "all" ]]; then
+            # engine-withdrawals at parallelism 2: the 128-block primary build takes
+            # ~5 min on shared CI runners at parallelism 4, consuming the entire 300 s
+            # test timeout before the syncing client starts. engine-[^w] covers all
+            # other engine suites automatically.
+            {
+              echo 'matrix<<MATRIX_END'
+              echo '[
+                {"suite":"ethereum/engine", "limit":"engine-withdrawals", "parallelism":2},
+                {"suite":"ethereum/engine", "limit":"engine-[^w]"},
+                {"suite":"ethereum/graphql"},
+                {"suite":"ethereum/rpc-compat"},
+                {"suite":"ethereum/sync"}
+              ]'
+              echo 'MATRIX_END'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo 'matrix=[{"suite":"${{ github.event.inputs.test-suite }}","limit":"${{ github.event.inputs.limit }}","parallelism":${{ github.event.inputs.parallelism || env.DEFAULT_PARALLELISM }}}]' >> "$GITHUB_OUTPUT"
+          fi
+
   test:
-    name: Build and run tests
+    name: Build and run tests (${{ matrix.suite }}${{ matrix.limit && format(' – {0}', matrix.limit) || '' }})
+    needs: setup
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        test-suite: ${{ fromJson((
-            github.event_name == 'push' || 
-            (github.event_name == 'workflow_dispatch' && github.event.inputs.test-suite == 'all')) &&
-          '["ethereum/engine","ethereum/graphql","ethereum/rpc-compat","ethereum/sync"]' ||
-          format('["{0}"]', github.event.inputs.test-suite)
-          ) }}
+        include: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       - name: Set up parameters
         run: |
-          echo "LIMIT=${{ github.event.inputs.limit || '' }}" >> $GITHUB_ENV
           echo "LOG_LEVEL=${{ github.event.inputs.log-level || '3' }}" >> $GITHUB_ENV
-          echo "PARALLELISM=${{ github.event.inputs.parallelism || '4' }}" >> $GITHUB_ENV
           echo "HIVE_REPO=${{ github.event.inputs.hive-repo || 'ethereum/hive' }}" >> $GITHUB_ENV
           echo "HIVE_BRANCH=${{ github.event.inputs.hive-branch || 'master' }}" >> $GITHUB_ENV
           echo "BUILDARG=${{ github.event.inputs.buildarg || '' }}" >> $GITHUB_ENV
@@ -111,10 +136,10 @@ jobs:
         working-directory: hive
         run: |
           HIVE_ARGS="--client nethermind
-            --sim ${{ matrix.test-suite }}
+            --sim ${{ matrix.suite }}
             --sim.loglevel $LOG_LEVEL
-            --sim.parallelism $PARALLELISM"
-          [[ -n "$LIMIT" ]] && HIVE_ARGS+=" --sim.limit $LIMIT"
+            --sim.parallelism ${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
+          [[ -n "${{ matrix.limit }}" ]] && HIVE_ARGS+=" --sim.limit ${{ matrix.limit }}"
           [[ -n "$BUILDARG" ]] && HIVE_ARGS+=" --sim.buildarg \"$BUILDARG\""
           ./hive $HIVE_ARGS
 
