@@ -27,6 +27,7 @@ public sealed class AssociativeKeyCache<TKey>
     private readonly Entry[] _entries;
     private readonly int _setMask;
     private readonly int _setCount;
+    private readonly int _hashShift;
     private readonly int[] _setGates;
     private long _shiftedEpoch;
     private int _count;
@@ -48,6 +49,7 @@ public sealed class AssociativeKeyCache<TKey>
 
         _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, maxCapacity / Ways));
         _setMask = _setCount - 1;
+        _hashShift = BitOperations.Log2((uint)_setCount);
         _entries = new Entry[_setCount * Ways];
         _setGates = new int[_setCount];
     }
@@ -63,7 +65,7 @@ public sealed class AssociativeKeyCache<TKey>
         int baseIdx = setIndex << WayShift;
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode >> _hashShift) & HashMask;
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -97,7 +99,7 @@ public sealed class AssociativeKeyCache<TKey>
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode >> _hashShift) & HashMask;
 
         ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
         AcquireGate(ref gate);
@@ -186,7 +188,7 @@ public sealed class AssociativeKeyCache<TKey>
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode >> _hashShift) & HashMask;
 
         ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
         AcquireGate(ref gate);
