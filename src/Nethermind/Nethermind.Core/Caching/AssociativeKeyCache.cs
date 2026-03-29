@@ -82,7 +82,7 @@ public sealed class AssociativeKeyCache<TKey>
             if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && key.Equals(in storedKey))
+            if (h1 == h2 && storedKey.Equals(in key))
             {
                 e.Ticker = Stopwatch.GetTimestamp();
                 return true;
@@ -237,6 +237,11 @@ public sealed class AssociativeKeyCache<TKey>
         return false;
     }
 
+    /// <summary>
+    /// Logically invalidates all entries via epoch bump. O(1).
+    /// Safe to call concurrently: SetCore re-checks the epoch after scanning and bails out
+    /// if Clear() raced, so no stale-epoch increments can follow the count reset.
+    /// </summary>
     public void Clear()
     {
         if (_setCount == 0) return;
