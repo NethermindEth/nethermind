@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -90,25 +89,6 @@ internal static class SeqlockHeader
         return (int)(Volatile.Read(ref epochAndCount) & CountMask);
     }
 
-    /// <summary>
-    /// Validates capacity is within the supported range for the combined epoch+count field.
-    /// </summary>
-    public static void ThrowIfCapacityTooLarge(int maxCapacity)
-    {
-        if (maxCapacity > MaxCapacity)
-        {
-            ThrowCapacityTooLarge(maxCapacity);
-        }
-
-        static void ThrowCapacityTooLarge(int maxCapacity)
-        {
-            throw new ArgumentOutOfRangeException(
-                nameof(maxCapacity),
-                maxCapacity,
-                $"Capacity exceeds maximum supported value of {MaxCapacity}. " +
-                $"The combined epoch+count field requires headroom to prevent count underflow from corrupting the epoch.");
-        }
-    }
 
     /// <summary>
     /// TTAS (test-and-test-and-set) spinlock acquire on a per-set gate.

@@ -74,6 +74,7 @@ public sealed class AssociativeCache<TKey, TValue>
     public AssociativeCache(int maxCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxCapacity, MaxCapacity);
 
         if (maxCapacity == 0)
         {
@@ -83,8 +84,6 @@ public sealed class AssociativeCache<TKey, TValue>
             _setCount = 0;
             return;
         }
-
-        ThrowIfCapacityTooLarge(maxCapacity);
         _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, maxCapacity / Ways));
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
