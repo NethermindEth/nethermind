@@ -265,6 +265,59 @@ public class AssociativeCacheTests
         }
     }
 
+    [TestCase(8)]
+    [TestCase(32)]
+    [TestCase(256)]
+    [TestCase(1024)]
+    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
+    {
+        // Catches hash signature extraction bugs: if the signature is computed from
+        // wrong bits, Get won't find keys that were just inserted (tag mismatch).
+        // Insert only 50% of capacity to avoid set-conflict eviction.
+        AssociativeCache<AddressAsKey, Account> cache = new(capacity);
+        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue();
+        }
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            AddressAsKey key = _keys[i];
+            cache.TryGet(in key, out Account? val).Should().BeTrue($"key {i} should be present at capacity {capacity}");
+            val.Should().Be(_accounts[i]);
+        }
+
+        cache.Count.Should().Be(insertCount);
+    }
+
+    [Test]
+    public void Concurrent_clear_does_not_corrupt_count()
+    {
+        // Catches count/Clear race: concurrent Set + Clear should not produce
+        // negative counts or counts wildly exceeding capacity.
+        Cache cache = Create();
+
+        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        {
+            for (int i = 0; i < Capacity; i++)
+            {
+                AddressAsKey key = _keys[i];
+                cache.Set(in key, _accounts[i]);
+            }
+
+            if (iter % 3 == 0)
+            {
+                cache.Clear();
+            }
+        });
+
+        int count = cache.Count;
+        count.Should().BeGreaterThanOrEqualTo(0);
+        count.Should().BeLessOrEqualTo(Capacity);
+    }
+
     [Test]
     public void No_duplicate_keys_under_concurrency()
     {

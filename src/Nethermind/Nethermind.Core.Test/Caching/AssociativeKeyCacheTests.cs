@@ -159,6 +159,52 @@ public class AssociativeKeyCacheTests
         cache.Delete(in _keys[0]).Should().BeFalse();
     }
 
+    [TestCase(8)]
+    [TestCase(32)]
+    [TestCase(256)]
+    [TestCase(1024)]
+    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
+    {
+        // Insert only 50% of capacity to avoid set-conflict eviction.
+        AssociativeKeyCache<AddressAsKey> cache = new(capacity);
+        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            cache.Set(in _keys[i]).Should().BeTrue();
+        }
+
+        for (int i = 0; i < insertCount; i++)
+        {
+            cache.Get(in _keys[i]).Should().BeTrue($"key {i} should be present at capacity {capacity}");
+        }
+
+        cache.Count.Should().Be(insertCount);
+    }
+
+    [Test]
+    public void Concurrent_clear_does_not_corrupt_count()
+    {
+        AssociativeKeyCache<AddressAsKey> cache = new(Capacity);
+
+        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        {
+            for (int i = 0; i < Capacity; i++)
+            {
+                cache.Set(in _keys[i]);
+            }
+
+            if (iter % 3 == 0)
+            {
+                cache.Clear();
+            }
+        });
+
+        int count = cache.Count;
+        count.Should().BeGreaterThanOrEqualTo(0);
+        count.Should().BeLessOrEqualTo(Capacity);
+    }
+
     [TestCase(-1)]
     [TestCase(134_217_729)]
     public void Capacity_out_of_range_throws(int capacity)
