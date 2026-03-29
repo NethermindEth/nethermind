@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using Nethermind.Core;
@@ -63,7 +62,7 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
-    public async Task Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
+    public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
         if (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1")
             Assert.Ignore("Flat DB does not support pre-configured genesis state in this test setup");
@@ -119,7 +118,7 @@ public class TransactionJsonTest : GeneralStateTestBase
             Transaction = transaction,
         };
 
-        EthereumTestResult result = await RunTestAsync(test);
+        EthereumTestResult result = RunTest(test);
 
         result.StateRoot.Should().Be(test.PostHash,
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
