@@ -11,16 +11,10 @@ namespace Nethermind.Core.Threading;
 /// the same underlying CTS while ensuring cancel-and-dispose is performed exactly once via
 /// <see cref="CancellationTokenExtensions.CancelDisposeAndClear"/>.
 /// </summary>
-public sealed class SharedCancellationTokenSource
+public sealed class SharedCancellationTokenSource(CancellationTokenSource cts)
 {
-    private CancellationTokenSource? _cts;
-
-    public SharedCancellationTokenSource(CancellationTokenSource cts)
-    {
-        _cts = cts;
-    }
-
-    public CancellationToken Token => _cts?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
+    private CancellationTokenSource? _cts = cts;
+    public CancellationToken Token { get; } = cts.Token;
 
     public bool IsCancellationRequested => _cts?.IsCancellationRequested ?? true;
 
