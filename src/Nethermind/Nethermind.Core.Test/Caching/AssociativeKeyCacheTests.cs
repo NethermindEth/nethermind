@@ -62,6 +62,46 @@ public class AssociativeKeyCacheTests
     }
 
     [Test]
+    public void Count_does_not_go_negative_on_clear_then_delete()
+    {
+        AssociativeKeyCache<AddressAsKey> cache = new(Capacity);
+        cache.Set(in _keys[0]).Should().BeTrue();
+        cache.Count.Should().Be(1);
+
+        cache.Clear();
+        cache.Count.Should().Be(0);
+
+        cache.Delete(in _keys[0]).Should().BeFalse();
+        cache.Count.Should().Be(0);
+    }
+
+    [Test]
+    public void Concurrent_delete_and_clear_keeps_count_non_negative()
+    {
+        AssociativeKeyCache<AddressAsKey> cache = new(256);
+
+        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        {
+            for (int i = 0; i < 64; i++)
+            {
+                cache.Set(in _keys[i]);
+            }
+
+            if (iter % 2 == 0)
+            {
+                cache.Clear();
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                cache.Delete(in _keys[i]);
+            }
+        });
+
+        cache.Count.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Test]
     public void Clear_invalidates_and_frees_capacity()
     {
         AssociativeKeyCache<AddressAsKey> cache = new(Capacity);

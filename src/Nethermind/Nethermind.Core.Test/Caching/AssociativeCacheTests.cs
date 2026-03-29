@@ -340,6 +340,53 @@ public class AssociativeCacheTests
     }
 
     [Test]
+    public void Count_does_not_go_negative_on_clear_then_delete()
+    {
+        // Catches count underflow: Clear sets count to 0, then Delete
+        // on a stale entry should not decrement below 0.
+        Cache cache = Create();
+        AddressAsKey key = _keys[0];
+        cache.Set(in key, _accounts[0]);
+        cache.Count.Should().Be(1);
+
+        cache.Clear();
+        cache.Count.Should().Be(0);
+
+        // Delete after Clear — entry is stale, delete should be a no-op
+        cache.Delete(in key).Should().BeFalse();
+        cache.Count.Should().Be(0);
+    }
+
+    [Test]
+    public void Concurrent_delete_and_clear_keeps_count_non_negative()
+    {
+        // Stress test: concurrent Delete + Clear should never produce negative count.
+        Cache cache = new Cache(256);
+
+        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
+        {
+            for (int i = 0; i < 64; i++)
+            {
+                AddressAsKey key = _keys[i];
+                cache.Set(in key, _accounts[i]);
+            }
+
+            if (iter % 2 == 0)
+            {
+                cache.Clear();
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                AddressAsKey key = _keys[i];
+                cache.Delete(in key);
+            }
+        });
+
+        cache.Count.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Test]
     public void Clear_invalidates_and_frees_capacity()
     {
         Cache cache = Create();
