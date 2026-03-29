@@ -48,7 +48,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
     {
         if (payloadAttributes is OptimismPayloadAttributes optimismPayload)
         {
-            var spec = _specProvider.GetSpec(currentBestBlock.Header);
+            IReleaseSpec spec = _specProvider.GetSpec(currentBestBlock.Header);
             if (spec.IsOpHoloceneEnabled)
             {
                 // NOTE: This operation should never fail since headers should be valid at this point.
@@ -74,6 +74,8 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
         {
             if (_logger.IsDebug)
                 _logger.Debug("Skip block improvement because of NoTxPool payload attribute.");
+
+            cts.CancelAndDispose();
 
             // ignore TryAdd failure (it can only happen if payloadId is already in the dictionary)
             _payloadStorage.TryAdd(payloadId,
