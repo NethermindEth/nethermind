@@ -196,22 +196,6 @@ public class AssociativeCacheTests
     }
 
     [Test]
-    public void Clear_should_free_all_capacity()
-    {
-        Cache cache = Create();
-        // Use a single key to avoid hash-collision ambiguity after Clear
-        AddressAsKey key = _keys[1];
-
-        cache.Set(in key, _accounts[0]).Should().BeTrue();
-        cache.Clear();
-        cache.Count.Should().Be(0);
-
-        // After Clear, Set must return true (entry treated as new)
-        cache.Set(in key, _accounts[1]).Should().BeTrue();
-        cache.Get(in key).Should().Be(_accounts[1]);
-    }
-
-    [Test]
     public void Delete_keeps_internal_structure()
     {
         // Use a sparse cache so normal-traffic evictions don't interfere with the rolling-window logic.
@@ -307,26 +291,25 @@ public class AssociativeCacheTests
     }
 
     [Test]
-    public void Clear_epoch_invalidates_entries()
+    public void Clear_invalidates_and_frees_capacity()
     {
         Cache cache = Create();
-        // Use a single key to make the test deterministic
         AddressAsKey key = _keys[1];
 
-        cache.Set(in key, _accounts[0]);
+        cache.Set(in key, _accounts[0]).Should().BeTrue();
         cache.Clear();
 
-        // The epoch bump must make the entry invisible
+        // Epoch bump makes entry invisible, count resets
         cache.Get(in key).Should().BeNull();
         cache.Count.Should().Be(0);
 
-        // Inserting again after Clear must succeed and be retrievable
+        // Capacity is free — Set returns true (new), value is retrievable
         cache.Set(in key, _accounts[1]).Should().BeTrue();
         cache.Get(in key).Should().Be(_accounts[1]);
     }
 
     [Test]
-    public void TryGet_works()
+    public void TryGet_and_Contains_work()
     {
         Cache cache = Create();
         AddressAsKey presentKey = _keys[0];
@@ -336,24 +319,14 @@ public class AssociativeCacheTests
 
         cache.TryGet(in presentKey, out Account? hit).Should().BeTrue();
         hit.Should().Be(_accounts[0]);
+        cache.Contains(in presentKey).Should().BeTrue();
 
         cache.TryGet(in missingKey, out Account? miss).Should().BeFalse();
         miss.Should().BeNull();
-    }
-
-    [Test]
-    public void Contains_works()
-    {
-        Cache cache = Create();
-        AddressAsKey presentKey = _keys[0];
-        AddressAsKey missingKey = _keys[Capacity];
-
-        cache.Set(in presentKey, _accounts[0]);
-
-        cache.Contains(in presentKey).Should().BeTrue();
         cache.Contains(in missingKey).Should().BeFalse();
 
         cache.Delete(in presentKey);
+        cache.TryGet(in presentKey, out _).Should().BeFalse();
         cache.Contains(in presentKey).Should().BeFalse();
     }
 }

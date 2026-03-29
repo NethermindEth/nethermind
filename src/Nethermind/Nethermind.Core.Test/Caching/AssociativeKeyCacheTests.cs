@@ -62,12 +62,25 @@ public class AssociativeKeyCacheTests
     }
 
     [Test]
-    public void Can_clear()
+    public void Clear_invalidates_and_frees_capacity()
     {
         AssociativeKeyCache<AddressAsKey> cache = new(Capacity);
-        cache.Set(in _keys[0]).Should().BeTrue();
+
+        for (int i = 0; i < Capacity; i++)
+        {
+            cache.Set(in _keys[i]).Should().BeTrue();
+        }
+
         cache.Clear();
-        cache.Get(in _keys[0]).Should().BeFalse();
+
+        // All entries invisible, count reset
+        for (int i = 0; i < Capacity; i++)
+        {
+            cache.Get(in _keys[i]).Should().BeFalse();
+        }
+        cache.Count.Should().Be(0);
+
+        // Capacity is free — re-insert succeeds
         cache.Set(in _keys[0]).Should().BeTrue();
         cache.Get(in _keys[0]).Should().BeTrue();
     }
@@ -172,25 +185,6 @@ public class AssociativeKeyCacheTests
             cache.Get(in _keys[0]).Should().BeTrue();
             cache.Count.Should().Be(1);
         }
-    }
-
-    [Test]
-    public void Clear_epoch_invalidates_entries()
-    {
-        AssociativeKeyCache<AddressAsKey> cache = new(Capacity);
-        for (int i = 0; i < Capacity; i++)
-        {
-            cache.Set(in _keys[i]).Should().BeTrue();
-        }
-
-        cache.Clear();
-
-        for (int i = 0; i < Capacity; i++)
-        {
-            cache.Get(in _keys[i]).Should().BeFalse();
-        }
-
-        cache.Count.Should().Be(0);
     }
 
     [Test]
