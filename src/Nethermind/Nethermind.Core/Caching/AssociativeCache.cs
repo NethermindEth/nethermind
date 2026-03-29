@@ -48,7 +48,14 @@ namespace Nethermind.Core.Caching;
 ///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
+///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump (does NOT release GC references)</description></item>
 /// </list>
+///
+/// <para><b>GC note:</b> <see cref="Clear"/> uses an O(1) epoch bump that logically invalidates entries
+/// but does not null out Key/Value fields in the backing array. References held by stale entries
+/// remain rooted until overwritten by new inserts. If the cache holds large objects that must be
+/// collected promptly after Clear, use <see cref="Delete"/> on individual keys instead, or consider
+/// LruCache/ClockCache whose Clear zeroes the backing store.</para>
 /// </summary>
 public sealed class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
@@ -305,8 +312,10 @@ public sealed class AssociativeCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Logically invalidates all entries via epoch bump + count reset in a single atomic CAS.
+    /// Logically invalidates all entries via epoch bump + count reset in a single atomic CAS. O(1).
     /// No race window between epoch change and count reset.
+    /// <para>Does NOT null out Key/Value fields — stale entries remain GC-rooted until overwritten
+    /// by new inserts. See class-level GC note.</para>
     /// </summary>
     public void Clear()
     {
