@@ -146,6 +146,14 @@ public class AssociativeKeyCacheTests
         cache.Delete(in _keys[0]).Should().BeFalse();
     }
 
+    [TestCase(-1)]
+    [TestCase(134_217_729)]
+    public void Capacity_out_of_range_throws(int capacity)
+    {
+        FluentActions.Invoking(() => new AssociativeKeyCache<AddressAsKey>(capacity))
+            .Should().Throw<ArgumentOutOfRangeException>();
+    }
+
     [Test]
     public void Capacity_zero()
     {

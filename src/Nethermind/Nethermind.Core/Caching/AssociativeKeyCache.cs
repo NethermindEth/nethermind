@@ -35,8 +35,7 @@ public sealed class AssociativeKeyCache<TKey>
 
     public AssociativeKeyCache(int maxCapacity)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(maxCapacity);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(maxCapacity, MaxCapacity);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)maxCapacity, MaxCapacity);
 
         if (maxCapacity == 0)
         {

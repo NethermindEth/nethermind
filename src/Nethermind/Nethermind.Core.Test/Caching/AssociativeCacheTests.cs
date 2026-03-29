@@ -256,6 +256,14 @@ public class AssociativeCacheTests
         cache.Count.Should().BeLessOrEqualTo(10);
     }
 
+    [TestCase(-1)]
+    [TestCase(134_217_729)]
+    public void Capacity_out_of_range_throws(int capacity)
+    {
+        FluentActions.Invoking(() => new Cache(capacity))
+            .Should().Throw<ArgumentOutOfRangeException>();
+    }
+
     [Test]
     public void Capacity_zero()
     {

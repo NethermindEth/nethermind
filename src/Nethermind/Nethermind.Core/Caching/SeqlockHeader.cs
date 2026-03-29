@@ -47,7 +47,7 @@ internal static class SeqlockHeader
     /// between a realistic max count and the epoch bits at position 37, so transient
     /// count underflows from bugs cannot corrupt the epoch.
     /// </summary>
-    public const int MaxCapacity = 1 << 27; // 134,217,728
+    public const uint MaxCapacity = 1u << 27; // 134,217,728
 
     /// <summary>
     /// Atomically bumps the epoch and resets count to zero in one CAS.
