@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -9,8 +10,15 @@ namespace Nethermind.Core.Caching;
 /// <summary>
 /// Shared seqlock header constants and helpers for set-associative caches.
 ///
-/// Header layout (64-bit):
+/// Header layout (64-bit entry header):
 /// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
+///
+/// EpochAndCount layout (64-bit combined field):
+/// [0:1][Epoch:26][Count:37]
+/// Epoch occupies the same bit positions (37-62) as in the entry header,
+/// so (epochAndCount &amp; EpochMask) can be used directly for header comparison.
+/// Count occupies bits 0-36 (max ~137 billion). Atomic CAS on Clear() bumps
+/// epoch and resets count in a single operation — no race window.
 /// </summary>
 internal static class SeqlockHeader
 {
@@ -32,27 +40,73 @@ internal static class SeqlockHeader
     /// <summary>Epoch + occupied, for checking if an entry is live in the current epoch.</summary>
     public const long EpochOccMask = EpochMask | OccupiedBit;
 
-    /// <summary>Shift applied to the 64-bit hash to extract the 20-bit signature stored in the header.</summary>
-    public const int HashShift = 5;
+    /// <summary>Mask for the count portion of the combined epoch+count field (bits 0-36).</summary>
+    public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_001F_FFFF_FFFF
 
     /// <summary>
-    /// O(1) epoch bump — all entries with old epoch are treated as empty.
+    /// Maximum supported capacity. Leaves 10 bits (1024×) of underflow headroom
+    /// between a realistic max count and the epoch bits at position 37, so transient
+    /// count underflows from bugs cannot corrupt the epoch.
+    /// </summary>
+    public const int MaxCapacity = 1 << 27; // 134,217,728
+
+    /// <summary>
+    /// Atomically bumps the epoch and resets count to zero in one CAS.
+    /// No race window between epoch change and count reset.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void BumpEpoch(ref long shiftedEpoch)
+    public static void ClearEpochAndCount(ref long epochAndCount)
     {
-        long oldShifted = Volatile.Read(ref shiftedEpoch);
+        long old = Volatile.Read(ref epochAndCount);
 
         while (true)
         {
-            long oldEpoch = (oldShifted & EpochMask) >> EpochShift;
+            long oldEpoch = (old & EpochMask) >> EpochShift;
             long newEpoch = oldEpoch + 1;
-            long newShifted = (newEpoch << EpochShift) & EpochMask;
+            long newVal = (newEpoch << EpochShift) & EpochMask; // count = 0
 
-            long prev = Interlocked.CompareExchange(ref shiftedEpoch, newShifted, oldShifted);
-            if (prev == oldShifted) return;
+            long prev = Interlocked.CompareExchange(ref epochAndCount, newVal, old);
+            if (prev == old) return;
 
-            oldShifted = prev;
+            old = prev;
+        }
+    }
+
+    /// <summary>
+    /// Reads the epoch tag from the combined field (bits 37-62, same positions as entry header).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long ReadEpoch(ref long epochAndCount)
+    {
+        return Volatile.Read(ref epochAndCount) & EpochMask;
+    }
+
+    /// <summary>
+    /// Reads the count from the combined field (bits 0-36).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int ReadCount(ref long epochAndCount)
+    {
+        return (int)(Volatile.Read(ref epochAndCount) & CountMask);
+    }
+
+    /// <summary>
+    /// Validates capacity is within the supported range for the combined epoch+count field.
+    /// </summary>
+    public static void ThrowIfCapacityTooLarge(int maxCapacity)
+    {
+        if (maxCapacity > MaxCapacity)
+        {
+            ThrowCapacityTooLarge(maxCapacity);
+        }
+
+        static void ThrowCapacityTooLarge(int maxCapacity)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxCapacity),
+                maxCapacity,
+                $"Capacity exceeds maximum supported value of {MaxCapacity}. " +
+                $"The combined epoch+count field requires headroom to prevent count underflow from corrupting the epoch.");
         }
     }
 
@@ -81,7 +135,6 @@ internal static class SeqlockHeader
 
     /// <summary>
     /// Pick 3 distinct indices from [0, 8), return the one whose ticker is smallest (oldest).
-    /// Uses xorshift mixing on the timestamp for better entropy than raw TSC low bits.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static int Pick3RandomEvict(long tickerA, long tickerB, long tickerC, int a, int b, int c)

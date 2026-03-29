@@ -29,10 +29,9 @@ public sealed class AssociativeKeyCache<TKey>
     private readonly int _setCount;
     private readonly int _hashShift;
     private readonly int[] _setGates;
-    private long _shiftedEpoch;
-    private int _count;
+    private long _epochAndCount;
 
-    public int Count => Volatile.Read(ref _count);
+    public int Count => ReadCount(ref _epochAndCount);
 
     public AssociativeKeyCache(int maxCapacity)
     {
@@ -47,6 +46,7 @@ public sealed class AssociativeKeyCache<TKey>
             return;
         }
 
+        ThrowIfCapacityTooLarge(maxCapacity);
         _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, maxCapacity / Ways));
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
@@ -64,7 +64,7 @@ public sealed class AssociativeKeyCache<TKey>
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
 
-        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long epochTag = ReadEpoch(ref _epochAndCount);
         long hashPart = (hashCode >> _hashShift) & HashMask;
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
@@ -115,7 +115,7 @@ public sealed class AssociativeKeyCache<TKey>
 
     private bool SetCore(in TKey key, int baseIdx, long hashPart)
     {
-        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long epochTag = ReadEpoch(ref _epochAndCount);
         long tagToStore = epochTag | hashPart | OccupiedBit;
         long epochOccTag = epochTag | OccupiedBit;
 
@@ -151,7 +151,7 @@ public sealed class AssociativeKeyCache<TKey>
         }
 
         // If epoch changed (concurrent Clear), our entry will be immediately stale — skip.
-        if (Volatile.Read(ref _shiftedEpoch) != epochTag) return true;
+        if (ReadEpoch(ref _epochAndCount) != epochTag) return true;
 
         long timestamp = Stopwatch.GetTimestamp();
         int target;
@@ -173,11 +173,11 @@ public sealed class AssociativeKeyCache<TKey>
 
         if ((existing & EpochOccMask) == epochOccTag)
         {
-            Interlocked.Decrement(ref _count);
+            Interlocked.Add(ref _epochAndCount, -1);
         }
 
         WriteEntry(ref te, existing, in key, tagToStore, timestamp);
-        Interlocked.Increment(ref _count);
+        Interlocked.Add(ref _epochAndCount, 1);
         return true;
     }
 
@@ -204,7 +204,7 @@ public sealed class AssociativeKeyCache<TKey>
 
     private bool DeleteCore(in TKey key, int baseIdx, long hashPart)
     {
-        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long epochTag = ReadEpoch(ref _epochAndCount);
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
         for (int i = 0; i < Ways; i++)
@@ -229,7 +229,7 @@ public sealed class AssociativeKeyCache<TKey>
 
                 Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
 
-                Interlocked.Decrement(ref _count);
+                Interlocked.Add(ref _epochAndCount, -1);
                 return true;
             }
         }
@@ -238,16 +238,14 @@ public sealed class AssociativeKeyCache<TKey>
     }
 
     /// <summary>
-    /// Logically invalidates all entries via epoch bump. O(1).
-    /// Safe to call concurrently: SetCore re-checks the epoch after scanning and bails out
-    /// if Clear() raced, so no stale-epoch increments can follow the count reset.
+    /// Logically invalidates all entries via epoch bump + count reset in a single atomic CAS.
+    /// No race window between epoch change and count reset.
     /// </summary>
     public void Clear()
     {
         if (_setCount == 0) return;
 
-        BumpEpoch(ref _shiftedEpoch);
-        Volatile.Write(ref _count, 0);
+        ClearEpochAndCount(ref _epochAndCount);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
