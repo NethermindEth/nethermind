@@ -340,6 +340,22 @@ public class AssociativeCacheTests
     }
 
     [Test]
+    public void Set_after_clear_persists()
+    {
+        Cache cache = Create();
+        AddressAsKey key0 = _keys[0];
+        AddressAsKey key1 = _keys[1];
+        cache.Set(in key0, _accounts[0]);
+        cache.Clear();
+
+        // Set immediately after Clear must succeed AND be retrievable
+        cache.Set(in key1, _accounts[1]).Should().BeTrue();
+        cache.TryGet(in key1, out Account? val).Should().BeTrue();
+        val.Should().Be(_accounts[1]);
+        cache.Count.Should().Be(1);
+    }
+
+    [Test]
     public void Count_does_not_go_negative_on_clear_then_delete()
     {
         // Catches count underflow: Clear sets count to 0, then Delete

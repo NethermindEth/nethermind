@@ -62,6 +62,20 @@ public class AssociativeKeyCacheTests
     }
 
     [Test]
+    public void Set_after_clear_persists()
+    {
+        // Catches the bug where Set racing with Clear silently dropped the insert
+        AssociativeKeyCache<AddressAsKey> cache = new(Capacity);
+        cache.Set(in _keys[0]).Should().BeTrue();
+        cache.Clear();
+
+        // Set immediately after Clear must succeed AND be retrievable
+        cache.Set(in _keys[1]).Should().BeTrue();
+        cache.Get(in _keys[1]).Should().BeTrue();
+        cache.Count.Should().Be(1);
+    }
+
+    [Test]
     public void Count_does_not_go_negative_on_clear_then_delete()
     {
         AssociativeKeyCache<AddressAsKey> cache = new(Capacity);

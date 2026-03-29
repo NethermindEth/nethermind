@@ -180,69 +180,72 @@ public sealed class AssociativeCache<TKey, TValue>
 
     private bool SetCore(in TKey key, TValue val, int baseIdx, long hashPart)
     {
-        // Read epoch under the set gate; if Clear() races, we detect it below.
-        long epochTag = ReadEpoch(ref _epochAndCount);
-        long tagToStore = epochTag | hashPart | OccupiedBit;
-        long epochOccTag = epochTag | OccupiedBit;
-
-        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-
-        int bestEmpty = -1;
-        int bestStale = -1;
-
-        for (int i = 0; i < Ways; i++)
+        // Retry with fresh epoch if Clear() races — never drop an insert silently.
+        while (true)
         {
-            ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
-            long h = Volatile.Read(ref e.Header);
+            long epochTag = ReadEpoch(ref _epochAndCount);
+            long tagToStore = epochTag | hashPart | OccupiedBit;
+            long epochOccTag = epochTag | OccupiedBit;
 
-            bool occupied = (h & OccupiedBit) != 0;
-            bool currentEpoch = (h & EpochMask) == epochTag;
+            ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
 
-            if (occupied && currentEpoch)
+            int bestEmpty = -1;
+            int bestStale = -1;
+
+            for (int i = 0; i < Ways; i++)
             {
-                if ((h & HashMask) == hashPart && e.Key.Equals(in key))
+                ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+                long h = Volatile.Read(ref e.Header);
+
+                bool occupied = (h & OccupiedBit) != 0;
+                bool currentEpoch = (h & EpochMask) == epochTag;
+
+                if (occupied && currentEpoch)
                 {
-                    long now = Stopwatch.GetTimestamp();
-                    WriteEntry(ref e, h, in key, val, tagToStore, now);
-                    return false;
+                    if ((h & HashMask) == hashPart && e.Key.Equals(in key))
+                    {
+                        long now = Stopwatch.GetTimestamp();
+                        WriteEntry(ref e, h, in key, val, tagToStore, now);
+                        return false;
+                    }
+                }
+                else if (!occupied && bestEmpty < 0)
+                {
+                    bestEmpty = i;
+                }
+                else if (occupied && !currentEpoch && bestStale < 0)
+                {
+                    bestStale = i;
                 }
             }
-            else if (!occupied && bestEmpty < 0)
+
+            // If epoch changed (concurrent Clear), rescan with the new epoch
+            if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
+
+            long timestamp = Stopwatch.GetTimestamp();
+            int target;
+            if (bestEmpty >= 0)
             {
-                bestEmpty = i;
+                target = bestEmpty;
             }
-            else if (occupied && !currentEpoch && bestStale < 0)
+            else if (bestStale >= 0)
             {
-                bestStale = i;
+                target = bestStale;
             }
+            else
+            {
+                target = Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
+            }
+
+            ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
+            long existing = Volatile.Read(ref te.Header);
+
+            bool evictingLive = (existing & EpochOccMask) == epochOccTag;
+
+            WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
+            AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
+            return true;
         }
-
-        // If epoch changed (concurrent Clear), our entry will be immediately stale — skip.
-        if (ReadEpoch(ref _epochAndCount) != epochTag) return true;
-
-        long timestamp = Stopwatch.GetTimestamp();
-        int target;
-        if (bestEmpty >= 0)
-        {
-            target = bestEmpty;
-        }
-        else if (bestStale >= 0)
-        {
-            target = bestStale;
-        }
-        else
-        {
-            target = Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
-        }
-
-        ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
-        long existing = Volatile.Read(ref te.Header);
-
-        bool evictingLive = (existing & EpochOccMask) == epochOccTag;
-
-        WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
-        AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
-        return true;
     }
 
     public bool Delete(in TKey key) => Delete(in key, out _);
