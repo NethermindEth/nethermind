@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -59,7 +60,30 @@ namespace Ethereum.Test.Base
             return RunTest(test, NullTxTracer.Instance);
         }
 
+        protected Task<EthereumTestResult> RunTestAsync(GeneralStateTest test)
+        {
+            return RunTestAsync(test, NullTxTracer.Instance);
+        }
+
+        protected async Task<EthereumTestResult> RunTestAsync(GeneralStateTest test, ITxTracer txTracer)
+        {
+            (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
+            await using (container)
+            {
+                return RunTestCore(test, txTracer, specProvider, container);
+            }
+        }
+
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        {
+            (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
+            using (container)
+            {
+                return RunTestCore(test, txTracer, specProvider, container);
+            }
+        }
+
+        private (ISpecProvider specProvider, IContainer container) BuildContainer(GeneralStateTest test)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
@@ -78,13 +102,17 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            using IContainer container = new ContainerBuilder()
+            IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();
+            return (specProvider, container);
+        }
 
+        private EthereumTestResult RunTestCore(GeneralStateTest test, ITxTracer txTracer, ISpecProvider specProvider, IContainer container)
+        {
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             using IDisposable _ = stateProvider.BeginScope(null);
