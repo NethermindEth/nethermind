@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -15,7 +16,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 
 public class BlockImprovementContext : IBlockImprovementContext
 {
-    private CancellationTokenSource? _improvementCancellation;
+    private readonly SharedCancellationTokenSource _improvementCancellation;
     private CancellationTokenSource? _timeOutCancellation;
     private CancellationTokenSource? _linkedCancellation;
     private readonly FeesTracer _feesTracer = new();
@@ -27,7 +28,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
         _improvementCancellation = cts;
         _timeOutCancellation = new CancellationTokenSource(timeout);
@@ -73,7 +74,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     public bool Disposed { get; private set; }
     public DateTimeOffset StartDateTime { get; }
 
-    public void CancelOngoingImprovements() => CancellationTokenExtensions.CancelDisposeAndClear(ref _improvementCancellation);
+    public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 
     public void Dispose()
     {
