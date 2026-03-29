@@ -63,6 +63,9 @@ public class TransactionJsonTest : GeneralStateTestBase
     [Test]
     public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
+        if (Nethermind.Core.Test.Modules.PseudoNethermindModule.TestUseFlat)
+            Assert.Ignore("Flat DB does not support pre-configured genesis state in this test setup");
+
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
         Address recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
 
