@@ -33,7 +33,6 @@ public class CacheEvictionQualityTests
         _keys = new AddressAsKey[KeyPoolSize];
         _values = new Account[KeyPoolSize];
 
-        Random random = new(42);
         for (int i = 0; i < KeyPoolSize; i++)
         {
             _keys[i] = Build.An.Address.FromNumber(i).TestObject;

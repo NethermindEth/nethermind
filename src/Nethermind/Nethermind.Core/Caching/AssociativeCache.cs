@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Collections;
+using static Nethermind.Core.Caching.SeqlockHeader;
 
 namespace Nethermind.Core.Caching;
 
@@ -53,34 +54,12 @@ public sealed class AssociativeCache<TKey, TValue>
     where TValue : class?
 {
     private const int Ways = 8;
-    private const int WayShift = 3; // log2(Ways)
-
-    // Header bit layout: [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
-    private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
-
-    private const int EpochShift = 37;
-    private const long EpochMask = 0x7FFF_FFE0_0000_0000;  // bits 37-62 (26 bits)
-
-    private const long HashMask = 0x0000_001F_FFFE_0000;   // bits 17-36 (20 bits)
-
-    private const long SeqMask = 0x0000_0000_0001_FFFE;    // bits 1-16 (16 bits)
-    private const long SeqInc = 0x0000_0000_0000_0002;     // +1 in seq field
-
-    private const long OccupiedBit = 1L;                    // bit 0
-
-    // Mask of all "identity" bits for an entry, excluding Lock and Seq.
-    private const long TagMask = EpochMask | HashMask | OccupiedBit;
-
-    // Mask for checking if an entry is live in the current epoch.
-    private const long EpochOccMask = EpochMask | OccupiedBit;
-
-    // Hash bits for set index use the low bits; hash signature uses shifted bits to avoid correlation.
-    private const int HashShift = 5;
+    private const int WayShift = 3;
 
     private readonly Entry[] _entries;
     private readonly int _setMask;
     private readonly int _setCount;
-    private readonly int[] _setGates; // per-set CAS spinlock: 0 = free, 1 = held
+    private readonly int[] _setGates;
     private long _shiftedEpoch;
     private int _count;
 
@@ -105,41 +84,11 @@ public sealed class AssociativeCache<TKey, TValue>
         _setGates = new int[_setCount];
     }
 
-    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TValue? Get(in TKey key)
     {
-        if (_setCount == 0) return default;
-
-        long hashCode = key.GetHashCode64();
-        int setIndex = (int)hashCode & _setMask;
-        int baseIdx = setIndex << WayShift;
-
-        long epochTag = Volatile.Read(ref _shiftedEpoch);
-        long hashPart = (hashCode >> HashShift) & HashMask;
-        long expectedTag = epochTag | hashPart | OccupiedBit;
-
-        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-
-        for (int i = 0; i < Ways; i++)
-        {
-            ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
-            long h1 = Volatile.Read(ref e.Header);
-
-            if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
-
-            TKey storedKey = e.Key;
-            TValue? storedValue = e.Value;
-
-            long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && key.Equals(in storedKey))
-            {
-                e.Ticker = Stopwatch.GetTimestamp();
-                return storedValue;
-            }
-        }
-
-        return default;
+        TryGet(in key, out TValue? value);
+        return value;
     }
 
     [SkipLocalsInit]
@@ -199,14 +148,15 @@ public sealed class AssociativeCache<TKey, TValue>
         int baseIdx = setIndex << WayShift;
         long hashPart = (hashCode >> HashShift) & HashMask;
 
-        AcquireSetGate(setIndex);
+        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
+        AcquireGate(ref gate);
         try
         {
             return SetCore(in key, val, baseIdx, hashPart);
         }
         finally
         {
-            ReleaseSetGate(setIndex);
+            ReleaseGate(ref gate);
         }
     }
 
@@ -220,25 +170,20 @@ public sealed class AssociativeCache<TKey, TValue>
 
         int bestEmpty = -1;
         int bestStale = -1;
-        long now = Stopwatch.GetTimestamp();
 
-        // Scan for existing key, empty, or stale slots
         for (int i = 0; i < Ways; i++)
         {
             ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
             long h = Volatile.Read(ref e.Header);
 
-            // Locked by a concurrent reader-ticker-update is not possible (ticker is plain store),
-            // but another writer could race. Under the gate, we are the only writer for this set.
             bool occupied = (h & OccupiedBit) != 0;
             bool currentEpoch = (h & EpochMask) == epochTag;
 
             if (occupied && currentEpoch)
             {
-                // Check if this entry matches our key
                 if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                 {
-                    // Update existing entry
+                    long now = Stopwatch.GetTimestamp();
                     WriteEntry(ref e, h, in key, val, tagToStore, now);
                     return false;
                 }
@@ -254,6 +199,7 @@ public sealed class AssociativeCache<TKey, TValue>
         }
 
         // Key not found — insert into empty, stale, or evict
+        long timestamp = Stopwatch.GetTimestamp();
         int target;
         if (bestEmpty >= 0)
         {
@@ -265,20 +211,18 @@ public sealed class AssociativeCache<TKey, TValue>
         }
         else
         {
-            // 3-random eviction: pick 3 distinct ways, evict the one with oldest ticker
-            target = Pick3RandomEvict(ref entries, baseIdx, now);
+            target = Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
         }
 
         ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
         long existing = Volatile.Read(ref te.Header);
 
-        // If evicting a live entry, decrement count
         if ((existing & EpochOccMask) == epochOccTag)
         {
             Interlocked.Decrement(ref _count);
         }
 
-        WriteEntry(ref te, existing, in key, val, tagToStore, now);
+        WriteEntry(ref te, existing, in key, val, tagToStore, timestamp);
         Interlocked.Increment(ref _count);
         return true;
     }
@@ -298,14 +242,15 @@ public sealed class AssociativeCache<TKey, TValue>
         int baseIdx = setIndex << WayShift;
         long hashPart = (hashCode >> HashShift) & HashMask;
 
-        AcquireSetGate(setIndex);
+        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
+        AcquireGate(ref gate);
         try
         {
             return DeleteCore(in key, baseIdx, hashPart, out value);
         }
         finally
         {
-            ReleaseSetGate(setIndex);
+            ReleaseGate(ref gate);
         }
     }
 
@@ -327,18 +272,15 @@ public sealed class AssociativeCache<TKey, TValue>
             {
                 value = e.Value;
 
-                // Clear the entry: write header with Occ=0, keep epoch+seq incremented
                 long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
                 long lockedHeader = (h & EpochMask) | newSeq | LockMarker;
 
-                // Under the gate we are the only writer, but set lock bit for readers
                 Volatile.Write(ref e.Header, lockedHeader);
 
                 e.Key = default;
                 e.Value = default;
                 e.Ticker = 0;
 
-                // Unlock with Occ=0
                 Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
 
                 Interlocked.Decrement(ref _count);
@@ -354,24 +296,8 @@ public sealed class AssociativeCache<TKey, TValue>
     {
         if (_setCount == 0) return;
 
-        // O(1) epoch bump — stale entries treated as empty
-        long oldShifted = Volatile.Read(ref _shiftedEpoch);
-
-        while (true)
-        {
-            long oldEpoch = (oldShifted & EpochMask) >> EpochShift;
-            long newEpoch = oldEpoch + 1;
-            long newShifted = (newEpoch << EpochShift) & EpochMask;
-
-            long prev = Interlocked.CompareExchange(ref _shiftedEpoch, newShifted, oldShifted);
-            if (prev == oldShifted)
-            {
-                Volatile.Write(ref _count, 0);
-                return;
-            }
-
-            oldShifted = prev;
-        }
+        BumpEpoch(ref _shiftedEpoch);
+        Volatile.Write(ref _count, 0);
     }
 
     [SkipLocalsInit]
@@ -409,32 +335,16 @@ public sealed class AssociativeCache<TKey, TValue>
         return false;
     }
 
-    /// <summary>
-    /// 3-random eviction: pick 3 distinct indices from [0, Ways), return the one with the oldest ticker.
-    /// Uses mixed hash/timestamp bits to avoid Random.Shared overhead.
-    /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static int Pick3RandomEvict(ref Entry entries, int baseIdx, long now)
+    private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now)
     {
-        // Use low bits of timestamp as cheap entropy source
-        uint r = (uint)now;
-        int a = (int)(r & 0x7); // 0..7
-        int b = (int)((r >> 3) & 0x7);
-        int c = (int)((r >> 6) & 0x7);
-
-        // Ensure distinct: simple fixup
-        if (b == a) b = (a + 1) & 0x7;
-        if (c == a) c = (a + 2) & 0x7;
-        if (c == b) c = (b + 1) & 0x7;
-        if (c == a) c = (a + 3) & 0x7; // final fallback
+        (int a, int b, int c) = Pick3Indices(now);
 
         long ta = Unsafe.Add(ref entries, baseIdx + a).Ticker;
         long tb = Unsafe.Add(ref entries, baseIdx + b).Ticker;
         long tc = Unsafe.Add(ref entries, baseIdx + c).Ticker;
 
-        if (ta <= tb && ta <= tc) return a;
-        if (tb <= tc) return b;
-        return c;
+        return Pick3RandomEvict(ta, tb, tc, a, b, c);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -443,40 +353,20 @@ public sealed class AssociativeCache<TKey, TValue>
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
 
-        // Set lock bit so readers skip this entry during write
         Volatile.Write(ref entry.Header, lockedHeader);
 
         entry.Key = key;
         entry.Value = value;
         entry.Ticker = ticker;
 
-        // Unlock: write final header without lock bit
         Volatile.Write(ref entry.Header, tagToStore | newSeq);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void AcquireSetGate(int setIndex)
-    {
-        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
-        SpinWait sw = default;
-        while (Interlocked.CompareExchange(ref gate, 1, 0) != 0)
-        {
-            sw.SpinOnce();
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ReleaseSetGate(int setIndex)
-    {
-        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
-        Volatile.Write(ref gate, 0);
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Entry
     {
-        public long Header;   // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
-        public long Ticker;   // Stopwatch.GetTimestamp(), separate from seqlock
+        public long Header;
+        public long Ticker;
         public TKey Key;
         public TValue? Value;
     }

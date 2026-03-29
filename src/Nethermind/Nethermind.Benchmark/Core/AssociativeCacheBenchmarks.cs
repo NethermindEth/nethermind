@@ -40,10 +40,10 @@ public class AssociativeCacheSingleOpBenchmarks
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             Address address = new Address(addressBytes);
             _keys[i] = address;
@@ -54,7 +54,7 @@ public class AssociativeCacheSingleOpBenchmarks
             _assoc.Set(in _keys[i], _accounts[i]);
         }
 
-        var missBytes = new byte[20];
+        byte[] missBytes = new byte[20];
         random.NextBytes(missBytes);
         _missKey = new Address(missBytes);
     }
@@ -154,10 +154,10 @@ public class AssociativeCacheMixedWorkloadBenchmarks
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             Address address = new Address(addressBytes);
             _keys[i] = address;
@@ -295,10 +295,10 @@ public class AssociativeCacheHitRateBenchmarks
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             Address address = new Address(addressBytes);
             _keys[i] = address;
@@ -430,10 +430,10 @@ public class AssociativeCacheConcurrencyBenchmarks
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             Address address = new Address(addressBytes);
             _keys[i] = address;
