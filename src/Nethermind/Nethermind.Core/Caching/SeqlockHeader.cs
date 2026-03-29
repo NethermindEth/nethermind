@@ -27,6 +27,8 @@ internal static class SeqlockHeader
     public const long EpochMask = 0x7FFF_FFE0_0000_0000;  // bits 37-62 (26 bits)
 
     public const long HashMask = 0x0000_001F_FFFE_0000;   // bits 17-36 (20 bits)
+    public const int HashFieldShift = 17;                  // lowest bit of HashMask
+    public const long HashRawMask = HashMask >> HashFieldShift; // 20-bit mask at position 0
 
     public const long SeqMask = 0x0000_0000_0001_FFFE;    // bits 1-16 (16 bits)
     public const long SeqInc = 0x0000_0000_0000_0002;     // +1 in seq field
@@ -38,6 +40,16 @@ internal static class SeqlockHeader
 
     /// <summary>Epoch + occupied, for checking if an entry is live in the current epoch.</summary>
     public const long EpochOccMask = EpochMask | OccupiedBit;
+
+    /// <summary>
+    /// Extract the 20-bit hash signature from the hash code, positioned into header bits 17-36.
+    /// Uses dynamic shift to read bits immediately above the set index.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long ExtractHashPart(long hashCode, int hashShift)
+    {
+        return ((hashCode >> hashShift) & HashRawMask) << HashFieldShift;
+    }
 
     /// <summary>Mask for the count portion of the combined epoch+count field (bits 0-36).</summary>
     public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_001F_FFFF_FFFF
@@ -89,6 +101,23 @@ internal static class SeqlockHeader
         return (int)(Volatile.Read(ref epochAndCount) & CountMask);
     }
 
+
+    /// <summary>
+    /// Adjusts the count portion of epochAndCount by delta, but only if the epoch
+    /// still matches expectedEpoch. Prevents count drift when Clear() races with Set/Delete.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void AdjustCountIfEpoch(ref long epochAndCount, long expectedEpoch, long delta)
+    {
+        long current = Volatile.Read(ref epochAndCount);
+        while ((current & EpochMask) == expectedEpoch)
+        {
+            long updated = current + delta;
+            long prev = Interlocked.CompareExchange(ref epochAndCount, updated, current);
+            if (prev == current) return;
+            current = prev;
+        }
+    }
 
     /// <summary>
     /// TTAS (test-and-test-and-set) spinlock acquire on a per-set gate.

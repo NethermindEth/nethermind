@@ -207,8 +207,6 @@ public class AssociativeCacheTests
 
         AssociativeCache<AddressAsKey, Account> cache = new(maxCapacity);
 
-        int actuallyDeleted = 0;
-
         for (int i = 0; i < iterations; i++)
         {
             AddressAsKey key = _keys[i];
@@ -217,11 +215,9 @@ public class AssociativeCacheTests
             if (removeIdx >= 0)
             {
                 AddressAsKey removeKey = _keys[removeIdx];
-                // Guard: only delete if still present (eviction is possible under heavy load)
                 if (cache.TryGet(in removeKey, out _))
                 {
                     cache.Delete(in removeKey).Should().BeTrue();
-                    actuallyDeleted++;
                 }
             }
         }

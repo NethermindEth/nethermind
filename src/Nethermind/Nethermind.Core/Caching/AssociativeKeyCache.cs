@@ -63,7 +63,7 @@ public sealed class AssociativeKeyCache<TKey>
         int baseIdx = setIndex << WayShift;
 
         long epochTag = ReadEpoch(ref _epochAndCount);
-        long hashPart = (hashCode >> _hashShift) & HashMask;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -97,7 +97,7 @@ public sealed class AssociativeKeyCache<TKey>
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
-        long hashPart = (hashCode >> _hashShift) & HashMask;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
 
         ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
         AcquireGate(ref gate);
@@ -169,13 +169,10 @@ public sealed class AssociativeKeyCache<TKey>
         ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
         long existing = Volatile.Read(ref te.Header);
 
-        if ((existing & EpochOccMask) == epochOccTag)
-        {
-            Interlocked.Add(ref _epochAndCount, -1);
-        }
+        bool evictingLive = (existing & EpochOccMask) == epochOccTag;
 
         WriteEntry(ref te, existing, in key, tagToStore, timestamp);
-        Interlocked.Add(ref _epochAndCount, 1);
+        AdjustCountIfEpoch(ref _epochAndCount, epochTag, evictingLive ? 0 : 1);
         return true;
     }
 
@@ -186,7 +183,7 @@ public sealed class AssociativeKeyCache<TKey>
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
-        long hashPart = (hashCode >> _hashShift) & HashMask;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
 
         ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
         AcquireGate(ref gate);
@@ -227,7 +224,7 @@ public sealed class AssociativeKeyCache<TKey>
 
                 Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
 
-                Interlocked.Add(ref _epochAndCount, -1);
+                AdjustCountIfEpoch(ref _epochAndCount, epochTag, -1);
                 return true;
             }
         }
