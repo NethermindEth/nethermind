@@ -55,9 +55,9 @@ internal static class SeqlockHeader
     public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_001F_FFFF_FFFF
 
     /// <summary>
-    /// Maximum supported capacity. Leaves 10 bits (1024×) of underflow headroom
-    /// between a realistic max count and the epoch bits at position 37, so transient
-    /// count underflows from bugs cannot corrupt the epoch.
+    /// Maximum supported capacity. Leaves 10 bits (1024×) of overflow headroom
+    /// between a realistic max count and the count field limit at bit 36, keeping
+    /// normal counts well away from the epoch boundary at bit 37.
     /// </summary>
     public const uint MaxCapacity = 1u << 27; // 134,217,728
 

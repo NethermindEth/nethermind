@@ -83,7 +83,8 @@ public sealed class AssociativeCache<TKey, TValue>
             _setCount = 0;
             return;
         }
-        _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)Math.Max(1, maxCapacity / Ways));
+        // Ceiling division ensures physical capacity >= maxCapacity
+        _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((maxCapacity + Ways - 1) / Ways));
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
         _entries = new Entry[_setCount * Ways];

@@ -30,31 +30,31 @@ namespace Nethermind.TxPool
 
         public bool Get(Hash256 hash)
         {
-            ValueHash256 valueHash = hash.ValueHash256;
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             return _currentBlockCache.Get(in valueHash) || _longTermCache.Get(in valueHash);
         }
 
         public void SetLongTerm(Hash256 hash)
         {
-            ValueHash256 valueHash = hash.ValueHash256;
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             _longTermCache.Set(in valueHash);
         }
 
         public void SetForCurrentBlock(Hash256 hash)
         {
-            ValueHash256 valueHash = hash.ValueHash256;
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             _currentBlockCache.Set(in valueHash);
         }
 
         public void DeleteFromLongTerm(Hash256 hash)
         {
-            ValueHash256 valueHash = hash.ValueHash256;
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             _longTermCache.Delete(in valueHash);
         }
 
         public void Delete(Hash256 hash)
         {
-            ValueHash256 valueHash = hash.ValueHash256;
+            ref readonly ValueHash256 valueHash = ref hash.ValueHash256;
             _longTermCache.Delete(in valueHash);
             _currentBlockCache.Delete(in valueHash);
         }
