@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Collections;
 using static Nethermind.Core.Caching.SeqlockHeader;
@@ -118,8 +119,12 @@ public sealed class AssociativeCache<TKey, TValue>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
+            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e.Key;
             TValue? storedValue = e.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && key.Equals(in storedKey))
@@ -276,6 +281,7 @@ public sealed class AssociativeCache<TKey, TValue>
                 long lockedHeader = (h & EpochMask) | newSeq | LockMarker;
 
                 Volatile.Write(ref e.Header, lockedHeader);
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
                 e.Key = default;
                 e.Value = default;
@@ -323,7 +329,9 @@ public sealed class AssociativeCache<TKey, TValue>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e.Key;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && key.Equals(in storedKey))
@@ -353,7 +361,10 @@ public sealed class AssociativeCache<TKey, TValue>
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
 
+        // STLR on ARM64 is release-only: subsequent stores can move before it.
+        // Barrier ensures Key/Value/Ticker stores stay after the lock.
         Volatile.Write(ref entry.Header, lockedHeader);
+        if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
         entry.Key = key;
         entry.Value = value;

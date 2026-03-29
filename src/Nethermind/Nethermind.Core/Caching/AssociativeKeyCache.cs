@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core.Collections;
 using static Nethermind.Core.Caching.SeqlockHeader;
@@ -74,7 +75,9 @@ public sealed class AssociativeKeyCache<TKey>
 
             if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
 
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e.Key;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && key.Equals(in storedKey))
@@ -214,6 +217,7 @@ public sealed class AssociativeKeyCache<TKey>
                 long lockedHeader = (h & EpochMask) | newSeq | LockMarker;
 
                 Volatile.Write(ref e.Header, lockedHeader);
+                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
                 e.Key = default;
                 e.Ticker = 0;
@@ -258,6 +262,7 @@ public sealed class AssociativeKeyCache<TKey>
         long lockedHeader = tagToStore | newSeq | LockMarker;
 
         Volatile.Write(ref entry.Header, lockedHeader);
+        if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
         entry.Key = key;
         entry.Ticker = ticker;
