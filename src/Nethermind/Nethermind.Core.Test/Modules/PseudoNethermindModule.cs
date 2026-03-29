@@ -89,6 +89,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
 
         // Ensure NetworkNode RLP decoder is registered once via its own static constructor.
-        NetworkNodeDecoder.Init();
+        // NetworkNodeDecoder.Init();
     }
 }

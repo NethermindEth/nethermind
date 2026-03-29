@@ -74,7 +74,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
 
         // Ensure NetworkNode RLP decoder is registered once via its own static constructor.
-        NetworkNodeDecoder.Init();
+        // NetworkNodeDecoder.Init();
     }
 
     internal class RandomPenaltyHandler(ISpecProvider specProvider) : IPenaltyHandler
