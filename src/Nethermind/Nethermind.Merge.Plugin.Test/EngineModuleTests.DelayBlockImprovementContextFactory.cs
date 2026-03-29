@@ -9,7 +9,9 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
+
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -19,7 +21,7 @@ public partial class EngineModuleTests
         : IBlockImprovementContextFactory
     {
         public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime,
-        UInt256 currentBlockFees, CancellationTokenSource cts) =>
+        UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
             new DelayBlockImprovementContext(currentBestBlock, blockProducer, timeout, parentHeader, payloadAttributes, delay, startDateTime, cts);
     }
 
@@ -34,7 +36,7 @@ public partial class EngineModuleTests
 
         public IBlockImprovementContext StartBlockImprovementContext(
             Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes,
-            DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+            DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             TimeSpan delay = Interlocked.Increment(ref _callCount) == 1
                 ? TimeSpan.Zero
@@ -47,7 +49,7 @@ public partial class EngineModuleTests
 
     private class DelayBlockImprovementContext : IBlockImprovementContext
     {
-        private CancellationTokenSource? _improvementCancellation;
+        private readonly SharedCancellationTokenSource _improvementCancellation;
         private CancellationTokenSource? _timeOutCancellation;
         private CancellationTokenSource? _linkedCancellation;
 
@@ -58,7 +60,7 @@ public partial class EngineModuleTests
             PayloadAttributes payloadAttributes,
             TimeSpan delay,
             DateTimeOffset startDateTime,
-            CancellationTokenSource cts)
+            SharedCancellationTokenSource cts)
         {
             CurrentBestBlock = currentBestBlock;
             StartDateTime = startDateTime;
@@ -91,7 +93,7 @@ public partial class EngineModuleTests
         public bool Disposed { get; private set; }
         public DateTimeOffset StartDateTime { get; }
 
-        public void CancelOngoingImprovements() => CancellationTokenExtensions.CancelDisposeAndClear(ref _improvementCancellation);
+        public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 
         public void Dispose()
         {
