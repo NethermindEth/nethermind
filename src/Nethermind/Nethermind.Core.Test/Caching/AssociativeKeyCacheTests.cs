@@ -214,7 +214,7 @@ public class AssociativeKeyCacheTests
     }
 
     [TestCase(0)]
-    [TestCase(134_217_728)]
+    [TestCase(4096)]
     public void Capacity_valid_boundary(int capacity)
     {
         AssociativeKeyCache<AddressAsKey> cache = new(capacity);

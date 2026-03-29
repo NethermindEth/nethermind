@@ -112,7 +112,14 @@ internal static class SeqlockHeader
         long current = Volatile.Read(ref epochAndCount);
         while ((current & EpochMask) == expectedEpoch)
         {
-            long updated = current + delta;
+            long epochBits = current & EpochMask;
+            long count = (current & CountMask) + delta;
+
+            // Clamp to avoid underflow/overflow corrupting the epoch bits
+            if (count < 0) count = 0;
+            else if (count > CountMask) count = CountMask;
+
+            long updated = epochBits | count;
             long prev = Interlocked.CompareExchange(ref epochAndCount, updated, current);
             if (prev == current) return;
             current = prev;

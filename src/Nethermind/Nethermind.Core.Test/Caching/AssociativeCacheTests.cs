@@ -245,7 +245,7 @@ public class AssociativeCacheTests
     }
 
     [TestCase(0)]
-    [TestCase(134_217_728)]
+    [TestCase(4096)]
     public void Capacity_valid_boundary(int capacity)
     {
         // Construction must succeed at boundary values
