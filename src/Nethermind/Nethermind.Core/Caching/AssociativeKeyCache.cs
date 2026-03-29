@@ -138,6 +138,10 @@ public sealed class AssociativeKeyCache<TKey>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
+                        // Key already present — just refresh the eviction ticker.
+                        // Unlike AssociativeCache.SetCore (which calls WriteEntry to update the value),
+                        // the key-only variant has nothing to write, so a bare ticker store suffices.
+                        // The seqlock header is unchanged, which is correct: readers see a stable entry.
                         e.Ticker = Stopwatch.GetTimestamp();
                         return false;
                     }

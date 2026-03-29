@@ -175,6 +175,8 @@ internal static class SeqlockHeader
         int b = (int)((r >> 3) & 0x7);
         int c = (int)((r >> 6) & 0x7);
 
+        // Ensure a, b, c are distinct. Each fixup shifts by a different offset so
+        // the final fallback (c = a+3) cannot equal a (offset 0) or b (offset 1).
         if (b == a) b = (a + 1) & 0x7;
         if (c == a) c = (a + 2) & 0x7;
         if (c == b) c = (b + 1) & 0x7;

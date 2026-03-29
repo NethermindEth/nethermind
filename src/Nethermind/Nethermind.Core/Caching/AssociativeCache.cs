@@ -142,6 +142,10 @@ public sealed class AssociativeCache<TKey, TValue>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
+                // Benign data race: Ticker is written without holding the set gate.
+                // On x64, aligned 8-byte stores are atomic so no tearing occurs.
+                // Worst case: concurrent WriteEntry overwrites our timestamp,
+                // resulting in slightly suboptimal eviction ordering.
                 e.Ticker = Stopwatch.GetTimestamp();
                 value = storedValue;
                 return true;
@@ -363,6 +367,8 @@ public sealed class AssociativeCache<TKey, TValue>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
+                // Refresh ticker so Contains counts as an access for eviction purposes
+                e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
         }
