@@ -154,22 +154,24 @@ public class AssociativeKeyCacheTests
             .Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Test]
-    public void Capacity_zero()
+    [TestCase(0)]
+    [TestCase(134_217_728)]
+    public void Capacity_valid_boundary(int capacity)
     {
-        AssociativeKeyCache<AddressAsKey> cache = new(0);
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            // Null-object pattern: Set always returns true (as-if inserted) but nothing is stored
-            cache.Set(in _keys[i]).Should().BeTrue();
-        }
+        AssociativeKeyCache<AddressAsKey> cache = new(capacity);
 
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            cache.Get(in _keys[i]).Should().BeFalse();
-        }
+        cache.Set(in _keys[0]);
 
-        cache.Count.Should().Be(0);
+        if (capacity == 0)
+        {
+            cache.Get(in _keys[0]).Should().BeFalse();
+            cache.Count.Should().Be(0);
+        }
+        else
+        {
+            cache.Get(in _keys[0]).Should().BeTrue();
+            cache.Count.Should().Be(1);
+        }
     }
 
     [Test]

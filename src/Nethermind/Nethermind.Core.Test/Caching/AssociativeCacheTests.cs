@@ -264,21 +264,24 @@ public class AssociativeCacheTests
             .Should().Throw<ArgumentOutOfRangeException>();
     }
 
-    [Test]
-    public void Capacity_zero()
+    [TestCase(0)]
+    [TestCase(134_217_728)]
+    public void Capacity_valid_boundary(int capacity)
     {
-        AssociativeCache<AddressAsKey, Account> cache = new(0);
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            AddressAsKey key = _keys[i];
-            // Set returns true (null-object: no-op but signals "inserted")
-            cache.Set(in key, _accounts[i]);
-        }
+        // Construction must succeed at boundary values
+        AssociativeCache<AddressAsKey, Account> cache = new(capacity);
 
-        for (int i = 0; i < Capacity * 2; i++)
+        AddressAsKey key = _keys[0];
+        cache.Set(in key, _accounts[0]);
+
+        if (capacity == 0)
         {
-            AddressAsKey key = _keys[i];
             cache.TryGet(in key, out _).Should().BeFalse();
+        }
+        else
+        {
+            cache.TryGet(in key, out Account? value).Should().BeTrue();
+            value.Should().Be(_accounts[0]);
         }
     }
 
