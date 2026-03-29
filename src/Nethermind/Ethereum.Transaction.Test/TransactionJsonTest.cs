@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using Nethermind.Core;
@@ -60,10 +61,15 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// should not mutate state.
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
-    [Test]
+    /// <remarks>
+    /// NonParallelizable: this test builds a full Nethermind DI container. Running it
+    /// concurrently with the ~170 parallel TransactionTests cases saturates the thread pool
+    /// and deadlocks the sync-over-async container disposal, hanging the job for 15+ minutes.
+    /// </remarks>
+    [Test, NonParallelizable]
     public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
-        if (Nethermind.Core.Test.Modules.PseudoNethermindModule.TestUseFlat)
+        if (Environment.GetEnvironmentVariable("TEST_USE_FLAT") == "1")
             Assert.Ignore("Flat DB does not support pre-configured genesis state in this test setup");
 
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
