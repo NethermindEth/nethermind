@@ -148,6 +148,9 @@ public sealed class AssociativeKeyCache<TKey>
             }
         }
 
+        // If epoch changed (concurrent Clear), our entry will be immediately stale — skip.
+        if (Volatile.Read(ref _shiftedEpoch) != epochTag) return true;
+
         long timestamp = Stopwatch.GetTimestamp();
         int target;
         if (bestEmpty >= 0)

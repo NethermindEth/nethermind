@@ -167,6 +167,7 @@ public sealed class AssociativeCache<TKey, TValue>
 
     private bool SetCore(in TKey key, TValue val, int baseIdx, long hashPart)
     {
+        // Read epoch under the set gate; if Clear() races, we detect it below.
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long tagToStore = epochTag | hashPart | OccupiedBit;
         long epochOccTag = epochTag | OccupiedBit;
@@ -203,7 +204,9 @@ public sealed class AssociativeCache<TKey, TValue>
             }
         }
 
-        // Key not found — insert into empty, stale, or evict
+        // If epoch changed (concurrent Clear), our entry will be immediately stale — skip.
+        if (Volatile.Read(ref _shiftedEpoch) != epochTag) return true;
+
         long timestamp = Stopwatch.GetTimestamp();
         int target;
         if (bestEmpty >= 0)

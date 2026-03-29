@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -18,6 +14,7 @@ namespace Nethermind.Core.Test.Caching;
 /// under different access patterns. Not a pass/fail test — outputs comparison tables.
 /// </summary>
 [TestFixture]
+[Explicit("Eviction quality measurement; no assertions, not suitable as CI pass/fail signal.")]
 public class CacheEvictionQualityTests
 {
     // Use a key type that implements IHash64bit for AssociativeCache

@@ -82,7 +82,7 @@ public class AssociativeKeyCacheTests
         }
 
         // Count is bounded — cannot exceed physical capacity
-        cache.Count.Should().BeLessOrEqualTo(Capacity * 2);
+        cache.Count.Should().BeLessOrEqualTo(Capacity);
 
         // At least some entries from the second half should survive
         int found = 0;
