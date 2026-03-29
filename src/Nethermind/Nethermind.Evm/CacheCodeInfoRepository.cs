@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -14,7 +13,7 @@ namespace Nethermind.Evm;
 
 public class CacheCodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly CodeLruCache _codeCache = new();
+    private static readonly AssociativeCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize);
 
     private readonly IWorldState _worldState;
     private readonly CodeInfoRepository _inner;
@@ -32,17 +31,14 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             return CodeInfo.Empty;
         }
 
-        CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
-        if (cachedCodeInfo is null)
-        {
-            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash);
-            _codeCache.Set(in codeHash, cachedCodeInfo);
-        }
-        else
+        if (_codeCache.TryGet(in codeHash, out CodeInfo? cachedCodeInfo))
         {
             Metrics.IncrementCodeDbCache();
+            return cachedCodeInfo;
         }
 
+        cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash);
+        _codeCache.Set(in codeHash, cachedCodeInfo);
         return cachedCodeInfo;
     }
 
@@ -57,7 +53,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
+        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && !_codeCache.Contains(in codeHash))
         {
             _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
         }
@@ -66,56 +62,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
         bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
-        if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
+        if (result && codeSource != Address.Zero && !_codeCache.Contains(in codeHash))
         {
-            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 
     internal static void Clear() => _codeCache.Clear();
-
-    private sealed class CodeLruCache
-    {
-        private const int CacheCount = 16;
-        private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
-
-        public CodeLruCache()
-        {
-            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
-            for (int i = 0; i < _caches.Length; i++)
-            {
-                // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, comparer: ValueHash256.EqualityComparer);
-            }
-        }
-
-        public CodeInfo? Get(in ValueHash256 codeHash)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            return cache.Get(codeHash);
-        }
-
-        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            cache.Set(codeHash, codeInfo);
-        }
-
-        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
-
-        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
-        {
-            codeInfo = Get(in codeHash);
-            return codeInfo is not null;
-        }
-
-        internal void Clear()
-        {
-            foreach (ClockCache<ValueHash256, CodeInfo> cache in _caches)
-            {
-                cache.Clear();
-            }
-        }
-    }
 }
