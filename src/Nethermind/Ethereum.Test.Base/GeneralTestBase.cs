@@ -40,9 +40,12 @@ namespace Ethereum.Test.Base
 
         static GeneralStateTestBase()
         {
+            Console.Error.WriteLine("[GeneralStateTestBase] static ctor START");
             _logManager ??= LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
+            Console.Error.WriteLine("[GeneralStateTestBase] before KZG Initialize");
             KzgPolynomialCommitments.Initialize();
+            Console.Error.WriteLine("[GeneralStateTestBase] after KZG Initialize");
         }
 
         [SetUp]
@@ -255,11 +258,7 @@ namespace Ethereum.Test.Base
             return differences;
         }
 
-        private static void Log(string msg)
-        {
-            System.IO.File.AppendAllText("/tmp/test_timing.txt", msg + "\n");
-            Console.Error.WriteLine(msg);
-        }
+        private static void Log(string msg) => Console.Error.WriteLine(msg);
 
         private class ResolveLogger : IResolveMiddleware
         {
