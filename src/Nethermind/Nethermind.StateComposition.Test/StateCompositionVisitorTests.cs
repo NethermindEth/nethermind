@@ -48,7 +48,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_ShouldVisit_AlwaysReturnsTrue()
     {
-        OldStyleTrieVisitContext ctx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         ValueHash256 hash = default;
 
         Assert.That(_visitor.ShouldVisit(in ctx, in hash), Is.True);
@@ -59,9 +59,9 @@ public class StateCompositionVisitorTests
     {
         // Simulate 3 branch children being visited
         ValueHash256 hash = default;
-        OldStyleTrieVisitContext ctx1 = new(level: 1, isStorage: false, branchChildIndex: 0);
-        OldStyleTrieVisitContext ctx2 = new(level: 1, isStorage: false, branchChildIndex: 3);
-        OldStyleTrieVisitContext ctx3 = new(level: 1, isStorage: false, branchChildIndex: 7);
+        StateCompositionContext ctx1 = new(default, level: 1, isStorage: false, branchChildIndex: 0);
+        StateCompositionContext ctx2 = new(default, level: 1, isStorage: false, branchChildIndex: 3);
+        StateCompositionContext ctx3 = new(default, level: 1, isStorage: false, branchChildIndex: 7);
 
         _visitor.ShouldVisit(in ctx1, in hash);
         _visitor.ShouldVisit(in ctx2, in hash);
@@ -69,7 +69,7 @@ public class StateCompositionVisitorTests
 
         // Create a branch node to trigger TotalBranchNodes count
         TrieNode branchNode = new(NodeType.Branch, new byte[] { 0xc0 });
-        OldStyleTrieVisitContext branchCtx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext branchCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in branchCtx, branchNode);
 
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
@@ -122,8 +122,8 @@ public class StateCompositionVisitorTests
     {
         TrieNode node = new(NodeType.Branch, new byte[] { 0xc0, 0x01, 0x02, 0x03 });
 
-        OldStyleTrieVisitContext accountCtx = new(level: 1, isStorage: false, branchChildIndex: null);
-        OldStyleTrieVisitContext storageCtx = new(level: 1, isStorage: true, branchChildIndex: null);
+        StateCompositionContext accountCtx = new(default, level: 1, isStorage: false, branchChildIndex: null);
+        StateCompositionContext storageCtx = new(default, level: 1, isStorage: true, branchChildIndex: null);
 
         _visitor.VisitBranch(in accountCtx, node);
         _visitor.VisitBranch(in accountCtx, node);
@@ -146,7 +146,7 @@ public class StateCompositionVisitorTests
         // Visit branches at depths 0, 1, 2
         for (int depth = 0; depth < 3; depth++)
         {
-            OldStyleTrieVisitContext ctx = new(level: depth, isStorage: false, branchChildIndex: null);
+            StateCompositionContext ctx = new(default, level: depth, isStorage: false, branchChildIndex: null);
             _visitor.VisitBranch(in ctx, node);
         }
 
@@ -163,7 +163,7 @@ public class StateCompositionVisitorTests
         rlp[0] = 0xc0;
         TrieNode node = new(NodeType.Branch, rlp);
 
-        OldStyleTrieVisitContext ctx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in ctx, node);
 
         StateCompositionStats stats = _visitor.GetStats(1, null);
@@ -202,7 +202,7 @@ public class StateCompositionVisitorTests
     {
         TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
 
-        OldStyleTrieVisitContext ctx = new(level: 20, isStorage: false, branchChildIndex: null);
+        StateCompositionContext ctx = new(default, level: 20, isStorage: false, branchChildIndex: null);
         _visitor.VisitLeaf(in ctx, node);
 
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
@@ -217,7 +217,7 @@ public class StateCompositionVisitorTests
     {
         TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
 
-        OldStyleTrieVisitContext storageCtx = new(level: 3, isStorage: true, branchChildIndex: null);
+        StateCompositionContext storageCtx = new(default, level: 3, isStorage: true, branchChildIndex: null);
 
         for (int i = 0; i < 30; i++)
         {
@@ -237,7 +237,7 @@ public class StateCompositionVisitorTests
 
         using StateCompositionVisitor cancelled = new(LimboLogs.Instance, cts.Token);
 
-        OldStyleTrieVisitContext ctx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         ValueHash256 hash = default;
 
         Assert.That(cancelled.ShouldVisit(in ctx, in hash), Is.False);
@@ -248,9 +248,9 @@ public class StateCompositionVisitorTests
     {
         // Visit 3 accounts with storage, each with different depth storage nodes
         TrieNode leafNode = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
-        OldStyleTrieVisitContext storageCtx3 = new(level: 3, isStorage: true, branchChildIndex: null);
-        OldStyleTrieVisitContext storageCtx7 = new(level: 7, isStorage: true, branchChildIndex: null);
-        OldStyleTrieVisitContext accountCtx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext storageCtx3 = new(default, level: 3, isStorage: true, branchChildIndex: null);
+        StateCompositionContext storageCtx7 = new(default, level: 7, isStorage: true, branchChildIndex: null);
+        StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         // Account 1: storage max depth 3
         AccountStruct acc1 = new(0, 0, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
@@ -276,8 +276,8 @@ public class StateCompositionVisitorTests
     public void Visitor_StorageMaxDepthHistogram_PopulatedCorrectly()
     {
         TrieNode leafNode = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
-        OldStyleTrieVisitContext storageCtx = new(level: 4, isStorage: true, branchChildIndex: null);
-        OldStyleTrieVisitContext accountCtx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext storageCtx = new(default, level: 4, isStorage: true, branchChildIndex: null);
+        StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         // 2 accounts with storage tries, each with max depth 4
         for (int i = 0; i < 2; i++)
@@ -308,7 +308,7 @@ public class StateCompositionVisitorTests
             codeHash: hasCode ? Keccak.Zero.ValueHash256 : Keccak.OfAnEmptyString.ValueHash256
         );
 
-        OldStyleTrieVisitContext ctx = new(level: 0, isStorage: false, branchChildIndex: null);
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
         for (int i = 0; i < count; i++)
         {
