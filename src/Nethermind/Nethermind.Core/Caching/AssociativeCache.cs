@@ -96,7 +96,6 @@ public sealed class AssociativeCache<TKey, TValue>
             _setCount = 0;
             return;
         }
-        // Ceiling division ensures physical capacity >= maxCapacity
         _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((maxCapacity + Ways - 1) / Ways));
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
@@ -238,7 +237,6 @@ public sealed class AssociativeCache<TKey, TValue>
                 }
             }
 
-            // Early retry if epoch already changed before we pick a slot
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
             long timestamp = Interlocked.Increment(ref _ticker);

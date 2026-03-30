@@ -5,8 +5,6 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 using Cache = Nethermind.Core.Caching.AssociativeCache<Nethermind.Core.AddressAsKey, Nethermind.Core.Account>;
@@ -18,22 +16,32 @@ public class AssociativeCacheTests
 {
     private const int Capacity = 32;
 
-    private readonly Account[] _accounts = new Account[Capacity * 2 + 1];
-    private readonly Address[] _addresses = new Address[Capacity * 2 + 1];
-    private readonly AddressAsKey[] _keys = new AddressAsKey[Capacity * 2 + 1];
+    private AddressAsKey[] _keys = null!;
+    private Account[] _accounts = null!;
 
     [SetUp]
     public void Setup()
     {
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            _accounts[i] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-            _addresses[i] = Build.An.Address.FromNumber(i).TestObject;
-            _keys[i] = _addresses[i];
-        }
+        (_keys, _accounts) = CacheTestData.Build(Capacity * 2 + 1);
     }
 
     private static Cache Create() => new Cache(Capacity);
+
+    private void FillCache(Cache cache, int count)
+    {
+        for (int i = 0; i < count; i++)
+            cache.Set(in _keys[i], _accounts[i]);
+    }
+
+    private void AssertAllPresent(Cache cache, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            AddressAsKey key = _keys[i];
+            cache.TryGet(in key, out Account? val).Should().BeTrue($"key {i} should be present");
+            val.Should().Be(_accounts[i]);
+        }
+    }
 
     [Test]
     public void At_capacity()

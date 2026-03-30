@@ -101,7 +101,6 @@ internal static class SeqlockHeader
         return (int)(Volatile.Read(ref epochAndCount) & CountMask);
     }
 
-
     /// <summary>
     /// Adjusts the count portion of epochAndCount by delta, but only if the epoch
     /// still matches expectedEpoch. Prevents count drift when Clear() races with Set/Delete.

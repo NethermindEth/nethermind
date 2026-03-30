@@ -45,7 +45,6 @@ public sealed class AssociativeKeyCache<TKey>
             _setCount = 0;
             return;
         }
-        // Ceiling division ensures physical capacity >= maxCapacity
         _setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((maxCapacity + Ways - 1) / Ways));
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
@@ -167,7 +166,6 @@ public sealed class AssociativeKeyCache<TKey>
                 }
             }
 
-            // Early retry if epoch already changed before we pick a slot
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
             long timestamp = Interlocked.Increment(ref _ticker);
@@ -290,6 +288,8 @@ public sealed class AssociativeKeyCache<TKey>
         long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
         long lockedHeader = tagToStore | newSeq | LockMarker;
 
+        // STLR on ARM64 is release-only: subsequent stores can move before it.
+        // Barrier ensures Key/Ticker stores stay after the lock.
         Volatile.Write(ref entry.Header, lockedHeader);
         if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 

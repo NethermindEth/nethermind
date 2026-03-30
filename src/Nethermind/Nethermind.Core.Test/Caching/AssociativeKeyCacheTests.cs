@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching;
@@ -15,22 +14,12 @@ public class AssociativeKeyCacheTests
 {
     private const int Capacity = 32;
 
-    private readonly Address[] _addresses = new Address[Capacity * 2 + 1];
-    private AddressAsKey[] _keys = [];
+    private AddressAsKey[] _keys = null!;
 
     [SetUp]
     public void Setup()
     {
-        for (int i = 0; i < Capacity * 2 + 1; i++)
-        {
-            _addresses[i] = Build.An.Address.FromNumber(i).TestObject;
-        }
-
-        _keys = new AddressAsKey[Capacity * 2 + 1];
-        for (int i = 0; i < _addresses.Length; i++)
-        {
-            _keys[i] = new AddressAsKey(_addresses[i]);
-        }
+        (_keys, _) = CacheTestData.Build(Capacity * 2 + 1);
     }
 
     [Test]
