@@ -22,7 +22,6 @@ public class AssociativeCacheSingleOpBenchmarks
     private LruCache<AddressAsKey, Account> _lru = null!;
     private ClockCache<AddressAsKey, Account> _clock = null!;
     private AssociativeCache<AddressAsKey, Account> _assoc = null!;
-    private AssociativeCacheOnlyTrackWrites<AddressAsKey, Account> _assocNoTicker = null!;
 
     private AddressAsKey[] _keys = null!;
     private Account[] _accounts = null!;
@@ -37,7 +36,6 @@ public class AssociativeCacheSingleOpBenchmarks
         _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
         _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
         _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
-        _assocNoTicker = new AssociativeCacheOnlyTrackWrites<AddressAsKey, Account>(KeyCount);
 
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
@@ -54,7 +52,6 @@ public class AssociativeCacheSingleOpBenchmarks
             _lru.Set(_keys[i], _accounts[i]);
             _clock.Set(_keys[i], _accounts[i]);
             _assoc.Set(in _keys[i], _accounts[i]);
-            _assocNoTicker.Set(in _keys[i], _accounts[i]);
         }
 
         byte[] missBytes = new byte[20];
@@ -74,7 +71,10 @@ public class AssociativeCacheSingleOpBenchmarks
     public Account? AssociativeCache_Get_Hit() => _assoc.Get(in _keys[500]);
 
     [Benchmark]
-    public Account? AssociativeCacheNoTicker_Get_Hit() => _assocNoTicker.Get(in _keys[500]);
+    public bool AssociativeCache_TryGetNoRefresh_Hit()
+    {
+        return _assoc.TryGetNoRefresh(in _keys[500], out _);
+    }
 
     // ==================== Get (Miss) ====================
 
