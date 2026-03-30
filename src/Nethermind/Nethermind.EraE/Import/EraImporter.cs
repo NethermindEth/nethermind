@@ -39,7 +39,11 @@ public class EraImporter(
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
-            throw new ArgumentException($"Import source directory does not exist: {src}");
+        {
+            if (string.IsNullOrEmpty(eraConfig.RemoteBaseUrl))
+                throw new ArgumentException($"Import source directory does not exist: {src}");
+            fileSystem.Directory.CreateDirectory(src);
+        }
         if (accumulatorFile != null && !fileSystem.File.Exists(accumulatorFile))
             throw new ArgumentException($"Accumulator file {accumulatorFile} does not exist.");
 
