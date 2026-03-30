@@ -133,8 +133,8 @@ public class StateCompositionVisitorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(stats.AccountTrieBranchNodes, Is.EqualTo(2));
-            Assert.That(stats.StorageTrieBranchNodes, Is.EqualTo(1));
+            Assert.That(stats.AccountTrieFullNodes, Is.EqualTo(2));
+            Assert.That(stats.StorageTrieFullNodes, Is.EqualTo(1));
         });
     }
 

@@ -15,6 +15,5 @@ public readonly record struct TrieDepthDistribution
     public int MaxStorageDepth { get; init; }
     public double AvgBranchOccupancy { get; init; }
 
-    // Geth parity: histogram of storage trie max depths
     public ImmutableArray<long> StorageMaxDepthHistogram { get; init; }
 }

@@ -16,15 +16,14 @@ public readonly record struct StateCompositionStats
     public long StorageSlotsTotal { get; init; }
     public long AccountTrieNodeBytes { get; init; }
     public long StorageTrieNodeBytes { get; init; }
-    public long AccountTrieBranchNodes { get; init; }
-    public long AccountTrieExtensionNodes { get; init; }
-    public long AccountTrieLeafNodes { get; init; }
-    public long StorageTrieBranchNodes { get; init; }
-    public long StorageTrieExtensionNodes { get; init; }
-    public long StorageTrieLeafNodes { get; init; }
+    public long AccountTrieFullNodes { get; init; }
+    public long AccountTrieShortNodes { get; init; }
+    public long AccountTrieValueNodes { get; init; }
+    public long StorageTrieFullNodes { get; init; }
+    public long StorageTrieShortNodes { get; init; }
+    public long StorageTrieValueNodes { get; init; }
 
-    // Geth parity: Top-N contract rankings
     public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
-    public ImmutableArray<TopContractEntry> TopContractsBySlots { get; init; }
+    public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
 }
