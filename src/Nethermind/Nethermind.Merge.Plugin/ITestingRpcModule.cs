@@ -7,7 +7,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -19,5 +18,5 @@ public interface ITestingRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
 
-    public Task<ResultWrapper<GetPayloadV5Result?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null, string? targetFork = null);
+    public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null);
 }
