@@ -167,71 +167,17 @@ public class MergePluginTests
     }
 
     [Test]
-    public async Task Testing_buildBlockV1_sets_excess_blob_gas_for_eip4844()
+    public async Task Testing_buildBlockV1_sets_excess_blob_gas_and_withdrawals_root()
     {
-        Hash256 parentHash = Keccak.Compute("parent");
-        BlockHeader parentHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = parentHash,
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-        };
-
-        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(parentHash).Returns(parentBlock);
-
-        Hash256? suggestedWithdrawalsRoot = null;
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(static callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
-                return block;
-            });
-        blockchainProcessor
-            .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
-            .Do(callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot;
-            });
-
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
         gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
 
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            LimboLogs.Instance);
+        Hash256? suggestedWithdrawalsRoot = null;
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator,
+            onProcess: block => suggestedWithdrawalsRoot = block.Header.WithdrawalsRoot);
 
         PayloadAttributes payloadAttributes = new()
         {
@@ -240,13 +186,7 @@ public class MergePluginTests
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals =
             [
-                new Withdrawal
-                {
-                    Index = 0,
-                    ValidatorIndex = 0,
-                    Address = Address.Zero,
-                    AmountInGwei = 1
-                }
+                new Withdrawal { Index = 0, ValidatorIndex = 0, Address = Address.Zero, AmountInGwei = 1 }
             ],
             ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
         };
@@ -254,7 +194,6 @@ public class MergePluginTests
         ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
 
         result.Result.ResultType.Should().Be(ResultType.Success);
-        result.Data.Should().NotBeNull();
         result.Data.Should().BeOfType<GetPayloadV5Result>();
         GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
         payloadResult.ExecutionPayload.BlobGasUsed.Should().Be(0);
@@ -265,61 +204,13 @@ public class MergePluginTests
     [Test]
     public async Task Testing_buildBlockV1_json_rpc_accepts_omitted_extraData()
     {
-        Hash256 parentHash = Keccak.Compute("parent");
-        BlockHeader parentHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = parentHash,
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-        };
-
-        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
-        blockFinder.FindBlock(parentHash).Returns(parentBlock);
-
-        IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(static callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
-                return block;
-            });
-
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
-
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
-
         IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
         gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
 
-        TestingRpcModule module = new(
-            mainProcessingContext,
-            gasLimitCalculator,
-            specProvider,
-            blockFinder,
-            LimboLogs.Instance);
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator);
 
         PayloadAttributes payloadAttributes = new()
         {
@@ -402,30 +293,8 @@ public class MergePluginTests
         bool expectsBlockAccessList,
         bool expectsSlotNumber)
     {
-        Hash256 parentHash = Keccak.Compute("parent");
-        BlockHeader parentHeader = new(
-            Keccak.Compute("grandparent"),
-            Keccak.OfAnEmptySequenceRlp,
-            Address.Zero,
-            UInt256.Zero,
-            1,
-            30_000_000,
-            1,
-            [])
-        {
-            Hash = parentHash,
-            TotalDifficulty = UInt256.Zero,
-            BaseFeePerGas = UInt256.One,
-            GasUsed = 0,
-            StateRoot = Keccak.EmptyTreeHash,
-            ReceiptsRoot = Keccak.EmptyTreeHash,
-            Bloom = Bloom.Empty,
-            BlobGasUsed = 0,
-            ExcessBlobGas = 0,
-            SlotNumber = expectsSlotNumber ? 1UL : null
-        };
-
-        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock(
+            slotNumber: expectsSlotNumber ? 1UL : null);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
@@ -498,11 +367,41 @@ public class MergePluginTests
             .SetName("Testing_buildBlockV1_json_rpc_returns_payload_with_txs_for_amsterdam");
     }
 
+    private static (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) CreateDefaultParentBlock(ulong? slotNumber = null)
+    {
+        Hash256 parentHash = Keccak.Compute("parent");
+        BlockHeader parentHeader = new(
+            Keccak.Compute("grandparent"),
+            Keccak.OfAnEmptySequenceRlp,
+            Address.Zero,
+            UInt256.Zero,
+            1,
+            30_000_000,
+            1,
+            [])
+        {
+            Hash = parentHash,
+            TotalDifficulty = UInt256.Zero,
+            BaseFeePerGas = UInt256.One,
+            GasUsed = 0,
+            StateRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            Bloom = Bloom.Empty,
+            BlobGasUsed = 0,
+            ExcessBlobGas = 0,
+            SlotNumber = slotNumber
+        };
+
+        Block parentBlock = new(parentHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        return (parentHash, parentBlock, parentHeader);
+    }
+
     private static TestingRpcModule CreateTestingRpcModule(
         Hash256 parentHash,
         Block parentBlock,
         ISpecProvider specProvider,
-        IGasLimitCalculator gasLimitCalculator)
+        IGasLimitCalculator gasLimitCalculator,
+        Action<Block>? onProcess = null)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(parentHash).Returns(parentBlock);
@@ -526,6 +425,13 @@ public class MergePluginTests
 
                 return block;
             });
+
+        if (onProcess is not null)
+        {
+            blockchainProcessor
+                .When(x => x.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>()))
+                .Do(callInfo => onProcess(callInfo.Arg<Block>()));
+        }
 
         IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
         mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);

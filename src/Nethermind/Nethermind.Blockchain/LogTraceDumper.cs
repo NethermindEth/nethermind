@@ -20,6 +20,7 @@ namespace Nethermind.Blockchain;
 
 public static class BlockTraceDumper
 {
+    private const string UnknownHash = "unknown";
     public static void LogDiagnosticRlp(
         Block block,
         ILogger logger,
@@ -109,17 +110,17 @@ public static class BlockTraceDumper
 
             if (blocks.Count == 1)
             {
-                blockHash = blocks[0].Hash?.ToString() ?? "unknown";
+                blockHash = blocks[0].Hash?.ToString() ?? UnknownHash;
             }
             else
             {
-                blockHash = string.Join("|", blocks.Select(static b => b.Hash?.ToString() ?? "unknown"));
+                blockHash = string.Join("|", blocks.Select(static b => b.Hash?.ToString() ?? UnknownHash));
             }
             return true;
         }
 
-        condition = "unknown";
-        blockHash = "unknown";
+        condition = UnknownHash;
+        blockHash = UnknownHash;
         return false;
     }
 

@@ -43,12 +43,6 @@ public class TestingRpcModule(
         {
             IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
 
-            if (!ValidatePayloadAttributes(payloadAttributes, spec, out ResultWrapper<object?>? errorResult))
-            {
-                if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {errorResult!.Result.Error}");
-                return errorResult!;
-            }
-
             BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
             Transaction[] transactions = GetTransactions(txRlps).ToArray();
             header.TxRoot = TxTrie.CalculateRoot(transactions);
@@ -127,23 +121,4 @@ public class TestingRpcModule(
             ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false)
             : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
 
-    private bool ValidatePayloadAttributes(PayloadAttributes payloadAttributes, IReleaseSpec spec, out ResultWrapper<object?>? errorResult)
-    {
-        if (spec.IsEip7843Enabled)
-        {
-            if (payloadAttributes.SlotNumber is null)
-            {
-                errorResult = ResultWrapper<object?>.Fail("payload attributes missing slotNumber", MergeErrorCodes.InvalidPayloadAttributes);
-                return false;
-            }
-        }
-        else if (payloadAttributes.SlotNumber is not null)
-        {
-            errorResult = ResultWrapper<object?>.Fail("slotNumber is not supported before EIP-7843", MergeErrorCodes.InvalidPayloadAttributes);
-            return false;
-        }
-
-        errorResult = null;
-        return true;
-    }
 }
