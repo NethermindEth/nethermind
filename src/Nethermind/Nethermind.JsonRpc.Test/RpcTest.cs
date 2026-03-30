@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -62,7 +62,7 @@ public static class RpcTest
         return serialized;
     }
 
-    internal static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
+    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
     {
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
