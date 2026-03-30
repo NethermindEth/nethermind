@@ -16,8 +16,7 @@ public static partial class KzgPolynomialCommitments
         if (commitment.Length != Ckzg.BytesPerCommitment)
             return false;
 
-        if (hashBuffer.Length != Eip4844Constants.BytesPerBlobVersionedHash)
-            ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
+        ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
 
         if (SHA256.TryHashData(commitment, hashBuffer, out _))
         {

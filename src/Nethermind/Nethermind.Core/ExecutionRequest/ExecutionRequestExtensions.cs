@@ -34,6 +34,7 @@ public static class ExecutionRequestExtensions
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
+        // TODO: Make sure that length <= 3
         ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);

@@ -14,8 +14,7 @@ public static partial class KzgPolynomialCommitments
         if (commitment.Length != 48) // KZG commitment is always 48 bytes
             return false;
 
-        if (hashBuffer.Length != Eip4844Constants.BytesPerBlobVersionedHash)
-            ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
+        ArgumentOutOfRangeException.ThrowIfNotEqual(hashBuffer.Length, Eip4844Constants.BytesPerBlobVersionedHash, nameof(hashBuffer));
 
         ZiskBindings.Crypto.sha256_c(commitment, (nuint)commitment.Length, hashBuffer);
 
