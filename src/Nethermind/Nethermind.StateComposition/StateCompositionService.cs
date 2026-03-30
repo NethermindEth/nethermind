@@ -16,46 +16,80 @@ namespace Nethermind.StateComposition;
 /// Orchestrates state composition analysis using <see cref="StateCompositionVisitor"/>
 /// and <see cref="IStateReader"/> for trie traversal.
 /// </summary>
-public sealed class StateCompositionService(
-    IStateReader stateReader,
-    StateCompositionStateHolder stateHolder,
-    IStateCompositionConfig config,
-    ILogManager logManager)
-    : IStateCompositionService
+public sealed class StateCompositionService : IStateCompositionService
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly IStateReader _stateReader;
+    private readonly IStateCompositionStateHolder _stateHolder;
+    private readonly IStateCompositionConfig _config;
+    private readonly ILogger _logger;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
+
+    private CancellationTokenSource? _currentScanCts;
+
+    public StateCompositionService(
+        IStateReader stateReader,
+        IStateCompositionStateHolder stateHolder,
+        IStateCompositionConfig config,
+        ILogManager logManager)
+    {
+        _stateReader = stateReader;
+        _stateHolder = stateHolder;
+        _config = config;
+        _logger = logManager.GetClassLogger();
+
+        ValidateConfig(config);
+    }
+
+    private static void ValidateConfig(IStateCompositionConfig config)
+    {
+        if (config.ScanParallelism <= 0)
+            throw new ArgumentException("ScanParallelism must be positive", nameof(config));
+        if (config.ScanMemoryBudget <= 0)
+            throw new ArgumentException("ScanMemoryBudget must be positive", nameof(config));
+        if (config.ScanQueueTimeoutSeconds <= 0)
+            throw new ArgumentException("ScanQueueTimeoutSeconds must be positive", nameof(config));
+        if (config.TopNContracts <= 0)
+            throw new ArgumentException("TopNContracts must be positive", nameof(config));
+    }
 
     public async Task<StateCompositionStats> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
-        if (!await _scanLock.WaitAsync(TimeSpan.FromSeconds(config.ScanQueueTimeoutSeconds), ct).ConfigureAwait(false))
-            throw new InvalidOperationException(
-                "Scan already in progress. Use statecomp_getCachedStats() for last results.");
-
+        bool acquired = false;
         try
         {
-            stateHolder.MarkScanStarted();
+            acquired = await _scanLock.WaitAsync(
+                TimeSpan.FromSeconds(_config.ScanQueueTimeoutSeconds), ct).ConfigureAwait(false);
+
+            if (!acquired)
+                throw new InvalidOperationException(
+                    "Scan already in progress. Use statecomp_getCachedStats() for last results.");
+
+            _stateHolder.MarkScanStarted();
+            using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _currentScanCts = linkedCts;
+
             Stopwatch sw = Stopwatch.StartNew();
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: starting full scan at block {header.Number}, root {header.StateRoot}");
 
-            using StateCompositionVisitor visitor = new(logManager);
+            using StateCompositionVisitor visitor = new(
+                new OneLoggerLogManager(_logger), linkedCts.Token, _config.TopNContracts);
 
             VisitingOptions options = new()
             {
-                MaxDegreeOfParallelism = config.ScanParallelism,
-                FullScanMemoryBudget = config.ScanMemoryBudget,
+                MaxDegreeOfParallelism = _config.ScanParallelism,
+                FullScanMemoryBudget = _config.ScanMemoryBudget,
             };
 
             await Task.Run(() =>
-                stateReader.RunTreeVisitor(visitor, header, options), ct).ConfigureAwait(false);
+                _stateReader.RunTreeVisitor(visitor, header, options), linkedCts.Token).ConfigureAwait(false);
 
             StateCompositionStats stats = visitor.GetStats(header.Number, header.StateRoot);
             TrieDepthDistribution dist = visitor.GetTrieDistribution();
 
-            stateHolder.SetBaseline(stats, dist);
-            stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
+            _stateHolder.SetBaseline(stats, dist);
+            _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
@@ -66,17 +100,23 @@ public sealed class StateCompositionService(
         }
         finally
         {
-            _scanLock.Release();
+            _currentScanCts = null;
+            if (acquired)
+                _scanLock.Release();
         }
     }
 
-    public async Task<TrieDepthDistribution> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct)
+    public Task<TrieDepthDistribution> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct)
     {
-        if (stateHolder.IsInitialized)
-            return stateHolder.CurrentDistribution;
+        if (_stateHolder.IsInitialized)
+            return Task.FromResult(_stateHolder.CurrentDistribution);
 
-        // No cached data — run a full scan first
-        await AnalyzeAsync(header, ct).ConfigureAwait(false);
-        return stateHolder.CurrentDistribution;
+        throw new InvalidOperationException(
+            "No cached distribution available. Run statecomp_getStats() first to trigger a scan.");
+    }
+
+    public void CancelScan()
+    {
+        _currentScanCts?.Cancel();
     }
 }

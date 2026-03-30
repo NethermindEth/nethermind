@@ -51,7 +51,10 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
 
     public void MarkScanStarted()
     {
-        _isScanning = true;
+        lock (_lock)
+        {
+            _isScanning = true;
+        }
     }
 
     public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration)

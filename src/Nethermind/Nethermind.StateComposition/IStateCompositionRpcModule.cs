@@ -11,6 +11,7 @@ namespace Nethermind.StateComposition;
 /// JSON-RPC interface for state composition metrics.
 /// Method prefix "statecomp_" registers under the "statecomp" namespace.
 /// </summary>
+[RpcModule(ModuleType.Statecomp)]
 public interface IStateCompositionRpcModule : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true,
@@ -29,6 +30,10 @@ public interface IStateCompositionRpcModule : IRpcModule
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get trie depth distribution with byte sizes. " +
-                      "Returns cached data or triggers new scan.")]
+                      "Returns cached data or fails if no scan has been run.")]
     Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution();
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Cancel the currently running scan, if any.")]
+    Task<ResultWrapper<bool>> statecomp_cancelScan();
 }

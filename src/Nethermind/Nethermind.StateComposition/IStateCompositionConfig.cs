@@ -20,4 +20,8 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Memory budget for baseline scan in bytes (1GB default)",
         DefaultValue = "1000000000")]
     long ScanMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "Number of top contracts to track per ranking category",
+        DefaultValue = "20")]
+    int TopNContracts { get; set; }
 }
