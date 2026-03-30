@@ -15,36 +15,27 @@ namespace Nethermind.StateComposition;
 /// Enhanced ITreeVisitor that collects all composition metrics in a single pass.
 /// Uses ThreadLocal&lt;VisitorCounters&gt; for lock-free scaling to 64+ cores.
 /// </summary>
-public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
+public sealed class StateCompositionVisitor(ILogManager logManager)
+    : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
 {
-    private readonly ILogger _logger;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     private readonly ThreadLocal<VisitorCounters> _localCounters =
         new(() => new VisitorCounters(), trackAllValues: true);
 
-    private long _totalAccountsVisited;
-
-    /// <summary>Progress callback fires every 1M accounts.</summary>
-    public event Action<long>? OnProgress;
+    private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
 
     public bool IsFullDbScan => true;
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
-
-    public StateCompositionVisitor(ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger();
-    }
 
     public bool ShouldVisit(in OldStyleTrieVisitContext ctx, in ValueHash256 nextNode)
     {
         // Track branch occupancy: ShouldVisit is called for each non-null child
         // of a branch node, with BranchChildIndex set to the child's position.
         // Only count account trie children to match TotalBranchNodes (account-only).
-        if (ctx.BranchChildIndex.HasValue && !ctx.IsStorage)
-        {
+        if (ctx is { BranchChildIndex: not null, IsStorage: false })
             _localCounters.Value!.TotalBranchChildren++;
-        }
 
         return true;
     }
@@ -63,10 +54,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
-        int depth = Math.Min(ctx.Level, 15);
-
-        if (ctx.Level > 15 && _logger.IsWarn)
-            _logger.Warn($"Trie depth {ctx.Level} exceeds tracking limit 15; clamped.");
+        int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
         if (ctx.IsStorage)
         {
@@ -87,7 +75,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
-        int depth = Math.Min(ctx.Level, 15);
+        int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
         if (ctx.IsStorage)
         {
@@ -107,7 +95,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
-        int depth = Math.Min(ctx.Level, 15);
+        int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
         if (ctx.IsStorage)
         {
@@ -134,11 +122,6 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
 
         if (account.HasStorage)
             c.ContractsWithStorage++;
-
-        // Progress callback every 1M accounts (Interlocked only for progress, not accuracy)
-        long total = Interlocked.Increment(ref _totalAccountsVisited);
-        if (total % 1_000_000 == 0)
-            OnProgress?.Invoke(total);
     }
 
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
@@ -189,9 +172,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         VisitorCounters agg = new();
         foreach (VisitorCounters local in _localCounters.Values)
-        {
             agg.MergeFrom(local);
-        }
 
         return agg;
     }

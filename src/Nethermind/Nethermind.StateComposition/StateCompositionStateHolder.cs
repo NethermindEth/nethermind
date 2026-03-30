@@ -9,20 +9,17 @@ namespace Nethermind.StateComposition;
 
 /// <summary>
 /// Thread-safe implementation of <see cref="IStateCompositionStateHolder"/>.
-/// Stores baseline scan results and scan progress state.
+/// Stores baseline scan results and scan lifecycle state.
 /// </summary>
 public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     private StateCompositionStats _currentStats;
     private TrieDepthDistribution _currentDistribution;
     private ScanMetadata? _lastScanMetadata;
     private volatile bool _isInitialized;
     private volatile bool _isScanning;
-    private double _scanProgress;
-    private long _baselineBlock;
-    private long _headBlock;
 
     public StateCompositionStats CurrentStats
     {
@@ -42,35 +39,19 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     public bool IsInitialized => _isInitialized;
     public bool IsScanning => _isScanning;
 
-    public double ScanProgress
-    {
-        get { lock (_lock) return _scanProgress; }
-    }
-
-    /// <summary>
-    /// Number of blocks processed since last baseline scan.
-    /// Used by getCachedStats to indicate staleness.
-    /// </summary>
-    public long BlocksSinceBaseline => Math.Max(0, _headBlock - _baselineBlock);
-
     public void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist)
     {
         lock (_lock)
         {
             _currentStats = stats;
             _currentDistribution = dist;
-            _baselineBlock = stats.BlockNumber;
             _isInitialized = true;
         }
     }
 
     public void MarkScanStarted()
     {
-        lock (_lock)
-        {
-            _isScanning = true;
-            _scanProgress = 0.0;
-        }
+        _isScanning = true;
     }
 
     public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration)
@@ -78,7 +59,6 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
         lock (_lock)
         {
             _isScanning = false;
-            _scanProgress = 1.0;
             _lastScanMetadata = new ScanMetadata
             {
                 BlockNumber = blockNumber,
@@ -88,22 +68,5 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
                 IsComplete = true,
             };
         }
-    }
-
-    public void UpdateProgress(double progress)
-    {
-        lock (_lock)
-        {
-            _scanProgress = Math.Clamp(progress, 0.0, 1.0);
-        }
-    }
-
-    /// <summary>
-    /// Track head block for staleness indicator.
-    /// Called externally when new blocks are processed.
-    /// </summary>
-    public void UpdateHeadBlock(long blockNumber)
-    {
-        Interlocked.Exchange(ref _headBlock, blockNumber);
     }
 }

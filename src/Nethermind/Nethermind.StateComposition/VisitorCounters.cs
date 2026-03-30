@@ -10,6 +10,13 @@ namespace Nethermind.StateComposition;
 /// </summary>
 public sealed class VisitorCounters
 {
+    /// <summary>
+    /// Maximum trie depth tracked per-level. Depths beyond this are clamped.
+    /// Ethereum account tries are 64 nibbles deep max; 16 buckets covers
+    /// the meaningful range with room to spare.
+    /// </summary>
+    public const int MaxTrackedDepth = 16;
+
     public long AccountsTotal;
     public long ContractsTotal;
     public long ContractsWithStorage;
@@ -30,8 +37,8 @@ public sealed class VisitorCounters
     public long TotalBranchChildren;
     public long TotalBranchNodes;
 
-    public readonly DepthCounter[] AccountDepths = new DepthCounter[16];
-    public readonly DepthCounter[] StorageDepths = new DepthCounter[16];
+    public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
+    public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
 
     public void MergeFrom(VisitorCounters other)
     {
@@ -55,7 +62,7 @@ public sealed class VisitorCounters
         TotalBranchChildren += other.TotalBranchChildren;
         TotalBranchNodes += other.TotalBranchNodes;
 
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < MaxTrackedDepth; i++)
         {
             AccountDepths[i].Branches += other.AccountDepths[i].Branches;
             AccountDepths[i].Extensions += other.AccountDepths[i].Extensions;

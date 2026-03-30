@@ -32,8 +32,7 @@
   "StateComposition": {
     "Enabled": true,
     "ScanParallelism": 4,
-    "ScanMemoryBudget": 1000000000,
-    "ScanQueueTimeoutSeconds": 10
+    "ScanMemoryBudget": 1000000000
   },
   "JsonRpc": {
     "Enabled": true,
