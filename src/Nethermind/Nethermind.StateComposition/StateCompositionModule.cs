@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Core;
+using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.StateComposition;
 
@@ -14,5 +16,14 @@ public class StateCompositionModule : Module
         builder.RegisterType<StateCompositionVisitor>()
             .AsSelf()
             .InstancePerDependency();
+
+        builder.RegisterType<StateCompositionStateHolder>()
+            .AsSelf()
+            .As<IStateCompositionStateHolder>()
+            .SingleInstance();
+
+        builder
+            .AddSingleton<IStateCompositionService, StateCompositionService>()
+            .RegisterSingletonJsonRpcModule<IStateCompositionRpcModule, StateCompositionRpcModule>();
     }
 }

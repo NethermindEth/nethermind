@@ -1,0 +1,50 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/foundation.json",
+    "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+    "BaseDbPath": "nethermind_db/statecomp_mainnet",
+    "LogFileName": "statecomp_mainnet.log",
+    "MemoryHint": 4096000000
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": true,
+    "PivotNumber": 24708000,
+    "PivotHash": "0x10f159a2d9d50f59bd64d86a2c15b4428e91a676636d63b7b25599e8f8a23108",
+    "PivotTotalDifficulty": "58750003716598352816469",
+    "FastSyncCatchUpHeightDelta": 10000000000,
+    "AncientReceiptsBarrier": 15537394,
+    "AncientBodiesBarrier": 15537394
+  },
+  "EthStats": {
+    "Server": "wss://ethstats.net/api"
+  },
+  "Metrics": {
+    "NodeName": "StateComp Mainnet"
+  },
+  "Blocks": {
+    "TargetBlockGasLimit": 60000000
+  },
+  "Pruning": {
+    "Mode": "None"
+  },
+  "StateComposition": {
+    "Enabled": true,
+    "ScanParallelism": 4,
+    "ScanMemoryBudget": 1000000000,
+    "ScanQueueTimeoutSeconds": 10
+  },
+  "JsonRpc": {
+    "Enabled": true,
+    "Timeout": 120000,
+    "Host": "127.0.0.1",
+    "Port": 8545,
+    "AdditionalRpcUrls": [
+      "http://localhost:8551|http;ws|net;eth;subscribe;engine;web3;client"
+    ]
+  },
+  "Merge": {
+    "Enabled": true
+  }
+}
