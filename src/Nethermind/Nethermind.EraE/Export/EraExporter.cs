@@ -31,7 +31,7 @@ public class EraExporter(
         : eraConfig.NetworkName.Trim().ToLower();
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
-    private readonly int _eraSize = eraConfig.MaxEraSize;
+    private const int EraSize = EraWriter.MaxEraSize;
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums_sha256.txt";
@@ -70,8 +70,8 @@ public class EraExporter(
         progress.Reset(0, to - from + 1);
         int totalProcessed = 0;
 
-        long startEpoch = from / _eraSize;
-        long endEpoch = to / _eraSize;
+        long startEpoch = from / EraSize;
+        long endEpoch = to / EraSize;
         long epochCount = endEpoch - startEpoch + 1;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
@@ -104,9 +104,9 @@ public class EraExporter(
             long epoch = startEpoch + epochIdx;
             // Each epoch covers exactly [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
-            long epochBlockStart = epoch * _eraSize;
+            long epochBlockStart = epoch * EraSize;
             long writeFrom = Math.Max(epochBlockStart, from);
-            long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
+            long writeTo = Math.Min(epochBlockStart + EraSize - 1, to);
 
             string filePath = Path.Combine(
                 destinationPath,
@@ -145,6 +145,8 @@ public class EraExporter(
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
             }
 
+            // Safe concurrent indexed writes: each epoch has a unique epochIdx slot;
+            // reads from these arrays happen only after Parallel.ForEachAsync completes.
             accumulators[(int)epochIdx] = accumulator;
             checksums[(int)epochIdx] = sha256;
             // Filename uses the last block hash as the epoch identifier — same convention as go-ethereum execdb.
@@ -152,17 +154,25 @@ public class EraExporter(
             fileNames[(int)epochIdx] = finalName;
 
             string rename = Path.Combine(destinationPath, finalName);
-            for (int attempt = 0; ; attempt++)
+            try
             {
-                try
+                for (int attempt = 0; ; attempt++)
                 {
-                    fileSystem.File.Move(filePath, rename, true);
-                    break;
+                    try
+                    {
+                        fileSystem.File.Move(filePath, rename, true);
+                        break;
+                    }
+                    catch (IOException) when (attempt < 3)
+                    {
+                        await Task.Delay(RetryDelayMs * (attempt + 1), cancel);
+                    }
                 }
-                catch (IOException) when (attempt < 3)
-                {
-                    await Task.Delay(RetryDelayMs * (attempt + 1), cancel);
-                }
+            }
+            catch
+            {
+                fileSystem.File.Delete(filePath);
+                throw;
             }
         }
     }

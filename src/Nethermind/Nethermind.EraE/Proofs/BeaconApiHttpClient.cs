@@ -31,7 +31,13 @@ internal sealed class BeaconApiHttpClient : IDisposable
             request, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
 
         if (!response.IsSuccessStatusCode)
+        {
+            if ((int)response.StatusCode >= 500)
+            {
+                throw new HttpRequestException($"Beacon API returned {(int)response.StatusCode} for {uri}.");
+            }
             return null;
+        }
 
         await using Stream stream = await response.Content.ReadAsStreamAsync(cts.Token).ConfigureAwait(false);
         return await JsonDocument.ParseAsync(stream, cancellationToken: cts.Token).ConfigureAwait(false);

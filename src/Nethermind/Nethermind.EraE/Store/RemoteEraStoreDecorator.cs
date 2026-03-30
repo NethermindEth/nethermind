@@ -33,6 +33,10 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
 
+    // Open reader pool — one EraReader per epoch, reused across block reads.
+    // E2StoreReader uses RandomAccess (positional I/O), so concurrent reads are safe.
+    private readonly ConcurrentDictionary<int, EraReader> _openedReaders = new();
+
     // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
     public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
     public long LastBlock => GetLastBlockAsync().GetAwaiter().GetResult();
@@ -66,7 +70,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         int epoch = (int)(number / _maxEraSize);
         string localPath = await EnsureEpochAvailableAsync(epoch, cancellation).ConfigureAwait(false);
 
-        using EraReader reader = new(localPath);
+        EraReader reader = _openedReaders.GetOrAdd(epoch, static (_, path) => new EraReader(path), localPath);
         if (number > reader.LastBlock) return (null, null);
         (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
@@ -92,6 +96,8 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _manifestLock.Dispose();
         foreach (Lazy<SemaphoreSlim> s in _epochLocks.Values)
             if (s.IsValueCreated) s.Value.Dispose();
+        foreach (EraReader reader in _openedReaders.Values)
+            reader.Dispose();
     }
 
     private async Task<long> GetFirstBlockAsync(CancellationToken cancellation = default)
