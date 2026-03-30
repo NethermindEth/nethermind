@@ -296,7 +296,7 @@ namespace Nethermind.Evm.Test.Tracing
             EstimateGasTracer tracer = new();
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>(), Arg.Any<int?>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -332,7 +332,7 @@ namespace Nethermind.Evm.Test.Tracing
             const int totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>(), Arg.Any<int?>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -357,7 +357,7 @@ namespace Nethermind.Evm.Test.Tracing
             const int totalGas = Transaction.BaseTxGasCost;
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
-            stateProvider.GetBalance(Arg.Any<Address>(), Arg.Any<int?>()).Returns(new UInt256(1));
+            stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
             GasEstimator sut = new GasEstimator(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
@@ -1293,7 +1293,7 @@ namespace Nethermind.Evm.Test.Tracing
             public void InsertContract(Address contractAddress, byte[] code)
             {
                 _stateProvider.CreateAccount(contractAddress, 0);
-                _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec, false, -1);
+                _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec, false);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
             }

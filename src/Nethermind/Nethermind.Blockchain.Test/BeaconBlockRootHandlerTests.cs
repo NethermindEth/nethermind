@@ -94,7 +94,7 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        _worldState.AccountExists(Arg.Any<Address>(), Arg.Any<int?>()).Returns(true);
+        _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
         (_, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance, includeStorageCells: true);
 
@@ -108,7 +108,7 @@ public class BeaconBlockRootHandlerTests
     {
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
-        _worldState.AccountExists(Arg.Any<Address>(), Arg.Any<int?>()).Returns(true);
+        _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
         (_, AccessList? accessList) = _beaconBlockRootHandler
             .BeaconRootsAccessList(block, Cancun.Instance, false);
 
@@ -134,7 +134,7 @@ public class BeaconBlockRootHandlerTests
         BlockHeader header = Build.A.BlockHeader.WithNumber(1).WithParentBeaconBlockRoot(Hash256.Zero).TestObject;
         Block block = Build.A.Block.WithHeader(header).TestObject;
 
-        _worldState.AccountExists(Arg.Any<Address>(), Arg.Any<int?>()).Returns(true);
+        _worldState.AccountExists(Arg.Any<Address>()).Returns(true);
 
         _beaconBlockRootHandler.StoreBeaconRoot(block, Cancun.Instance, NullTxTracer.Instance);
 

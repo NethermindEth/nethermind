@@ -521,10 +521,10 @@ namespace Nethermind.Blockchain.Test
                 foreach (KeyValuePair<Address, (UInt256 Balance, UInt256 Nonce)> accountState in testCase.AccountStates
                              .Where(v => !missingAddressesSet.Contains(v.Key)))
                 {
-                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, 0, -1);
+                    stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                     for (int i = 0; i < accountState.Value.Nonce; i++)
                     {
-                        stateProvider.IncrementNonce(accountState.Key, -1);
+                        stateProvider.IncrementNonce(accountState.Key);
                     }
                 }
 
