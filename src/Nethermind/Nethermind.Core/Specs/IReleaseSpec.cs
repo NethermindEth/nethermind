@@ -473,10 +473,10 @@ namespace Nethermind.Core.Specs
         /// EIP-7954: Increase Maximum Contract Size
         /// </summary>
         public bool IsEip7954Enabled { get; }
-        
+
         /// <summary>
         /// EIP-7782:Reduce Block Latency
-        /// <summary>
+        /// </summary>
         public bool IsEip7782Enabled { get; }
 
         /// <summary>

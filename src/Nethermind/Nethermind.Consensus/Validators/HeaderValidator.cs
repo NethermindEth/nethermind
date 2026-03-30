@@ -261,7 +261,7 @@ namespace Nethermind.Consensus.Validators
         {
             if (spec.IsEip7782Enabled)
             {
-               IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
+                IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
                 if (!parentSpec.IsEip7782Enabled)
                 {
                     long expectedGasLimit = parent.GasLimit / 2;

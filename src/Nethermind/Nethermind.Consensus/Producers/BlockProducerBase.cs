@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent , timestamp),
+                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent, timestamp),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
