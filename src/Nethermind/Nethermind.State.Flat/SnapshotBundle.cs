@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
@@ -31,8 +30,6 @@ public sealed class SnapshotBundle : IDisposable
     private ConcurrentDictionary<HashedKey<Address>, bool> _selfDestructedAccountAddresses = null!;
 
     private bool _trieChanged = false;
-    private ConcurrentDictionary<HashedKey<TreePath>, TrieNode> _readStateNodes = null!;
-    private ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> _readStorageNodes = null!;
 
     // The cached resource holds some items that are pooled.
     // Notably, it holds loaded caches from trie warmer.
@@ -60,8 +57,6 @@ public sealed class SnapshotBundle : IDisposable
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
-        _readStateNodes = _transientResource.ReadStateNodes;
-        _readStorageNodes = _transientResource.ReadStorageNodes;
 
         ExpandCurrentPooledContent();
 
@@ -157,21 +152,16 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_readStateNodes.TryGetValue(key, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-        }
         else if (_transientResource.TryGetStateNode(path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStateNodes.GetOrAdd(key, node);
+        }
+        else if (DoFindStateNodeExternal(path, hash, out node))
+        {
         }
         else
         {
-            node = _readStateNodes.GetOrAdd(key,
-                DoFindStateNodeExternal(path, hash, out node)
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            node = new TrieNode(NodeType.Unknown, hash);
         }
 
         return node;
@@ -228,21 +218,16 @@ public sealed class SnapshotBundle : IDisposable
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
         }
-        else if (_readStorageNodes.TryGetValue(key, out node))
-        {
-            Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-        }
         else if (_transientResource.TryGetStorageNode((Hash256AsKey)address, path, hash, out node))
         {
             Nethermind.Trie.Pruning.Metrics.LoadedFromCacheNodesCount++;
-            node = _readStorageNodes.GetOrAdd(key, node);
+        }
+        else if (DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null)
+        {
         }
         else
         {
-            node = _readStorageNodes.GetOrAdd(key,
-                DoTryFindStorageNodeExternal(address, path, hash, out node) && node is not null
-                    ? node
-                    : new TrieNode(NodeType.Unknown, hash));
+            node = new TrieNode(NodeType.Unknown, hash);
         }
 
         return node;
@@ -432,9 +417,6 @@ public sealed class SnapshotBundle : IDisposable
             _transientResource = _resourcePool.GetCachedResource(_usage);
             _trieChanged = false;
 
-            _readStateNodes = _transientResource.ReadStateNodes;
-            _readStorageNodes = _transientResource.ReadStorageNodes;
-
             // Make and apply new snapshot content.
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
@@ -466,8 +448,6 @@ public sealed class SnapshotBundle : IDisposable
         _changedSlots = null!;
         _changedAccounts = null!;
         _changedStorageNodes = null!;
-        _readStateNodes = null!;
-        _readStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);

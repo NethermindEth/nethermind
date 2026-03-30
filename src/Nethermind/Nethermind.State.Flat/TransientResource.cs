@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Numerics;
@@ -32,9 +31,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
-    public ConcurrentDictionary<HashedKey<TreePath>, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> ReadStorageNodes = new();
-
     public void Reset()
     {
         Nodes.Reset();
@@ -53,8 +49,6 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             PrewarmedAddresses.Clear();
         }
 
-        ReadStateNodes.NoResizeClear();
-        ReadStorageNodes.NoResizeClear();
     }
 
     public bool ShouldPrewarm(Address address, UInt256? slot)
