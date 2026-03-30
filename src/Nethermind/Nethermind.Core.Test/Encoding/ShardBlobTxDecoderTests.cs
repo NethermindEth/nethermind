@@ -21,7 +21,7 @@ public partial class ShardBlobTxDecoderTests
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     [SetUp]
-    public static Task SetUp() => KzgPolynomialCommitments.InitializeAsync();
+    public static void SetUp() => KzgPolynomialCommitments.Initialize();
 
     public static IEnumerable<(Transaction, string)> TestCaseSource() =>
         TxDecoderTests.TestCaseSource().Select(static tos => (Build.A.Transaction.From(tos.Item1)

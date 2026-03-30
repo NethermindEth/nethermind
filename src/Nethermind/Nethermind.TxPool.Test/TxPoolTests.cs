@@ -53,7 +53,7 @@ namespace Nethermind.TxPool.Test
         [OneTimeSetUp]
         public static void OneTimeSetup()
         {
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            KzgPolynomialCommitments.Initialize();
         }
 
         [SetUp]

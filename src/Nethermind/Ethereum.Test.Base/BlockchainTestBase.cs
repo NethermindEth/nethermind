@@ -103,7 +103,7 @@ public abstract class BlockchainTestBase
 
         if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
         {
-            await KzgPolynomialCommitments.InitializeAsync();
+            KzgPolynomialCommitments.Initialize();
         }
 
         DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);

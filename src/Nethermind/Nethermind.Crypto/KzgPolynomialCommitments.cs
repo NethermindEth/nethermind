@@ -4,7 +4,6 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
-using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -23,11 +22,9 @@ public static class KzgPolynomialCommitments
     private static IntPtr _ckzgSetup = IntPtr.Zero;
     internal static IntPtr CkzgSetup => _ckzgSetup;
 
-    private static Task? _initializeTask;
-
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
 
-    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
+    public static void Initialize(ILogger logger = default, string? setupFilePath = null)
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
@@ -43,7 +40,7 @@ public static class KzgPolynomialCommitments
         {
             throw new InvalidOperationException("Unable to load trusted setup");
         }
-    });
+    }
 
     /// <summary>
     ///

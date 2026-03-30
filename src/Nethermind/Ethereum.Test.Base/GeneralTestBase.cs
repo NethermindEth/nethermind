@@ -40,7 +40,7 @@ namespace Ethereum.Test.Base
         {
             _logManager ??= LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            KzgPolynomialCommitments.Initialize();
         }
 
         [SetUp]
