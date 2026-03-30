@@ -1,0 +1,52 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core.Crypto;
+using Nethermind.Trie;
+
+namespace Nethermind.StateComposition;
+
+public readonly record struct StateCompositionStats
+{
+    public long BlockNumber { get; init; }
+    public Hash256? StateRoot { get; init; }
+    public long AccountsTotal { get; init; }
+    public long ContractsTotal { get; init; }
+    public long ContractsWithStorage { get; init; }
+    public long StorageSlotsTotal { get; init; }
+    public long TotalCodeSize { get; init; }
+    public long AccountBytes { get; init; }
+    public long StorageBytes { get; init; }
+    public long AccountTrieNodeBytes { get; init; }
+    public long StorageTrieNodeBytes { get; init; }
+    public long AccountTrieBranchNodes { get; init; }
+    public long AccountTrieExtensionNodes { get; init; }
+    public long AccountTrieLeafNodes { get; init; }
+    public long StorageTrieBranchNodes { get; init; }
+    public long StorageTrieExtensionNodes { get; init; }
+    public long StorageTrieLeafNodes { get; init; }
+
+    /// <summary>
+    /// Convert from Nethermind's existing TrieStats (produced by TrieStatsCollector)
+    /// to StateCompositionStats. Avoids reimplementing ~200 lines of trie walking logic.
+    /// </summary>
+    public static StateCompositionStats FromTrieStats(
+        TrieStats trieStats, long blockNumber, Hash256? stateRoot) =>
+        new()
+        {
+            BlockNumber = blockNumber,
+            StateRoot = stateRoot,
+            AccountsTotal = trieStats.AccountCount,
+            ContractsTotal = trieStats.CodeCount,
+            StorageSlotsTotal = trieStats.StorageLeafCount,
+            AccountTrieBranchNodes = trieStats.StateBranchCount,
+            AccountTrieExtensionNodes = trieStats.StateExtensionCount,
+            AccountTrieLeafNodes = trieStats.AccountCount,
+            StorageTrieBranchNodes = trieStats.StorageBranchCount,
+            StorageTrieExtensionNodes = trieStats.StorageExtensionCount,
+            StorageTrieLeafNodes = trieStats.StorageLeafCount,
+            AccountTrieNodeBytes = trieStats.StateSize,
+            StorageTrieNodeBytes = trieStats.StorageSize,
+            TotalCodeSize = trieStats.CodeSize,
+        };
+}
