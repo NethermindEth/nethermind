@@ -57,10 +57,9 @@ namespace Nethermind.Core.Caching;
 /// collected promptly after Clear, use <see cref="Delete"/> on individual keys instead, or consider
 /// LruCache/ClockCache whose Clear zeroes the backing store.</para>
 /// </summary>
-public class AssociativeCache<TKey, TValue, TRefreshTicker>
+public sealed class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
-    where TRefreshTicker : struct, IFlag
 {
     private const int Ways = 8;
     private const int WayShift = 3;
@@ -106,9 +105,20 @@ public class AssociativeCache<TKey, TValue, TRefreshTicker>
         return value;
     }
 
-    [SkipLocalsInit]
+    /// <summary>Lookup that refreshes the eviction ticker on hit.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryGet(in TKey key, out TValue? value)
+        => TryGetCore<OnFlag>(in key, out value);
+
+    /// <summary>Lookup without refreshing the eviction ticker. Use for Set-then-Get patterns.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetNoRefresh(in TKey key, out TValue? value)
+        => TryGetCore<OffFlag>(in key, out value);
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetCore<TRefreshTicker>(in TKey key, out TValue? value)
+        where TRefreshTicker : struct, IFlag
     {
         if (_setCount == 0)
         {
@@ -143,10 +153,6 @@ public class AssociativeCache<TKey, TValue, TRefreshTicker>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                // Benign data race: Ticker is written without holding the set gate.
-                // On x64, aligned 8-byte stores are atomic so no tearing occurs.
-                // Worst case: concurrent WriteEntry overwrites our timestamp,
-                // resulting in slightly suboptimal eviction ordering.
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 if (TRefreshTicker.IsActive)
                     e.Ticker = Stopwatch.GetTimestamp();
@@ -370,8 +376,7 @@ public class AssociativeCache<TKey, TValue, TRefreshTicker>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
         }
@@ -410,7 +415,7 @@ public class AssociativeCache<TKey, TValue, TRefreshTicker>
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private protected struct Entry
+    private struct Entry
     {
         public long Header;
         public long Ticker;
@@ -418,21 +423,3 @@ public class AssociativeCache<TKey, TValue, TRefreshTicker>
         public TValue? Value;
     }
 }
-
-/// <summary>
-/// AssociativeCache with ticker refresh on reads (default). Frequently-read entries
-/// are protected from eviction. Use for read-heavy caches like CodeCache.
-/// </summary>
-public sealed class AssociativeCache<TKey, TValue>(int maxCapacity)
-    : AssociativeCache<TKey, TValue, OnFlag>(maxCapacity)
-    where TKey : struct, IHash64bit<TKey>
-    where TValue : class?;
-
-/// <summary>
-/// AssociativeCache without ticker refresh on reads. Eviction is based on most-recently-written only.
-/// Use for Set-then-Get patterns (e.g. HashCache) where read-tracking adds no eviction value.
-/// </summary>
-public sealed class AssociativeCacheOnlyTrackWrites<TKey, TValue>(int maxCapacity)
-    : AssociativeCache<TKey, TValue, OffFlag>(maxCapacity)
-    where TKey : struct, IHash64bit<TKey>
-    where TValue : class?;

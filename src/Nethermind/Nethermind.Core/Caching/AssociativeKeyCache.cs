@@ -18,9 +18,8 @@ namespace Nethermind.Core.Caching;
 /// 8-way set-associative cache with lock-free reads and 3-random eviction.
 /// See <see cref="AssociativeCache{TKey,TValue}"/> for full design notes and tradeoff comparison.
 /// </summary>
-public class AssociativeKeyCache<TKey, TRefreshTicker>
+public sealed class AssociativeKeyCache<TKey>
     where TKey : struct, IHash64bit<TKey>
-    where TRefreshTicker : struct, IFlag
 {
     private const int Ways = 8;
     private const int WayShift = 3;
@@ -54,9 +53,18 @@ public class AssociativeKeyCache<TKey, TRefreshTicker>
         _setGates = new int[_setCount];
     }
 
+    /// <summary>Lookup that refreshes the eviction ticker on hit.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool Get(in TKey key) => GetCore<OnFlag>(in key);
+
+    /// <summary>Lookup without refreshing the eviction ticker. Use for Set-then-Get patterns.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool GetNoRefresh(in TKey key) => GetCore<OffFlag>(in key);
+
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Get(in TKey key)
+    private bool GetCore<TRefreshTicker>(in TKey key)
+        where TRefreshTicker : struct, IFlag
     {
         if (_setCount == 0) return false;
 
@@ -84,6 +92,7 @@ public class AssociativeKeyCache<TKey, TRefreshTicker>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
+                // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 if (TRefreshTicker.IsActive)
                     e.Ticker = Stopwatch.GetTimestamp();
                 return true;
@@ -291,26 +300,10 @@ public class AssociativeKeyCache<TKey, TRefreshTicker>
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private protected struct Entry
+    private struct Entry
     {
         public long Header;
         public long Ticker;
         public TKey Key;
     }
 }
-
-/// <summary>
-/// AssociativeKeyCache with ticker refresh on reads (default). Frequently-read entries
-/// are protected from eviction.
-/// </summary>
-public sealed class AssociativeKeyCache<TKey>(int maxCapacity)
-    : AssociativeKeyCache<TKey, OnFlag>(maxCapacity)
-    where TKey : struct, IHash64bit<TKey>;
-
-/// <summary>
-/// AssociativeKeyCache without ticker refresh on reads. Eviction is based on most-recently-written only.
-/// Use for Set-then-Get patterns (e.g. HashCache, NotifiedTransactions) where read-tracking adds no value.
-/// </summary>
-public sealed class AssociativeKeyCacheOnlyTrackWrites<TKey>(int maxCapacity)
-    : AssociativeKeyCache<TKey, OffFlag>(maxCapacity)
-    where TKey : struct, IHash64bit<TKey>;
