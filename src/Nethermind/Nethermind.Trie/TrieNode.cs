@@ -575,7 +575,7 @@ namespace Nethermind.Trie
                 CappedArray<byte> fullRlp = NodeType == NodeType.Branch
                     ? TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
                         canBeParallel: isRoot && canBeParallel)
-                    : RlpEncode(tree, ref path, bufferPool);
+                    : RlpEncode(tree, ref path, bufferPool, canBeParallel);
 
                 if (oldRlp.IsNotNullOrEmpty)
                 {
@@ -597,13 +597,13 @@ namespace Nethermind.Trie
             return null;
         }
 
-        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
+        internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null, bool canBeParallel = false)
         {
             return NodeType switch
             {
                 NodeType.Branch => TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool,
-                    canBeParallel: false),
-                NodeType.Extension => TrieNodeDecoder.EncodeExtension(this, tree, ref path, bufferPool),
+                    canBeParallel: canBeParallel),
+                NodeType.Extension => TrieNodeDecoder.EncodeExtension(this, tree, ref path, bufferPool, canBeParallel),
                 NodeType.Leaf => TrieNodeDecoder.EncodeLeaf(this, bufferPool),
                 _ => ThrowUnhandledNodeType(this)
             };
