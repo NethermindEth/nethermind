@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -65,14 +63,7 @@ public class JsonRpcServiceTests
 
     private async Task<JsonRpcResponse> TestRequestWithoutParamsAsync<T>(T module, string method) where T : class, IRpcModule
     {
-        await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new JsonRpcConfig()
-            {
-                EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
-            }))
-            .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
-            .AddScoped<T>(module)
-            .Build();
+        await using IContainer container = RpcTest.CreateContainerForModule(module);
 
         IJsonRpcService service = container.Resolve<IJsonRpcService>();
         JsonRpcRequest request = new()

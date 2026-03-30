@@ -62,7 +62,7 @@ public static class RpcTest
         return serialized;
     }
 
-    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
+    internal static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
     {
         return new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
