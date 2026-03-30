@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -36,4 +37,9 @@ public interface IStateCompositionRpcModule : IRpcModule
     [JsonRpcMethod(IsImplemented = true,
         Description = "Cancel the currently running scan, if any.")]
     Task<ResultWrapper<bool>> statecomp_cancelScan();
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Inspect a single contract's storage trie structure. " +
+                      "Returns null if the address has no storage.")]
+    Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address address);
 }

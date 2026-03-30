@@ -21,6 +21,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     private readonly ILogger _logger;
     private readonly CancellationToken _ct;
     private readonly int _topN;
+    private readonly bool _excludeStorage;
 
     private readonly ThreadLocal<VisitorCounters> _localCounters;
 
@@ -33,11 +34,13 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
 
-    public StateCompositionVisitor(ILogManager logManager, CancellationToken ct = default, int topN = 20)
+    public StateCompositionVisitor(ILogManager logManager, CancellationToken ct = default,
+        int topN = 20, bool excludeStorage = false)
     {
         _logger = logManager.GetClassLogger();
         _ct = ct;
         _topN = topN;
+        _excludeStorage = excludeStorage;
         _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
     }
 
@@ -73,16 +76,16 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
 
         if (ctx.IsStorage)
         {
-            c.StorageBranches++;
+            c.StorageFullNodes++;
             c.StorageNodeBytes += byteSize;
-            c.StorageDepths[depth].AddBranch(byteSize);
-            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false);
+            c.StorageDepths[depth].AddFullNode(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false, isBranch: true);
         }
         else
         {
-            c.AccountBranches++;
+            c.AccountFullNodes++;
             c.AccountNodeBytes += byteSize;
-            c.AccountDepths[depth].AddBranch(byteSize);
+            c.AccountDepths[depth].AddFullNode(byteSize);
             c.TotalBranchNodes++;
         }
     }
@@ -95,16 +98,16 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
 
         if (ctx.IsStorage)
         {
-            c.StorageExtensions++;
+            c.StorageShortNodes++;
             c.StorageNodeBytes += byteSize;
-            c.StorageDepths[depth].AddExtension(byteSize);
-            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false);
+            c.StorageDepths[depth].AddShortNode(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false, isBranch: false);
         }
         else
         {
-            c.AccountExtensions++;
+            c.AccountShortNodes++;
             c.AccountNodeBytes += byteSize;
-            c.AccountDepths[depth].AddExtension(byteSize);
+            c.AccountDepths[depth].AddShortNode(byteSize);
         }
     }
 
@@ -117,16 +120,16 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         if (ctx.IsStorage)
         {
             c.StorageSlotsTotal++;
-            c.StorageLeaves++;
+            c.StorageValueNodes++;
             c.StorageNodeBytes += byteSize;
-            c.StorageDepths[depth].AddLeaf(byteSize);
-            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: true);
+            c.StorageDepths[depth].AddValueNode(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: true, isBranch: false);
         }
         else
         {
-            c.AccountLeaves++;
+            c.AccountValueNodes++;
             c.AccountNodeBytes += byteSize;
-            c.AccountDepths[depth].AddLeaf(byteSize);
+            c.AccountDepths[depth].AddValueNode(byteSize);
         }
     }
 
@@ -134,11 +137,16 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         VisitorCounters c = _localCounters.Value!;
 
-        // Finalize previous contract's storage trie or flush if current has no storage
-        if (account.HasStorage)
+        if (_excludeStorage)
+        {
+            // ExcludeStorage mode: flush any pending and skip storage traversal
+            c.Flush();
+        }
+        else if (account.HasStorage)
         {
             c.ContractsWithStorage++;
-            c.BeginStorageTrie(account.StorageRoot);
+            // Owner = account hash. OldStyleTrieVisitContext doesn't carry path.
+            c.BeginStorageTrie(account.StorageRoot, default);
         }
         else
         {
@@ -165,15 +173,15 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
             StorageSlotsTotal = agg.StorageSlotsTotal,
             AccountTrieNodeBytes = agg.AccountNodeBytes,
             StorageTrieNodeBytes = agg.StorageNodeBytes,
-            AccountTrieBranchNodes = agg.AccountBranches,
-            AccountTrieExtensionNodes = agg.AccountExtensions,
-            AccountTrieLeafNodes = agg.AccountLeaves,
-            StorageTrieBranchNodes = agg.StorageBranches,
-            StorageTrieExtensionNodes = agg.StorageExtensions,
-            StorageTrieLeafNodes = agg.StorageLeaves,
-            TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, static e => e.MaxDepth),
-            TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, static e => e.TotalNodes),
-            TopContractsBySlots = BuildSortedTopN(agg.TopBySlots, agg.TopBySlotsCount, static e => e.StorageSlots),
+            AccountTrieFullNodes = agg.AccountFullNodes,
+            AccountTrieShortNodes = agg.AccountShortNodes,
+            AccountTrieValueNodes = agg.AccountValueNodes,
+            StorageTrieFullNodes = agg.StorageFullNodes,
+            StorageTrieShortNodes = agg.StorageShortNodes,
+            StorageTrieValueNodes = agg.StorageValueNodes,
+            TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, VisitorCounters.CompareByDepth),
+            TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, VisitorCounters.CompareByTotalNodes),
+            TopContractsByValueNodes = BuildSortedTopN(agg.TopByValueNodes, agg.TopByValueNodesCount, VisitorCounters.CompareByValueNodes),
         };
     }
 
@@ -216,16 +224,18 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         return agg;
     }
 
+    private delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
+
     private static ImmutableArray<TopContractEntry> BuildSortedTopN(
-        TopContractEntry[] entries, int count, Func<TopContractEntry, long> key)
+        TopContractEntry[] entries, int count, EntryComparer comparer)
     {
         if (count == 0)
             return ImmutableArray<TopContractEntry>.Empty;
 
-        return entries
-            .Take(count)
-            .OrderByDescending(key)
-            .ToImmutableArray();
+        // Sort descending using the deterministic multi-field comparator
+        TopContractEntry[] sorted = entries.Take(count).ToArray();
+        Array.Sort(sorted, (a, b) => comparer(b, a)); // Reverse for descending
+        return ImmutableArray.Create(sorted);
     }
 
     private static ImmutableArray<TrieLevelStat> BuildLevelStats(DepthCounter[] depths)
@@ -233,16 +243,16 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         ImmutableArray<TrieLevelStat>.Builder builder = ImmutableArray.CreateBuilder<TrieLevelStat>();
         for (int i = 0; i < depths.Length; i++)
         {
-            if (depths[i].Branches + depths[i].Extensions + depths[i].Leaves == 0)
+            if (depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes == 0)
                 continue;
 
             builder.Add(new TrieLevelStat
             {
                 Depth = i,
-                BranchNodes = depths[i].Branches,
-                ExtensionNodes = depths[i].Extensions,
-                LeafNodes = depths[i].Leaves,
-                ByteSize = depths[i].ByteSize,
+                FullNodeCount = depths[i].FullNodes,
+                ShortNodeCount = depths[i].ShortNodes,
+                ValueNodeCount = depths[i].ValueNodes,
+                TotalSize = depths[i].TotalSize,
             });
         }
 
@@ -255,7 +265,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         long weightedSum = 0;
         for (int i = 0; i < depths.Length; i++)
         {
-            long nodesAtDepth = depths[i].Branches + depths[i].Extensions + depths[i].Leaves;
+            long nodesAtDepth = depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes;
             totalNodes += nodesAtDepth;
             weightedSum += nodesAtDepth * i;
         }
@@ -267,7 +277,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
     {
         for (int i = depths.Length - 1; i >= 0; i--)
         {
-            if (depths[i].Branches + depths[i].Extensions + depths[i].Leaves > 0)
+            if (depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes > 0)
                 return i;
         }
 
