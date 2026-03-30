@@ -145,7 +145,7 @@ public abstract class BlockchainTestBase
         await using IContainer container = containerBuilder.Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
-        IWorldState stateProvider = (mainBlockProcessingContext.WorldState as ParallelWorldState).Inner; // directly access underlying state
+        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();

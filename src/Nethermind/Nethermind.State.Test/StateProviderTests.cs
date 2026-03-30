@@ -81,8 +81,7 @@ public class StateProviderTests(bool useFlat)
     public void Eip_158_touch_zero_value_system_account_is_not_deleted()
     {
         using Context ctx = new(useFlat);
-        ParallelWorldState? parallelWorldState = ctx.WorldState as ParallelWorldState;
-        IWorldState provider = parallelWorldState is null ? ctx.WorldState : parallelWorldState.Inner;
+        IWorldState provider = ctx.WorldState;
         using var _ = provider.BeginScope(IWorldState.PreGenesis);
         var systemUser = Address.SystemUser;
 
