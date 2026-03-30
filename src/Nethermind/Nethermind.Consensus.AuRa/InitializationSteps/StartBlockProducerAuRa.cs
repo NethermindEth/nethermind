@@ -168,7 +168,6 @@ public class StartBlockProducerAuRa(
             specProvider,
             blockhashProvider,
             codeInfoRepository,
-            blocksConfig,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
             logManager);
 
