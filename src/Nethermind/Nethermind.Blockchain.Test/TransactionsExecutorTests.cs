@@ -29,7 +29,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.State;
-using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -418,11 +417,99 @@ namespace Nethermind.Blockchain.Test
             blockToProduce.Transactions.Should().ContainSingle().Which.Should().BeSameAs(includedTx);
             stateProvider.GeneratedBlockAccessList.AccountChanges.Should().BeEmpty();
         }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_tx_picker_uses_state_changes_from_previous_transactions()
+        {
+            ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest(parallel: false));
+
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+
+            Transaction firstTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Transaction secondTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(1)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .WithTransactions([firstTx, secondTx])
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IReleaseSpec spec = Homestead.Instance;
+            transactionProcessor.When(t => t.BuildUp(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()))
+                .Do(info =>
+                {
+                    Transaction tx = info.Arg<Transaction>();
+                    stateProvider.IncrementNonce(tx.SenderAddress!);
+                    stateProvider.SubtractFromBalance(tx.SenderAddress!, tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
+                });
+
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
+                LimboLogs.Instance);
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
+
+            blockToProduce.Transactions.Should().ContainInOrder(firstTx, secondTx);
+        }
     }
 
-    public class WorldStateStab() : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
+    public class WorldStateStab()
+        : WorldState(Substitute.For<IWorldStateScopeProvider>(), LimboLogs.Instance), IWorldState
     {
         // we cannot mock ref methods
         ref readonly UInt256 IWorldState.GetBalance(Address address) => ref UInt256.MaxValue;
+
+        public IReadOnlyStateProvider GetUntrackedReader() => TestReadOnlyStateProvider.Instance;
+
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            account = new(UInt256.Zero, UInt256.MaxValue);
+            return true;
+        }
+
+        private sealed class TestReadOnlyStateProvider : IReadOnlyStateProvider
+        {
+            public static TestReadOnlyStateProvider Instance { get; } = new();
+
+            public Hash256 StateRoot => Keccak.EmptyTreeHash;
+
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                account = new(UInt256.Zero, UInt256.MaxValue);
+                return true;
+            }
+
+            public byte[] GetCode(Address address) => [];
+
+            public byte[] GetCode(in ValueHash256 codeHash) => [];
+
+            public bool IsContract(Address address) => false;
+
+            public bool AccountExists(Address address) => true;
+
+            public bool IsDeadAccount(Address address) => false;
+        }
     }
 }

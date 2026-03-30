@@ -33,7 +33,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// This is intended for speculative reads that must observe the current mutable state without
     /// contributing to generated block-level access lists.
     /// </summary>
-    IReadOnlyStateProvider GetUntrackedReader() => new WorldStateReadOnlyView(this);
+    IReadOnlyStateProvider GetUntrackedReader() => this;
 
     bool HasStateForBlock(BlockHeader? baseBlock);
 
