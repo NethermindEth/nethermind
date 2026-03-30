@@ -199,10 +199,6 @@ jobs:
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             ${{ matrix.variant.dotnet-args }}
 
-      - name: Dump diagnostic logs
-        if: success() || failure()
-        run: cat /tmp/pre_berlin_timing.txt 2>/dev/null || echo "No diagnostic log"
-
       - name: Save test outcome
         if: success() || failure()
         run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome

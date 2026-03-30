@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Autofac;
 using Ethereum.Test.Base;
 using FluentAssertions;
@@ -34,6 +32,13 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test;
 
+/// <summary>
+/// Uses ParallelScope.Self (not All) so that the fixture can run alongside TransactionTests
+/// but its own tests run sequentially. ParallelScope.All caused NUnit worker starvation
+/// when the KZG-initialising test competed with 171 parallel RLP tests in checked builds.
+/// Does not inherit GeneralStateTestBase to avoid triggering its static constructor
+/// (KZG init) during NUnit discovery while the thread pool is saturated.
+/// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
 public class TransactionJsonTest
@@ -76,15 +81,12 @@ public class TransactionJsonTest
 
     /// <summary>
     /// An AccessList transaction with an empty access list sent against Istanbul (pre-Berlin)
-    /// must be rejected. The post-state root must equal the pre-state root - the invalid tx
+    /// must be rejected. The post-state root must equal the pre-state root — the invalid tx
     /// should not mutate state.
     /// </summary>
     [Test]
     public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
-        Stopwatch sw = Stopwatch.StartNew();
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — test method entered");
-
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
         Address recipient = new("0x67eb8fcbef83a0662b030f8bc89a10070c167a66");
 
@@ -134,19 +136,15 @@ public class TransactionJsonTest
             Transaction = transaction,
         };
 
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — before KZG init");
         KzgPolynomialCommitments.Initialize();
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — after KZG init");
-
-        EthereumTestResult result = RunStateTest(test, sw);
+        EthereumTestResult result = RunStateTest(test);
 
         result.StateRoot.Should().Be(test.PostHash,
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
         result.Pass.Should().BeTrue();
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — test complete");
     }
 
-    private static EthereumTestResult RunStateTest(GeneralStateTest test, Stopwatch sw)
+    private static EthereumTestResult RunStateTest(GeneralStateTest test)
     {
         test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
@@ -158,24 +156,19 @@ public class TransactionJsonTest
         IConfigProvider configProvider = new ConfigProvider();
         ILogManager logManager = LimboLogs.Instance;
 
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — before container build");
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
             .AddSingleton(specProvider)
             .AddSingleton(logManager)
             .Build();
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — after container build");
 
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — before resolve");
         IMainProcessingContext ctx = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = ctx.WorldState;
         using System.IDisposable scope = stateProvider.BeginScope(null);
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         ITransactionProcessor transactionProcessor = ctx.TransactionProcessor;
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — after resolve");
 
-        // Initialize pre-state
         foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
         {
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
@@ -193,7 +186,6 @@ public class TransactionJsonTest
         stateProvider.Reset();
 
         Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
-
         test.Transaction.ChainId ??= test.ChainId;
 
         IReleaseSpec spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
@@ -228,14 +220,12 @@ public class TransactionJsonTest
         header.Hash = header.CalculateHash();
         Block block = new(header, new BlockBody(transactions, [], withdrawals));
 
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — before tx execution");
         TransactionResult? txResult = null;
 
-        if (blockValidator.ValidateOrphanedBlock(block, out string blockValidationError))
+        if (blockValidator.ValidateOrphanedBlock(block, out _))
         {
             txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), NullTxTracer.Instance);
         }
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — after tx execution");
 
         if (txResult is not null && txResult.Value == TransactionResult.Ok)
         {
@@ -252,12 +242,9 @@ public class TransactionJsonTest
         }
 
         bool pass = test.PostHash == stateProvider.StateRoot;
-        Log($"[pre_berlin] {sw.ElapsedMilliseconds}ms — before container dispose");
         return new EthereumTestResult(test.Name, test.ForkName, pass)
         {
             StateRoot = stateProvider.StateRoot
         };
     }
-
-    private static void Log(string msg) => System.IO.File.AppendAllText("/tmp/pre_berlin_timing.txt", msg + "\n");
 }
