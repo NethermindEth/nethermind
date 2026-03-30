@@ -11,7 +11,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProductionTransactionPicker : BlockProcessor.BlockProductionTransactionPicker
 {
-    public OptimismBlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKibibytes) : base(specProvider, maxTxLengthKibibytes)
+    public OptimismBlockProductionTransactionPicker(ISpecProvider specProvider, long maxTxLengthKilobytes) : base(specProvider, maxTxLengthKilobytes)
     {
     }
 

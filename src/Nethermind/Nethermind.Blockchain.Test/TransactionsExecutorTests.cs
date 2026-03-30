@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -325,7 +324,7 @@ namespace Nethermind.Blockchain.Test
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
-            blockToProduce.Transactions.Should().BeEquivalentTo(testCase.ExpectedSelectedTransactions);
+            Assert.That(blockToProduce.Transactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
         }
 
         [Test]
@@ -414,8 +413,10 @@ namespace Nethermind.Blockchain.Test
 
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
 
-            blockToProduce.Transactions.Should().ContainSingle().Which.Should().BeSameAs(includedTx);
-            stateProvider.GeneratedBlockAccessList.AccountChanges.Should().BeEmpty();
+            Transaction[] selectedTransactions = blockToProduce.Transactions.ToArray();
+            Assert.That(selectedTransactions, Has.Length.EqualTo(1));
+            Assert.That(selectedTransactions[0], Is.SameAs(includedTx));
+            Assert.That(stateProvider.GeneratedBlockAccessList.AccountChanges, Is.Empty);
         }
 
         [Test]
@@ -471,7 +472,10 @@ namespace Nethermind.Blockchain.Test
 
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
 
-            blockToProduce.Transactions.Should().ContainInOrder(firstTx, secondTx);
+            Transaction[] selectedTransactions = blockToProduce.Transactions.ToArray();
+            Assert.That(selectedTransactions, Has.Length.EqualTo(2));
+            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
+            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
         }
     }
 
