@@ -265,10 +265,16 @@ public abstract partial class BaseEngineModuleTests
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
+        // Controls whether AllowBeaconHeaderSync() is called during Build().
+        // Set to false in subclasses to simulate the race where StartingSyncPivotUpdater
+        // hasn't run yet when the first FCU arrives.
+        protected virtual bool AllowBeaconHeaderSyncOnBuild => true;
+
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            BeaconSync.AllowBeaconHeaderSync();
+            if (AllowBeaconHeaderSyncOnBuild)
+                BeaconSync.AllowBeaconHeaderSync();
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
         }
