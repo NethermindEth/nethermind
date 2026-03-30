@@ -13,6 +13,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class KeccaksIteratorTests
 {
     [TestCaseSource(nameof(TestKeccaks))]

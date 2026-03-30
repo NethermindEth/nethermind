@@ -38,9 +38,11 @@ namespace Nethermind.Api
         public long? ExitOnBlockNumber { get; set; } = null;
         public bool ExitOnInvalidBlock { get; set; } = false;
         public int BackgroundTaskConcurrency { get; set; } = 2;
-        public int BackgroundTaskMaxNumber { get; set; } = 1024;
+        public int BackgroundTaskMaxNumber { get; set; } = 2048;
         public bool InRunnerTest { get; set; } = false;
         public string? DataDir { get; set; }
+        public bool HealCanonicalChain { get; set; } = false;
+        public long HealCanonicalChainDepth { get; set; } = 8192;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

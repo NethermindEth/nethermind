@@ -23,19 +23,19 @@ public class BlockRangeUpdateMessageSerializer :
         rlpStream.Encode(message.LatestBlockHash);
     }
 
-    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer)
+    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
+        byteBuffer.DeserializeRlp(Deserialize);
+
+    private static BlockRangeUpdateMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
     {
-        RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-        rlpStream.ReadSequenceLength();
+        ctx.ReadSequenceLength();
 
-        BlockRangeUpdateMessage statusMessage = new()
+        return new BlockRangeUpdateMessage
         {
-            EarliestBlock = rlpStream.DecodeLong(),
-            LatestBlock = rlpStream.DecodeLong(),
-            LatestBlockHash = rlpStream.DecodeKeccak() ?? Hash256.Zero
+            EarliestBlock = ctx.DecodeLong(),
+            LatestBlock = ctx.DecodeLong(),
+            LatestBlockHash = ctx.DecodeKeccak() ?? Hash256.Zero
         };
-
-        return statusMessage;
     }
 
     public int GetLength(BlockRangeUpdateMessage message, out int contentLength)

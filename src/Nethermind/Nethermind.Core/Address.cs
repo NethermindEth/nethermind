@@ -9,7 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -20,8 +20,9 @@ namespace Nethermind.Core
     [JsonConverter(typeof(AddressConverter))]
     [TypeConverter(typeof(AddressTypeConverter))]
     [DebuggerDisplay("{ToString()}")]
-    public class Address : IEquatable<Address>, IComparable<Address>
+    public sealed class Address : IEquatable<Address>, IComparable<Address>
     {
+        public static GenericEqualityComparer<Address> EqualityComparer { get; } = new();
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
@@ -59,10 +60,7 @@ namespace Nethermind.Core
             for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
             {
                 char c = hexString[i];
-                bool isHex = (c >= '0' && c <= '9') ||
-                             (c >= 'a' && c <= 'f') ||
-                             (c >= 'A' && c <= 'F');
-
+                bool isHex = c is >= '0' and <= '9' or >= 'a' and <= 'f' or >= 'A' and <= 'F';
                 if (!isHex) return false;
             }
 
@@ -109,7 +107,7 @@ namespace Nethermind.Core
                 {
                     if (allowOverflow)
                     {
-                        span = span[(span.Length - size)..];
+                        span = span[^size..];
                     }
                     else
                     {
@@ -273,10 +271,13 @@ namespace Nethermind.Core
 
             return result;
         }
+
+        internal long GetHashCode64() => SpanExtensions.FastHash64For20Bytes(ref MemoryMarshal.GetArrayDataReference(Bytes));
     }
 
-    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>, IHash64bit<AddressAsKey>
     {
+        public static GenericEqualityComparer<AddressAsKey> EqualityComparer { get; } = new();
         private readonly Address _key = key;
         public Address Value => _key;
 
@@ -289,6 +290,10 @@ namespace Nethermind.Core
         {
             return _key?.ToString() ?? "<null>";
         }
+
+        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+
+        public bool Equals(in AddressAsKey other) => _key == other._key;
     }
 
     public ref struct AddressStructRef

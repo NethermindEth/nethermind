@@ -28,5 +28,6 @@ namespace Ethereum.Test.Base
         public string? BlockAccessListHash { get; set; }
         public string? BlobGasUsed { get; set; }
         public string? ExcessBlobGas { get; set; }
+        public string? SlotNumber { get; set; }
     }
 }

@@ -21,11 +21,6 @@ public class Eip7516BlobBaseFeeTests : VirtualMachineTestsBase
     [TestCase(true, 20ul)]
     [TestCase(false, 20ul)]
     [TestCase(false, 0ul)]
-    [TestCase(true, 0ul)]
-    [TestCase(true, 100ul)]
-    [TestCase(true, 20ul)]
-    [TestCase(false, 20ul)]
-    [TestCase(false, 0ul)]
     public void Blob_Base_fee_opcode_should_return_expected_results(bool eip7516Enabled, ulong excessBlobGas)
     {
         _processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);

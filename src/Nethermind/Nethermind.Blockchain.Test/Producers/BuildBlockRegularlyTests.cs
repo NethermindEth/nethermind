@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Producers;
 
+[Parallelizable(ParallelScope.All)]
 public class BuildBlockRegularlyTests
 {
     [Test, MaxTime(Timeout.MaxTestTime), Retry(3)]

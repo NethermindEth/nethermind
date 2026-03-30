@@ -9,7 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
-using System.IO.Abstractions.TestingHelpers;
+using Testably.Abstractions.Testing;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -19,6 +19,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     public void Should_have_file_names_matching_block_and_transactions()
     {
         var fileSystem = new MockFileSystem();
+        fileSystem.Initialize();
+
         var block = Build.A.Block
             .WithTransactions(new[] {
                 Build.A.Transaction.WithHash(Keccak.OfAnEmptyString).TestObject,

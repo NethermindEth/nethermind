@@ -8,9 +8,9 @@ using Nethermind.Db;
 namespace Nethermind.Core.Test;
 
 public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
-    where TKey : notnull
+    where TKey : struct, Enum
 {
-    private readonly IDictionary<TKey, IDb> _columnDbs = new Dictionary<TKey, IDb>();
+    private readonly IDictionary<TKey, TestMemDb> _columnDbs = new Dictionary<TKey, TestMemDb>();
 
     public TestMemColumnsDb()
     {
@@ -18,7 +18,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     public TestMemColumnsDb(params TKey[] keys)
     {
-        foreach (var key in keys)
+        foreach (TKey key in keys)
         {
             GetColumnDb(key);
         }
@@ -29,14 +29,31 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
 
     public IColumnsWriteBatch<TKey> StartWriteBatch()
     {
+        EnsureAllKey();
         return new InMemoryColumnWriteBatch<TKey>(this);
     }
 
     public IColumnDbSnapshot<TKey> CreateSnapshot()
     {
-        throw new NotSupportedException("Snapshot not implemented");
+        EnsureAllKey();
+        return new Snapshot(_columnDbs);
     }
 
     public void Dispose() { }
     public void Flush(bool onlyWal = false) { }
+
+    private void EnsureAllKey()
+    {
+        foreach (TKey key in Enum.GetValues<TKey>())
+        {
+            GetColumnDb(key);
+        }
+    }
+
+    private class Snapshot(IDictionary<TKey, TestMemDb> columns) : IColumnDbSnapshot<TKey>
+    {
+        public IReadOnlyKeyValueStore GetColumn(TKey key) => columns[key];
+
+        public void Dispose() { }
+    }
 }

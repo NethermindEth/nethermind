@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,7 +12,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
-internal class TestRandomSigner(List<PrivateKey> masternodeCandidates) : ISigner
+internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager) : ISigner
 {
     private readonly Random _rnd = new Random();
     private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(0);
@@ -23,7 +24,9 @@ internal class TestRandomSigner(List<PrivateKey> masternodeCandidates) : ISigner
 
     public Signature Sign(in ValueHash256 message)
     {
-        Key = masternodeCandidates[_rnd.Next(masternodeCandidates.Count)];
+        var switchInfo = epochSwitchManager.GetEpochSwitchInfo((XdcBlockHeader)blockTree.Head!.Header)!;
+        var c = switchInfo.Masternodes[_rnd.Next(switchInfo.Masternodes.Length)];
+        Key = masternodeCandidates.Find(k => k.Address == c)!;
         return _ecdsa.Sign(Key, in message);
     }
 

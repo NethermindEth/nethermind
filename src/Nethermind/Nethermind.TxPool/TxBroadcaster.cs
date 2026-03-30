@@ -68,21 +68,24 @@ namespace Nethermind.TxPool
         private readonly TimeSpan _minTimeBetweenPersistedTxBroadcast = TimeSpan.FromSeconds(1);
 
         private readonly ILogger _logger;
+        private readonly ITimestamper _timestamper;
 
         public TxBroadcaster(IComparer<Transaction> comparer,
             ITimerFactory timerFactory,
             ITxPoolConfig txPoolConfig,
             IChainHeadInfoProvider chainHeadInfoProvider,
             ILogManager? logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            ITimestamper? timestamper = null)
         {
             _txPoolConfig = txPoolConfig;
             _headInfo = chainHeadInfoProvider;
+            _timestamper = timestamper ?? Timestamper.Default;
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             // Allocate closure once
             _gossipFilter = _txGossipPolicy.ShouldGossipTransaction;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _persistentTxs = new TxDistinctSortedPool(MemoryAllowance.MemPoolSize, comparer, logManager);
+            _persistentTxs = new TxDistinctSortedPool(txPoolConfig.Size, comparer, logManager);
             _accumulatedTemporaryTxs = new ResettableList<Transaction>(512, 4);
             _txsToSend = new ResettableList<Transaction>(512, 4);
 
@@ -172,7 +175,7 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            DateTimeOffset now = DateTimeOffset.UtcNow;
+            DateTimeOffset now = _timestamper.UtcNowOffset;
             if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
                 if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");

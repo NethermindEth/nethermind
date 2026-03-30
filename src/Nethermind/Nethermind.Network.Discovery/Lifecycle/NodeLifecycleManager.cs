@@ -32,11 +32,12 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
     private PingMsg? _lastSentPing;
     private bool _isNeighborsExpected;
+    private bool _isSplitNeighborsExpected;
 
     // private bool _receivedPing;
-    private bool _sentPing;
+    private volatile bool _sentPing;
     // private bool _sentPong;
-    private bool _receivedPong;
+    private volatile bool _receivedPong;
 
     private int _lastNeighbourSize = 0;
 
@@ -73,7 +74,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
     {
         // _receivedPing = true;
         SendPong(pingMsg);
-        if (pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
+        if (IsBonded && pingMsg.EnrSequence is not null && pingMsg.EnrSequence > _lastEnrSequence)
         {
             SendEnrRequest();
         }
@@ -176,15 +177,21 @@ public class NodeLifecycleManager : INodeLifecycleManager
             return;
         }
 
-        if (_lastNeighbourSize + msg.Nodes.Count == 16)
+        if (_isNeighborsExpected)
         {
-            // Turns out, other client will split the neighbour msg to two msg, whose size sum up to 16.
-            // Happens about 70% of the time.
             ProcessNodes(msg);
+            _isSplitNeighborsExpected = msg.Nodes.Count < 16;
         }
-        else if (_isNeighborsExpected)
+        else if (_isSplitNeighborsExpected && _lastNeighbourSize + msg.Nodes.Count <= 16)
         {
+            // Other clients split the neighbour response into two packets (up to 12 per packet).
+            // The total may be less than 16 if the peer has fewer neighbors.
             ProcessNodes(msg);
+            _isSplitNeighborsExpected = false;
+        }
+        else
+        {
+            _isSplitNeighborsExpected = false;
         }
 
         _lastNeighbourSize = msg.Nodes.Count;
@@ -212,7 +219,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
                 // Ignore self
                 continue;
             }
-            else if (!_discoveryManager.NodesFilter.Set(node.Address.Address))
+            else if (!_discoveryManager.ShouldContact(node.Address.Address))
             {
                 // Already seen this node ip recently
                 continue;
@@ -245,7 +252,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         SendNeighbors(nodes);
     }
 
-    private readonly DateTime _lastTimeSendFindNode = DateTime.MinValue;
+    private long _lastTimeSendFindNodeMs = long.MinValue;
 
     private long _lastEnrSequence;
 
@@ -256,10 +263,15 @@ public class NodeLifecycleManager : INodeLifecycleManager
             if (_logger.IsDebug) _logger.Debug($"Sending FIND NODE on {ManagedNode} before bonding");
         }
 
-        if (DateTime.UtcNow - _lastTimeSendFindNode < TimeSpan.FromSeconds(60))
+        long now = Environment.TickCount64;
+        long lastSentFindNodeMs = Volatile.Read(ref _lastTimeSendFindNodeMs);
+        if (lastSentFindNodeMs != long.MinValue &&
+            now - lastSentFindNodeMs < TimeSpan.FromSeconds(60).TotalMilliseconds)
         {
             return;
         }
+
+        Volatile.Write(ref _lastTimeSendFindNodeMs, now);
 
         FindNodeMsg msg = new(ManagedNode.Address, CalculateExpirationTime(), searchedNodeId);
         _isNeighborsExpected = true;
@@ -287,7 +299,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         _discoveryManager.SendMessage(msg);
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
         // _sentPong = true;
-        if (IsBonded)
+        if (IsBonded && State != NodeLifecycleState.Active)
         {
             UpdateState(NodeLifecycleState.Active);
         }

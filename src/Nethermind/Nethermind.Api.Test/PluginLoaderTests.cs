@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
@@ -13,7 +12,6 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;

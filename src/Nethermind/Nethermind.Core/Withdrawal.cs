@@ -34,7 +34,7 @@ public class Withdrawal
     public ulong AmountInGwei { get; set; }
 
     [JsonIgnore]
-    public UInt256 AmountInWei => AmountInGwei * 1.GWei();
+    public UInt256 AmountInWei => AmountInGwei * 1.GWei;
 
     public override string ToString() => ToString(string.Empty);
 

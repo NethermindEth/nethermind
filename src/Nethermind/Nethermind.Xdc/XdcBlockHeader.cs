@@ -39,7 +39,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_validatorsAddress is not null)
                 return _validatorsAddress;
-            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators);
+            _validatorsAddress = XdcExtensions.ExtractAddresses(Validators)?.ToImmutableArray();
             return _validatorsAddress;
         }
         set { _validatorsAddress = value; }
@@ -54,13 +54,13 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         {
             if (_penaltiesAddress is not null)
                 return _penaltiesAddress;
-            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties);
+            _penaltiesAddress = XdcExtensions.ExtractAddresses(Penalties)?.ToImmutableArray();
             return _penaltiesAddress;
         }
         set { _penaltiesAddress = value; }
     }
 
-    private ExtraFieldsV2 _extraFieldsV2;
+    private ExtraFieldsV2? _extraFieldsV2;
     /// <summary>
     /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information.
     /// </summary>
@@ -83,10 +83,14 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
             return _extraFieldsV2;
         }
-        set { _extraFieldsV2 = value; }
+        internal set
+        {
+            _extraFieldsV2 = value;
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+        }
     }
 
-    public ValueHash256 CalculateHash()
+    public virtual ValueHash256 CalculateHash()
     {
         KeccakRlpStream rlpStream = new KeccakRlpStream();
         _headerDecoder.Encode(rlpStream, this);

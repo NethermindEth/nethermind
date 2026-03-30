@@ -82,7 +82,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedSStoreDiffModeTrace)]
     public void Test_PrestateTrace_SStore(string? config, string expectedTrace)
     {
-        TestState.CreateAccount(Address.Zero, 100.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
         StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
         TestState.Set(storageCell, storageData);
@@ -163,8 +163,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(Address.Zero, 100.Ether());
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
@@ -247,8 +247,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             .Call(TestItem.AddressC, 50000)
             .Done;
 
-        TestState.CreateAccount(Address.Zero, 100.Ether());
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
@@ -307,8 +307,8 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedExistingAccountDiffModeTrace)]
     public void Test_PrestateTrace_ExistingAccount(string? config, string expectedTrace)
     {
-        TestState.CreateAccount(Address.Zero, 100.Ether());
-        TestState.CreateAccount(TestItem.AddressC, 5.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 5.Ether);
         TestState.IncrementNonce(TestItem.AddressC);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
@@ -359,7 +359,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedEmptyToDiffModeTrace)]
     public void Test_PrestateTrace_EmptyTo(string? config, string expectedTrace)
     {
-        TestState.CreateAccount(Address.Zero, 100.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
         GethLikeTxTrace trace = Execute(
@@ -412,7 +412,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
     [TestCase(DiffMode, ExpectedSelfDestructDiffModeTrace)]
     public void Test_PrestateTrace_SelfDestruct(string? config, string expectedTrace)
     {
-        TestState.CreateAccount(Address.Zero, 100.Ether());
+        TestState.CreateAccount(Address.Zero, 100.Ether);
 
         NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(config), Hash256.Zero, TestItem.AddressA, null, Address.Zero);
         GethLikeTxTrace trace = Execute(

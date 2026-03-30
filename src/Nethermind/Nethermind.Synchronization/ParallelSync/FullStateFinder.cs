@@ -10,33 +10,20 @@ using Nethermind.State;
 
 namespace Nethermind.Synchronization.ParallelSync;
 
-public class FullStateFinder : IFullStateFinder
+public class FullStateFinder(
+    IBlockTree blockTree,
+    IStateReader stateReader) : IFullStateFinder
 {
     // TODO: we can search 1024 back and confirm 128 deep header and start using it as Max(0, confirmed)
     // then we will never have to look 128 back again
     // note that we will be doing that every second or so
     private const int MaxLookupBack = 128;
-    private readonly IStateReader _stateReader;
-    private readonly IBlockTree _blockTree;
-    private long _lastKnownState = 0;
+    private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+    private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private long _lastKnownState;
 
-    public FullStateFinder(
-        IBlockTree blockTree,
-        IStateReader stateReader)
-    {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-    }
-
-    private bool IsFullySynced(BlockHeader block)
-    {
-        if (block.StateRoot == Keccak.EmptyTreeHash)
-        {
-            return true;
-        }
-
-        return _stateReader.HasStateForBlock(block);
-    }
+    private bool IsFullySynced(BlockHeader block) =>
+        block.StateRoot == Keccak.EmptyTreeHash || _stateReader.HasStateForBlock(block);
 
     public long FindBestFullState()
     {
@@ -102,5 +89,4 @@ public class FullStateFinder : IFullStateFinder
 
         return bestFullState;
     }
-
 }

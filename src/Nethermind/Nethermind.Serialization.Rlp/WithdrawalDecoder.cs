@@ -2,37 +2,20 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
 public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 {
-    protected override Withdrawal? DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-        {
-            rlpStream.ReadByte();
-
-            return null;
-        }
-
-        rlpStream.ReadSequenceLength();
-
-        return new()
-        {
-            Index = rlpStream.DecodeULong(),
-            ValidatorIndex = rlpStream.DecodeULong(),
-            Address = rlpStream.DecodeAddress(),
-            AmountInGwei = rlpStream.DecodeULong()
-        };
-    }
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(WithdrawalDecoder))]
+    public WithdrawalDecoder() { }
 
     protected override Withdrawal? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             decoderContext.ReadByte();
-
             return null;
         }
 

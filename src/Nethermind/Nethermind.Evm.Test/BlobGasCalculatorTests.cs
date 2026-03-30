@@ -91,13 +91,13 @@ public class BlobGasCalculatorTests
         yield return (0, (int)spec.TargetBlobCount, 0);
         yield return (100000, (int)spec.TargetBlobCount, 100000);
         yield return (0, (int)spec.TargetBlobCount + 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (spec.GetTargetBlobGasPerBlock(), 1, Eip4844Constants.GasPerBlob * 1);
-        yield return (spec.GetTargetBlobGasPerBlock(), 0, 0);
-        yield return (spec.GetTargetBlobGasPerBlock(), 2, Eip4844Constants.GasPerBlob * 2);
-        yield return (spec.GetMaxBlobGasPerBlock(), 1, (spec.MaxBlobCount + 1 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob);
+        yield return (spec.GasCosts.TargetBlobGasPerBlock, 1, Eip4844Constants.GasPerBlob * 1);
+        yield return (spec.GasCosts.TargetBlobGasPerBlock, 0, 0);
+        yield return (spec.GasCosts.TargetBlobGasPerBlock, 2, Eip4844Constants.GasPerBlob * 2);
+        yield return (spec.GasCosts.MaxBlobGasPerBlock, 1, (spec.MaxBlobCount + 1 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob);
         yield return (1, (int)spec.TargetBlobCount, 1);
         yield return (
-            spec.GetMaxBlobGasPerBlock(),
+            spec.GasCosts.MaxBlobGasPerBlock,
             (int)spec.MaxBlobCount,
             (spec.MaxBlobCount * 2 - spec.TargetBlobCount) * Eip4844Constants.GasPerBlob
         );

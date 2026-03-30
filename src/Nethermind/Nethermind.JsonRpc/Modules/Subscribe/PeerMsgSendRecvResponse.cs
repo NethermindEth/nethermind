@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using System.Runtime.CompilerServices;
-using Nethermind.JsonRpc.Modules.Admin;
 using System;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;

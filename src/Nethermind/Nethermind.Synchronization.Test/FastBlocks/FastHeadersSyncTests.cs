@@ -594,7 +594,7 @@ public class FastHeadersSyncTests
             PivotNumber = pivotHeader.Number,
             PivotHash = pivotHeader.Hash!.ToString(),
             PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()!,
-            FastHeadersMemoryBudget = (ulong)100.KB(),
+            FastHeadersMemoryBudget = (ulong)100.KB,
         };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;

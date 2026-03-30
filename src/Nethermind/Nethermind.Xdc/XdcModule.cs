@@ -1,40 +1,53 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Abi;
+using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State;
-using Nethermind.Xdc.Contracts;
-using Nethermind.Xdc.Spec;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.TxPool;
+using Nethermind.Xdc.Contracts;
+using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.Spec;
+using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
 
 public class XdcModule : Module
 {
-    private const string SnapshotDbName = "Snapshots";
-
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
 
         builder
+            .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
+            .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
+            .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)
             .AddSingleton<ISpecProvider, XdcChainSpecBasedSpecProvider>()
             .Map<XdcChainSpecEngineParameters, ChainSpec>(chainSpec =>
@@ -42,6 +55,9 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+
+            .Add<StartXdcBlockProducer>()
+
 
             // stores
             .AddSingleton<IHeaderStore, XdcHeaderStore>()
@@ -60,12 +76,17 @@ public class XdcModule : Module
             // sealer
             .AddSingleton<ISealer, XdcSealer>()
 
+            // signing transactions cache
+            .AddSingleton<ISigningTxCache, SigningTxCache>()
+
             // penalty handler
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
 
             // reward handler
-            .AddSingleton<IRewardCalculator, XdcRewardCalculator>()
+            .AddDecorator<IRewardCalculatorSource, XdcRewardCalculatorSource>()
 
             // forensics handler
+            .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
@@ -73,22 +94,52 @@ public class XdcModule : Module
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
 
             // managers
+            .AddSingleton<IMasternodesCalculator, MasternodesCalculator>()
             .AddSingleton<IVotesManager, VotesManager>()
             .AddSingleton<IQuorumCertificateManager, QuorumCertificateManager>()
             .AddSingleton<ITimeoutCertificateManager, TimeoutCertificateManager>()
             .AddSingleton<IEpochSwitchManager, EpochSwitchManager>()
             .AddSingleton<IXdcConsensusContext, XdcConsensusContext>()
-            .AddDatabase(SnapshotDbName)
-            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IPenaltyHandler, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName)
+            .AddSingleton<ISnapshotManager, IDb, IBlockTree, IMasternodeVotingContract, ISpecProvider>(CreateSnapshotManager)
+            .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
-            ;
+
+            // sync
+            .AddSingleton<IBeaconSyncStrategy, XdcBeaconSyncStrategy>()
+            .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, XdcStateSyncAllocationStrategyFactory>()
+            .AddSingleton<XdcStateSyncSnapshotManager>()
+            .AddSingleton<IStateSyncPivot, XdcStateSyncPivot>()
+            .AddSingleton<ISyncDownloader<StateSyncBatch>, XdcStateSyncDownloader>()
+
+
+            //Network
+            .AddSingleton<IProtocolValidator, XdcProtocolValidator>()
+            .AddSingleton<IHeaderDecoder, XdcHeaderDecoder>()
+            .AddSingleton(new BlockDecoder(new XdcHeaderDecoder()))
+            .AddMessageSerializer<VoteMsg, VoteMsgSerializer>()
+            .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
+            .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
+
+            .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
+            .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
+
+            // block processing
+            .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
+            .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
+            .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(SnapshotDbName)] IDb db, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        return new SnapshotManager(db, blockTree, penaltyHandler, votingContract, specProvider);
+        return new SnapshotManager(db, blockTree, votingContract, specProvider);
+    }
+    private ISignTransactionManager CreateSignTransactionManager(ISigner signer, ITxPool txPool, ILogManager logManager)
+    {
+        return new SignTransactionManager(signer, txPool, logManager.GetClassLogger<SignTransactionManager>());
     }
 
     private IMasternodeVotingContract CreateVotingContract(

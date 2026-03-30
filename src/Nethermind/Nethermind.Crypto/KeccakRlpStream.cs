@@ -38,31 +38,6 @@ namespace Nethermind.Crypto
             Write(zeros);
         }
 
-        public override byte ReadByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override byte PeekByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            WriteZero(length);
-        }
-
         public override int Position
         {
             get => throw new NotSupportedException("Cannot read from Keccak");

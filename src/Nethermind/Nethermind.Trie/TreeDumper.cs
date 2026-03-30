@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -71,7 +70,7 @@ namespace Nethermind.Trie
         {
             string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(context)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
-            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.Span);
+            Rlp.ValueDecoderContext valueDecoderContext = new(node.Value.AsSpan());
             if (!context.IsStorage)
             {
                 _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
@@ -91,7 +90,7 @@ namespace Nethermind.Trie
 
         private static string? KeccakOrRlpStringOfNode(TrieNode node)
         {
-            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.Span.ToHexString();
+            return node.Keccak is not null ? node.Keccak!.Bytes.ToHexString() : node.FullRlp.AsSpan().ToHexString();
         }
     }
 }

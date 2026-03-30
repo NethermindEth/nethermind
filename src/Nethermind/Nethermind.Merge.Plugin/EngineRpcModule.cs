@@ -27,6 +27,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
         IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<byte[], GetPayloadV5Result?> getPayloadHandlerV5,
+        IAsyncHandler<byte[], GetPayloadV6Result?> getPayloadHandlerV6,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -35,6 +36,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
         IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
         IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+        IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
+        IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IEngineRequestsTracker engineRequestsTracker,
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
@@ -46,6 +49,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV3 = getPayloadHandlerV3;
         _getPayloadHandlerV4 = getPayloadHandlerV4;
         _getPayloadHandlerV5 = getPayloadHandlerV5;
+        _getPayloadHandlerV6 = getPayloadHandlerV6;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;
@@ -53,6 +57,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         _transitionConfigurationHandler = transitionConfigurationHandler;
         _getBlobsHandler = getBlobsHandler;
         _getBlobsHandlerV2 = getBlobsHandlerV2;
+        _executionGetPayloadBodiesByHashV2Handler = getPayloadBodiesByHashV2Handler;
+        _executionGetPayloadBodiesByRangeV2Handler = getPayloadBodiesByRangeV2Handler;
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;

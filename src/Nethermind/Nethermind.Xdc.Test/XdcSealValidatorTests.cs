@@ -40,7 +40,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateSeal_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -50,7 +50,7 @@ internal class XdcSealValidatorTests
     public void ValidateSeal_ValidSeal_ReturnsTrue()
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         XdcBlockHeader header = Build.A.XdcBlockHeader()
         .TestObject;
         header.Beneficiary = TestItem.AddressA;
@@ -61,17 +61,27 @@ internal class XdcSealValidatorTests
 
     public static IEnumerable<TestCaseData> InvalidSignatureCases()
     {
-        XdcBlockHeader header =
-            Build.A.XdcBlockHeader()
-            .TestObject;
+        XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
         yield return new TestCaseData(header, new byte[0]);
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
         yield return new TestCaseData(header, new byte[65]);
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
         yield return new TestCaseData(header, new byte[66]);
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
         byte[] extraLongSignature = new byte[66];
         var keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
         keyASig.CopyTo(extraLongSignature, 0);
         yield return new TestCaseData(header, extraLongSignature);
+
+        header = Build.A.XdcBlockHeader().TestObject;
+        header.Beneficiary = TestItem.AddressA;
         var keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig);
     }
@@ -79,7 +89,7 @@ internal class XdcSealValidatorTests
     [TestCaseSource(nameof(InvalidSignatureCases))]
     public void ValidateSeal_SignatureIsInvalid_ReturnsFalse(XdcBlockHeader header, byte[] validatorSig)
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         header.Validator = validatorSig;
 
         Assert.That(validator.ValidateSeal(header), Is.False);
@@ -88,7 +98,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateParams_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<ISnapshotManager>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -198,9 +208,8 @@ internal class XdcSealValidatorTests
         releaseSpec.EpochLength.Returns(900);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
-        ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-        snapshotManager
-            .CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
+        IMasternodesCalculator masternodesCalculator = Substitute.For<IMasternodesCalculator>();
+        masternodesCalculator.CalculateNextEpochMasternodes(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<IXdcReleaseSpec>())
             .Returns((epochCandidates.ToArray(), penalties.ToArray()));
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>()).Returns(new EpochSwitchInfo(epochCandidates.ToArray(), [], [], new BlockRoundInfo(Hash256.Zero, 0, 0)));
@@ -209,7 +218,7 @@ internal class XdcSealValidatorTests
         bool isEpochSwitch = IsEpochSwitch(header, releaseSpec);
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(isEpochSwitch);
 
-        XdcSealValidator validator = new XdcSealValidator(snapshotManager, epochSwitchManager, specProvider);
+        XdcSealValidator validator = new XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));
     }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
@@ -98,7 +98,7 @@ namespace Nethermind.Core.Test.Builders
             }
 
             BlockBuilder result = WithTransactions(txs);
-            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+            Hash256 receiptHash = ReceiptTrie.CalculateRoot(specProvider.GetSpec(TestObjectInternal.Header), receipts, Rlp.GetStreamEncoder<TxReceipt>()!);
             TestObjectInternal.Header.ReceiptsRoot = receiptHash;
             return result;
         }
@@ -299,6 +299,30 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithEncodedSize(int? encodedSize)
         {
             TestObjectInternal.EncodedSize = encodedSize;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessListHash(Hash256? hash)
+        {
+            TestObjectInternal.Header.BlockAccessListHash = hash;
+            return this;
+        }
+
+        public BlockBuilder WithSlotNumber(ulong? slotNumber)
+        {
+            TestObjectInternal.Header.SlotNumber = slotNumber;
+            return this;
+        }
+
+        public BlockBuilder WithBlockAccessList(BlockAccessList? bal)
+        {
+            TestObjectInternal.BlockAccessList = bal;
+            return this;
+        }
+
+        public BlockBuilder WithEncodedBlockAccessList(byte[]? bal)
+        {
+            TestObjectInternal.EncodedBlockAccessList = bal;
             return this;
         }
     }

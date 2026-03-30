@@ -16,7 +16,7 @@ namespace Nethermind.Test.Runner;
 public class StateTestTxTracer : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
-    private StateTestTxTrace _trace = new();
+    private readonly StateTestTxTrace _trace = new();
     private bool _gasAlreadySetForCurrentOp;
 
     public bool IsTracingReceipt => true;
@@ -37,30 +37,30 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
     {
         _trace.Result.Output = output;
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256 stateRoot = null)
     {
         _trace.Result.Error = _traceEntry?.Error ?? error;
         _trace.Result.Output = output ?? Bytes.Empty;
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
-        _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc + env.CodeInfo.PcOffset();
-        _traceEntry.Section = codeSection;
-        _traceEntry.Operation = (byte)opcode;
-        _traceEntry.OperationName = opcode.GetName();
-        _traceEntry.Gas = gas;
-        _traceEntry.Depth = env.GetGethTraceDepth();
-        _traceEntry.FunctionDepth = functionDepth;
+        _traceEntry = new StateTestTxTraceEntry
+        {
+            Pc = pc,
+            Operation = (byte)opcode,
+            OperationName = Enum.GetName(opcode),
+            Gas = gas,
+            Depth = env.GetGethTraceDepth(),
+        };
         _trace.Entries.Add(_traceEntry);
     }
 

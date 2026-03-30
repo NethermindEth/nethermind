@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
 
@@ -16,13 +17,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         private static readonly RlpLimit SizesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Sizes));
         private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage68>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage68.Hashes));
 
-        public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer)
+        public NewPooledTransactionHashesMessage68 Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static NewPooledTransactionHashesMessage68 Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            rlpStream.ReadSequenceLength();
-            ArrayPoolList<byte> types = rlpStream.DecodeByteArrayPoolList(TypesRlpLimit);
-            ArrayPoolList<int> sizes = rlpStream.DecodeArrayPoolList(static item => item.DecodeInt(), limit: SizesRlpLimit);
-            ArrayPoolList<Hash256> hashes = rlpStream.DecodeArrayPoolList(static item => item.DecodeKeccak(), limit: HashesRlpLimit);
+            ctx.ReadSequenceLength();
+            ArrayPoolList<byte> types = ctx.DecodeByteArraySpan(TypesRlpLimit).ToPooledList();
+            ArrayPoolList<int> sizes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeInt(), limit: SizesRlpLimit);
+            ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
 

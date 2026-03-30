@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -31,6 +30,8 @@ using Nethermind.TxPool;
 using DataCompletion = System.Threading.Tasks.TaskCompletionSource<byte[]>;
 
 namespace Nethermind.Runner.Monitoring;
+
+using Nethermind.Core.Extensions;
 
 public class DataFeed
 {
@@ -183,7 +184,7 @@ public class DataFeed
     {
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 
@@ -213,7 +214,7 @@ public class DataFeed
 
     private async Task<byte[]> GetStatsTask(int delayMs)
     {
-        await Task.Delay(delayMs);
+        await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
@@ -240,7 +241,7 @@ public class DataFeed
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 
@@ -338,7 +339,9 @@ public class DataFeed
         Block head = choice.Head;
         Transaction[] txs = head.Transactions;
         IReleaseSpec spec = _specProvider.GetSpec(head.Header);
-        ReceiptForRpc[] receipts = _receiptFinder.Get(head).Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header))).ToArray();
+        ReceiptForRpc[] receipts = _receiptFinder.Get(head)
+            .Select((r, i) => new ReceiptForRpc(txs[i].Hash, r, head.Timestamp, txs[i].GetGasInfo(spec, choice.Head.Header)))
+            .ToArray();
         forkChoice.TrySetResult(
             JsonSerializer.SerializeToUtf8Bytes(
                 new ForkData

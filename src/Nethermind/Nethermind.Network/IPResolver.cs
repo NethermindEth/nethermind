@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -25,7 +26,7 @@ public class IPResolver : IIPResolver
         _logManager = logManager;
     }
 
-    public async Task Initialize()
+    public async Task Initialize(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -36,14 +37,33 @@ public class IPResolver : IIPResolver
             LocalIp = IPAddress.Loopback;
         }
 
-        try
+        const int maxAttempts = 5;
+        const int delaySeconds = 2;
+
+        for (int i = 0; i < maxAttempts; i++)
         {
-            ExternalIp = await InitializeExternalIp();
+            if (i > 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"External IP resolution failed (attempt {i}/{maxAttempts}). Retrying in {delaySeconds}s...");
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+            }
+
+            try
+            {
+                ExternalIp = await InitializeExternalIp();
+                if (!Equals(ExternalIp, IPAddress.Any) && !Equals(ExternalIp, IPAddress.None))
+                {
+                    return;
+                }
+            }
+            catch (Exception)
+            {
+                // Will retry or set to None after loop
+            }
         }
-        catch (Exception)
-        {
-            ExternalIp = IPAddress.None;
-        }
+
+        ExternalIp = IPAddress.None;
+        if (_logger.IsWarn) _logger.Warn("External IP could not be resolved after all retries. Peers will not be able to connect.");
     }
 
     public IPAddress LocalIp { get; private set; }

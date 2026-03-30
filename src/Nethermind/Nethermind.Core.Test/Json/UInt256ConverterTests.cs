@@ -11,146 +11,226 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Text.RegularExpressions;
 
-namespace Nethermind.Core.Test.Json
+namespace Nethermind.Core.Test.Json;
+
+[TestFixture]
+public class UInt256ConverterTests : ConverterTestBase<UInt256>
 {
-    [TestFixture]
-    public class UInt256ConverterTests : ConverterTestBase<UInt256>
+    static readonly UInt256Converter converter = new();
+    static readonly JsonSerializerOptions options = new() { Converters = { converter } };
+    static bool Equals(UInt256 integer, UInt256 bigInteger) => integer.Equals(bigInteger);
+
+    [TestCase(NumberConversion.Hex)]
+    [TestCase(NumberConversion.Decimal)]
+    [TestCase(NumberConversion.Raw)]
+    public void Test_roundtrip(NumberConversion numberConversion)
     {
-        static readonly UInt256Converter converter = new();
-        static readonly JsonSerializerOptions options = new() { Converters = { converter } };
-        static bool Equals(UInt256 integer, UInt256 bigInteger) => integer.Equals(bigInteger);
+        TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+        TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+    }
 
-        [TestCase(NumberConversion.Hex)]
-        [TestCase(NumberConversion.Decimal)]
-        [TestCase(NumberConversion.Raw)]
-        public void Test_roundtrip(NumberConversion numberConversion)
+    [Test]
+    public void Test_Deserialize(
+        [ValueSource(typeof(UInt256ConverterTests), nameof(ValuesCaseSource))] UInt256 item,
+        [ValueSource(typeof(UInt256ConverterTests), nameof(FormatsCaseSource))] string format)
+    {
+        // fix of epic design choice made in BigInteger.ToString method that appends hex of any positive number with zero
+        string asString = new Regex("0x0(.{64})|0x(.+)").Replace(string.Format(format, (BigInteger)item), (s) => $"0x{(s.Groups[1].Success ? s.Groups[1].Value : (s.Groups[2].Success ? s.Groups[2].Value : s.Groups[0].Value))}");
+
+        JsonSerializerOptions deserializeOptions = new() { Converters = { converter } };
+
+        Container? deserialized = JsonSerializer.Deserialize<Container>($"{{ \"Number\" : {asString} }}", deserializeOptions);
+
+        Assert.That(deserialized, Is.Not.Null);
+        Assert.That(Equals(item, deserialized.Number));
+
+        UInt256? deserializedUint256 = JsonSerializer.Deserialize<UInt256>(asString, deserializeOptions);
+
+        Assert.That(deserializedUint256, Is.Not.Null);
+        Assert.That(Equals(item, deserializedUint256.Value));
+    }
+
+    public static IEnumerable<UInt256> ValuesCaseSource()
+    {
+        yield return UInt256.MaxValue;
+        yield return UInt256.MaxValue - 1;
+        yield return UInt256.MaxValue >> 8;
+        yield return new UInt256(ulong.MaxValue, ulong.MaxValue);
+        yield return new UInt256(ulong.MaxValue, 1);
+        yield return int.MaxValue;
+        yield return UInt256.One;
+        yield return UInt256.Zero;
+    }
+
+    public static IEnumerable<string> FormatsCaseSource()
+    {
+        // lower case hex
+        yield return "\"0x{0:x}\"";
+        // upper case hex
+        yield return "\"0x{0:X}\"";
+        // hex with leading zeros
+        yield return "\"0x{0:X64}\"";
+        // decimal
+        yield return "{0:D}";
+    }
+
+    class Container
+    {
+        public UInt256 Number { get; set; }
+    }
+
+    [TestCase((NumberConversion)99)]
+    public void Undefined_not_supported(NumberConversion notSupportedConversion)
+    {
+        ForcedNumberConversion.ForcedConversion.Value = notSupportedConversion;
+
+        UInt256Converter converter = new();
+        Assert.Throws<NotSupportedException>(
+            () => TestConverter(int.MaxValue, Equals, converter));
+        Assert.Throws<NotSupportedException>(
+            () => TestConverter(UInt256.One, Equals, converter));
+
+        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+    }
+
+    [Test]
+    public void Raw_works_with_zero_and_this_is_ok()
+    {
+        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+        UInt256Converter converter = new();
+        TestConverter(0, Equals, converter);
+
+        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+    }
+
+    [TestCase("\"0xa00000\"", "10485760")]
+    [TestCase("\"0x0\"", "0")]
+    [TestCase("\"0x0000\"", "0")]
+    [TestCase("0", "0")]
+    [TestCase("1", "1")]
+    public void Can_read_value(string json, string expected)
+    {
+        UInt256 result = JsonSerializer.Deserialize<UInt256>(json, options);
+        Assert.That(result, Is.EqualTo(UInt256.Parse(expected)));
+    }
+
+    [Test]
+    public void Can_read_unmarked_hex()
+    {
+        UInt256 result = JsonSerializer.Deserialize<UInt256>("\"de\"", options);
+        Assert.That(result, Is.EqualTo(UInt256.Parse("de", NumberStyles.HexNumber)));
+    }
+
+    [Test]
+    public void Throws_on_null()
+    {
+        Assert.Throws<JsonException>(
+            static () => JsonSerializer.Deserialize<UInt256>("null", options));
+    }
+
+    [TestCase(0ul, 0ul, 0ul, 0ul, "\"0x0\"")]
+    [TestCase(1ul, 0ul, 0ul, 0ul, "\"0x1\"")]
+    [TestCase(0xful, 0ul, 0ul, 0ul, "\"0xf\"")]
+    [TestCase(0xfful, 0ul, 0ul, 0ul, "\"0xff\"")]
+    [TestCase(0xabcdeful, 0ul, 0ul, 0ul, "\"0xabcdef\"")]
+    [TestCase(ulong.MaxValue, 0ul, 0ul, 0ul, "\"0xffffffffffffffff\"")]
+    [TestCase(ulong.MaxValue, 1ul, 0ul, 0ul, "\"0x1ffffffffffffffff\"")]
+    [TestCase(0ul, 0ul, 1ul, 0ul, "\"0x100000000000000000000000000000000\"")]
+    [TestCase(0ul, 0ul, 0ul, 1ul, "\"0x1000000000000000000000000000000000000000000000000\"")]
+    [TestCase(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, "\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\"")]
+    public void Writes_hex(ulong u0, ulong u1, ulong u2, ulong u3, string expected)
+    {
+        UInt256 value = new(u0, u1, u2, u3);
+        string result = JsonSerializer.Serialize(value, options);
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Writes_hex_roundtrip_all_limb_boundaries()
+    {
+        // Test values at each limb boundary
+        UInt256[] values =
+        [
+            UInt256.One,
+            new UInt256(ulong.MaxValue),
+            new UInt256(0, 1),
+            new UInt256(ulong.MaxValue, ulong.MaxValue),
+            new UInt256(0, 0, 1, 0),
+            new UInt256(ulong.MaxValue, ulong.MaxValue, ulong.MaxValue, 0),
+            new UInt256(0, 0, 0, 1),
+            UInt256.MaxValue,
+        ];
+
+        foreach (UInt256 value in values)
         {
-            TestConverter(int.MaxValue, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.One, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
-            TestConverter(UInt256.Zero, static (integer, bigInteger) => integer.Equals(bigInteger), converter);
+            string json = JsonSerializer.Serialize(value, options);
+            UInt256 deserialized = JsonSerializer.Deserialize<UInt256>(json, options);
+            Assert.That(deserialized, Is.EqualTo(value), $"Roundtrip failed for {value}");
         }
+    }
 
-        [Test]
-        public void Test_Deserialize(
-            [ValueSource(typeof(UInt256ConverterTests), nameof(ValuesCaseSource))] UInt256 item,
-            [ValueSource(typeof(UInt256ConverterTests), nameof(FormatsCaseSource))] string format)
+    [Test]
+    public void Writes_zero_padded_hex()
+    {
+        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        try
         {
-            // fix of epic design choice made in BigInteger.ToString method that appends hex of any positive number with zero
-            string asString = new Regex("0x0(.{64})|0x(.+)").Replace(string.Format(format, (BigInteger)item), (s) => $"0x{(s.Groups[1].Success ? s.Groups[1].Value : (s.Groups[2].Success ? s.Groups[2].Value : s.Groups[0].Value))}");
+            string result = JsonSerializer.Serialize(UInt256.One, options);
+            Assert.That(result, Is.EqualTo("\"0x0000000000000000000000000000000000000000000000000000000000000001\""));
 
-            JsonSerializerOptions options = new() { Converters = { converter } };
+            result = JsonSerializer.Serialize(UInt256.MaxValue, options);
+            Assert.That(result, Is.EqualTo("\"0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\""));
 
-            Container? deserialized = JsonSerializer.Deserialize<Container>($"{{ \"Number\" : {asString} }}", options);
-
-            Assert.That(deserialized, Is.Not.Null);
-            Assert.That(Equals(item, deserialized.Number));
-
-            UInt256? deserializedUint256 = JsonSerializer.Deserialize<UInt256>(asString, options);
-
-            Assert.That(deserializedUint256, Is.Not.Null);
-            Assert.That(Equals(item, deserializedUint256.Value));
+            result = JsonSerializer.Serialize(UInt256.Zero, options);
+            Assert.That(result, Is.EqualTo("\"0x0000000000000000000000000000000000000000000000000000000000000000\""));
         }
-
-        public static IEnumerable<UInt256> ValuesCaseSource()
+        finally
         {
-            yield return UInt256.MaxValue;
-            yield return UInt256.MaxValue - 1;
-            yield return UInt256.MaxValue >> 8;
-            yield return new UInt256(ulong.MaxValue, ulong.MaxValue);
-            yield return new UInt256(ulong.MaxValue, 1);
-            yield return int.MaxValue;
-            yield return UInt256.One;
-            yield return UInt256.Zero;
-        }
-
-        public static IEnumerable<string> FormatsCaseSource()
-        {
-            // lower case hex
-            yield return "\"0x{0:x}\"";
-            // upper case hex
-            yield return "\"0x{0:X}\"";
-            // hex with leading zeros
-            yield return "\"0x{0:X64}\"";
-            // decimal
-            yield return "{0:D}";
-        }
-
-        class Container
-        {
-            public UInt256 Number { get; set; }
-        }
-
-        [TestCase((NumberConversion)99)]
-        public void Undefined_not_supported(NumberConversion notSupportedConversion)
-        {
-            ForcedNumberConversion.ForcedConversion.Value = notSupportedConversion;
-
-            UInt256Converter converter = new();
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(int.MaxValue, Equals, converter));
-            Assert.Throws<NotSupportedException>(
-                () => TestConverter(UInt256.One, Equals, converter));
-
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
+    }
 
-        [Test]
-        public void Raw_works_with_zero_and_this_is_ok()
+    [Test]
+    public void Writes_zero_padded_hex_roundtrip()
+    {
+        ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+        try
         {
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
-            UInt256Converter converter = new();
-            TestConverter(0, Equals, converter);
-
+            UInt256 value = new(0xdeadbeef, 0xcafebabe, 0x12345678, 0x9abcdef0);
+            string json = JsonSerializer.Serialize(value, options);
+            UInt256 deserialized = JsonSerializer.Deserialize<UInt256>(json, options);
+            Assert.That(deserialized, Is.EqualTo(value));
+        }
+        finally
+        {
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
+    }
 
-        [Test]
-        public void Regression_0xa00000()
+    [TestCase(0xabcdefUL, "\"0xabcdef\"", NumberConversion.Hex)]
+    [TestCase(0UL, "\"0x0\"", NumberConversion.Hex)]
+    [TestCase(1UL, "\"0x0000000000000000000000000000000000000000000000000000000000000001\"", NumberConversion.ZeroPaddedHex)]
+    public void Writes_property_name(ulong value, string expectedKey, NumberConversion conversion)
+    {
+        ForcedNumberConversion.ForcedConversion.Value = conversion;
+        try
         {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0xa00000\"", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("10485760")));
+            using System.IO.MemoryStream stream = new();
+            using Utf8JsonWriter writer = new(stream);
+
+            writer.WriteStartObject();
+            converter.WriteAsPropertyName(writer, (UInt256)value, options);
+            writer.WriteNumberValue(1);
+            writer.WriteEndObject();
+            writer.Flush();
+
+            string result = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+            Assert.That(result, Is.EqualTo($"{{{expectedKey}:1}}"));
         }
-
-        [Test]
-        public void Can_read_0x0()
+        finally
         {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0x0\"", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_0x000()
-        {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("\"0x0000\"", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_0()
-        {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("0", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("0")));
-        }
-
-        [Test]
-        public void Can_read_1()
-        {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("1", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("1")));
-        }
-
-        [Test]
-        public void Can_read_unmarked_hex()
-        {
-            UInt256 result = JsonSerializer.Deserialize<UInt256>("\"de\"", options);
-            Assert.That(result, Is.EqualTo(UInt256.Parse("de", NumberStyles.HexNumber)));
-        }
-
-        [Test]
-        public void Throws_on_null()
-        {
-            Assert.Throws<JsonException>(
-                static () => JsonSerializer.Deserialize<UInt256>("null", options));
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
         }
     }
 }

@@ -15,6 +15,8 @@ namespace Nethermind.Serialization.Ssz;
 /// </summary>
 public static partial class Ssz
 {
+    private const int VarOffsetSize = sizeof(uint);
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Encode(Span<byte> span, byte[] value, ref int offset)
     {
@@ -301,7 +303,7 @@ public static partial class Ssz
 
         ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span[..8]);
         ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
-        return new UInt128(s0, s1);
+        return new UInt128(s1, s0);
     }
 
     public static UInt256 DecodeUInt256(ReadOnlySpan<byte> span)

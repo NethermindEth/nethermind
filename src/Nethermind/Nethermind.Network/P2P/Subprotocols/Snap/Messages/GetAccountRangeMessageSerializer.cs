@@ -9,14 +9,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetAccountRangeMessageSerializer : SnapSerializerBase<GetAccountRangeMessage>
     {
-        protected override GetAccountRangeMessage Deserialize(RlpStream rlpStream)
+        protected override GetAccountRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetAccountRangeMessage message = new();
-            rlpStream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
-            message.AccountRange = new(rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak(), rlpStream.DecodeKeccak());
-            message.ResponseBytes = rlpStream.DecodeLong();
+            message.RequestId = ctx.DecodeLong();
+            message.AccountRange = new(ctx.DecodeKeccak(), ctx.DecodeKeccak(), ctx.DecodeKeccak());
+            message.ResponseBytes = ctx.DecodeLong();
 
             return message;
         }

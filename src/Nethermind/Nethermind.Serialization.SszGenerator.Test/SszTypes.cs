@@ -4,7 +4,6 @@
 using Nethermind.Merkleization;
 using Nethermind.Serialization.Ssz;
 using System.Collections;
-using System.ComponentModel;
 
 namespace Nethermind.Serialization.SszGenerator.Test
 {
@@ -48,6 +47,15 @@ namespace Nethermind.Serialization.SszGenerator.Test
 
         [SszList(10)]
         public BitArray? BitList2 { get; set; }
+    }
+
+    [SszSerializable]
+    public struct BitvectorContainer
+    {
+        public ulong Value { get; set; }
+
+        [SszVector(10)]
+        public BitArray? Bits { get; set; }
     }
 
     [SszSerializable]

@@ -313,12 +313,12 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            IOwnedReadOnlyList<byte[]?> data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
+            using IByteArrayList data = SyncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0], Is.EqualTo(TestItem.RandomDataA), "data[0]");
-            Assert.That(data[1], Is.EqualTo(null), "data[1]");
+            Assert.That(data[0].ToArray(), Is.EqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[1].IsEmpty, Is.True, "data[1]");
         }
 
         [Test]

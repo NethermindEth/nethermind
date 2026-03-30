@@ -17,26 +17,26 @@ namespace Nethermind.Core
     /// </summary>
     public static class BlockchainIds
     {
-        public const int Olympic = 0;
-        public const int Mainnet = 1;
-        public const int Morden = 2;
-        public const int RootstockMainnet = 30;
-        public const int RootstockTestnet = 31;
-        public const int Kovan = 42;
-        public const int EthereumClassicMainnet = 61;
-        public const int EthereumClassicTestnet = 62;
-        public const int EnergyWeb = 246;
-        public const int DefaultGethPrivateChain = 1337;
-        public const int Gnosis = 100;
-        public const int PoaCore = 99;
-        public const int Chiado = 10200;
-        public const int Volta = 73799;
-        public const int Sepolia = 11155111;
-        public const int Holesky = 17000;
-        public const int Hoodi = 560048;
+        public const ulong Olympic = 0;
+        public const ulong Mainnet = 1;
+        public const ulong Morden = 2;
+        public const ulong RootstockMainnet = 30;
+        public const ulong RootstockTestnet = 31;
+        public const ulong Kovan = 42;
+        public const ulong EthereumClassicMainnet = 61;
+        public const ulong EthereumClassicTestnet = 62;
+        public const ulong EnergyWeb = 246;
+        public const ulong DefaultGethPrivateChain = 1337;
+        public const ulong Gnosis = 100;
+        public const ulong PoaCore = 99;
+        public const ulong Chiado = 10200;
+        public const ulong Volta = 73799;
+        public const ulong Sepolia = 11155111;
+        public const ulong Holesky = 17000;
+        public const ulong Hoodi = 560048;
 
         // A generic network that does not exist and id is not claimed by any other actual network
-        public const int GenericNonRealNetwork = 9999;
+        public const ulong GenericNonRealNetwork = 9999;
 
         public static string GetBlockchainName(ulong networkId)
         {
@@ -64,7 +64,7 @@ namespace Nethermind.Core
 
     public static class TestBlockchainIds
     {
-        public const int NetworkId = 4261;
-        public const int ChainId = 1;
+        public const ulong NetworkId = 4261;
+        public const ulong ChainId = 1;
     }
 }

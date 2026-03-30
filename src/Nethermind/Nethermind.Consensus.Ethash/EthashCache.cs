@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Ethash
             Data[i % n].AsUInts().CopyTo(mixInts);
 
             mixInts[0] = i ^ mixInts[0];
-            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
+            Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
 
             for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
@@ -108,7 +108,7 @@ namespace Nethermind.Consensus.Ethash
                 Ethash.Fnv(mixInts, MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref Data[cacheIndex % n], 1)));
             }
 
-            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
+            Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
             return mixInts;
         }
 

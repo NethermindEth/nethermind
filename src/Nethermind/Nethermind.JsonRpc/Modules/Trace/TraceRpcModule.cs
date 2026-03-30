@@ -58,9 +58,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             blockParameter ??= BlockParameter.Latest;
             call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-            Transaction tx = call.ToTransaction();
-
-            return TraceTx(tx, traceTypes, blockParameter, stateOverride);
+            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+            return !txResult.Success(out Transaction? transaction, out string? error)
+                ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
+                : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
         }
 
         /// <summary>
@@ -87,7 +88,12 @@ namespace Nethermind.JsonRpc.Modules.Trace
             for (int i = 0; i < calls.Length; i++)
             {
                 calls[i].Transaction.EnsureDefaults(jsonRpcConfig.GasCap);
-                Transaction tx = calls[i].Transaction.ToTransaction();
+                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true);
+                if (!txResult.Success(out Transaction? tx, out string? error))
+                {
+                    return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
+                }
+
                 tx.Hash = new Hash256(new UInt256((ulong)i).ToValueHash());
                 ParityTraceTypes traceTypes = GetParityTypes(calls[i].TraceTypes);
                 txs[i] = tx;
@@ -104,7 +110,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// </summary>
         public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            Transaction tx = _txDecoder.Decode(new RlpStream(data), RlpBehaviors.SkipTypedWrapping);
+            Rlp.ValueDecoderContext ctx = data.AsRlpValueContext();
+            Transaction tx = _txDecoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            tx.CapGasLimit(jsonRpcConfig.GasCap);
             return TraceTx(tx, traceTypes, BlockParameter.Latest);
         }
 

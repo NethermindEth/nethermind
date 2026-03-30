@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -231,7 +230,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public async Task Can_handle_node_data()
         {
-            using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+            using var msg63 = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>())).Do(callInfo =>
@@ -249,7 +248,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_node_data()
         {
-            using var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+            using var msg63 = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
             using var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -340,7 +339,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
             getBlockHeadersPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
         }
@@ -350,7 +349,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             statusMsg.GenesisHash = _genesisBlock.Hash;
             statusMsg.BestHash = _genesisBlock.Hash;
 
-            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+            using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }

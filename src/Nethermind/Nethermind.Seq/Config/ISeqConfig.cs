@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.Seq.Config;
 
-[ConfigCategory(Description = "Configuration of the Prometheus + Grafana metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)")]
+[ConfigCategory(Description = "Configuration of the Seq logging server integration.")]
 public interface ISeqConfig : IConfig
 {
     [ConfigItem(Description = "The min log level to sent to Seq.", DefaultValue = "Off")]

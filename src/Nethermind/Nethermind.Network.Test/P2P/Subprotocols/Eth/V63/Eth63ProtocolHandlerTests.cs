@@ -20,7 +20,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -130,7 +129,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Enumerable.Repeat(txReceipts, count).ToPooledList(count).AddTo(_disposables);
 
         [Test]
-        public void Will_not_send_messages_larger_than_2MB()
+        public void Should_not_exceed_soft_message_size_limit_for_receipts()
         {
             _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
@@ -141,7 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 new("eth", Eth63MessageCode.GetReceipts, _ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             _ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 14));
+            _ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(static r => r.TxReceipts.Count == 64));
         }
 
         private class Context

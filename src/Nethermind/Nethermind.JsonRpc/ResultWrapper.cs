@@ -80,7 +80,7 @@ namespace Nethermind.JsonRpc
         public static ResultWrapper<T, TErrorData> Fail(string error, int errorCode, TErrorData errorData) =>
             new() { ErrorCode = errorCode, ErrorData = errorData, Result = Result.Fail(error) };
 
-        public static new ResultWrapper<T, TErrorData> Success(T data) =>
+        public new static ResultWrapper<T, TErrorData> Success(T data) =>
             new() { Data = data, ErrorData = default, Result = Result.Success };
 
         public static implicit operator Task<ResultWrapper<T, TErrorData>>(ResultWrapper<T, TErrorData> resultWrapper) => Task.FromResult(resultWrapper);

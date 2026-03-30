@@ -16,6 +16,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -49,19 +50,19 @@ public static class NettyMemoryEstimator
     typeof(InitializeBlockchain))]
 public class InitializeNetwork : IStep
 {
-    private readonly IApiWithNetwork _api;
-    private readonly INodeStatsManager _nodeStatsManager;
-    private readonly ISynchronizer _synchronizer;
-    private readonly ISyncPeerPool _syncPeerPool;
-    private readonly IForkInfo _forkInfo;
-    private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
-    private readonly INetworkStorage _peerStorage;
-    private readonly IDiscoveryApp _discoveryApp;
-    private readonly Lazy<IPeerPool> _peerPool;
+    protected readonly IApiWithNetwork _api;
+    protected readonly INodeStatsManager NodeStatsManager;
+    protected readonly ISynchronizer _synchronizer;
+    protected readonly ISyncPeerPool _syncPeerPool;
+    protected readonly IDiscoveryApp _discoveryApp;
+    protected readonly Lazy<IPeerPool> _peerPool;
+    protected readonly INetworkStorage _peerStorage;
+    protected readonly INetworkConfig _networkConfig;
 
-    private readonly INetworkConfig _networkConfig;
+    private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
 
@@ -74,8 +75,8 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IProtocolHandlerFactory[] protocolHandlerFactories,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -83,14 +84,14 @@ public class InitializeNetwork : IStep
     )
     {
         _api = api;
-        _nodeStatsManager = nodeStatsManager;
+        NodeStatsManager = nodeStatsManager;
         _synchronizer = synchronizer;
         _syncPeerPool = syncPeerPool;
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
-        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
+        _protocolHandlerFactories = protocolHandlerFactories;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
@@ -98,9 +99,9 @@ public class InitializeNetwork : IStep
         _logger = logManager.GetClassLogger();
     }
 
-    public async Task Execute(CancellationToken cancellationToken)
+    public virtual Task Execute(CancellationToken cancellationToken)
     {
-        await Initialize(cancellationToken);
+        return Initialize(cancellationToken);
     }
 
     private async Task Initialize(CancellationToken cancellationToken)
@@ -120,8 +121,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -139,6 +138,7 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
@@ -253,7 +253,7 @@ public class InitializeNetwork : IStep
         return Task.CompletedTask;
     }
 
-    private async Task InitPeer()
+    protected virtual async Task InitPeer()
     {
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
         if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
@@ -265,34 +265,7 @@ public class InitializeNetwork : IStep
 
         await _api.TrustedNodesManager.InitAsync();
 
-        ISyncServer syncServer = _api.SyncServer!;
-
-        ProtocolValidator protocolValidator = new(
-            _nodeStatsManager!,
-            _api.BlockTree,
-            _forkInfo,
-            _api.PeerManager!,
-            _networkConfig,
-            _api.LogManager);
-
-        _api.ProtocolsManager = new ProtocolsManager(
-            _api.SyncPeerPool!,
-            syncServer,
-            _api.BackgroundTaskScheduler,
-            _api.TxPool,
-            _discoveryApp,
-            _api.MessageSerializationService,
-            _api.RlpxPeer,
-            _nodeStatsManager,
-            protocolValidator,
-            _peerStorage,
-            _forkInfo,
-            _api.GossipPolicy,
-            _api.WorldStateManager!,
-            _api.LogManager,
-            _api.Config<ITxPoolConfig>(),
-            _api.SpecProvider,
-            _api.TxGossipPolicy);
+        _api.ProtocolsManager = CreateProtocolManager();
 
         if (_syncConfig.SnapServingEnabled == true)
         {
@@ -303,7 +276,6 @@ public class InitializeNetwork : IStep
             _api.ProtocolsManager!.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
         }
 
-        _api.ProtocolValidator = protocolValidator;
 
         if (!_networkConfig.DisableDiscV4DnsFeeder)
         {
@@ -315,5 +287,19 @@ public class InitializeNetwork : IStep
         {
             await plugin.InitNetworkProtocol();
         }
+    }
+
+    protected virtual IProtocolsManager CreateProtocolManager()
+    {
+        return new ProtocolsManager(
+            _api.SyncPeerPool!,
+            _api.TxPool!,
+            _discoveryApp,
+            _api.RlpxPeer,
+            NodeStatsManager,
+            _api.ProtocolValidator,
+            _peerStorage,
+            _protocolHandlerFactories,
+            _api.LogManager);
     }
 }

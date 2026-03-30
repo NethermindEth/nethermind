@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <Import Project="../tests.props" />
-  
   <PropertyGroup>
     <RootNamespace>Nethermind.Store.Test</RootNamespace>
   </PropertyGroup>

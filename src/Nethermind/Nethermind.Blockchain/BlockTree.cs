@@ -44,6 +44,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly IDb _metadataDb;
         private readonly IBadBlockStore _badBlockStore;
+        private readonly IBlockAccessListStore _balStore;
 
         private readonly LruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
@@ -54,7 +55,7 @@ namespace Nethermind.Blockchain
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
 
-        public BlockHeader? Genesis { get; private set; }
+        public BlockHeader? Genesis { get; protected set; }
         public Block? Head { get; private set; }
 
         public BlockHeader? BestSuggestedHeader { get; private set; }
@@ -113,6 +114,7 @@ namespace Nethermind.Blockchain
             [KeyFilter(DbNames.BlockInfos)] IDb? blockInfoDb,
             [KeyFilter(DbNames.Metadata)] IDb? metadataDb,
             IBadBlockStore? badBlockStore,
+            IBlockAccessListStore? balStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,
@@ -126,6 +128,7 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
             _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
             _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
+            _balStore = balStore ?? throw new ArgumentNullException(nameof(balStore));
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -416,6 +419,7 @@ namespace Nethermind.Blockchain
 
             _blockStore.Insert(block, writeFlags: blockWriteFlags);
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
+            _balStore.InsertFromBlock(block);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
             if (saveHeader)
@@ -483,6 +487,7 @@ namespace Nethermind.Blockchain
                 }
 
                 _blockStore.Insert(block);
+                _balStore.InsertFromBlock(block);
             }
 
             if (!isKnown)
@@ -762,6 +767,16 @@ namespace Nethermind.Blockchain
                 return level.BlockInfos[0].BlockHash;
             }
 
+            bool IsPostMerge(Block? block) => SpecProvider.TerminalTotalDifficulty is { } ttd
+                                              && (block?.TotalDifficulty ?? UInt256.Zero) >= ttd;
+
+            // Post-merge: TD never increases, so the best-TD fallback cannot distinguish canonical from orphaned.
+            if (IsPostMerge(Head))
+            {
+                return null;
+            }
+
+            // Pre-merge: the block with the highest total difficulty is canonical by PoW rule.
             UInt256 bestDifficultySoFar = UInt256.Zero;
             Hash256 bestHash = null;
             for (int i = 0; i < level.BlockInfos.Length; i++)
@@ -1009,6 +1024,10 @@ namespace Nethermind.Blockchain
                 }
             }
 
+            // Clear stale canonical markers above the new head left by beacon sync.
+            // Covers both same-height FCU (previousHeadNumber <= lastNumber) and ePBS FCU to ancestor.
+            ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
+
             for (int i = 0; i < blocks.Count; i++)
             {
                 Block block = blocks[i];
@@ -1030,17 +1049,12 @@ namespace Nethermind.Blockchain
             OnUpdateMainChain?.Invoke(this, new OnUpdateMainChainArgs(blocks, wereProcessed));
         }
 
+
         private void TryUpdateSyncPivot()
         {
-            BlockHeader? newPivotHeader = null;
-            if (FinalizedHash is not null)
-            {
-                newPivotHeader = FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical);
-            }
-            else
-            {
-                newPivotHeader = FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
-            }
+            BlockHeader? newPivotHeader = FinalizedHash is not null
+                ? FindHeader(FinalizedHash, BlockTreeLookupOptions.RequireCanonical)
+                : FindHeader(Math.Max(0, (Head?.Number ?? 0) - Reorganization.MaxDepth), BlockTreeLookupOptions.RequireCanonical);
 
             if (newPivotHeader is null)
             {
@@ -1282,8 +1296,6 @@ namespace Nethermind.Blockchain
 
         public void UpdateHeadBlock(Hash256 blockHash)
         {
-            if (Logger.IsError) Logger.Error($"Block tree override detected - updating head block to {blockHash}.");
-            _blockInfoDb.Set(HeadAddressInDb, blockHash.Bytes);
             BlockHeader? header = FindHeader(blockHash, BlockTreeLookupOptions.None);
             if (header is not null)
             {
@@ -1681,6 +1693,7 @@ namespace Nethermind.Blockchain
                         _blockInfoDb.Delete(blockHash);
                         _blockStore.Delete(i, blockHash);
                         _headerStore.Delete(blockHash);
+                        _balStore.Delete(blockHash);
                     }
                 }
             }

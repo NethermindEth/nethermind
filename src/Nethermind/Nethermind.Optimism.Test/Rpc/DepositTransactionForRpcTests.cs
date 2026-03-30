@@ -17,7 +17,7 @@ namespace Nethermind.Optimism.Test.Rpc;
 
 public class DepositTransactionForRpcTests
 {
-    private readonly IJsonSerializer serializer = new EthereumJsonSerializer();
+    private readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     private static TransactionBuilder<Transaction> Build => Core.Test.Builders.Build.A.Transaction.WithType(TxType.DepositTx);
     public static readonly Transaction[] Transactions = [
@@ -46,7 +46,7 @@ public class DepositTransactionForRpcTests
     public void Always_satisfies_schema(Transaction transaction)
     {
         TransactionForRpc rpcTransaction = TransactionForRpc.FromTransaction(transaction);
-        string serialized = serializer.Serialize(rpcTransaction);
+        string serialized = _serializer.Serialize(rpcTransaction);
         using var jsonDocument = JsonDocument.Parse(serialized);
         JsonElement json = jsonDocument.RootElement;
         ValidateSchema(json);
@@ -85,10 +85,10 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(MalformedJsonTransactions))]
     public void Rejects_malformed_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        var rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
-        var toTransaction = rpcTx.ToTransaction;
+        var toTransaction = () => rpcTx.ToTransaction();
         toTransaction.Should().Throw<ArgumentNullException>().WithParameterName(testCase.missingField);
     }
 
@@ -100,10 +100,10 @@ public class DepositTransactionForRpcTests
     [TestCaseSource(nameof(ValidJsonTransactions))]
     public void Accepts_valid_transaction_missing_field((string missingField, string json) testCase)
     {
-        var rpcTx = serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
+        var rpcTx = _serializer.Deserialize<DepositTransactionForRpc>(testCase.json);
         rpcTx.Should().NotBeNull();
 
-        var toTransaction = rpcTx.ToTransaction;
+        var toTransaction = () => rpcTx.ToTransaction();
         toTransaction.Should().NotThrow();
     }
 }

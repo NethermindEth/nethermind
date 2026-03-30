@@ -3,19 +3,8 @@
 
 namespace Nethermind.JsonRpc
 {
-    public readonly struct RpcReport
+    public readonly record struct RpcReport(string Method, long HandlingTimeMicroseconds, bool Success)
     {
-        public static readonly RpcReport Error = new RpcReport("# error #", 0, false);
-
-        public RpcReport(string method, long handlingTimeMicroseconds, bool success)
-        {
-            Method = method;
-            HandlingTimeMicroseconds = handlingTimeMicroseconds;
-            Success = success;
-        }
-
-        public string Method { get; }
-        public long HandlingTimeMicroseconds { get; }
-        public bool Success { get; }
+        public static readonly RpcReport Error = new("# error #", 0, false);
     }
 }

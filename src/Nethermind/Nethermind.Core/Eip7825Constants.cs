@@ -9,5 +9,7 @@ public static class Eip7825Constants
 {
     public static readonly long DefaultTxGasLimitCap = 16_777_216;
     public static long GetTxGasLimitCap(this IReleaseSpec spec)
-        => spec.IsEip7825Enabled ? DefaultTxGasLimitCap : long.MaxValue;
+        => spec.IsEip7825Enabled && !spec.IsEip8037Enabled
+            ? DefaultTxGasLimitCap
+            : long.MaxValue;
 }

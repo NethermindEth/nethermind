@@ -7,7 +7,6 @@ using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 

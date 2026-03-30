@@ -3,6 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Contracts;
 using System.Linq;
@@ -24,10 +26,18 @@ internal class XdcTestDepositContract(CandidateContainer candidateContainer) : I
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
-        return 10_000_000.Ether();
+        return 10_000_000.Ether;
     }
 
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
+    {
+        throw new System.NotImplementedException();
+    }
+    public Address GetCandidateOwner(ITransactionProcessor transactionProcessor, BlockHeader blockHeader, Address candidate)
+    {
+        throw new System.NotImplementedException();
+    }
+    public Address GetCandidateOwner(IWorldState worldState, Address candidate)
     {
         throw new System.NotImplementedException();
     }

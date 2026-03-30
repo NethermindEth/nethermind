@@ -1,12 +1,15 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test
@@ -14,10 +17,16 @@ namespace Nethermind.Xdc.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class XdcHeaderDecoderTests
     {
-        private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)
+        private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec,
+            Action<XdcBlockHeaderBuilder>? buildCallback = null, bool includeBaseFee = true)
         {
             XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
-            XdcBlockHeader header = (includeBaseFee ? builder.WithBaseFee((UInt256)1_000_000_000) : builder).TestObject;
+
+            if (includeBaseFee)
+                builder.WithBaseFee((UInt256)1_000_000_000);
+            buildCallback?.Invoke(builder);
+
+            XdcBlockHeader header = builder.TestObject;
 
             Rlp encoded = codec.Encode(header);
             return (header, encoded.Bytes);
@@ -27,11 +36,18 @@ namespace Nethermind.Xdc.Test
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
             var codec = new XdcHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, b => b
+                .WithValidators([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+                .WithPenalties([TestItem.AddressD, TestItem.AddressE, TestItem.AddressF])
+                .WithExtraConsensusData(new ExtraFieldsV2(1, Build.A.QuorumCertificate()
+                    .WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0))
+                    .WithSignatures(TestItem.RandomSignatureA, TestItem.RandomSignatureB)
+                    .TestObject)
+                )
+            );
 
             // Decode
-            var stream = new RlpStream(encodedBytes);
-            BlockHeader? decodedBase = codec.Decode(stream);
+            BlockHeader? decodedBase = codec.Decode((ReadOnlySpan<byte>)encodedBytes);
             Assert.That(decodedBase, Is.Not.Null, "The decoded header should not be null.");
             Assert.That(decodedBase, Is.InstanceOf<XdcBlockHeader>(), "The decoded header should be an instance of XdcBlockHeader.");
 
@@ -45,11 +61,10 @@ namespace Nethermind.Xdc.Test
         public void No_BaseFee()
         {
             var codec = new XdcHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, false);
+            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, includeBaseFee: false);
 
             // Decode back
-            var stream = new RlpStream(encodedBytes);
-            var decoded = (XdcBlockHeader)codec.Decode(stream)!;
+            var decoded = (XdcBlockHeader)codec.Decode((ReadOnlySpan<byte>)encodedBytes)!;
 
             Assert.That(decoded.BaseFeePerGas.IsZero, "BaseFeePerGas should be zero when omitted.");
         }
@@ -74,7 +89,7 @@ namespace Nethermind.Xdc.Test
 
             // ForSealing encoding
             Rlp encoded = decoder.Encode(header, RlpBehaviors.ForSealing);
-            XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode(new RlpStream(encoded.Bytes), RlpBehaviors.ForSealing)!;
+            XdcBlockHeader unencoded = (XdcBlockHeader)decoder.Decode((ReadOnlySpan<byte>)encoded.Bytes, RlpBehaviors.ForSealing)!;
 
             Assert.That(unencoded.Validator, Is.Null,
                 "ForSealing encoding should not contain Validator field.");
@@ -86,7 +101,7 @@ namespace Nethermind.Xdc.Test
         {
             var decoder = new XdcHeaderDecoder();
 
-            XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode(new RlpStream(Bytes.FromHexString(hexRlp)));
+            XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(hexRlp));
 
             string encoded = decoder.Encode(unencoded).ToString();
 

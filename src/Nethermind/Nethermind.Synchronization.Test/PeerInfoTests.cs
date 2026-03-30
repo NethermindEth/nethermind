@@ -139,5 +139,34 @@ namespace Nethermind.Synchronization.Test
             peerInfo.PutToSleep(AllocationContexts.Blocks, DateTime.MinValue);
             peerInfo.CanBeAllocated(AllocationContexts.Bodies).Should().BeFalse();
         }
+
+        [Test]
+        public void Free_does_not_set_unallocated_context()
+        {
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+            peerInfo.TryAllocate(AllocationContexts.Headers);
+
+            peerInfo.Free(AllocationContexts.Bodies);
+
+            peerInfo.IsAllocated(AllocationContexts.Headers).Should().BeTrue();
+            peerInfo.IsAllocated(AllocationContexts.Bodies).Should().BeFalse();
+        }
+
+        [Test]
+        public void WakeUp_does_not_put_awake_context_to_sleep()
+        {
+            DateTime t0 = DateTime.UtcNow;
+            PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
+
+            peerInfo.PutToSleep(AllocationContexts.Blocks, t0);
+            peerInfo.PutToSleep(AllocationContexts.Bodies, t0 - TimeSpan.FromSeconds(10));
+
+            peerInfo.TryToWakeUp(t0, TimeSpan.FromSeconds(5));
+
+            peerInfo.TryToWakeUp(t0 + TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(5));
+
+            peerInfo.IsAsleep(AllocationContexts.Bodies).Should().BeFalse();
+            peerInfo.IsAsleep(AllocationContexts.Receipts).Should().BeFalse();
+        }
     }
 }

@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
         public override void Setup()
         {
             base.Setup();
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 1000.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             _selfDestructCode = Prepare.EvmCode
@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
             byte[] contractCall = Prepare.EvmCode
                 .Call(_contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
-            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(timestamp)
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test
             UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
             _processor.Execute(tx1, blCtx, NullTxTracer.Instance);
 
-            contractBalanceAfterInit.Should().Be(99.Ether());
+            contractBalanceAfterInit.Should().Be(99.Ether);
             AssertSendAll();
             if (onlyOnSameTransaction)
                 AssertNotDestroyed();
@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
             byte[] contractCall = Prepare.EvmCode
                 .Call(_contractAddress, 100000)
                 .Op(Instruction.STOP).Done;
-            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction initTx = Build.A.Transaction.WithCode(_initCode).WithValue(99.Ether).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Transaction tx1 = Build.A.Transaction.WithCode(contractCall).WithGasLimit(_gasLimit).WithNonce(1).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(timestamp)
@@ -108,9 +108,9 @@ namespace Nethermind.Evm.Test
             UInt256 contractBalanceAfterInit = TestState.GetBalance(_contractAddress);
             _processor.Execute(tx1, blCtx, NullTxTracer.Instance);
 
-            contractBalanceAfterInit.Should().Be(99.Ether());
+            contractBalanceAfterInit.Should().Be(99.Ether);
             if (onlyOnSameTransaction)
-                TestState.GetBalance(_contractAddress).Should().Be(99.Ether()); // not burnt
+                TestState.GetBalance(_contractAddress).Should().Be(99.Ether); // not burnt
             else
                 TestState.GetBalance(_contractAddress).Should().Be(0); // burnt
             if (onlyOnSameTransaction)
@@ -126,12 +126,12 @@ namespace Nethermind.Evm.Test
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             _contractAddress = ContractAddress.From(createTxAddress, salt, _initCode);
             byte[] tx1 = Prepare.EvmCode
-                .Create2(_initCode, salt, 99.Ether())
+                .Create2(_initCode, salt, 99.Ether)
                 .Call(_contractAddress, 100000)
                 .STOP()
                 .Done;
 
-            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(Timestamp)
                 .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
@@ -149,11 +149,11 @@ namespace Nethermind.Evm.Test
             Address createTxAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);
             _contractAddress = ContractAddress.From(createTxAddress, salt, _selfDestructCode);
             byte[] tx1 = Prepare.EvmCode
-                .Create2(_selfDestructCode, salt, 99.Ether())
+                .Create2(_selfDestructCode, salt, 99.Ether)
                 .STOP()
                 .Done;
 
-            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction createTx = Build.A.Transaction.WithCode(tx1).WithValue(100.Ether).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(Timestamp)
                 .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
@@ -167,7 +167,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void self_destruct_in_initcode_of_create_tx()
         {
-            Transaction createTx = Build.A.Transaction.WithCode(_selfDestructCode).WithValue(99.Ether()).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction createTx = Build.A.Transaction.WithCode(_selfDestructCode).WithValue(99.Ether).WithGasLimit(_gasLimit).SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
             Block block = Build.A.Block.WithNumber(BlockNumber)
                 .WithTimestamp(Timestamp)
                 .WithTransactions(createTx).WithGasLimit(2 * _gasLimit).TestObject;
@@ -191,7 +191,7 @@ namespace Nethermind.Evm.Test
         private void AssertSendAll()
         {
             TestState.GetBalance(_contractAddress).Should().Be(0);
-            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
+            TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether);
         }
 
     }

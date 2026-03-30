@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -34,7 +33,7 @@ public class SimulateReadOnlyBlocksProcessingEnv(
     public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
     {
         blockTreeOverlay.ResetMainChain();
-        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock, null);
+        IDisposable envDisposer = overridableEnv.BuildAndOverride(baseBlock);
         return new SimulateReadOnlyBlocksProcessingScope(
             worldState, specProvider, blockTree, codeInfoRepository, simulateState, blockProcessor, readOnlyDbProvider, envDisposer
         );

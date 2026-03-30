@@ -58,6 +58,17 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task add_should_emit_node_with_static_flag()
+        {
+            ValueTask<List<Node>> listTask = _staticNodesManager.DiscoverNodes(default).Take(1).ToListAsync();
+
+            await _staticNodesManager.AddAsync(Enode, false);
+            List<Node> nodes = await listTask;
+
+            nodes[0].IsStatic.Should().BeTrue();
+        }
+
+        [Test]
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
             var eventRaised = false;

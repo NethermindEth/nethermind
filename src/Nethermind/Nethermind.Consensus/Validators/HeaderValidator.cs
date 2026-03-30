@@ -74,7 +74,10 @@ namespace Nethermind.Consensus.Validators
         public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, out string? error) =>
             Validate<OffFlag>(header, parent, isUncle, out error);
 
-        protected virtual bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
+#if !ZK_EVM
+        virtual
+#endif
+        protected bool Validate<TOrphaned>(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error) where TOrphaned : struct, IFlag
         {
             IReleaseSpec spec;
             error = null;
@@ -94,7 +97,9 @@ namespace Nethermind.Consensus.Validators
                    && (orphaned || ValidateBlockNumber(header, parent, ref error))
                    && (orphaned || Validate1559(header, parent, spec, ref error))
                    && (orphaned || ValidateBlobGasFields(header, parent, spec, ref error))
-                   && ValidateRequestsHash(header, spec, ref error);
+                   && ValidateRequestsHash(header, spec, ref error)
+                   && ValidateBlockAccessListHash(header, spec, ref error)
+                   && (orphaned || ValidateSlotNumber(header, parent, spec, ref error));
         }
 
         public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
@@ -186,6 +191,7 @@ namespace Nethermind.Consensus.Validators
             else if (parent.Hash != header.ParentHash)
             {
                 error = BlockErrorMessages.MismatchedParent(header.Hash!, header.ParentHash!, parent.Hash!);
+                parent.SlotNumber = 0;
                 return false;
             }
 
@@ -302,10 +308,10 @@ namespace Nethermind.Consensus.Validators
 
             if (header.TotalDifficulty is not null)
             {
-                if (header.TotalDifficulty == 0)
+                if (header.TotalDifficulty.Value.IsZero)
                 {
                     // Same as in BlockTree.SetTotalDifficulty
-                    if (!(_blockTree.Genesis!.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0))
+                    if (!(_blockTree.Genesis!.Difficulty.IsZero && _specProvider.TerminalTotalDifficulty?.IsZero == true))
                     {
                         if (_logger.IsDebug) _logger.Debug($"Invalid block header ({header.Hash}) - zero total difficulty when genesis or ttd is not zero");
                         result = false;
@@ -377,9 +383,62 @@ namespace Nethermind.Consensus.Validators
             return true;
         }
 
-        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec)
+        protected virtual ulong? CalculateExcessBlobGas(BlockHeader parent, IReleaseSpec spec) =>
+            BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+
+        protected virtual bool ValidateBlockAccessListHash(BlockHeader header, IReleaseSpec spec, ref string? error)
         {
-            return BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            if (spec.IsEip7928Enabled)
+            {
+                if (header.BlockAccessListHash is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field is not set.");
+                    error = BlockErrorMessages.MissingBlockLevelAccessListHash;
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.BlockAccessListHash is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("BlockAccessListHash field should not have value.");
+                    error = BlockErrorMessages.BlockLevelAccessListHashNotEnabled;
+                    return false;
+                }
+            }
+            return true;
         }
+
+        protected virtual bool ValidateSlotNumber(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+        {
+            if (spec.IsEip7843Enabled)
+            {
+                if (header.SlotNumber is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
+                    error = BlockErrorMessages.MissingSlotNumber;
+                    return false;
+                }
+
+                if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
+                {
+                    error = BlockErrorMessages.InvalidSlotNumber;
+                    if (_logger.IsWarn) _logger.Warn($"Invalid slot number ({header.SlotNumber}) - slot number must exceed parent ({parent.SlotNumber})");
+                    return false;
+                }
+            }
+            else
+            {
+                if (header.SlotNumber is not null)
+                {
+                    if (_logger.IsWarn) _logger.Warn("SlotNumber field should not have value.");
+                    error = BlockErrorMessages.SlotNumberNotEnabled;
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
     }
 }

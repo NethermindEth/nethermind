@@ -12,7 +12,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Ethereum.KeyAddress.Test
@@ -105,25 +104,15 @@ namespace Ethereum.KeyAddress.Test
             public string Addr { get; set; }
         }
 
-        public class KeyAddressTest
+        public class KeyAddressTest(string seed, string key, string address, UInt256 r, UInt256 s, byte v)
         {
-            public KeyAddressTest(string seed, string key, string address, UInt256 r, UInt256 s, byte v)
-            {
-                Seed = seed;
-                Key = key;
-                Address = address;
-                V = v;
-                R = r;
-                S = s;
-            }
+            public string Seed { get; } = seed;
+            public string Key { get; } = key;
+            public string Address { get; } = address;
+            public byte V { get; } = v;
 
-            public string Seed { get; }
-            public string Key { get; }
-            public string Address { get; }
-            public byte V { get; }
-
-            public UInt256 R { get; }
-            public UInt256 S { get; }
+            public UInt256 R { get; } = r;
+            public UInt256 S { get; } = s;
 
             public override string ToString()
             {

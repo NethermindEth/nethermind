@@ -61,7 +61,7 @@ namespace Nethermind.Trie.Benchmark
             TrieStore treeStore = new TrieStore(
                 trieNodeCache,
                 _whateverDb,
-                new DepthAndMemoryBased(128, 1.MB()),
+                new DepthAndMemoryBased(128, 1.MB),
                 No.Persistence,
                 _logManager);
             treeStore.CommitOneNode(1234, new NodeCommitInfo(trieNode));

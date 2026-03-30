@@ -428,7 +428,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
             .Op(Instruction.STOP)
             .Done;
 
-        TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
         return Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)

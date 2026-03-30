@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
@@ -11,9 +12,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Blocks;
 
+[Parallelizable(ParallelScope.All)]
 public class HeaderStoreTests
 {
-
     [Test]
     public void TestCanStoreAndGetHeader()
     {
@@ -79,6 +80,22 @@ public class HeaderStoreTests
 
         store.Delete(header.Hash!);
         store.Get(header.Hash!)!.Should().BeNull();
+    }
+
+    [Test]
+    public void TestClearCache_removes_cached_headers()
+    {
+        HeaderStore store = new(new MemDb(), new MemDb());
+
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+
+        // Cache the header (not inserted to DB)
+        store.Cache(header);
+        store.Get(header.Hash!)!.Hash.Should().Be(header.Hash!);
+
+        // Clear the cache - header should no longer be retrievable
+        (store as IClearableCache)?.ClearCache();
+        store.Get(header.Hash!).Should().BeNull();
     }
 
 }

@@ -70,12 +70,17 @@ public class BranchProcessor(
         }
         else
         {
-            BlockHeader? scopeBaseBlock = baseBlock ?? (suggestedBlock.IsGenesis ? suggestedBlock.Header : null);
-            worldStateCloser = stateProvider.BeginScope(scopeBaseBlock);
+            worldStateCloser = stateProvider.BeginScope(baseBlock);
         }
 
         CancellationTokenSource? backgroundCancellation = new();
         Task? preWarmTask = null;
+
+        // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
+        // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
+        // The handler captures backgroundCancellation by reference, so it always cancels the current CTS.
+        void CancelBackgroundWork() => backgroundCancellation?.Cancel();
+        blockProcessor.TransactionsExecuted += CancelBackgroundWork;
 
         try
         {
@@ -118,14 +123,7 @@ public class BranchProcessor(
                     BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
                 }
 
-                Block processedBlock;
-                TxReceipt[] receipts;
-
-                if (preWarmTask is not null)
-                {
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
-                }
-                else
+                if (preWarmTask is null)
                 {
                     // Even though we skip prewarming we still need to ensure the caches are cleared
                     CacheType result = preWarmer?.ClearCaches() ?? default;
@@ -133,10 +131,11 @@ public class BranchProcessor(
                     {
                         if (_logger.IsWarn) _logger.Warn($"Low txs, caches {result} are not empty. Clearing them.");
                     }
-                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
                 }
 
-                // Block is processed, we can cancel background tasks
+                (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+
+                // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
 
                 processedBlocks[i] = processedBlock;
@@ -190,6 +189,7 @@ public class BranchProcessor(
         }
         finally
         {
+            blockProcessor.TransactionsExecuted -= CancelBackgroundWork;
             worldStateCloser?.Dispose();
         }
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security;
 using System.Text.Json.Serialization;
@@ -9,7 +10,6 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -25,70 +25,40 @@ namespace Ethereum.KeyStore.Test
     {
         private IKeyStore _store;
         private IJsonSerializer _serializer;
-        private IKeyStoreConfig _config;
         private ICryptoRandom _cryptoRandom;
-        private string _keyStoreDir;
-        private KeyStoreTestsModel _testsModel;
+        private Dictionary<string, KeyStoreTestModel> _testsModel;
 
         [SetUp]
         public void Initialize()
         {
-            _config = new KeyStoreConfig();
-            _config.KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory;
+            IKeyStoreConfig config = new KeyStoreConfig
+            {
+                KeyStoreDirectory = TestContext.CurrentContext.WorkDirectory
+            };
 
-            _keyStoreDir = _config.KeyStoreDirectory;
-            if (!Directory.Exists(_keyStoreDir))
-                Directory.CreateDirectory(_keyStoreDir);
+            if (!Directory.Exists(config.KeyStoreDirectory))
+                Directory.CreateDirectory(config.KeyStoreDirectory);
 
             ILogManager logManager = LimboLogs.Instance;
             _serializer = new EthereumJsonSerializer();
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_config, _serializer, new AesEncrypter(_config, logManager), _cryptoRandom, logManager, new PrivateKeyStoreIOSettingsProvider(_config));
+            _store = new FileKeyStore(config, _serializer, new AesEncrypter(config, logManager), _cryptoRandom, logManager, new PrivateKeyStoreIOSettingsProvider(config));
 
             var testsContent = File.ReadAllText("basic_tests.json");
-            _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);
+            _testsModel = _serializer.Deserialize<Dictionary<string, KeyStoreTestModel>>(testsContent);
         }
 
         [TearDown]
         public void TearDown() => _cryptoRandom?.Dispose();
 
-        [Test]
-        public void Test1Test()
+        [TestCase("test1")]
+        [TestCase("test2")]
+        [TestCase("python_generated_test_with_odd_iv")]
+        [TestCase("evilnonce")]
+        [TestCase("mycrypto")]
+        public void Test(string testName)
         {
-            var testModel = _testsModel.Test1;
-            RunTest(testModel);
-        }
-
-        [Test]
-        public void Test2Test()
-        {
-            var testModel = _testsModel.Test2;
-            RunTest(testModel);
-        }
-
-        [Test]
-        public void OddIvTest()
-        {
-            var testModel = _testsModel.Python_generated_test_with_odd_iv;
-            RunTest(testModel);
-        }
-
-        [Test]
-        public void EvilNonceTest()
-        {
-            var testModel = _testsModel.EvilNonce;
-            RunTest(testModel);
-        }
-
-        [Test]
-        public void MyCryptoTest()
-        {
-            var testModel = _testsModel.MyCrypto;
-            RunTest(testModel);
-        }
-
-        private void RunTest(KeyStoreTestModel testModel)
-        {
+            KeyStoreTestModel testModel = _testsModel[testName];
             testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
             Address address = new Address(testModel.KeyData.Address);
             _store.StoreKey(address, testModel.KeyData);
@@ -102,7 +72,6 @@ namespace Ethereum.KeyStore.Test
 
                 Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
                 Assert.That(key.Address.ToString(false, false), Is.EqualTo(testModel.KeyData.Address));
-
             }
             catch (Exception e)
             {
@@ -116,17 +85,6 @@ namespace Ethereum.KeyStore.Test
             {
                 _store.DeleteKey(address);
             }
-        }
-
-        private class KeyStoreTestsModel
-        {
-            public KeyStoreTestModel Test1 { get; set; }
-            public KeyStoreTestModel Test2 { get; set; }
-            public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
-            public KeyStoreTestModel EvilNonce { get; set; }
-            public KeyStoreTestModel MyCrypto { get; set; }
-
-            public KeyStoreTestModel Sealer0 { get; set; }
         }
 
         private class KeyStoreTestModel

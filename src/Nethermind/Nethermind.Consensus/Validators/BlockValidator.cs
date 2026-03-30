@@ -71,11 +71,12 @@ public class BlockValidator(
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
                ValidateTransactions(block, spec, ref errorMessage) &&
-               ValidateEip4844Fields(block, spec, ref errorMessage) &&
-               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateHeader<TOrphaned>(block, parent, ref errorMessage) &&
+               ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&
-               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage);
+               ValidateEip4844Fields(block, spec, ref errorMessage) &&
+               ValidateWithdrawals(block, spec, validateHashes, ref errorMessage) &&
+               ValidateBlockLevelAccessList(block, spec, ref errorMessage);
     }
 
     private bool ValidateHeader<TOrphaned>(Block block, BlockHeader? parent, ref string? errorMessage)
@@ -212,6 +213,20 @@ public class BlockValidator(
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
+            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
+        if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
+        }
+
         if (receipts.Length != processedBlock.Transactions.Length)
         {
             if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
@@ -337,9 +352,9 @@ public class BlockValidator(
 
         ulong blobGasUsed = BlobGasCalculator.CalculateBlobGas(blobsInBlock);
 
-        if (blobGasUsed > spec.GetMaxBlobGasPerBlock())
+        if (blobGasUsed > spec.GasCosts.MaxBlobGasPerBlock)
         {
-            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GetMaxBlobGasPerBlock(), blobsInBlock, blobGasUsed);
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit(spec.GasCosts.MaxBlobGasPerBlock, blobsInBlock, blobGasUsed);
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }
@@ -381,6 +396,45 @@ public class BlockValidator(
         return true;
     }
 
+    public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
+    {
+        // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
+
+        if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
+        {
+            error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
+
+            return false;
+        }
+
+        if (block.BlockAccessList is not null)
+        {
+            int itemCount = block.BlockAccessList.ItemCount();
+            if (itemCount * GasCostOf.BlockAccessListItem > block.Header.GasLimit)
+            {
+                error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, block.Header.GasLimit);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list item count {itemCount} exceeds block gas limit bound in block {block.ToString(Block.Format.FullHashAndNumber)}.");
+
+                return false;
+            }
+
+            if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
+            {
+                error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.BlockAccessListHash}, got {blockLevelAccessListHash}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+
+    }
+
     private bool ValidateTxRootMatchesTxs(Block block, bool validateHashes, [NotNullWhen(false)] ref string? errorMessage)
     {
         if (validateHashes && !ValidateTxRootMatchesTxs(block.Header, block.Body, out Hash256 txRoot))
@@ -414,6 +468,20 @@ public class BlockValidator(
         }
 
         return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
+    }
+
+    public static bool ValidateBlockLevelAccessListHashMatches(Block block, out Hash256? balRoot)
+    {
+        BlockHeader header = block.Header;
+        if (block.BlockAccessList is null)
+        {
+            balRoot = null;
+            return header.BlockAccessListHash is null;
+        }
+
+        balRoot = new(ValueKeccak.Compute(block.EncodedBlockAccessList!).Bytes);
+
+        return balRoot == header.BlockAccessListHash;
     }
 
     private static string Invalid(Block block) => $"Invalid block {block.ToString(Block.Format.FullHashAndNumber)}:";

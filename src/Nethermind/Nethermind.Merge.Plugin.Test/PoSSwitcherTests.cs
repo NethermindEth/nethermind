@@ -38,7 +38,7 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 expectedTtd = 10;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
             var chainSpec = loader.LoadEmbeddedOrFromFile(path);
 

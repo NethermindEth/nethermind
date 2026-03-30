@@ -1,0 +1,24 @@
+# C# Coding Style
+
+- Follow [CONTRIBUTING.md](../../CONTRIBUTING.md) and the `.editorconfig` rules
+- Prefer the latest C# syntax and conventions
+- Prefer file-scoped namespaces (for existing files, follow their style)
+- Prefer pattern matching and switch expressions over traditional control flow
+- Use `nameof` operator instead of string literals for member references
+- Use `is null` and `is not null` instead of `== null` and `!= null`
+- Use `?.` null-conditional operator where applicable
+- Use `ArgumentNullException.ThrowIfNull` for null checks
+- Use `ObjectDisposedException.ThrowIf` for disposal checks
+- Use documentation comments with proper structure (`<summary>`, `<param>`, `<returns>`) for all public APIs
+- Avoid `var` — spell out types (exception: very long nested generic types)
+- Prefer low-allocation code patterns
+- Use `Array.Empty<T>()` or `[]` instead of `new T[0]` — avoids allocating a new empty array each time. In attribute arguments (e.g. `[Attr(new string[0])]`), `new T[0]` is acceptable because `Array.Empty<T>()` is not a compile-time constant.
+- Consider performance implications in high-throughput paths
+- **No LINQ** when a simple `for`/`foreach` works — use LINQ only for complex queries
+- Trust null annotations, don't add redundant null checks
+- Code comments explain _why_, not _what_ — a comment that contradicts the code is worse than no comment; fix or remove it
+- Non-obvious consensus rules or algorithms must reference the EIP number or Yellow Paper section
+- Config keys must document their units and defaults in XML docs (e.g. is it milliseconds or seconds?)
+- Follow DRY — extract repeated blocks (5+ lines) into shared methods, but don't over-extract trivial one-liners
+- In generic types, move methods that don't depend on the type parameter to a non-generic base class or static helper to avoid redundant JIT instantiations per closed type
+- Do not use `#region` / `#endregion`

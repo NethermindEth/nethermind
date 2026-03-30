@@ -112,6 +112,19 @@ public class MessageDictionaryTests
         response.Received().Dispose();
     }
 
+    [Test]
+    public void Handle_disposes_tuple_disposable_component_on_unmatched_request()
+    {
+        MessageDictionary<Eth66Message<GetBlockHeadersMessage>, (IDisposable, long)> dictionary = new(_ => { });
+        IDisposable inner = Substitute.For<IDisposable>();
+
+        dictionary.Invoking(d => d.Handle(9999, (inner, 100L), 100))
+            .Should()
+            .Throw<SubprotocolException>();
+
+        inner.Received().Dispose();
+    }
+
     private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)
     {
         Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> request =

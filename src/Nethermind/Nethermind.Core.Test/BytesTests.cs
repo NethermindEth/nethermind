@@ -19,11 +19,11 @@ namespace Nethermind.Core.Test
     {
         [TestCase("0x", "0x", 0)]
         [TestCase(null, null, 0)]
-        [TestCase(null, "0x", 1)]
-        [TestCase("0x", null, -1)]
+        [TestCase(null, "0x", -1)]
+        [TestCase("0x", null, 1)]
         [TestCase("0x01", "0x01", 0)]
-        [TestCase("0x01", "0x0102", 1)]
-        [TestCase("0x0102", "0x01", -1)]
+        [TestCase("0x01", "0x0102", -1)]
+        [TestCase("0x0102", "0x01", 1)]
         public void Compares_bytes_properly(string? hexString1, string? hexString2, int expectedResult)
         {
             IComparer<byte[]> comparer = Bytes.Comparer;
@@ -373,6 +373,83 @@ namespace Nethermind.Core.Test
             }
         }
 
+        [TestCase("0x", 0L)]
+        [TestCase("0x00", 0L)]
+        [TestCase("0x0000", 0L)]
+        [TestCase("0x0000000000000000", 0L)]
+        [TestCase("0x000000000000000000", 0L)] // >8 but all prefix zeros -> still 0
+        [TestCase("0x01", 1L)]
+        [TestCase("0x7f", 127L)]
+        [TestCase("0x80", 128L)]
+        [TestCase("0xff", 255L)]
+        // Leading zeros (any length)
+        [TestCase("0x0001", 1L)]
+        [TestCase("0x0000000000000001", 1L)]
+        [TestCase("0x00000000000000000000000000000001", 1L)]
+        // 2-7 bytes (never overflow long)
+        [TestCase("0x0100", 256L)]
+        [TestCase("0x7fff", 32767L)]
+        [TestCase("0x8000", 32768L)]
+        [TestCase("0xffffff", 16777215L)]
+        [TestCase("0x01000000", 16777216L)]
+        [TestCase("0x7fffffffffff", 140737488355327L)] // 6 bytes
+        [TestCase("0xffffffffffffff", 72057594037927935L)] // 7 bytes
+        // Exactly 8 bytes - valid only if top bit is 0
+        [TestCase("0x0000000000000000", 0L)]
+        [TestCase("0x0000000000000001", 1L)]
+        [TestCase("0x00000000ffffffff", 4294967295L)]
+        [TestCase("0x7fffffffffffffff", long.MaxValue)] // boundary
+        // >8 bytes with zero-prefix then 8-byte tail
+        [TestCase("0x00000000000000007fffffffffffffff", long.MaxValue)]
+        [TestCase("0x000000000000000000000000000000007fffffffffffffff", long.MaxValue)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000000001", 1L)]
+        public void ToPositiveLong_Success(string hex, long expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+            Assert.That(bytes.AsSpan().ToPositiveLong(), Is.EqualTo(expected));
+            Assert.That(new ReadOnlySpan<byte>(bytes).ToPositiveLong(), Is.EqualTo(expected));
+        }
+
+        [TestCase("0x8000000000000000")] // 8 bytes, top bit set (== 2^63)
+        [TestCase("0xffffffffffffffff")] // 8 bytes, top bit set
+        [TestCase("0x010000000000000000")] // 9 bytes, prefix non-zero (>= 2^64)
+        [TestCase("0x00000000000000008000000000000000")] // >8, prefix zeros but tail top bit set
+        [TestCase("0x0000000000000000ffffffffffffffff")] // >8, prefix zeros but tail top bit set
+        [TestCase("0x000000000000000000000000000000008000000000000000")] // lots of leading zeros then overflow tail
+        public void ToPositiveLong_Overflow(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.Throws<OverflowException>(() => bytes.ToPositiveLong());
+            Assert.Throws<OverflowException>(() => bytes.AsSpan().ToPositiveLong());
+            Assert.Throws<OverflowException>(() => new ReadOnlySpan<byte>(bytes).ToPositiveLong());
+        }
+
+        // "Prefix non-zero but tail small" should still overflow (value has >64 bits)
+        [TestCase("0x010000000000000001")] // prefix 0x01 then tail 1 - still huge
+        [TestCase("0x0001ffffffffffffffff")] // prefix contains non-zero (0x01) before last 8 bytes
+        [TestCase("0x00ff0000000000000001")] // prefix has 0xff, tail 1
+        public void ToPositiveLong_PrefixNonZero_Overflow(string hex)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+
+            Assert.Throws<OverflowException>(() => bytes.ToPositiveLong());
+        }
+
+        // Some sanity checks for equivalence with BigInteger path on random-ish patterns.
+        // (Not "exhaustive", but good at catching endian mistakes.)
+        [TestCase("0x0123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x000123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x00000000000000000123456789abcdef", 0x0123456789abcdefL)]
+        [TestCase("0x000000000000000000000000000000000000000000000000000123456789abcdef", 0x0123456789abcdefL)]
+        public void ToPositiveLong_EndiannessAndLeadingZeros(string hex, long expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hex);
+            Assert.That(bytes.ToPositiveLong(), Is.EqualTo(expected));
+        }
+
         public static IEnumerable<TestCaseData> BitwiseTests
         {
             get
@@ -466,6 +543,259 @@ namespace Nethermind.Core.Test
         public void NullableComparison()
         {
             Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
+        }
+
+        [Test]
+        public void FastHash_EmptyInput_ReturnsZero()
+        {
+            ReadOnlySpan<byte> empty = ReadOnlySpan<byte>.Empty;
+            empty.FastHash().Should().Be(0);
+        }
+
+        [Test]
+        public void FastHash_SameInput_ReturnsSameHash()
+        {
+            byte[] input = new byte[100];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int hash1 = ((ReadOnlySpan<byte>)input).FastHash();
+            int hash2 = ((ReadOnlySpan<byte>)input).FastHash();
+
+            hash1.Should().Be(hash2);
+        }
+
+        [Test]
+        public void FastHash_DifferentInput_ReturnsDifferentHash()
+        {
+            byte[] input1 = new byte[100];
+            byte[] input2 = new byte[100];
+            TestContext.CurrentContext.Random.NextBytes(input1);
+            Array.Copy(input1, input2, input1.Length);
+            input2[50] ^= 0xFF; // Flip bits at position 50
+
+            int hash1 = ((ReadOnlySpan<byte>)input1).FastHash();
+            int hash2 = ((ReadOnlySpan<byte>)input2).FastHash();
+
+            hash1.Should().NotBe(hash2);
+        }
+
+        // Test cases for the fold-back bug fix: remaining in [49-63] after 64-byte initial load
+        // For len=113 to 127, remaining = len-64 = 49 to 63, which requires the last64 fold-back
+        [TestCase(113)] // remaining=49, boundary case for last64
+        [TestCase(120)] // remaining=56, middle of the gap range
+        [TestCase(127)] // remaining=63, upper boundary
+        [TestCase(65)]  // remaining=1, lower boundary for >64 path
+        [TestCase(80)]  // remaining=16
+        [TestCase(96)]  // remaining=32
+        [TestCase(112)] // remaining=48, boundary where last64 is NOT needed
+        public void FastHash_AllBytesAreHashed_FoldBackCoverage(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Verify that changing any byte changes the hash
+            // This catches the gap bug where bytes[64-71] weren't being hashed
+            for (int i = 0; i < length; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        // Specifically test the gap range that was buggy: bytes[64-71] for len=120
+        [Test]
+        public void FastHash_GapBytesAreHashed_Len120()
+        {
+            byte[] input = new byte[120];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // The bug was that bytes[64-71] weren't hashed for len=120
+            // Test each byte in the gap
+            for (int i = 64; i < 72; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} (in gap range) should change the hash");
+            }
+        }
+
+        // Test medium-large case (33-64 bytes) with overlap to verify it works
+        [TestCase(50)] // Tests overlap in medium-large path
+        public void FastHash_MediumLarge_AllBytesContribute(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Test ALL bytes to verify overlap handling works
+            for (int i = 0; i < length; i++)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        [TestCase(1)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(15)]
+        [TestCase(16)]
+        [TestCase(31)]
+        [TestCase(32)]
+        [TestCase(33)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(500)]
+        public void FastHash_VariousLengths_AllBytesContribute(int length)
+        {
+            byte[] input = new byte[length];
+            TestContext.CurrentContext.Random.NextBytes(input);
+
+            int originalHash = ((ReadOnlySpan<byte>)input).FastHash();
+
+            // Test first, middle, and last bytes to ensure all contribute
+            int[] indicesToTest = [0, length / 2, length - 1];
+            foreach (int i in indicesToTest)
+            {
+                byte[] modified = (byte[])input.Clone();
+                modified[i] ^= 0xFF;
+
+                int modifiedHash = ((ReadOnlySpan<byte>)modified).FastHash();
+                modifiedHash.Should().NotBe(originalHash, $"Changing byte at index {i} should change the hash for length {length}");
+            }
+        }
+
+        [TestCase(1, 1000u, 2000u)]
+        [TestCase(8, 1000u, 2000u)]
+        [TestCase(16, 1000u, 2000u)]
+        [TestCase(16, 0u, 1u)]
+        [TestCase(16, 0u, 0xFFFFFFFFu)]
+        [TestCase(20, 1000u, 2000u)]
+        [TestCase(32, 1000u, 2000u)]
+        [TestCase(33, 1000u, 2000u)]
+        [TestCase(64, 1000u, 2000u)]
+        [TestCase(65, 1000u, 2000u)]
+        [TestCase(71, 1000u, 2000u)]
+        [TestCase(79, 1000u, 2000u)]
+        [TestCase(80, 1000u, 2000u)]
+        [TestCase(128, 1000u, 2000u)]
+        public void FastHash_SeedAffectsOutput(int length, uint seed1, uint seed2)
+        {
+            byte[] input = new byte[length];
+            for (int i = 0; i < length; i++)
+                input[i] = (byte)(i * 0x17 + 0x42);
+
+            SpanExtensions.FastHash(input, seed1).Should()
+                .NotBe(SpanExtensions.FastHash(input, seed2),
+                    $"seeds {seed1} vs {seed2} for {length} bytes");
+        }
+
+        // ── CountZeros edge-case tests ──
+
+        /// <summary>
+        /// Validates CountZeros against a naive scalar count for sizes that exercise
+        /// every codepath boundary: exact multiples of Vector128 (16), Vector256 (32),
+        /// Vector512 (64), non-multiples with tails, and sizes below SIMD thresholds.
+        /// </summary>
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(7)]
+        [TestCase(8)]
+        [TestCase(15)]
+        [TestCase(16)] // Exactly one Vector128
+        [TestCase(17)] // One Vector128 + 1-byte scalar tail
+        [TestCase(20)] // One Vector128 + 4-byte tail
+        [TestCase(24)]
+        [TestCase(31)]
+        [TestCase(32)] // Exactly two Vector128 (or one Vector256 on x86)
+        [TestCase(33)]
+        [TestCase(48)] // Exactly three Vector128
+        [TestCase(64)] // Exactly four Vector128 (or one Vector512 on x86)
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(1024)]
+        public void CountZeros_matches_naive_for_all_sizes(int length)
+        {
+            Random rng = new(42);
+            byte[] data = new byte[length];
+            for (int i = 0; i < length; i++)
+            {
+                int roll = rng.Next(10);
+                data[i] = roll < 3 ? (byte)0 : roll < 6 ? (byte)1 : (byte)rng.Next(2, 256);
+            }
+
+            int expected = 0;
+            foreach (var t in data)
+            {
+                if (t == 0) expected++;
+            }
+
+            data.AsSpan().CountZeros().Should().Be(expected);
+        }
+
+        /// <summary>
+        /// All-zero input at exact vector-width boundaries — every byte should be counted.
+        /// Catches off-by-one bugs where the last SIMD chunk is skipped.
+        /// </summary>
+        [TestCase(16)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(512)]
+        public void CountZeros_all_zeros_exact_vector_multiples(int length)
+        {
+            byte[] data = new byte[length];
+            data.AsSpan().CountZeros().Should().Be(length);
+        }
+
+        /// <summary>
+        /// All non-zero input — result should be zero. Ensures no false positives
+        /// from SIMD comparison logic.
+        /// </summary>
+        [TestCase(16)]
+        [TestCase(32)]
+        [TestCase(64)]
+        [TestCase(128)]
+        [TestCase(256)]
+        [TestCase(512)]
+        public void CountZeros_no_zeros(int length)
+        {
+            byte[] data = new byte[length];
+            Array.Fill(data, (byte)0xFF);
+            data.AsSpan().CountZeros().Should().Be(0);
+        }
+
+        /// <summary>
+        /// Single zero at each position in a 32-byte buffer — verifies every lane
+        /// of the SIMD comparison is working. On x86 with AVX2, 32 bytes = one
+        /// Vector256 iteration; on ARM, two Vector128 iterations.
+        /// </summary>
+        [Test]
+        public void CountZeros_single_zero_per_position()
+        {
+            for (int pos = 0; pos < 32; pos++)
+            {
+                byte[] data = new byte[32];
+                Array.Fill(data, (byte)0xFF);
+                data[pos] = 0;
+                data.AsSpan().CountZeros().Should().Be(1,
+                    $"single zero at position {pos} should be counted");
+            }
         }
     }
 }

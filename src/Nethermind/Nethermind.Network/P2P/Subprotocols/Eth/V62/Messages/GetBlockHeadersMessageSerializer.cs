@@ -10,11 +10,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
     public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
     {
-        public static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+        private static readonly RlpLimit StartBlockRlpLimit = RlpLimit.For<GetBlockHeadersMessage>(Hash256.Size, nameof(GetBlockHeadersMessage.StartBlockHash));
+
+        public static GetBlockHeadersMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetBlockHeadersMessage message = new();
-            rlpStream.ReadSequenceLength();
-            byte[] startingBytes = rlpStream.DecodeByteArray();
+            ctx.ReadSequenceLength();
+            byte[] startingBytes = ctx.DecodeByteArray(StartBlockRlpLimit);
             if (startingBytes.Length == Hash256.Size)
             {
                 message.StartBlockHash = new Hash256(startingBytes);
@@ -24,9 +26,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 message.StartBlockNumber = (long)new UInt256(startingBytes, true);
             }
 
-            message.MaxHeaders = rlpStream.DecodeInt();
-            message.Skip = rlpStream.DecodeInt();
-            message.Reverse = rlpStream.DecodeByte();
+            message.MaxHeaders = ctx.DecodeInt();
+            message.Skip = ctx.DecodeInt();
+            message.Reverse = ctx.DecodeByte();
             return message;
         }
 
@@ -51,11 +53,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.Reverse);
         }
 
-        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            return Deserialize(rlpStream);
-        }
+        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
 
         public int GetLength(GetBlockHeadersMessage message, out int contentLength)
         {

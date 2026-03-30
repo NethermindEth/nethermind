@@ -10,27 +10,27 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public sealed class NetworkNodeDecoder : RlpStreamDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
+    public sealed class NetworkNodeDecoder : RlpValueDecoder<NetworkNode>, IRlpObjectDecoder<NetworkNode>
     {
-        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB(), nameof(NetworkNode.HostIp));
+        private static readonly RlpLimit RlpLimit = RlpLimit.For<NetworkNode>((int)1.KiB, nameof(NetworkNode.HostIp));
 
         static NetworkNodeDecoder()
         {
             Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
         }
 
-        protected override NetworkNode DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override NetworkNode DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            rlpStream.ReadSequenceLength();
+            decoderContext.ReadSequenceLength();
 
-            PublicKey publicKey = new(rlpStream.DecodeByteArraySpan(RlpLimit.L64));
-            string ip = rlpStream.DecodeString(RlpLimit);
-            int port = (int)rlpStream.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
-            rlpStream.SkipItem();
+            PublicKey publicKey = new(decoderContext.DecodeByteArraySpan(RlpLimit.L64));
+            string ip = decoderContext.DecodeString(RlpLimit);
+            int port = (int)decoderContext.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
+            decoderContext.SkipItem();
             long reputation = 0L;
             try
             {
-                reputation = rlpStream.DecodeLong();
+                reputation = decoderContext.DecodeLong();
             }
             catch (RlpException)
             {

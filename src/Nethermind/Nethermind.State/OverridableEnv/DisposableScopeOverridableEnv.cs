@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.State.OverridableEnv;
@@ -21,7 +20,7 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader header, Dictionary<Address, AccountOverride>? stateOverride = null)
+    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null)
     {
         IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride);
         return new Scope<T>(resolvedComponents, disposable);

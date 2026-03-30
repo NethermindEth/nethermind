@@ -73,6 +73,8 @@ public class WorldStateModule(IInitConfig initConfig) : Module
 
             // Most config actually done in factory. We just call `Build` and then get back components from its output.
             .AddSingleton<MainPruningTrieStoreFactory>() // This part is done separately so that triestore can be obtained in test.
+            .AddSingleton<IReadOnlyTrieStore>(ctx =>
+                ctx.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.AsReadOnly())
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 

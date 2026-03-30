@@ -128,11 +128,14 @@ namespace Nethermind.State.Proofs
             _accountProof.Proof = _accountProofItems.ToArray();
             for (int i = 0; i < _storageProofItems.Length; i++)
             {
-                _accountProof.StorageProofs[i].Proof = _storageProofItems[i].ToArray();
+                _accountProof.StorageProofs![i].Proof = _storageProofItems[i].ToArray();
             }
 
             return _accountProof;
         }
+
+        public (IReadOnlyList<byte[]> AccountProof, IReadOnlyList<byte[]>[] StorageProof) GetRawResult()
+            => (_accountProofItems, _storageProofItems);
 
         public bool IsFullDbScan => false;
 
@@ -261,13 +264,14 @@ namespace Nethermind.State.Proofs
                     bool isPathMatched = IsPathMatched(node, thisStoragePath);
                     if (isPathMatched)
                     {
-                        _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value.ToArray()).DecodeByteArray();
+                        _accountProof.StorageProofs[storageIndex].Value = new Rlp.ValueDecoderContext(node.Value.ToArray()).DecodeByteArray();
                     }
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new RlpStream(node.Value.ToArray()));
+                Rlp.ValueDecoderContext ctx = new(node.Value.ToArray());
+                Account account = _accountDecoder.Decode(ref ctx);
                 bool isPathMatched = IsPathMatched(node, _fullAccountPath);
                 if (isPathMatched)
                 {

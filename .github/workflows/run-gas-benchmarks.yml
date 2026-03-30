@@ -1,0 +1,258 @@
+name: Execute Gas benchmarks
+
+on:
+  pull_request:
+    branches: [master]
+    types: [labeled]
+    paths: [src/Nethermind/**]
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Number of benchmark runs
+        required: false
+        default: "1"
+      testPath:
+        description: Path to test files
+        required: false
+        default: "eest_tests"
+      genesisFile:
+        description: Genesis file to use
+        required: false
+        default: "zkevmgenesis.json"
+      warmupFile:
+        description: Warmup file path
+        required: false
+        default: "warmup/warmup-1000bl-16wi-24tx.txt"
+      clients:
+        description: Comma-separated list of clients to test
+        required: false
+        default: "nethermind"
+      filter:
+        description: Test filter pattern
+        required: false
+        default: ""
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  resolve-inputs:
+    runs-on: ubuntu-slim
+    outputs:
+      should-run: ${{ steps.resolve.outputs.should-run }}
+      runs: ${{ steps.resolve.outputs.runs }}
+      testPath: ${{ steps.resolve.outputs.testPath }}
+      genesisFile: ${{ steps.resolve.outputs.genesisFile }}
+      warmupFile: ${{ steps.resolve.outputs.warmupFile }}
+      clients: ${{ steps.resolve.outputs.clients }}
+      filter: ${{ steps.resolve.outputs.filter }}
+    steps:
+      - name: Resolve workflow inputs
+        id: resolve
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LABEL_NAME: ${{ github.event.label.name }}
+          DISPATCH_RUNS: ${{ inputs.runs }}
+          DISPATCH_TEST_PATH: ${{ inputs.testPath }}
+          DISPATCH_GENESIS_FILE: ${{ inputs.genesisFile }}
+          DISPATCH_WARMUP_FILE: ${{ inputs.warmupFile }}
+          DISPATCH_CLIENTS: ${{ inputs.clients }}
+          DISPATCH_FILTER: ${{ inputs.filter }}
+        run: |
+          set -euo pipefail
+
+          should_run="true"
+          runs="1"
+          testPath="eest_tests"
+          genesisFile="zkevmgenesis.json"
+          warmupFile="warmup/warmup-1000bl-16wi-24tx.txt"
+          clients="nethermind"
+          filter=""
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            runs="${DISPATCH_RUNS:-1}"
+            testPath="${DISPATCH_TEST_PATH:-eest_tests}"
+            genesisFile="${DISPATCH_GENESIS_FILE:-zkevmgenesis.json}"
+            warmupFile="${DISPATCH_WARMUP_FILE:-warmup/warmup-1000bl-16wi-24tx.txt}"
+            clients="${DISPATCH_CLIENTS:-nethermind}"
+            filter="${DISPATCH_FILTER:-}"
+          elif [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            label="${LABEL_NAME:-}"
+
+            # Only accept labels in the format: gasbench[-<comma-separated-filters>]
+            if [[ "${label}" == "gasbench" ]]; then
+              filter=""
+            elif [[ "${label}" == gasbench-* ]]; then
+              suffix="${label#gasbench-}"
+              if [[ -z "${suffix}" ]]; then
+                filter=""
+              elif [[ "${suffix}" =~ ^[A-Za-z0-9_.-]+(,[A-Za-z0-9_.-]+)*$ ]]; then
+                filter="${suffix}"
+              else
+                should_run="false"
+              fi
+            else
+              should_run="false"
+            fi
+          fi
+
+          {
+            echo "should-run=${should_run}"
+            echo "runs=${runs}"
+            echo "testPath=${testPath}"
+            echo "genesisFile=${genesisFile}"
+            echo "warmupFile=${warmupFile}"
+            echo "clients=${clients}"
+            echo "filter=${filter}"
+          } >> "${GITHUB_OUTPUT}"
+
+  publish-docker:
+    needs: [resolve-inputs]
+    if: needs.resolve-inputs.outputs.should-run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      image-label: ${{ steps.publish-docker.outputs.image-label }}
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Publish Docker image
+        id: publish-docker
+        uses: ./.github/actions/publish-docker
+        with:
+          image-name: "nethermind"
+          tag: ""
+          dockerfile: "Dockerfile"
+          build-config: "release"
+          docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+  setup:
+    needs: [resolve-inputs]
+    if: needs.resolve-inputs.outputs.should-run == 'true'
+    runs-on: ubuntu-slim
+    outputs:
+      runner-name: ${{ steps.setup-runner.outputs.runner-name }}
+      machine-ip: ${{ steps.setup-runner.outputs.machine-ip }}
+      run-id: ${{ steps.setup-runner.outputs.run-id }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Setup self-hosted runner
+        id: setup-runner
+        uses: ./.github/actions/setup-runner
+        with:
+          gh-token: ${{ steps.gh-app.outputs.token }}
+          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
+          gh-username: ${{ github.actor }}
+          runner-name: "gas-benchmark"
+          runner-type: g6-standard-2
+          timeout: "5"
+          setup-wait-time: "120"
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+  gas-benchmark:
+    needs:
+      - resolve-inputs
+      - setup
+      - publish-docker
+    if: needs.resolve-inputs.outputs.should-run == 'true'
+    runs-on: ${{ needs.setup.outputs.runner-name }}
+    timeout-minutes: 360
+    env:
+      HOME: /root
+      GAS_BENCHMARK_RUNS: "${{ needs.resolve-inputs.outputs.runs }}"
+      GAS_BENCHMARK_TEST_PATH: "${{ needs.resolve-inputs.outputs.testPath }}"
+      GAS_BENCHMARK_GENESIS_FILE: "${{ needs.resolve-inputs.outputs.genesisFile }}"
+      GAS_BENCHMARK_WARMUP_FILE: "${{ needs.resolve-inputs.outputs.warmupFile }}"
+      GAS_BENCHMARK_CLIENTS: "${{ needs.resolve-inputs.outputs.clients }}"
+      GAS_BENCHMARK_FILTER: "${{ needs.resolve-inputs.outputs.filter }}"
+    steps:
+      - name: Checkout Gas Benchmarks
+        uses: actions/checkout@v6
+        with:
+          repository: NethermindEth/gas-benchmarks
+          ref: main
+          lfs: true
+
+      - name: Set up Docker
+        uses: docker/setup-docker-action@v4
+
+      - name: Run gas-benchmarks composite action
+        uses: ./.github/actions/gas-benchmark-action
+        with:
+          # Benchmark configuration (all optional, with sensible defaults)
+          testPath: ${{ env.GAS_BENCHMARK_TEST_PATH }}
+          genesisFile: ${{ env.GAS_BENCHMARK_GENESIS_FILE }}
+          warmupFile: ${{ env.GAS_BENCHMARK_WARMUP_FILE }}
+          clients: ${{ env.GAS_BENCHMARK_CLIENTS }}
+          runs: ${{ env.GAS_BENCHMARK_RUNS }}
+          opcodeWarmupCount: "1"
+          filter: ${{ env.GAS_BENCHMARK_FILTER }}
+          images: '{"nethermind":"${{ needs.publish-docker.outputs.image-label }}","geth":"default","reth":"default","erigon":"default","besu":"default","nimbus":"default","ethrex":"default"}'
+
+          # PostgreSQL target (no DB is provisioned by this workflow)
+          postgresHost: ${{ secrets.GAS_BENCHMARKS_DB_HOST }}
+          postgresPort: ${{ secrets.GAS_BENCHMARKS_DB_PORT }}
+          postgresDbName: ${{ secrets.GAS_BENCHMARKS_DB_NAME }}
+          postgresTable: ${{ secrets.GAS_BENCHMARKS_DB_TABLE }}
+          postgresUser: ${{ secrets.GAS_BENCHMARKS_DB_USER }}
+          postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
+
+  cleanup:
+    needs: [resolve-inputs, setup, gas-benchmark]
+    if: always() && needs.resolve-inputs.outputs.should-run == 'true'
+    runs-on: ubuntu-slim
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Remove self-hosted runner
+        uses: ./.github/actions/remove-runner
+        with:
+          gh-token: ${{ steps.gh-app.outputs.token }}
+          gh-runner-token: ${{ steps.gh-admin-app.outputs.token }}
+          runner-name: ${{ needs.setup.outputs.runner-name }}
+          workflow-run-id: ${{ needs.setup.outputs.run-id }}

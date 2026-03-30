@@ -85,11 +85,22 @@ namespace Nethermind.Hive
                 "HIVE_CHAIN_ID", "HIVE_BOOTNODE", "HIVE_TESTNET", "HIVE_NODETYPE", "HIVE_FORK_HOMESTEAD",
                 "HIVE_FORK_DAO_BLOCK", "HIVE_FORK_DAO_VOTE", "HIVE_FORK_TANGERINE", "HIVE_FORK_SPURIOUS",
                 "HIVE_FORK_METROPOLIS", "HIVE_FORK_BYZANTIUM", "HIVE_FORK_CONSTANTINOPLE", "HIVE_FORK_PETERSBURG",
-                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON"
+                "HIVE_MINER", "HIVE_MINER_EXTRA", "HIVE_FORK_BERLIN", "HIVE_FORK_LONDON",
+                "HIVE_MERGE_BLOCK_ID", "HIVE_SHANGHAI_TIMESTAMP", "HIVE_CANCUN_TIMESTAMP",
+                "HIVE_CANCUN_BLOB_TARGET", "HIVE_CANCUN_BLOB_MAX", "HIVE_CANCUN_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_PRAGUE_TIMESTAMP", "HIVE_PRAGUE_BLOB_TARGET", "HIVE_PRAGUE_BLOB_MAX",
+                "HIVE_PRAGUE_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_OSAKA_TIMESTAMP", "HIVE_OSAKA_BLOB_TARGET",
+                "HIVE_OSAKA_BLOB_MAX", "HIVE_OSAKA_BLOB_BASE_FEE_UPDATE_FRACTION", "HIVE_AMSTERDAM_TIMESTAMP",
+                "HIVE_AMSTERDAM_BLOB_TARGET", "HIVE_AMSTERDAM_BLOB_MAX", "HIVE_AMSTERDAM_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO1_TIMESTAMP", "HIVE_BPO1_BLOB_TARGET", "HIVE_BPO1_BLOB_MAX", "HIVE_BPO1_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO2_TIMESTAMP", "HIVE_BPO2_BLOB_TARGET", "HIVE_BPO2_BLOB_MAX", "HIVE_BPO2_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO3_TIMESTAMP", "HIVE_BPO3_BLOB_TARGET", "HIVE_BPO3_BLOB_MAX", "HIVE_BPO3_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO4_TIMESTAMP", "HIVE_BPO4_BLOB_TARGET", "HIVE_BPO4_BLOB_MAX", "HIVE_BPO4_BLOB_BASE_FEE_UPDATE_FRACTION",
+                "HIVE_BPO5_TIMESTAMP", "HIVE_BPO5_BLOB_TARGET", "HIVE_BPO5_BLOB_MAX", "HIVE_BPO5_BLOB_BASE_FEE_UPDATE_FRACTION"
             };
             foreach (string variableName in variableNames)
             {
-                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
+                if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName) ?? "null"}");
             }
         }
 
@@ -143,14 +154,14 @@ namespace Nethermind.Hive
             }
 
             byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
-            RlpStream rlpStream = new RlpStream(chainFileContent);
+            Rlp.ValueDecoderContext rlpContext = new(chainFileContent);
             List<Block> blocks = new List<Block>();
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (rlpStream.PeekNumberOfItemsRemaining() > 0)
+            while (rlpContext.PeekNumberOfItemsRemaining() > 0)
             {
-                rlpStream.PeekNextItem();
-                Block block = Rlp.Decode<Block>(rlpStream, RlpBehaviors.AllowExtraBytes);
+                rlpContext.PeekNextItem();
+                Block block = Rlp.Decode<Block>(ref rlpContext, RlpBehaviors.AllowExtraBytes);
                 if (_logger.IsInfo)
                     _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
                 blocks.Add(block);

@@ -36,13 +36,15 @@ namespace Nethermind.Network.Rlpx.Handshake
             stream.Encode(msg.Version);
         }
 
-        public AckEip8Message Deserialize(IByteBuffer msgBytes)
+        public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
+            msgBytes.DeserializeRlp(Deserialize);
+
+        private static AckEip8Message Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream rlpStream = new(msgBytes);
             AckEip8Message authEip8Message = new();
-            rlpStream.ReadSequenceLength();
-            authEip8Message.EphemeralPublicKey = new PublicKey(rlpStream.DecodeByteArraySpan(RlpLimit.L64));
-            authEip8Message.Nonce = rlpStream.DecodeByteArray();
+            ctx.ReadSequenceLength();
+            authEip8Message.EphemeralPublicKey = new PublicKey(ctx.DecodeByteArraySpan(RlpLimit.L64));
+            authEip8Message.Nonce = ctx.DecodeByteArray();
             return authEip8Message;
         }
     }

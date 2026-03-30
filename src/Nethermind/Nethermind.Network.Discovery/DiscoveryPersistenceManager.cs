@@ -57,7 +57,7 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
 
-                if (!_discoveryManager.NodesFilter.Set(networkNode.HostIp))
+                if (!_discoveryManager.ShouldContact(networkNode.HostIp))
                 {
                     // Already seen this node ip recently
                     continue;
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Discovery
         public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-            PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
+            using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
 
             while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
             {

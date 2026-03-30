@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
@@ -15,7 +16,7 @@ namespace Nethermind.Ethash.Test
         [Test]
         public void Calculate_should_returns_expected_results()
         {
-            IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+            IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
             releaseSpec.DifficultyBombDelay.Returns(0);
             releaseSpec.DifficultyBoundDivisor.Returns(2048);
             releaseSpec.IsEip2Enabled.Returns(true);

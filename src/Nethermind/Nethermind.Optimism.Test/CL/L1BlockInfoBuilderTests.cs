@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -314,25 +315,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
+        private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
-            return
-            [
-                new object[]
-                {
-                    new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
+            yield return new TestCaseData(
+                    new double[][] { [20, 40, 60, 80.5], [10, 20, 30, 40] },
                     new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
                     3,
-                    15
-                },
-                new object[]
-                {
-                    new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
-                    new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    15)
+                .SetName("High then low percentiles");
+            yield return new TestCaseData(
+                    new double[][] { [10, 20, 30, 40], [20, 40, 60, 80.5] },
+                    new ulong[][] { [4, 4, 10, 10], [4, 10, 10, 22] },
                     3,
-                    15
-                }
-            ];
+                    15)
+                .SetName("Low then high percentiles");
         }
 
         [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases))]
@@ -344,7 +340,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new((long)0);
             blockTree.FindBlock(newestBlockParameter).Returns(headBlock);
             IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage, cacheSize: cacheSize);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
             while (repetitions-- > 0)
             {
                 for (var i = 0; i < rewardPercentilesArray.Length; i++)
@@ -463,7 +459,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockTree? blockTree = null,
             IReceiptStorage? receiptStorage = null,
             ISpecProvider? specProvider = null,
-            int? cacheSize = null,
             int? maxDistFromHead = null,
             IReleaseSpec? spec = null)
         {
@@ -474,7 +469,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
             else
             {
-                provider = Substitute.For<ISpecProvider>();
+                provider = SpecProviderSubstitute.Create();
                 provider.GetSpec(Arg.Any<ForkActivation>()).BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
                 if (spec is not null)
                 {

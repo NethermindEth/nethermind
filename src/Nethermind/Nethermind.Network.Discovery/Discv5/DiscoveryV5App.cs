@@ -1,10 +1,6 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Diagnostics.CodeAnalysis;
-using System.Net;
-using System.Runtime.CompilerServices;
-using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Transport.Channels;
 using Lantern.Discv5.Enr;
@@ -18,7 +14,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NBitcoin.Secp256k1;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -28,32 +23,48 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using System.Threading.Channels;
+using ENR = Lantern.Discv5.Enr.Enr;
+
+[assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
-public class DiscoveryV5App : IDiscoveryApp
+public sealed class DiscoveryV5App : IDiscoveryApp
 {
+    internal const int MaxPendingEnrsPerWalk = 4_096;
+    internal const int MaxTrackedEnrsPerWalk = MaxPendingEnrsPerWalk * 2;
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
+    private readonly IDb _legacyDiscoveryDb;
+    private readonly ILogManager _logManager;
     private readonly CancellationTokenSource _appShutdownSource = new();
-    private readonly DiscoveryReport? _discoveryReport;
+    private DiscoveryV5Report? _discoveryReport;
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
+    private readonly EnrFactory _enrFactory;
+    private readonly bool _allowNonRoutableEnrs;
+    private readonly RateLimiter _outgoingMessageRateLimiter;
 
     public DiscoveryV5App(
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
-        IIPResolver? ipResolver,
+        IIPResolver ipResolver,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,
-        [KeyFilter(DbNames.DiscoveryNodes)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryV5Nodes)] IDb discoveryDb,
+        [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         ILogManager logManager)
     {
-        ArgumentNullException.ThrowIfNull(ipResolver);
-
         _logger = logManager.GetClassLogger();
         _discoveryDb = discoveryDb;
-
+        _legacyDiscoveryDb = legacyDiscoveryDb;
+        _logManager = logManager;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(ipResolver.ExternalIp);
         IdentityVerifierV4 identityVerifier = new();
 
         PrivateKey privateKey = nodeKey.Unprotect();
@@ -64,34 +75,17 @@ public class DiscoveryV5App : IDiscoveryApp
             SessionKeys = new SessionKeys(privateKey.KeyBytes),
         };
 
-        string[] bootstrapNodes = [.. (discoveryConfig.Bootnodes ?? "").Split(",", StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Distinct()];
-
         IServiceCollection services = new ServiceCollection()
            .AddSingleton<ILoggerFactory, NullLoggerFactory>()
            .AddSingleton(_sessionOptions.Verifier)
            .AddSingleton(_sessionOptions.Signer);
 
-        EnrFactory enrFactory = new(new EnrEntryRegistry());
+        _enrFactory = new EnrFactory(new EnrEntryRegistry());
 
-        Lantern.Discv5.Enr.Enr[] bootstrapEnrs = [
-            .. bootstrapNodes.Where(e => e.StartsWith("enode:"))
-                .Select(e => new Enode(e))
-                .Select(GetEnr),
-            .. bootstrapNodes.Where(e => e.StartsWith("enr:")).Select(enr => enrFactory.CreateFromString(enr, identityVerifier)),
-            // TODO: Move to routing table's UpdateFromEnr
-            .. _discoveryDb.GetAllValues().Select(enr =>
-                {
-                    try
-                    {
-                        return enrFactory.CreateFromBytes(enr, identityVerifier);
-                    }
-                    catch (Exception e)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"unable to decode enr {e}");
-                        return null;
-                    }
-                })
-                .Where(enr => enr != null)!
+        ENR[] bootstrapEnrs = [
+            .. networkConfig.Bootnodes.Select(bn => bn.ToEnr(_sessionOptions.Verifier, _sessionOptions.Signer)),
+            .. discoveryConfig.UseDefaultDiscv5Bootnodes ? GetDefaultDiscv5Bootnodes().Select(ToEnr) : [],
+            .. LoadStoredEnrs(),
             ];
 
         EnrBuilder enrBuilder = new EnrBuilder()
@@ -121,10 +115,25 @@ public class DiscoveryV5App : IDiscoveryApp
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
 
         _serviceProvider = discv5Builder.GetServiceProvider();
-        _discoveryReport = new DiscoveryReport(_discv5Protocol, logManager, _appShutdownSource.Token);
+        _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
     }
+    private static string[] GetDefaultDiscv5Bootnodes() =>
+        JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
 
-    private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
+    private ENR ToEnr(string enrString) => _enrFactory.CreateFromString(enrString, _sessionOptions.Verifier!);
+
+    private ENR ToEnr(byte[] enrBytes) => _enrFactory.CreateFromBytes(enrBytes, _sessionOptions.Verifier!);
+
+    private ENR ToEnr(Node node) => new EnrBuilder()
+        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
+        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
+        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
+        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
+        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
+        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
+        .Build();
+
+    internal bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
     {
         static PublicKey? GetPublicKeyFromEnr(IEnr entry)
         {
@@ -163,6 +172,17 @@ public class DiscoveryV5App : IDiscoveryApp
 
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
+        if (!IsDiscoveryAddressAcceptable(ip, _allowNonRoutableEnrs))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, non-routable IP {ip}.");
+            return false;
+        }
+
+        if ((uint)tcpPort > ushort.MaxValue || tcpPort == 0)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, invalid TCP port {tcpPort}.");
+            return false;
+        }
 
         node = new(key, ip.ToString(), tcpPort)
         {
@@ -171,23 +191,93 @@ public class DiscoveryV5App : IDiscoveryApp
         return true;
     }
 
-    private Lantern.Discv5.Enr.Enr GetEnr(Enode node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.HostIp))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(Context.Instance.CreatePubKey(node.PublicKey.PrefixedBytes).ToBytes(false)))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.DiscoveryPort))
-        .Build();
+    internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)
+    {
+        if (IPAddress.Any.Equals(ipAddress) || IPAddress.IPv6Any.Equals(ipAddress) || IPAddress.Broadcast.Equals(ipAddress))
+        {
+            return false;
+        }
 
-    private Lantern.Discv5.Enr.Enr GetEnr(Node node) => new EnrBuilder()
-        .WithIdentityScheme(_sessionOptions.Verifier!, _sessionOptions.Signer!)
-        .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-        .WithEntry(EnrEntryKey.Ip, new EntryIp(node.Address.Address))
-        .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(node.Id.PrefixedBytes))
-        .WithEntry(EnrEntryKey.Tcp, new EntryTcp(node.Address.Port))
-        .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
-        .Build();
+        if (ipAddress.IsIPv6Multicast || IsIPv4Multicast(ipAddress))
+        {
+            return false;
+        }
+
+        return allowNonRoutable || !NodeFilter.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+    }
+
+    internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
+        => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+
+    private static bool IsIPv4Multicast(IPAddress ipAddress)
+        => NodeFilter.IsIPv4Multicast(ipAddress);
+
+    private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
+        => !IPAddress.Any.Equals(externalIp)
+            && !IPAddress.None.Equals(externalIp)
+            && NodeFilter.IsLoopbackOrPrivateOrLinkLocal(externalIp);
+
+    internal static bool TryEnqueueNewEnr(Queue<IEnr> nodesToCheck, HashSet<IEnr> seenNodes, IEnr enr)
+    {
+        if (seenNodes.Count >= MaxTrackedEnrsPerWalk || nodesToCheck.Count >= MaxPendingEnrsPerWalk || !seenNodes.Add(enr))
+        {
+            return false;
+        }
+
+        nodesToCheck.Enqueue(enr);
+        return true;
+    }
+
+    internal List<ENR> LoadStoredEnrs()
+    {
+        List<ENR> enrs = [.. _discoveryDb.GetAllValues().Select(ToEnr)];
+
+        if (enrs.Count is not 0)
+        {
+            return enrs;
+        }
+
+        IWriteBatch? migrateBatch = null;
+        IWriteBatch? deleteBatch = null;
+
+        try
+        {
+            foreach (KeyValuePair<byte[], byte[]?> kv in _legacyDiscoveryDb.GetAll())
+            {
+                if (kv.Value is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    ENR enr = ToEnr(kv.Value);
+
+                    if (enrs.Count is 0)
+                    {
+                        migrateBatch = _discoveryDb.StartWriteBatch();
+                        deleteBatch = _legacyDiscoveryDb.StartWriteBatch();
+                    }
+
+                    enrs.Add(enr);
+                    migrateBatch![enr.NodeId] = kv.Value;
+                    deleteBatch![kv.Key] = null;
+                }
+                catch
+                {
+                    // The database has enodes only
+                    return [];
+                }
+            }
+        }
+        finally
+        {
+            migrateBatch?.Dispose();
+            deleteBatch?.Dispose();
+        }
+
+        return enrs;
+    }
 
     public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
 
@@ -201,7 +291,10 @@ public class DiscoveryV5App : IDiscoveryApp
     public async Task StartAsync()
     {
         await _discv5Protocol.InitAsync();
+
         if (_logger.IsDebug) _logger.Debug($"Initially discovered {_discv5Protocol.GetActiveNodes.Count()} active peers, {_discv5Protocol.GetAllNodes.Count()} in total.");
+
+        _discoveryReport = new DiscoveryV5Report(_discv5Protocol, _logManager, _appShutdownSource.Token);
     }
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
@@ -235,6 +328,7 @@ public class DiscoveryV5App : IDiscoveryApp
                 }
 
                 Queue<IEnr> nodesToCheck = new(startingNode);
+                HashSet<IEnr> seenNodes = [.. startingNode];
                 HashSet<IEnr> checkedNodes = [];
 
                 while (!token.IsCancellationRequested)
@@ -258,12 +352,10 @@ public class DiscoveryV5App : IDiscoveryApp
                         continue;
                     }
 
+                    await _outgoingMessageRateLimiter.WaitAsync(token);
                     foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
                     {
-                        if (!checkedNodes.Contains(newEnr))
-                        {
-                            nodesToCheck.Enqueue(newEnr);
-                        }
+                        TryEnqueueNewEnr(nodesToCheck, seenNodes, newEnr);
                     }
                 }
             }
@@ -334,6 +426,7 @@ public class DiscoveryV5App : IDiscoveryApp
         _discoveryDb.Clear();
 
         IWriteBatch? batch = null;
+
         try
         {
             foreach (IEnr enr in activeNodeEnrs)
@@ -347,15 +440,15 @@ public class DiscoveryV5App : IDiscoveryApp
             batch?.Dispose();
         }
 
-
         try
         {
             await _discv5Protocol.StopAsync();
         }
         catch (Exception ex)
         {
-            if (_logger.IsWarn) _logger.Warn($"Err stopping discv5: {ex}");
+            if (_logger.IsWarn) _logger.Warn($"Error when attempting to stop discv5: {ex}");
         }
+
         await _appShutdownSource.CancelAsync();
     }
 
@@ -363,7 +456,7 @@ public class DiscoveryV5App : IDiscoveryApp
 
     public void AddNodeToDiscovery(Node node)
     {
-        var routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
-        routingTable.UpdateFromEnr(GetEnr(node));
+        IRoutingTable routingTable = _serviceProvider.GetRequiredService<IRoutingTable>();
+        routingTable.UpdateFromEnr(ToEnr(node));
     }
 }

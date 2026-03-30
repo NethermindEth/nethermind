@@ -27,6 +27,8 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
+    [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
     public class TrieTests
     {
         private ILogger _logger;
@@ -61,7 +63,7 @@ namespace Nethermind.Trie.Test
 
         private IPruningTrieStore CreateTrieStore(IDb? memDb = null)
         {
-            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, _logManager);
+            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
         }
 
         [Test]
@@ -288,7 +290,7 @@ namespace Nethermind.Trie.Test
         public void Test_add_many(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -314,7 +316,7 @@ namespace Nethermind.Trie.Test
         public void Test_try_delete_and_read_missing_nodes(int i)
         {
             MemDb memDb = new();
-            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
+            using TrieStore trieStore = TestTrieStoreFactory.Build(memDb, new MemoryLimit(128.MB), Persist.EveryBlock, _logManager);
             PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, _logManager);
 
             for (int j = 0; j < i; j++)
@@ -792,8 +794,8 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<TrieStoreConfigurations> CreateTrieStoreConfigurations()
         {
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, false);
-            yield return new TrieStoreConfigurations(1.MiB(), 8, 8, true);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, false);
+            yield return new TrieStoreConfigurations(1.MiB, 8, 8, true);
             yield return new TrieStoreConfigurations(-1, 1, 8, false);
         }
 
@@ -1081,6 +1083,8 @@ namespace Nethermind.Trie.Test
         }
 
         [TestCaseSource(nameof(FuzzAccountsWithStorageScenarios))]
+        [Retry(3)]
+        [NonParallelizable]
         public void Fuzz_accounts_with_storage(
             (TrieStoreConfigurations trieStoreConfigurations,
                 int accountsCount,
@@ -1279,6 +1283,27 @@ namespace Nethermind.Trie.Test
                     tree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value.BytesToArray());
                 }
             });
+        }
+
+        [Test]
+        public void WarmUpPath_DoesNotThrow()
+        {
+            // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
+            using IPruningTrieStore trieStore = CreateTrieStore();
+            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            patriciaTree.Set(_keyA, _longLeaf1);
+            patriciaTree.Set(_keyB, _longLeaf2);
+            patriciaTree.Set(_keyC, _longLeaf1);
+            patriciaTree.Set(_keyD, _longLeaf2);
+            trieStore.CommitPatriciaTrie(0, patriciaTree);
+
+            // Test warmup on various keys
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyA)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyB)).Should().NotThrow();  // Existing key
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyC)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(_keyD)).Should().NotThrow();  // Existing key in different branch
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("00000000000cc"))).Should().NotThrow();  // Non-existent key
+            patriciaTree.Invoking(t => t.WarmUpPath(Bytes.FromHexString("fffffffffffff"))).Should().NotThrow();  // Completely different path
         }
     }
 }

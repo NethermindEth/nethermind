@@ -10,7 +10,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.Monitoring;
 
 namespace Nethermind.Core.Test.Db
 {

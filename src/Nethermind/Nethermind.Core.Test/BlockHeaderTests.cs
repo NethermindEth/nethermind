@@ -87,7 +87,7 @@ public class BlockHeaderTests
     [Test]
     public void Eip_1559_CalculateBaseFee_should_returns_zero_when_eip1559_not_enabled()
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip1559Enabled.Returns(false);
 
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
@@ -108,7 +108,7 @@ public class BlockHeaderTests
     [TestCase(100, 100, 110, 0, 110)]
     public void Eip_1559_CalculateBaseFee(long gasTarget, long baseFee, long expectedBaseFee, long gasUsed, long? minimalBaseFee = null)
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.BaseFeeCalculator.Returns(new DefaultBaseFeeCalculator());
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.Eip1559BaseFeeMinValue.Returns((UInt256?)minimalBaseFee);
@@ -140,7 +140,7 @@ public class BlockHeaderTests
     [TestCaseSource(nameof(Eip1559BaseFeeTestSource))]
     public void Eip_1559_CalculateBaseFee_shared_test_cases((BaseFeeTestCases Info, string Description) testCase)
     {
-        IReleaseSpec releaseSpec = Substitute.For<IReleaseSpec>();
+        IReleaseSpec releaseSpec = ReleaseSpecSubstitute.Create();
         releaseSpec.IsEip1559Enabled.Returns(true);
         releaseSpec.ForkBaseFee.Returns(Eip1559Constants.DefaultForkBaseFee);
         releaseSpec.BaseFeeMaxChangeDenominator.Returns(Eip1559Constants.DefaultBaseFeeMaxChangeDenominator);

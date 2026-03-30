@@ -10,27 +10,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessageSerializer<T> : IZeroInnerMessageSerializer<T> where T : HashesMessage
     {
-        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashes(nettyRlpStream);
-        }
+        protected Hash256[] DeserializeHashes(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(static (ref Rlp.ValueDecoderContext ctx) => DeserializeHashes(ref ctx));
 
-        protected static Hash256[] DeserializeHashes(RlpStream rlpStream, RlpLimit? limit = null)
-        {
-            Hash256[] hashes = rlpStream.DecodeArray(static itemContext => itemContext.DecodeKeccak(), limit: limit);
-            return hashes;
-        }
+        protected static Hash256[] DeserializeHashes(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null) =>
+            ctx.DecodeArray(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
-        {
-            NettyRlpStream nettyRlpStream = new(byteBuffer);
-            return DeserializeHashesArrayPool(nettyRlpStream, limit);
-        }
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
+            byteBuffer.DeserializeRlp((ref Rlp.ValueDecoderContext ctx) => DeserializeHashesArrayPool(ref ctx, limit));
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(RlpStream rlpStream, RlpLimit? limit = null)
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref Rlp.ValueDecoderContext ctx, RlpLimit? limit = null)
         {
-            return rlpStream.DecodeArrayPoolList(static itemContext => itemContext.DecodeKeccak(), limit: limit);
+            return ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: limit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, T message)

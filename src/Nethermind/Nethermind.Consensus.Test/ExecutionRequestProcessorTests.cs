@@ -11,23 +11,18 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Test;
 
@@ -38,7 +33,7 @@ public class ExecutionProcessorTests
     private IWorldState _stateProvider;
     private IReleaseSpec _spec;
     private IDisposable _worldStateCloser;
-    private static readonly UInt256 AccountBalance = 1.Ether();
+    private static readonly UInt256 AccountBalance = 1.Ether;
     private static readonly Address DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
     private static readonly Address eip7002Account = Eip7002Constants.WithdrawalRequestPredeployAddress;
     private static readonly Address eip7251Account = Eip7251Constants.ConsolidationRequestPredeployAddress;
@@ -49,19 +44,17 @@ public class ExecutionProcessorTests
     private static readonly TestExecutionRequest[] _executionWithdrawalRequests = [TestItem.ExecutionRequestD, TestItem.ExecutionRequestE, TestItem.ExecutionRequestF];
     private static readonly TestExecutionRequest[] _executionConsolidationRequests = [TestItem.ExecutionRequestG, TestItem.ExecutionRequestH, TestItem.ExecutionRequestI];
 
-    private void FlatEncodeWithoutType(ExecutionRequest[] requests, Span<byte> buffer)
+    private static void FlatEncodeWithoutType(ExecutionRequest[] requests, Span<byte> buffer)
     {
         int currentPosition = 0;
 
         foreach (ExecutionRequest request in requests)
         {
-            // Ensure the buffer has enough space to accommodate the new data
             if (currentPosition + request.RequestData!.Length > buffer.Length)
             {
                 throw new InvalidOperationException("Buffer is not large enough to hold all data of requests");
             }
 
-            // Copy the RequestData to the buffer at the current position
             request.RequestData.CopyTo(buffer.Slice(currentPosition, request.RequestData.Length));
             currentPosition += request.RequestData.Length;
         }
@@ -81,7 +74,7 @@ public class ExecutionProcessorTests
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
-        _spec = Substitute.For<IReleaseSpec>();
+        _spec = ReleaseSpecSubstitute.Create();
 
         _spec.RequestsEnabled.Returns(true);
         _spec.DepositsEnabled.Returns(true);
@@ -140,29 +133,32 @@ public class ExecutionProcessorTests
         return ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(requests.ToArray());
     }
 
+    private Hash256 ProcessBlockAndGetRequestsHash(long blockNumber, TxReceipt[] txReceipts)
+    {
+        Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
+        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
+        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
+        return block.Header.RequestsHash;
+    }
+
     [Test]
     public void ShouldNotProcessExecutionRequestsForGenesisBlock()
     {
-        Block block = Build.A.Block.WithNumber(0).TestObject;
-        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
-
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts)
             ).TestObject
         ];
-        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
-        Assert.That(block.Header.RequestsHash, Is.Null);
+        Hash256 requestsHash = ProcessBlockAndGetRequestsHash(0, txReceipts);
+
+        Assert.That(requestsHash, Is.Null);
     }
 
     [Test]
     public void ShouldProcessExecutionRequests()
     {
-        Block block = Build.A.Block.WithNumber(1).TestObject;
-        ExecutionRequestsProcessor executionRequestsProcessor = new(_transactionProcessor);
-
         TxReceipt[] txReceipts = [
             Build.A.Receipt.WithLogs(
                 CreateLogEntry(TestItem.ExecutionRequestA.RequestDataParts),
@@ -170,19 +166,20 @@ public class ExecutionProcessorTests
                 CreateLogEntry(TestItem.ExecutionRequestC.RequestDataParts)
             ).TestObject
         ];
-        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _spec));
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, txReceipts, _spec);
 
-        Assert.That(block.Header.RequestsHash, Is.EqualTo(
+        Hash256 requestsHash = ProcessBlockAndGetRequestsHash(1, txReceipts);
+
+        Assert.That(requestsHash, Is.EqualTo(
            CalculateHash(_executionDepositRequests, _executionWithdrawalRequests, _executionConsolidationRequests)
        ));
     }
 
-    static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
+    private static LogEntry CreateLogEntry(byte[][] requestDataParts) =>
         Build.A.LogEntry
             .WithData(_abiEncoder.Encode(AbiEncodingStyle.None, _depositEventABI, requestDataParts!))
             .WithTopics(ExecutionRequestsProcessor.DepositEventAbi.Hash)
             .WithAddress(DepositContractAddress).TestObject;
+
     [Test]
     public void ShouldUseCorrectDepositTopic()
     {

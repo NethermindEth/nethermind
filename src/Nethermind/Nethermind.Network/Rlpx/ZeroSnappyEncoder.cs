@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Snappier;
 
 namespace Nethermind.Network.Rlpx;
@@ -16,13 +18,14 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
 
     protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
     {
-        byte packetType = input.ReadByte();
+        Rlp.ValueDecoderContext decoderContext = new(input.AsSpan());
+        int packetTypeLen = decoderContext.PeekNextRlpLength();
 
-        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes);
-        output.EnsureWritable(1 + maxLength);
-        output.WriteByte(packetType);
+        int maxLength = Snappy.GetMaxCompressedLength(input.ReadableBytes - packetTypeLen);
+        output.EnsureWritable(packetTypeLen + maxLength);
+        output.WriteBytes(input, packetTypeLen);
 
-        if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
+        if (_logger.IsTrace) TraceCompressing(input.ReadableBytes);
 
         int length = Snappy.Compress(
             input.Array.AsSpan(input.ArrayOffset + input.ReaderIndex, input.ReadableBytes),
@@ -30,5 +33,8 @@ public class ZeroSnappyEncoder(ILogManager logManager) : MessageToByteEncoder<IB
 
         input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
         output.SetWriterIndex(output.WriterIndex + length);
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceCompressing(int readableBytes) => _logger.Trace($"Compressing with Snappy a message of length {readableBytes}");
     }
 }

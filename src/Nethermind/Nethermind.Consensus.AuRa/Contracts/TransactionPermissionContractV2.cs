@@ -6,7 +6,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {

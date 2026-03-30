@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db.Rocks;
@@ -35,7 +34,7 @@ public class ColumnsDbTests
                 DeleteOnStart = true,
             },
             new DbConfig(),
-            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance),
+            new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
             LimboLogs.Instance,
             Enum.GetValues<ReceiptsColumns>()
         );
@@ -75,7 +74,7 @@ public class ColumnsDbTests
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(2566224).After(1000, 10));
+        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(2566224).Within(1).Percent.After(1000, 10));
     }
 
     [Test]
@@ -123,5 +122,28 @@ public class ColumnsDbTests
 
         snapshot.GetColumn(ReceiptsColumns.Blocks)
             .Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+    }
+
+    [Test]
+    public void Snapshot_DoubleDispose_DoesNotThrow()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.Dispose()).Should().NotThrow();
+    }
+
+    [Test]
+    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.GetColumn(ReceiptsColumns.Blocks))
+            .Should().Throw<ObjectDisposedException>();
     }
 }

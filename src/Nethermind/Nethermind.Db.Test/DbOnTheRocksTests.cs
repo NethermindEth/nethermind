@@ -13,7 +13,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db.Rocks;
@@ -34,12 +33,11 @@ namespace Nethermind.Db.Test
         private DbConfig _dbConfig = new DbConfig();
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
-
         [SetUp]
         public void Setup()
         {
             Directory.CreateDirectory(DbPath);
-            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            _rocksdbConfigFactory = new RocksDbConfigFactory(_dbConfig, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
         }
 
         [TearDown]
@@ -55,16 +53,16 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, _rocksdbConfigFactory, LimboLogs.Instance);
 
             WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeFalse();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(1);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(0);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(1);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(1);
 
             options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
-            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
-            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().Be(0);
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().Be(1);
         }
 
         [Test]
@@ -137,9 +135,9 @@ namespace Nethermind.Db.Test
             }
         }
 
-        [TestCase("compaction_pri=kByCompensatedSize", true)]
-        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true)]
-        [TestCase("compaction_pri=kSomethingElse", false)]
+        [TestCase("compaction_pri=kByCompensatedSize", true, TestName = "CanOpenWithAdditionalConfig_SingleOption")]
+        [TestCase("compaction_pri=kByCompensatedSize;num_levels=4", true, TestName = "CanOpenWithAdditionalConfig_MultipleOptions")]
+        [TestCase("compaction_pri=kSomethingElse", false, TestName = "CanOpenWithAdditionalConfig_InvalidOption")]
         public void CanOpenWithAdditionalConfig(string opts, bool success)
         {
             IDbConfig config = new DbConfig();
@@ -147,7 +145,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
                 using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -166,7 +164,7 @@ namespace Nethermind.Db.Test
         public void UseSharedCacheIfNoCacheIsSpecified(bool explicitCache)
         {
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
-            long sharedCacheSize = 10.KiB();
+            long sharedCacheSize = 10.KiB;
 
             using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)sharedCacheSize);
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
@@ -203,7 +201,7 @@ namespace Nethermind.Db.Test
         {
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
 
-            long cacheSize = 10.KiB();
+            long cacheSize = 10.KiB;
             using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)cacheSize);
 
             IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
@@ -322,7 +320,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB()), LimboLogs.Instance);
+            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
             if (Directory.Exists(DbPath))
             {

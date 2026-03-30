@@ -46,7 +46,7 @@ public class Eip7918Tests : VirtualMachineTestsBase
     private static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong parentBaseFee, ulong expectedExcessBlobGas)>
         ExcessBlobGasTestCaseSource(IReleaseSpec spec)
     {
-        var targetBlobGasPerBlock = spec.GetTargetBlobGasPerBlock();
+        var targetBlobGasPerBlock = spec.GasCosts.TargetBlobGasPerBlock;
         yield return (
             targetBlobGasPerBlock + 1,
             0,
@@ -68,7 +68,7 @@ public class Eip7918Tests : VirtualMachineTestsBase
             4 * targetBlobGasPerBlock / 3);
 
         // target above floor
-        yield return (spec.GetTargetBlobGasPerBlock() + 1, 0, 1, 1);
+        yield return (spec.GasCosts.TargetBlobGasPerBlock + 1, 0, 1, 1);
 
         // boundary cases
         ulong excessBlobGas = 1000;

@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using ConcurrentCollections;
 using FluentAssertions;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
@@ -19,10 +20,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -30,7 +29,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
-[Parallelizable(ParallelScope.Self)]
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BlockchainProcessorTests
 {
     private class ProcessingTestContext
@@ -41,13 +41,15 @@ public class BlockchainProcessorTests
         {
             private readonly ILogger _logger;
 
-            private readonly HashSet<Hash256> _allowed = new();
+            private readonly ConcurrentHashSet<Hash256> _allowed = new();
 
             internal readonly HashSet<Hash256> Processed = new();
 
-            private readonly HashSet<Hash256> _allowedToFail = new();
+            private readonly ConcurrentHashSet<Hash256> _allowedToFail = new();
 
             private readonly HashSet<Hash256> _rootProcessed = new();
+
+            private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
@@ -58,13 +60,21 @@ public class BlockchainProcessorTests
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to process");
-                _allowed.Add(hash);
+                lock (_gate)
+                {
+                    _allowed.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public void AllowToFail(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to fail");
-                _allowedToFail.Add(hash);
+                lock (_gate)
+                {
+                    _allowedToFail.Add(hash);
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public Block[] Process(BlockHeader? baseBlock, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions, IBlockTracer blockTracer, CancellationToken token)
@@ -78,37 +88,43 @@ public class BlockchainProcessorTests
                 Processed.AddRange(suggestedBlocks.Select(x => x.Hash!));
 
                 _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
+                int nextBlock = 0;
                 while (true)
                 {
-                    bool notYet = false;
-                    for (int i = 0; i < suggestedBlocks.Count; i++)
+                    lock (_gate)
                     {
-                        BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
-                        Block suggestedBlock = suggestedBlocks[i];
-                        BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
-                        Hash256 hash = suggestedBlock.Hash!;
-                        if (!_allowed.Contains(hash))
+                        bool notYet = false;
+                        for (int i = nextBlock; i < suggestedBlocks.Count; i++)
                         {
-                            if (_allowedToFail.Remove(hash))
+                            BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
+                            Block suggestedBlock = suggestedBlocks[i];
+                            BlockProcessing?.Invoke(this, new BlockEventArgs(suggestedBlock));
+                            Hash256 hash = suggestedBlock.Hash!;
+                            if (!_allowed.Contains(hash))
                             {
-                                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
-                                throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                if (_allowedToFail.TryRemove(hash))
+                                {
+                                    BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
+                                }
+
+                                notYet = true;
+                                break;
                             }
 
-                            notYet = true;
-                            break;
+                            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlock, []));
+                            nextBlock = i + 1;
                         }
-                    }
 
-                    if (notYet)
-                    {
-                        Thread.Sleep(20);
-                    }
-                    else
-                    {
-                        _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
-                        BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), []));
-                        return suggestedBlocks.ToArray();
+                        if (notYet)
+                        {
+                            Monitor.Wait(_gate, MockRecheckInterval);
+                        }
+                        else
+                        {
+                            _rootProcessed.Add(suggestedBlocks.Last().StateRoot!);
+                            return suggestedBlocks.ToArray();
+                        }
                     }
                 }
             }
@@ -118,29 +134,23 @@ public class BlockchainProcessorTests
             public event EventHandler<BlockEventArgs>? BlockProcessing;
 
             public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
-
-            public event EventHandler<TxProcessedEventArgs>? TransactionProcessed
-            {
-                add { }
-                remove { }
-            }
         }
 
-        private class RecoveryStepMock : IBlockPreprocessorStep
+        private class RecoveryStepMock(ILogManager logManager) : IBlockPreprocessorStep
         {
-            private readonly ILogger _logger;
+            private readonly ILogger _logger = logManager.GetClassLogger();
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
-
-            public RecoveryStepMock(ILogManager logManager)
-            {
-                _logger = logManager.GetClassLogger();
-            }
+            private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
 
             public void Allow(Hash256 hash)
             {
                 _logger.Info($"Allowing {hash} to recover");
-                _allowed[hash] = new object();
+                lock (_gate)
+                {
+                    _allowed[hash] = new object();
+                    Monitor.PulseAll(_gate);
+                }
             }
 
             public void RecoverData(Block block)
@@ -154,22 +164,25 @@ public class BlockchainProcessorTests
 
                 while (true)
                 {
-                    Hash256 blockHash = block.Hash!;
-                    if (!_allowed.ContainsKey(blockHash))
+                    lock (_gate)
                     {
-                        if (_allowedToFail.ContainsKey(blockHash))
+                        Hash256 blockHash = block.Hash!;
+                        if (!_allowed.ContainsKey(blockHash))
                         {
-                            _allowedToFail.Remove(blockHash, out _);
-                            throw new Exception();
+                            if (_allowedToFail.ContainsKey(blockHash))
+                            {
+                                _allowedToFail.Remove(blockHash, out _);
+                                throw new Exception();
+                            }
+
+                            Monitor.Wait(_gate, MockRecheckInterval);
+                            continue;
                         }
 
-                        Thread.Sleep(20);
-                        continue;
+                        block.Header.Author = Address.Zero;
+                        _allowed.Remove(blockHash, out _);
+                        return;
                     }
-
-                    block.Header.Author = Address.Zero;
-                    _allowed.Remove(blockHash, out _);
-                    return;
                 }
             }
         }
@@ -185,7 +198,8 @@ public class BlockchainProcessorTests
 
         private Hash256? _headBefore;
         private int _processingQueueEmptyFired;
-        private const int ProcessingWait = 2000;
+        private const int ProcessingWait = 10_000;
+        private const int MockRecheckInterval = 200;
 
         public ProcessingTestContext(bool startProcessor)
         {
@@ -197,7 +211,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, _recoveryStep, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -285,11 +299,79 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext Suggested(Block block, BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
         {
-            AddBlockResult result = _blockTree.SuggestBlock(block, options);
-            if (result != AddBlockResult.Added)
+            if ((options & BlockTreeSuggestOptions.ShouldProcess) != 0)
             {
-                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
-                _resetEvent.Set();
+                // Use Task.Run to avoid blocking when AllowSynchronousContinuations
+                // causes inline processing on the calling thread.
+                //
+                // We wait for either BlockAdded (enqueued to processor) or SuggestBlock
+                // completion (non-best blocks that aren't enqueued) before returning. This
+                // prevents a race where two concurrent Enqueue calls both see _queueCount > 1
+                // and go to the recovery queue in non-deterministic order, causing the
+                // processor to batch blocks together and deadlock the test.
+                //
+                // TaskCompletionSource is used instead of ManualResetEventSlim because the
+                // background Task.Run may outlive this method (when AllowSynchronousContinuations
+                // causes SuggestBlock to block indefinitely) and TrySetResult is safe to call
+                // on a completed TCS without disposal concerns.
+                TaskCompletionSource suggestCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                void OnBlockAdded(object? sender, BlockEventArgs args)
+                {
+                    if (args.Block.Hash == block.Hash)
+                        suggestCompleted.TrySetResult();
+                }
+
+                _processor.BlockAdded += OnBlockAdded;
+                try
+                {
+                    Task suggestTask = Task.Run(() =>
+                    {
+                        try
+                        {
+                            AddBlockResult result = _blockTree.SuggestBlock(block, options);
+                            if (result != AddBlockResult.Added)
+                            {
+                                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                                _resetEvent.Set();
+                            }
+                        }
+                        finally
+                        {
+                            suggestCompleted.TrySetResult();
+                        }
+                    });
+                    Assert.That(
+                        suggestCompleted.Task.Wait(ProcessingWait),
+                        Is.True,
+                        $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
+                    // Give the Task.Run time to finish the queue write inside
+                    // Enqueue(). BlockAdded fires before the recovery queue write,
+                    // so suggestCompleted resolving does not mean the block is in
+                    // the queue yet. Without this, consecutive Suggested() calls
+                    // can race their Task.Run threads to TryWrite, reordering
+                    // blocks in the recovery queue.
+                    //
+                    // Bounded to 100ms to avoid deadlock: when _queueCount == 1,
+                    // AllowSynchronousContinuations can inline ProcessBlocks() on
+                    // the Task.Run thread, which blocks until the test calls
+                    // Allow(). An infinite wait would deadlock. The timeout
+                    // expiring is harmless — single-block enqueues have no
+                    // ordering concern.
+                    suggestTask.Wait(100);
+                }
+                finally
+                {
+                    _processor.BlockAdded -= OnBlockAdded;
+                }
+            }
+            else
+            {
+                AddBlockResult result = _blockTree.SuggestBlock(block, options);
+                if (result != AddBlockResult.Added)
+                {
+                    _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                    _resetEvent.Set();
+                }
             }
 
             return this;
@@ -330,8 +412,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext CountIs(int expectedCount)
         {
-            var count = ((IBlockProcessingQueue)_processor).Count;
-            Assert.That(expectedCount, Is.EqualTo(count));
+            Assert.That(() => _processor.Count, Is.EqualTo(expectedCount).After(ProcessingWait, 10));
             return this;
         }
 
@@ -363,54 +444,60 @@ public class BlockchainProcessorTests
             return this;
         }
 
-        public class AfterBlock
+        public class AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
         {
-            public const int IgnoreWait = 200;
+            private const int IgnoreWait = 200;
 
-            private readonly ILogger _logger;
-            private readonly Block _block;
-            private readonly ProcessingTestContext _processingTestContext;
-
-            public AfterBlock(ILogManager logManager, ProcessingTestContext processingTestContext, Block block)
-            {
-                _logger = logManager.GetClassLogger();
-                _processingTestContext = processingTestContext;
-                _block = block;
-            }
+            private readonly ILogger _logger = logManager.GetClassLogger();
 
             public ProcessingTestContext BecomesGenesis()
             {
-                _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become genesis block");
-                _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                Assert.That(_processingTestContext._blockTree.Genesis!.Hash, Is.EqualTo(_block.Header.Hash), "genesis");
-                return _processingTestContext;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to become genesis block");
+                processingTestContext._resetEvent.WaitOne(ProcessingWait);
+                Assert.That(processingTestContext._blockTree.Genesis!.Hash, Is.EqualTo(block.Header.Hash), "genesis");
+                return processingTestContext;
             }
 
             public ProcessingTestContext BecomesNewHead()
             {
-                _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to become the new head block");
-                _processingTestContext._resetEvent.WaitOne(ProcessingWait);
-                Assert.That(() => _processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_block.Header.Hash).After(1000, 100));
-                return _processingTestContext;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to become the new head block");
+                // Loop on the auto-reset event: a single WaitOne may consume a stale or
+                // unrelated NewHeadBlock signal, so keep waiting until the expected block
+                // is the head or the overall timeout expires.
+                long deadline = Environment.TickCount64 + ProcessingWait;
+                while (processingTestContext._blockTree.Head?.Hash != block.Header.Hash)
+                {
+                    long remaining = deadline - Environment.TickCount64;
+                    if (remaining <= 0)
+                        break;
+                    processingTestContext._resetEvent.WaitOne((int)remaining);
+                }
+
+                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(block.Header.Hash),
+                    $"Expected {block.ToString(Block.Format.Short)} to become the head");
+                return processingTestContext;
             }
 
             public ProcessingTestContext IsKeptOnBranch()
             {
-                _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be ignored");
-                _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
-                _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be ignored");
-                return _processingTestContext;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be ignored");
+                processingTestContext._resetEvent.WaitOne(IgnoreWait);
+                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be ignored");
+                return processingTestContext;
             }
 
             public ProcessingTestContext IsDeletedAsInvalid()
             {
-                _logger.Info($"Waiting for {_block.ToString(Block.Format.Short)} to be deleted");
-                _processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                Assert.That(_processingTestContext._blockTree.Head!.Hash, Is.EqualTo(_processingTestContext._headBefore), "head");
-                _logger.Info($"Finished waiting for {_block.ToString(Block.Format.Short)} to be deleted");
-                Assert.That(_processingTestContext._blockTree.FindBlock(_block.Hash, BlockTreeLookupOptions.None), Is.Null);
-                return _processingTestContext;
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted");
+                // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
+                processingTestContext._resetEvent.WaitOne(IgnoreWait);
+                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
+                // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
+                Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
+                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
+                return processingTestContext;
             }
         }
 
@@ -440,17 +527,33 @@ public class BlockchainProcessorTests
         public static ProcessingTestContext ProcessorIsNotStarted => new(false);
     }
 
-    private static readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
-    private static readonly Block _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
-    private static readonly Block _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
-    private static readonly Block _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
-    private static readonly Block _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
-    private static readonly Block _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
-    private static readonly Block _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
-    private static readonly Block _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
-    private static readonly Block _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
-    private static readonly Block _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
-    private static readonly Block _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    // Instance fields — not static — so that parallel test instances do not share
+    // mutable Block objects (RecoverData mutates Header.Author).
+    private readonly Block _block0 = Build.A.Block.WithNumber(0).WithNonce(0).WithDifficulty(0).TestObject;
+    private readonly Block _block1D2;
+    private readonly Block _block2D4;
+    private readonly Block _block3D6;
+    private readonly Block _block4D8;
+    private readonly Block _block5D10;
+    private readonly Block _blockB2D4;
+    private readonly Block _blockB3D8;
+    private readonly Block _blockC2D100;
+    private readonly Block _blockD2D200;
+    private readonly Block _blockE2D300;
+
+    public BlockchainProcessorTests()
+    {
+        _block1D2 = Build.A.Block.WithNumber(1).WithNonce(1).WithParent(_block0).WithDifficulty(2).TestObject;
+        _block2D4 = Build.A.Block.WithNumber(2).WithNonce(2).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        _block3D6 = Build.A.Block.WithNumber(3).WithNonce(3).WithParent(_block2D4).WithDifficulty(2).TestObject;
+        _block4D8 = Build.A.Block.WithNumber(4).WithNonce(4).WithParent(_block3D6).WithDifficulty(2).TestObject;
+        _block5D10 = Build.A.Block.WithNumber(5).WithNonce(5).WithParent(_block4D8).WithDifficulty(2).TestObject;
+        _blockB2D4 = Build.A.Block.WithNumber(2).WithNonce(6).WithParent(_block1D2).WithDifficulty(2).TestObject;
+        _blockB3D8 = Build.A.Block.WithNumber(3).WithNonce(7).WithParent(_blockB2D4).WithDifficulty(4).TestObject;
+        _blockC2D100 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(98).TestObject;
+        _blockD2D200 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(198).TestObject;
+        _blockE2D300 = Build.A.Block.WithNumber(3).WithNonce(8).WithParent(_block1D2).WithDifficulty(298).TestObject;
+    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_ignore_lower_difficulty()
@@ -574,7 +677,7 @@ public class BlockchainProcessorTests
             .FullyProcessed(_block5D10).BecomesNewHead();
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime), Retry(3)]
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Can_reorganize_to_longer_path()
     {
         When.ProcessingBlocks
@@ -612,7 +715,6 @@ public class BlockchainProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    [Retry(3)] // some flakiness
     public void Can_change_branch_on_invalid_block()
     {
         When.ProcessingBlocks

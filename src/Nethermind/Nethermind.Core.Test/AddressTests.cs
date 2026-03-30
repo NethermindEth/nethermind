@@ -12,7 +12,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Evm;
-using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;

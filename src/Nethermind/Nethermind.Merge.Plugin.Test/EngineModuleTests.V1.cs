@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,7 +22,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -458,7 +458,8 @@ public partial class EngineModuleTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor)
+    [CancelAfter(5000)]
+    public virtual async Task executePayloadV1_accepts_already_known_block(bool throttleBlockProcessor, CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .ThrottleBlockProcessor(throttleBlockProcessor ? 100 : 0)
@@ -478,7 +479,7 @@ public partial class EngineModuleTests
         };
         await chain.BlockTree.SuggestBlockAsync(block!);
 
-        await bestBlockProcessed.WaitAsync();
+        await bestBlockProcessed.WaitAsync(cancellationToken);
         ExecutionPayload blockRequest = ExecutionPayload.Create(block);
         ResultWrapper<PayloadStatusV1> executePayloadResult = await rpc.engine_newPayloadV1(blockRequest);
         executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
@@ -599,7 +600,7 @@ public partial class EngineModuleTests
         Hash256 actualHead = chain.BlockTree.HeadHash;
         actualHead.Should().NotBe(startingHead);
         actualHead.Should().Be(newHeadHash);
-        AssertExecutionStatusChangedV1(chain.BlockFinder, newHeadHash, startingHead, startingHead);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash, startingHead, startingHead);
     }
 
     [Test]
@@ -610,7 +611,7 @@ public partial class EngineModuleTests
         ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(nameof(PayloadStatus.Syncing).ToUpper()); // ToDo wait for final PostMerge sync
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
     }
 
     [Test]
@@ -651,7 +652,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult_1 = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV11);
         forkchoiceUpdatedResult_1.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test, NonParallelizable]
@@ -667,7 +668,19 @@ public partial class EngineModuleTests
         Block blockTreeHead = chain.BlockTree.Head!;
         Block block = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead).WithNonce(0).WithDifficulty(0).TestObject;
 
-        chain.ThrottleBlockProcessor(200);
+        chain.ThrottleBlockProcessor(1000);
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
+        // ensuring subsequent blocks route through the recovery queue (slow path)
+        Block occupyBlock = Build.A.Block.WithNumber(blockTreeHead.Number + 1).WithParent(blockTreeHead)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(blockTreeHead.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = blockTreeHead.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
         ResultWrapper<PayloadStatusV1> newPayloadV1 =
             await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         newPayloadV1.Data.Status.Should().Be("SYNCING");
@@ -677,7 +690,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be("SYNCING");
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test, NonParallelizable]
@@ -739,7 +752,7 @@ public partial class EngineModuleTests
             .WithTransactions(
                 Build.A.Transaction
                     .WithTo(TestItem.AddressD)
-                    .WithValue(100.GWei())
+                    .WithValue(100.GWei)
                     .SignedAndResolved(TestItem.PrivateKeyA)
                     .TestObject
             )
@@ -748,6 +761,18 @@ public partial class EngineModuleTests
             .TestObject;
 
         chain.ThrottleBlockProcessor(1000); // throttle the block processor enough so that the block processing queue is never empty
+        ManualResetEventSlim processingStarted = new(false);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingStarted = processingStarted;
+
+        // Directly enqueue a block to occupy the processor (bypasses the RPC semaphore),
+        // ensuring subsequent blocks route through the recovery queue (slow path)
+        Block occupyBlock = Build.A.Block.WithNumber(head.Number + 1).WithParent(head)
+            .WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
+        occupyBlock.Header.TotalDifficulty = head.TotalDifficulty;
+        _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(
+            occupyBlock, ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotUpdateHead));
+        processingStarted.Wait(TimeSpan.FromSeconds(5));
+
         (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).Data.Status.Should().Be(PayloadStatus.Syncing);
         (await rpc.engine_newPayloadV1(ExecutionPayload.Create(block))).Data.Status.Should().BeOneOf(PayloadStatus.Syncing);
     }
@@ -764,7 +789,7 @@ public partial class EngineModuleTests
             await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1, null);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         forkchoiceUpdatedResult.Data.PayloadId.Should().Be(null);
-        AssertExecutionStatusChangedV1(chain.BlockFinder, newHeadHash, newHeadHash, newHeadHash);
+        AssertExecutionStatusChanged(chain.BlockFinder, newHeadHash, newHeadHash, newHeadHash);
     }
 
     [Test]
@@ -817,27 +842,20 @@ public partial class EngineModuleTests
         resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
-    [Test]
-    public async Task executePayloadV1_on_top_of_terminal_block()
+    [CancelAfter(5000)]
+    public async Task executePayloadV1_on_top_of_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block newBlock = BuildNewBlock(chain.BlockTree.Head!).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block oneMoreTerminalBlock = BuildOneMoreTerminalBlock(chain.BlockTree.Head!).TestObject;
+        oneMoreTerminalBlock.CalculateHash();
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -846,9 +864,8 @@ public partial class EngineModuleTests
                 bestBlockProcessed.Release(1);
         };
         await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+        await bestBlockProcessed.WaitAsync(cancellationToken);
 
-        oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
@@ -862,27 +879,20 @@ public partial class EngineModuleTests
         ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
-    [Test]
-    public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block()
+    [CancelAfter(5000)]
+    public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig()
         {
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block newBlock = BuildNewBlock(chain.BlockTree.Head!).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject; //incorrect state root
+
+        Block oneMoreTerminalBlock = BuildOneMoreTerminalBlock(chain.BlockTree.Head!, correctStateRoot: false).TestObject;
+        oneMoreTerminalBlock.CalculateHash();
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -891,9 +901,8 @@ public partial class EngineModuleTests
                 bestBlockProcessed.Release(1);
         };
         await chain.BlockTree.SuggestBlockAsync(newBlock);
-        (await bestBlockProcessed.WaitAsync(TimeSpan.FromSeconds(5))).Should().Be(true);
+        await bestBlockProcessed.WaitAsync(cancellationToken);
 
-        oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
@@ -1507,7 +1516,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_return_capabilities()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Osaka.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         IOrderedEnumerable<string> expected = typeof(IEngineRpcModule).GetMethods()
             .Select(static m => m.Name)
@@ -1522,7 +1531,7 @@ public partial class EngineModuleTests
     [Test]
     public void Should_return_expected_capabilities_for_mainnet()
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         var chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
@@ -1615,7 +1624,7 @@ public partial class EngineModuleTests
         Hash256 parentHead = chain.BlockTree.Head!.ParentHash!;
 
         return await BuildAndGetPayloadResult(rpc, chain, startingHead, parentHead, startingHead,
-            payloadAttributes.Timestamp, payloadAttributes.PrevRandao!, payloadAttributes.SuggestedFeeRecipient);
+            payloadAttributes.Timestamp, payloadAttributes.PrevRandao!, payloadAttributes.SuggestedFeeRecipient!);
     }
 
     private async Task<ExecutionPayload> BuildAndGetPayloadResult(MergeTestBlockchain chain,
@@ -1632,20 +1641,79 @@ public partial class EngineModuleTests
             timestamp, random, feeRecipient);
     }
 
-    private void AssertExecutionStatusChangedV1(IBlockFinder blockFinder, Hash256 headBlockHash,
-        Hash256 finalizedBlockHash,
-        Hash256 confirmedBlockHash)
+    public static IEnumerable<TestCaseData> ForkchoiceUpdatedFieldValidationTestCases
     {
-        Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
-        Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
-        Assert.That(blockFinder.SafeHash, Is.EqualTo(confirmedBlockHash));
+        get
+        {
+            static PayloadAttributes Attrs(
+                Withdrawal[]? withdrawals = null,
+                Hash256? parentBeaconBlockRoot = null,
+                ulong? slotNumber = null,
+                Action<PayloadAttributes>? mutate = null)
+            {
+                PayloadAttributes attrs = new()
+                {
+                    Timestamp = 1,
+                    PrevRandao = Keccak.Zero,
+                    SuggestedFeeRecipient = Address.Zero,
+                    Withdrawals = withdrawals,
+                    ParentBeaconBlockRoot = parentBeaconBlockRoot,
+                    SlotNumber = slotNumber,
+                };
+                mutate?.Invoke(attrs);
+                return attrs;
+            }
+
+            static TestCaseData InvalidFieldCase(IReleaseSpec spec, string method, PayloadAttributes attrs, string testName) =>
+                new(spec, method, attrs)
+                {
+                    TestName = testName,
+                    ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+                };
+
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.Timestamp = 0), "FCUv1 Timestamp zero");
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.PrevRandao = null), "FCUv1 PrevRandao null");
+            yield return InvalidFieldCase(Paris.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1), Attrs(mutate: a => a.SuggestedFeeRecipient = null), "FCUv1 SuggestedFeeRecipient null");
+
+            yield return InvalidFieldCase(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), Attrs(parentBeaconBlockRoot: Keccak.Zero), "FCUv3 Withdrawals null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(parentBeaconBlockRoot: Keccak.Zero, slotNumber: 1), "FCUv4 Withdrawals null");
+            yield return InvalidFieldCase(Amsterdam.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4), Attrs(withdrawals: [], slotNumber: 1), "FCUv4 ParentBeaconBlockRoot null");
+        }
     }
 
-    private void AssertExecutionStatusNotChangedV1(IBlockFinder blockFinder, Hash256 headBlockHash,
-        Hash256 finalizedBlockHash, Hash256 confirmedBlockHash)
+    [TestCaseSource(nameof(ForkchoiceUpdatedFieldValidationTestCases))]
+    public async Task<int> ForkchoiceUpdated_should_validate_payload_attributes_fields(
+        IReleaseSpec releaseSpec, string method, PayloadAttributes payloadAttributes)
     {
-        Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
-        Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
-        Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(confirmedBlockHash));
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
+
+        // Set a valid timestamp relative to the chain head if test case left it non-zero
+        if (payloadAttributes.Timestamp != 0)
+            payloadAttributes.Timestamp = chain.BlockTree.Head!.Timestamp + 1;
+
+        string response = await RpcTest.TestSerializedRequest(rpcModule, method,
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
+
+        return errorResponse.Error?.Code ?? ErrorCodes.None;
     }
+
+    protected virtual BlockBuilder BuildNewBlock(Block head)
+        => Build.A.Block.WithNumber(head.Number)
+            .WithParent(head)
+            .WithNonce(0)
+            .WithDifficulty(1000000)
+            .WithTotalDifficulty(2000000L)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+
+    protected virtual BlockBuilder BuildOneMoreTerminalBlock(Block head, bool correctStateRoot = true)
+        => Build.A.Block.WithNumber(head.Number)
+            .WithParent(head)
+            .WithNonce(0)
+            .WithDifficulty(900000)
+            .WithTotalDifficulty(1900000L)
+            .WithStateRoot(new Hash256(correctStateRoot ? "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f" : "0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
 }

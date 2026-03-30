@@ -2,11 +2,8 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="System.CommandLine" />
-  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
@@ -17,6 +14,7 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
 
 

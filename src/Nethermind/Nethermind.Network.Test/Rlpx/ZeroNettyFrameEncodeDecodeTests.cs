@@ -54,7 +54,8 @@ public class ZeroNettyFrameEncodeDecodeTests
             {
                 ZeroPacket packet = (ZeroPacket)info[0];
                 NettyRlpStream rlpStream = new NettyRlpStream(packet.Content);
-                byte[] bytes = rlpStream.DecodeByteArray();
+                Rlp.ValueDecoderContext ctx = new(rlpStream.AsSpan());
+                byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);
             }));
 
@@ -70,7 +71,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             Random.Shared.NextBytes(input);
 
             byte[] encByte = Rlp.Encode(input).Bytes;
-            IByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1);
+            using DisposableByteBuffer buffer = Unpooled.Buffer(encByte.Length + 1).AsDisposable();
             buffer.WriteByte(0);
             buffer.WriteBytes(encByte);
             await splitter.WriteAsync(encoderWrite, buffer);

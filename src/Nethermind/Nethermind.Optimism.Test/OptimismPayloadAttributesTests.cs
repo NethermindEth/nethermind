@@ -81,7 +81,7 @@ public class OptimismPayloadAttributesTests
         ISpecProvider spec = Spec.BuildFor(fork.Timestamp);
 
         Assert.That(
-            payloadAttributes.Validate(spec, EngineApiVersions.Cancun, out var error),
+            payloadAttributes.Validate(spec, EngineApiVersions.Fcu.V3, out var error),
             testCase.isValid.On(fork.Timestamp)
                 ? Is.EqualTo(PayloadAttributesValidationResult.Success)
                 : Is.EqualTo(PayloadAttributesValidationResult.InvalidPayloadAttributes),

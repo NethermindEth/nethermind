@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -24,7 +25,7 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
@@ -89,8 +90,8 @@ public class JsonRpcService : IJsonRpcService
         }
         else
         {
-            if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
+            errorCode = ErrorCodes.InternalError;
+            errorText = "Internal error";
         }
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
@@ -344,7 +345,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
+                    string? parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -403,6 +404,7 @@ public class JsonRpcService : IJsonRpcService
         }
         else
         {
+            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
@@ -412,11 +414,15 @@ public class JsonRpcService : IJsonRpcService
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                    : typeInfo is not null
+                        ? providedParameter.Deserialize(typeInfo)
+                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
-                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                executionParam = typeInfo is not null
+                    ? providedParameter.Deserialize(typeInfo)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
         }
 
@@ -455,21 +461,25 @@ public class JsonRpcService : IJsonRpcService
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return (Array.Empty<object>(), false);
+        if (totalLength == 0) return ([], false);
 
         object[] executionParameters = new object[totalLength];
 
         bool hasMissing = missingParamsCount != 0;
         int i = 0;
-        var enumerator = providedParameters.EnumerateArray();
-        while (enumerator.MoveNext())
-        {
-            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
-            executionParameters[i] = parameter;
-            hasMissing |= ReferenceEquals(parameter, Type.Missing);
-            i++;
+        if (providedParametersLength > 0)
+        {
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            while (enumerator.MoveNext())
+            {
+                ExpectedParameter expectedParameter = expectedParameters[i];
+
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
+            }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)

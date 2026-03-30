@@ -12,14 +12,15 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
+COPY Directory.*.props Directory.Build.targets ./
 COPY global.json .
 COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
+  rid="linux-${arch}" && \
   dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
     --package-directory /tmp && \
-  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --no-self-contained \
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -r $rid -o /publish --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 RUN dotnet tool install -g dotnet-dump && \

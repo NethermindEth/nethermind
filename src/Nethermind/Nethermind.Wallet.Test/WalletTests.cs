@@ -83,7 +83,7 @@ public class WalletTests
     public void Setup()
     {
         // by pre-caching wallets we make the tests do lot less work
-        Parallel.ForEach(WalletTypes.Union(WalletTypes), walletType =>
+        Parallel.ForEach(WalletTypes, walletType =>
         {
             Context cachedWallet = new Context(walletType);
             _cachedWallets.TryAdd(walletType, cachedWallet);

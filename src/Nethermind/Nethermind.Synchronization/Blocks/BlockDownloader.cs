@@ -16,7 +16,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -36,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
             BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -129,11 +128,7 @@ namespace Nethermind.Synchronization.Blocks
             catch (Exception ex)
             {
                 if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Unhandled exception in {nameof(BlockDownloader)}: {ex}");
-#if DEBUG
-                throw;
-#else
                 return null;
-#endif
             }
             finally
             {
@@ -512,7 +507,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptEncoder);
             return receiptsRoot == block.ReceiptsRoot;
         }
 

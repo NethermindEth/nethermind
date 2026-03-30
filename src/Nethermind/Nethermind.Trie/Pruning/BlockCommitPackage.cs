@@ -14,11 +14,18 @@ namespace Nethermind.Trie.Pruning
         public TrieNode? Root { get; private set; }
         public Hash256 StateRoot => Root?.Keccak ?? Keccak.EmptyTreeHash;
 
-        public bool IsSealed => Root is not null;
+        private bool _isSealed;
+
+        /// <summary>
+        /// A commit set is sealed once <see cref="Seal"/> has been called, regardless of whether the root is null.
+        /// A null root is valid for an empty state trie (e.g., genesis blocks with no allocations).
+        /// </summary>
+        public bool IsSealed => _isSealed;
 
         public void Seal(TrieNode? root)
         {
             Root = root;
+            _isSealed = true;
         }
 
         public override string ToString() => $"{BlockNumber}({Root})";

@@ -4,7 +4,6 @@
 using Nethermind.Serialization.Json;
 using System;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Proofs;
 

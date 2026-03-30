@@ -1,14 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Config
 {
@@ -32,8 +32,7 @@ namespace Nethermind.Config
             ArgumentException GetPortException(string hostName) =>
                 new($"Can't get Port for host {hostName}.");
 
-            if (!(Uri.TryCreate(enodeString, new UriCreationOptions() { }, out Uri? parsed)
-                && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase)))
+            if (!IsEnode(enodeString, out Uri? parsed))
             {
                 throw new ArgumentException($"Invalid enode value '{enodeString}'");
             }
@@ -108,5 +107,8 @@ namespace Nethermind.Config
             : $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}?discport={DiscoveryPort}";
 
         public override string ToString() => Info;
+
+        public static bool IsEnode(string enodeString, [NotNullWhen(true)] out Uri? parsed) =>
+            Uri.TryCreate(enodeString, new UriCreationOptions(), out parsed) && parsed.Scheme.Equals("enode", StringComparison.OrdinalIgnoreCase);
     }
 }

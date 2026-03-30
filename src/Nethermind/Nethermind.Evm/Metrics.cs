@@ -19,6 +19,11 @@ public class Metrics
     private static readonly ZeroContentionCounter _codeDbCache = new();
     [Description("Number of Code DB cache reads on thread.")]
     internal static long ThreadLocalCodeDbCache => _codeDbCache.ThreadLocalValue;
+
+    /// <summary>
+    /// Gets thread-local code DB cache count. Use this for external access.
+    /// </summary>
+    public static long GetThreadLocalCodeDbCache() => _codeDbCache.ThreadLocalValue;
     internal static void IncrementCodeDbCache() => _codeDbCache.Increment();
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
@@ -110,6 +115,18 @@ public class Metrics
     public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
     public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
 
+    private static long _totalBackgroundTasksDropped;
+    [GaugeMetric]
+    [Description("Total number of background tasks dropped because queue was full.")]
+    public static long TotalBackgroundTasksDropped => _totalBackgroundTasksDropped;
+    public static void IncrementTotalBackgroundTasksDropped() => Interlocked.Increment(ref _totalBackgroundTasksDropped);
+
+    private static long _totalBackgroundTasksExecuted;
+    [GaugeMetric]
+    [Description("Total number of background tasks executed.")]
+    public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
+    public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
+
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;
@@ -166,6 +183,18 @@ public class Metrics
                 GasPriceMedian = value;
             }
         }
+    }
+
+    /// <summary>
+    /// Gets block gas price data for external access. Returns (min, estMedian, ave, max).
+    /// Returns null if no gas data available (min is float.MaxValue).
+    /// </summary>
+    public static (float Min, float EstMedian, float Ave, float Max)? GetBlockGasPrices()
+    {
+        if (_blockMinGasPrice == float.MaxValue)
+            return null;
+
+        return (_blockMinGasPrice, _blockEstMedianGasPrice, _blockAveGasPrice, _blockMaxGasPrice);
     }
 
     [GaugeMetric]

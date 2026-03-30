@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Repositories
 {
-    public class ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb) : IChainLevelInfoRepository
+    public class ChainLevelInfoRepository([KeyFilter(DbNames.BlockInfos)] IDb blockInfoDb) : IChainLevelInfoRepository, IClearableCache
     {
         private const int CacheSize = 64;
 
@@ -72,7 +72,7 @@ namespace Nethermind.State.Repositories
 
         public BatchWrite StartBatch() => new(_writeLock, _blockInfoDb.StartWriteBatch());
 
-        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetStreamDecoder<ChainLevelInfo>(), _blockInfoCache);
+        public ChainLevelInfo? LoadLevel(long number) => _blockInfoDb.Get(number, Rlp.GetValueDecoder<ChainLevelInfo>(), _blockInfoCache);
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
         {
@@ -91,6 +91,11 @@ namespace Nethermind.State.Repositories
                     return _decoder.Decode(ref rlpValueContext, RlpBehaviors.AllowExtraBytes);
                 })
                 .ToPooledList(data.Length);
+        }
+
+        void IClearableCache.ClearCache()
+        {
+            _blockInfoCache.Clear();
         }
     }
 }

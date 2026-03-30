@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -22,7 +21,6 @@ namespace Nethermind.Blockchain
         // For testing
         public bool HasSynced { private get; init; }
 
-        [UseConstructorForDependencyInjection]
         public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
             : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
         {

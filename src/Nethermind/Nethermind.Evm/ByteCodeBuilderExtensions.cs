@@ -105,6 +105,8 @@ namespace Nethermind.Evm
             => @this.Op(Instruction.INVALID);
         public static Prepare CLZ(this Prepare @this)
             => @this.Op(Instruction.CLZ);
+        public static Prepare SLOTNUM(this Prepare @this)
+            => @this.Op(Instruction.SLOTNUM);
         #endregion
 
         #region opcodes_with_1_arg

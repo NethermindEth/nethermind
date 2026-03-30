@@ -32,10 +32,14 @@ using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Merge.Plugin;
+using Nethermind.Merge.Plugin.Data;
+using Nethermind.TxPool;
+using Nethermind.Serialization.Json;
 using System.Reflection;
+using System.Text.Json;
 
 namespace Ethereum.Test.Base;
 
@@ -49,13 +53,7 @@ public abstract class BlockchainTestBase
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logManager ??= LimboLogs.Instance;
         _logger = _logManager.GetClassLogger();
-    }
-
-    [SetUp]
-    public void Setup()
-    {
     }
 
     private class DifficultyCalculatorWrapper : IDifficultyCalculator
@@ -86,10 +84,14 @@ public abstract class BlockchainTestBase
 
         bool isEngineTest = test.Blocks is null && test.EngineNewPayloads is not null;
 
-        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions =
-            isEngineTest ?
-            [((ForkActivation)0, test.Network)] :
-            [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+        // EIP-7928 introduces BlockAccessListHash in the block header, which must be computed
+        // during genesis processing. Without target fork rules at genesis, the hash field is missing
+        // and the genesis block header doesn't match the pyspec fixture expectation.
+        bool genesisUsesTargetFork = test.Network.IsEip7928Enabled;
+
+        List<(ForkActivation Activation, IReleaseSpec Spec)> transitions = genesisUsesTargetFork
+            ? [((ForkActivation)0, test.Network)]
+            : [((ForkActivation)0, test.GenesisSpec), ((ForkActivation)1, test.Network)]; // genesis block is always initialized with Frontier
 
         if (test.NetworkAfterTransition is not null)
         {
@@ -98,9 +100,8 @@ public abstract class BlockchainTestBase
 
         ISpecProvider specProvider = new CustomSpecProvider(test.ChainId, test.ChainId, transitions.ToArray());
 
-        Assert.That(isEngineTest || test.ChainId == GnosisSpecProvider.Instance.ChainId || specProvider.GenesisSpec == Frontier.Instance, "Expected genesis spec to be Frontier for blockchain tests");
 
-        if (test.Network is Cancun || test.NetworkAfterTransition is Cancun)
+        if (test.Network.IsEip4844Enabled || test.NetworkAfterTransition?.IsEip4844Enabled == true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }
@@ -127,13 +128,16 @@ public abstract class BlockchainTestBase
         }
 
         IConfigProvider configProvider = new ConfigProvider();
-        // configProvider.GetConfig<IBlocksConfig>().PreWarmStateOnBlockProcessing = false;
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        blocksConfig.PreWarmStateConcurrency = 0;
+        blocksConfig.PreWarmStateOnBlockProcessing = false;
         ContainerBuilder containerBuilder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(configProvider))
             .AddSingleton(specProvider)
             .AddSingleton(_logManager)
             .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator);
+            .AddSingleton<IDifficultyCalculator>(DifficultyCalculator)
+            .AddSingleton<ITxPool>(NullTxPool.Instance);
 
         if (isEngineTest)
         {
@@ -149,7 +153,6 @@ public abstract class BlockchainTestBase
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
         blockchainProcessor.Start();
 
-        // Register tracer if provided for blocktest tracing
         if (tracer is not null)
         {
             blockchainProcessor.Tracers.Add(tracer);
@@ -170,9 +173,8 @@ public abstract class BlockchainTestBase
                 Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
                 Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
-                ManualResetEvent genesisProcessed = new(false);
-
-                blockTree.NewHeadBlock += (_, args) =>
+                using ManualResetEvent genesisProcessed = new(false);
+                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
                 {
                     if (args.Block.Number == 0)
                     {
@@ -180,8 +182,7 @@ public abstract class BlockchainTestBase
                         genesisProcessed.Set();
                     }
                 };
-
-                blockchainProcessor.BlockRemoved += (_, args) =>
+                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
                 {
                     if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
                     {
@@ -190,11 +191,22 @@ public abstract class BlockchainTestBase
                     }
                 };
 
-                blockTree.SuggestBlock(genesisBlock);
-                genesisProcessed.WaitOne(_genesisProcessingTimeoutMs);
-                parentHeader = genesisBlock.Header;
+                blockTree.NewHeadBlock += onNewHeadBlock;
+                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
 
-                // Dispose genesis block's AccountChanges
+                try
+                {
+                    blockTree.SuggestBlock(genesisBlock);
+                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                        "Timed out waiting for genesis block processing.");
+                    parentHeader = genesisBlock.Header;
+                }
+                finally
+                {
+                    blockTree.NewHeadBlock -= onNewHeadBlock;
+                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+                }
+
                 genesisBlock.DisposeAccountChanges();
             }
 
@@ -205,9 +217,11 @@ public abstract class BlockchainTestBase
             }
             else if (test.EngineNewPayloads is not null)
             {
-                // engine test
-                IEngineRpcModule engineRpcModule = container.Resolve<IEngineRpcModule>();
-                await RunNewPayloads(test.EngineNewPayloads, engineRpcModule);
+                // engine test — route through JsonRpcService for realistic deserialization
+                IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
+                JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
+                JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
+                await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, parentHeader.Hash!);
             }
             else
             {
@@ -310,36 +324,67 @@ public abstract class BlockchainTestBase
         return parentHeader;
     }
 
-    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IEngineRpcModule engineRpcModule)
+    private static readonly Dictionary<int, int> s_newPayloadParamCounts = Enumerable
+        .Range(1, EngineApiVersions.NewPayload.Latest)
+        .ToDictionary(v => v, v => (typeof(IEngineRpcModule).GetMethod($"engine_newPayloadV{v}")
+            ?? throw new NotSupportedException($"engine_newPayloadV{v} not found on IEngineRpcModule")).GetParameters().Length);
+
+    private async static Task RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, Hash256 initialHeadHash)
     {
-        (ExecutionPayloadV3, string[]?, string[]?, int, int)[] payloads = [.. JsonToEthereumTest.Convert(newPayloads)];
+        if (newPayloads is null || newPayloads.Length == 0) return;
 
-        // blockchain test engine
-        foreach ((ExecutionPayload executionPayload, string[]? blobVersionedHashes, string[]? validationError, int newPayloadVersion, int fcuVersion) in payloads)
+        int initialFcuVersion = int.Parse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
+
+        foreach (TestEngineNewPayloadsJson enginePayload in newPayloads)
         {
-            ResultWrapper<PayloadStatusV1> res;
-            byte[]?[] hashes = blobVersionedHashes is null ? [] : [.. blobVersionedHashes.Select(x => Bytes.FromHexString(x))];
+            int newPayloadVersion = int.Parse(enginePayload.NewPayloadVersion ?? EngineApiVersions.NewPayload.Latest.ToString());
+            int fcuVersion = int.Parse(enginePayload.ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString());
+            string? validationError = JsonToEthereumTest.ParseValidationError(enginePayload, newPayloadVersion);
 
-            MethodInfo newPayloadMethod = engineRpcModule.GetType().GetMethod($"engine_newPayloadV{newPayloadVersion}");
-            List<object?> newPayloadParams = [executionPayload];
-            if (newPayloadVersion >= 3)
+            int paramCount = s_newPayloadParamCounts[newPayloadVersion];
+            string paramsJson = "[" + string.Join(",", enginePayload.Params.Take(paramCount).Select(static p => p.GetRawText())) + "]";
+
+            JsonRpcResponse npResponse = await SendRpc(rpcService, rpcContext,
+                "engine_newPayloadV" + newPayloadVersion, paramsJson);
+
+            // RPC-level errors (e.g. wrong payload version) are valid for negative tests
+            if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                newPayloadParams.AddRange([hashes, executionPayload.ParentBeaconBlockRoot]);
+                Assert.That(validationError, Is.Not.Null,
+                    $"engine_newPayloadV{newPayloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+                continue;
             }
-            if (newPayloadVersion >= 4)
-            {
-                newPayloadParams.Add(executionPayload.ExecutionRequests);
-            }
 
-            res = await (Task<ResultWrapper<PayloadStatusV1>>)newPayloadMethod.Invoke(engineRpcModule, [.. newPayloadParams]);
+            PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
+            string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
+            Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
+                $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
+                $"ValidationError: {payloadStatus.ValidationError}");
 
-            if (res.Result.ResultType == ResultType.Success)
+            if (payloadStatus.Status == PayloadStatus.Valid)
             {
-                ForkchoiceStateV1 fcuState = new(executionPayload.BlockHash, executionPayload.BlockHash, executionPayload.BlockHash);
-                MethodInfo fcuMethod = engineRpcModule.GetType().GetMethod($"engine_forkchoiceUpdatedV{fcuVersion}");
-                await (Task<ResultWrapper<ForkchoiceUpdatedV1Result>>)fcuMethod.Invoke(engineRpcModule, [fcuState, null]);
+                string blockHash = enginePayload.Params[0].GetProperty("blockHash").GetString()!;
+                AssertRpcSuccess(await SendFcu(rpcService, rpcContext, fcuVersion, blockHash));
             }
         }
+    }
+
+    private static async Task<JsonRpcResponse> SendRpc(IJsonRpcService rpcService, JsonRpcContext context, string method, string paramsJson)
+    {
+        using JsonDocument doc = JsonDocument.Parse(paramsJson);
+        JsonRpcRequest request = new() { JsonRpc = "2.0", Id = 1, Method = method, Params = doc.RootElement.Clone() };
+        return await rpcService.SendRequestAsync(request, context);
+    }
+
+    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
+        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion,
+            $$$"""[{"headBlockHash":"{{{blockHash}}}","safeBlockHash":"{{{blockHash}}}","finalizedBlockHash":"{{{blockHash}}}"},null]""");
+
+    private static void AssertRpcSuccess(JsonRpcResponse response)
+    {
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(),
+            response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
     }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
@@ -350,8 +395,8 @@ public abstract class BlockchainTestBase
             TestBlockJson testBlockJson = test.Blocks[i];
             try
             {
-                RlpStream rlpContext = Bytes.FromHexString(testBlockJson.Rlp!).AsRlpStream();
-                Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                byte[] rlpBytes = Bytes.FromHexString(testBlockJson.Rlp!);
+                Block suggestedBlock = Rlp.Decode<Block>(rlpBytes);
 
                 if (testBlockJson.BlockHeader is not null)
                 {
@@ -362,12 +407,12 @@ public abstract class BlockchainTestBase
                         Assert.That(suggestedBlock.Uncles[uncleIndex].Hash, Is.EqualTo(new Hash256(testBlockJson.UncleHeaders![uncleIndex].Hash)));
                     }
 
-                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectException));
                 }
             }
             catch (Exception e)
             {
-                if (testBlockJson.ExpectedException is null)
+                if (testBlockJson.ExpectException is null)
                 {
                     string invalidRlpMessage = $"Invalid RLP ({i}) {e}";
                     Assert.That(!failOnInvalidRlp, invalidRlpMessage);

@@ -1,0 +1,24 @@
+name: Spell check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spell-check:
+    name: Check spelling
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@v8
+        with:
+          incremental_files_only: true

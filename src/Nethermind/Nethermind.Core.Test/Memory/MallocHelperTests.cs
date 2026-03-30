@@ -13,7 +13,7 @@ public class MallocHelperTests
     [Test]
     public void TestMallOpts()
     {
-        MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)128.KiB()).Should().BeTrue();
+        MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)128.KiB).Should().BeTrue();
     }
 
     [Test]

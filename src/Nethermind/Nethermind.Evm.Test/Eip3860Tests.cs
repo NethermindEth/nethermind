@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Test
                 .FromCode(createCode)
                 .Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, byteCode, Spec);
 
             byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done;
@@ -57,7 +57,7 @@ namespace Nethermind.Evm.Test
                 ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done
                 : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
             TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
 
             const int contractCreationGasLimit = 50000;
@@ -102,11 +102,11 @@ namespace Nethermind.Evm.Test
 
             byte[] createCode = Prepare.EvmCode.Create(byteCode, 0).Done;
 
-            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
 
             (Block block, Transaction transaction) = PrepareTx((BlockNumber, timestamp), 500000, createCode);
 
-            transaction.GasPrice = 2.GWei();
+            transaction.GasPrice = 2.GWei;
             transaction.To = null;
             transaction.Data = createCode;
             TestAllTracerWithOutput tracer = CreateTracer();

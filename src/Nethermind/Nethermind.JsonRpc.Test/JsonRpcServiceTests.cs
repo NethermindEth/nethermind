@@ -1,12 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
 using System.Text.Json;
-
-using FluentAssertions;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -18,15 +16,16 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.JsonRpc.Test;
 
@@ -62,7 +61,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params object?[]? parameters) where T : IRpcModule
     {
-        RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), new EthereumJsonSerializer(), LimboLogs.Instance);
         moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcRequest request = RpcTest.BuildJsonRequest(method, parameters);
@@ -114,13 +113,31 @@ public class JsonRpcServiceTests
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Admin_peers_is_working_with_empty_or_null_params(bool useNullParams)
+    {
+        IAdminRpcModule adminRpcModule = Substitute.For<IAdminRpcModule>();
+        PeerInfo[] expectedPeers = [new PeerInfo { Enode = "enode://expected-peer" }];
+        adminRpcModule.admin_peers(false).Returns(ResultWrapper<PeerInfo[]>.Success(expectedPeers));
+
+        JsonRpcResponse response = useNullParams
+            ? await RpcTest.TestRequest(adminRpcModule, "admin_peers", (object?[]?)null)
+            : await RpcTest.TestRequest(adminRpcModule, "admin_peers");
+
+        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>());
+        JsonRpcSuccessResponse successResponse = (JsonRpcSuccessResponse)response;
+        Assert.That(successResponse.Result, Is.SameAs(expectedPeers));
+        adminRpcModule.Received(1).admin_peers(false);
+    }
+
     [Test]
     public void Case_sensitivity_test()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
-        TestRequest(ethRpcModule, "eth_chainID").Should().BeOfType<JsonRpcErrorResponse>();
-        TestRequest(ethRpcModule, "eth_chainId").Should().BeOfType<JsonRpcSuccessResponse>();
+        Assert.That(TestRequest(ethRpcModule, "eth_chainID"), Is.InstanceOf<JsonRpcErrorResponse>());
+        Assert.That(TestRequest(ethRpcModule, "eth_chainId"), Is.InstanceOf<JsonRpcSuccessResponse>());
     }
 
     [Test]
@@ -135,7 +152,7 @@ public class JsonRpcServiceTests
 
         JsonRpcResponse response = TestRequestWithPool(pool, "eth_getLogs", "{}");
         rpcModule.Received().eth_getLogs(Arg.Any<Filter>());
-        response.Should().BeOfType<JsonRpcErrorResponse>();
+        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
 
         response.Dispose();
         pool.Received().ReturnModule(rpcModule);
@@ -231,16 +248,16 @@ public class JsonRpcServiceTests
     [TestCaseSource(nameof(BlockForRpcTestSource))]
     public void BlockForRpc_should_expose_withdrawals_if_any((bool Expected, Block Block) item)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        var rpcBlock = new BlockForRpc(item.Block, false, specProvider);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        BlockForRpc rpcBlock = new(item.Block, false, specProvider);
 
-        rpcBlock.WithdrawalsRoot.Should().BeEquivalentTo(item.Block.WithdrawalsRoot);
-        rpcBlock.Withdrawals.Should().BeEquivalentTo(item.Block.Withdrawals);
+        Assert.That(rpcBlock.WithdrawalsRoot, Is.EqualTo(item.Block.WithdrawalsRoot));
+        Assert.That(rpcBlock.Withdrawals, Is.EqualTo(item.Block.Withdrawals));
 
-        var json = new EthereumJsonSerializer().Serialize(rpcBlock);
+        string json = new EthereumJsonSerializer().Serialize(rpcBlock);
 
-        json.Contains("withdrawals\"", StringComparison.Ordinal).Should().Be(item.Expected);
-        json.Contains("withdrawalsRoot", StringComparison.Ordinal).Should().Be(item.Expected);
+        Assert.That(json.Contains("withdrawals\"", StringComparison.Ordinal), Is.EqualTo(item.Expected));
+        Assert.That(json.Contains("withdrawalsRoot", StringComparison.Ordinal), Is.EqualTo(item.Expected));
     }
 
     // With (Block, bool), tests don't run for some reason. Flipped to (bool, Block).
@@ -257,4 +274,18 @@ public class JsonRpcServiceTests
 
             (false, Build.A.Block.WithWithdrawals(null).TestObject)
         };
+    [Test]
+    public async Task Unhandled_exception_returns_InternalError()
+    {
+        IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
+        moduleProvider.Resolve(Arg.Any<string>()).Throws(new Exception("test"));
+
+        JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
+        JsonRpcRequest request = RpcTest.BuildJsonRequest("eth_test");
+        JsonRpcResponse response = await service.SendRequestAsync(request, _context);
+
+        Assert.That(response, Is.InstanceOf<JsonRpcErrorResponse>());
+        JsonRpcErrorResponse errorResponse = (JsonRpcErrorResponse)response;
+        Assert.That(errorResponse.Error!.Code, Is.EqualTo(ErrorCodes.InternalError));
+    }
 }

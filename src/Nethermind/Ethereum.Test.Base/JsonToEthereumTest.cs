@@ -13,12 +13,13 @@ using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Int256;
+using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 
 namespace Ethereum.Test.Base
 {
@@ -62,7 +63,8 @@ namespace Ethereum.Test.Base
                 headerJson.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(headerJson.BlobGasUsed).ToUnsignedBigInteger(),
                 headerJson.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(headerJson.ExcessBlobGas).ToUnsignedBigInteger(),
                 headerJson.ParentBeaconBlockRoot is null ? null : new Hash256(headerJson.ParentBeaconBlockRoot),
-                headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash)
+                headerJson.RequestsHash is null ? null : new Hash256(headerJson.RequestsHash),
+                headerJson.SlotNumber is null ? null : (ulong)Bytes.FromHexString(headerJson.SlotNumber).ToUnsignedBigInteger()
             )
             {
                 Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom)),
@@ -74,7 +76,7 @@ namespace Ethereum.Test.Base
                 StateRoot = new Hash256(headerJson.StateRoot),
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
-                // BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
+                BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
             };
 
             if (headerJson.BaseFeePerGas is not null)
@@ -85,44 +87,29 @@ namespace Ethereum.Test.Base
             return header;
         }
 
-        public static IEnumerable<(ExecutionPayloadV3, string[]?, string[]?, int, int)> Convert(TestEngineNewPayloadsJson[]? executionPayloadsJson)
+        public static string? ParseValidationError(TestEngineNewPayloadsJson engineNewPayload, int newPayloadVersion)
         {
-            if (executionPayloadsJson is null)
+            if (engineNewPayload.ValidationError is not null)
             {
-                throw new InvalidDataException("Execution payloads JSON was null when constructing test.");
+                return engineNewPayload.ValidationError;
             }
 
-            foreach (TestEngineNewPayloadsJson engineNewPayload in executionPayloadsJson)
+            int validationErrorParamIndex = newPayloadVersion >= 4 ? 4 : 3;
+            if (engineNewPayload.Params.Length <= validationErrorParamIndex)
             {
-                TestEngineNewPayloadsJson.ParamsExecutionPayload executionPayload = engineNewPayload.Params[0].Deserialize<TestEngineNewPayloadsJson.ParamsExecutionPayload>(EthereumJsonSerializer.JsonOptions);
-                string[]? blobVersionedHashes = engineNewPayload.Params.Length > 1 ? engineNewPayload.Params[1].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                string? parentBeaconBlockRoot = engineNewPayload.Params.Length > 2 ? engineNewPayload.Params[2].Deserialize<string?>(EthereumJsonSerializer.JsonOptions) : null;
-                string[]? validationError = engineNewPayload.Params.Length > 3 ? engineNewPayload.Params[3].Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) : null;
-                yield return (new ExecutionPayloadV3()
-                {
-                    BaseFeePerGas = (ulong)Bytes.FromHexString(executionPayload.BaseFeePerGas).ToUnsignedBigInteger(),
-                    BlockHash = new(executionPayload.BlockHash),
-                    BlockNumber = (long)Bytes.FromHexString(executionPayload.BlockNumber).ToUnsignedBigInteger(),
-                    ExtraData = Bytes.FromHexString(executionPayload.ExtraData),
-                    FeeRecipient = new(executionPayload.FeeRecipient),
-                    GasLimit = (long)Bytes.FromHexString(executionPayload.GasLimit).ToUnsignedBigInteger(),
-                    GasUsed = (long)Bytes.FromHexString(executionPayload.GasUsed).ToUnsignedBigInteger(),
-                    LogsBloom = new(Bytes.FromHexString(executionPayload.LogsBloom)),
-                    ParentHash = new(executionPayload.ParentHash),
-                    PrevRandao = new(executionPayload.PrevRandao),
-                    ReceiptsRoot = new(executionPayload.ReceiptsRoot),
-                    StateRoot = new(executionPayload.StateRoot),
-                    Timestamp = (ulong)Bytes.FromHexString(executionPayload.Timestamp).ToUnsignedBigInteger(),
-                    // BlockAccessList = executionPayload.BlockAccessList is null ? null : Bytes.FromHexString(executionPayload.BlockAccessList),
-                    BlobGasUsed = executionPayload.BlobGasUsed is null ? null : (ulong)Bytes.FromHexString(executionPayload.BlobGasUsed).ToUnsignedBigInteger(),
-                    ExcessBlobGas = executionPayload.ExcessBlobGas is null ? null : (ulong)Bytes.FromHexString(executionPayload.ExcessBlobGas).ToUnsignedBigInteger(),
-                    ParentBeaconBlockRoot = parentBeaconBlockRoot is null ? null : new(parentBeaconBlockRoot),
-                    Withdrawals = executionPayload.Withdrawals is null ? null : [.. executionPayload.Withdrawals.Select(x => Rlp.Decode<Withdrawal>(Bytes.FromHexString(x)))],
-                    Transactions = [.. executionPayload.Transactions.Select(x => Bytes.FromHexString(x))],
-                    ExecutionRequests = []
-                }, blobVersionedHashes, validationError, int.Parse(engineNewPayload.NewPayloadVersion ?? "4"), int.Parse(engineNewPayload.ForkChoiceUpdatedVersion ?? "3"));
+                return null;
             }
+
+            JsonElement validationError = engineNewPayload.Params[validationErrorParamIndex];
+            return validationError.ValueKind switch
+            {
+                JsonValueKind.Null => null,
+                JsonValueKind.String => validationError.Deserialize<string>(EthereumJsonSerializer.JsonOptions),
+                JsonValueKind.Array => string.Join("|", validationError.Deserialize<string[]?>(EthereumJsonSerializer.JsonOptions) ?? []),
+                _ => null,
+            };
         }
+
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
@@ -143,16 +130,21 @@ namespace Ethereum.Test.Base
             };
             transaction.Hash = transaction.CalculateHash();
 
+            bool hasAccessListField = transactionJson.AccessLists is not null || transactionJson.AccessList is not null;
             AccessList.Builder builder = new();
             ProcessAccessList(transactionJson.AccessLists is not null
                 ? transactionJson.AccessLists[postStateJson.Indexes.Data]
                 : transactionJson.AccessList, builder);
             transaction.AccessList = builder.Build();
 
-            if (transaction.AccessList.AsEnumerable().Count() != 0)
+            if (hasAccessListField)
+            {
                 transaction.Type = TxType.AccessList;
-            else
+            }
+            else if (transaction.AccessList.IsEmpty)
+            {
                 transaction.AccessList = null;
+            }
 
             if (transactionJson.MaxFeePerGas is not null)
             {
@@ -277,6 +269,7 @@ namespace Ethereum.Test.Base
                         CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot,
                         CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot,
                         CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas,
+                        CurrentSlotNumber = testJson.Env.SlotNumber,
                         PostReceiptsRoot = stateJson.Logs,
                         PostHash = stateJson.Hash,
                         Pre = testJson.Pre.ToDictionary(p => p.Key, p => p.Value),
@@ -333,66 +326,6 @@ namespace Ethereum.Test.Base
 
         private static readonly EthereumJsonSerializer _serializer = new();
 
-        public static IEnumerable<EofTest> ConvertToEofTests(string json)
-        {
-            Dictionary<string, EofTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, EofTestJson>>(json);
-            List<EofTest> tests = [];
-            foreach (KeyValuePair<string, EofTestJson> namedTest in testsInFile)
-            {
-                (string name, string category) = GetNameAndCategory(namedTest.Key);
-                GetTestMetaData(namedTest, out string? description, out string? url, out string? spec);
-
-                foreach (KeyValuePair<string, VectorTestJson> pair in namedTest.Value.Vectors)
-                {
-                    VectorTestJson vectorJson = pair.Value;
-                    VectorTest vector = new()
-                    {
-                        Code = Bytes.FromHexString(vectorJson.Code),
-                        ContainerKind = ParseContainerKind(vectorJson.ContainerKind)
-                    };
-
-                    foreach (KeyValuePair<string, TestResultJson> result in vectorJson.Results)
-                    {
-                        EofTest test = new()
-                        {
-                            Name = $"{name}",
-                            Category = $"{category} [{result.Key}]",
-                            Url = url,
-                            Description = description,
-                            Spec = spec,
-                            Vector = vector,
-                            Result = result.ToTestResult()
-                        };
-                        tests.Add(test);
-                    }
-                }
-            }
-
-            return tests;
-
-            static ValidationStrategy ParseContainerKind(string containerKind)
-                => "INITCODE".Equals(containerKind) ? ValidationStrategy.ValidateInitCodeMode : ValidationStrategy.ValidateRuntimeMode;
-
-            static void GetTestMetaData(KeyValuePair<string, EofTestJson> namedTest, out string? description, out string? url, out string? spec)
-            {
-                description = null;
-                url = null;
-                spec = null;
-                GeneralStateTestInfoJson info = namedTest.Value?.Info;
-                if (info is not null)
-                {
-                    description = info.Description;
-                    url = info.Url;
-                    spec = info.Spec;
-                }
-            }
-        }
-
-        private static Result ToTestResult(this KeyValuePair<string, TestResultJson> result)
-            => result.Value.Result ?
-                new Result { Fork = result.Key, Success = true } :
-                new Result { Fork = result.Key, Success = false, Error = result.Value.Exception };
-
         public static IEnumerable<GeneralStateTest> ConvertStateTest(string json)
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
@@ -432,11 +365,11 @@ namespace Ethereum.Test.Base
                 string[] transitionInfo = testSpec.Network.Split("At");
                 string[] networks = transitionInfo[0].Split("To");
 
-                testSpec.EthereumNetwork = SpecNameParser.Parse(networks[0]);
+                testSpec.EthereumNetwork = LoadSpec(networks[0], testSpec.Config?.BlobSchedule);
                 if (transitionInfo.Length > 1)
                 {
                     testSpec.TransitionForkActivation = TransitionForkActivation(transitionInfo[1]);
-                    testSpec.EthereumNetworkAfterTransition = SpecNameParser.Parse(networks[1]);
+                    testSpec.EthereumNetworkAfterTransition = LoadSpec(networks[1], testSpec.Config?.BlobSchedule);
                 }
 
                 (string name, string category) = GetNameAndCategory(testName);
@@ -444,6 +377,22 @@ namespace Ethereum.Test.Base
             }
 
             return testsByName;
+        }
+
+        private static IReleaseSpec LoadSpec(string name, Dictionary<string, BlobScheduleEntryJson>? blobSchedule)
+        {
+            IReleaseSpec spec = SpecNameParser.Parse(name);
+            if (blobSchedule is null || !blobSchedule.TryGetValue(name, out BlobScheduleEntryJson? blobCount))
+            {
+                return spec;
+            }
+
+            return new OverridableReleaseSpec(spec)
+            {
+                MaxBlobCount = System.Convert.ToUInt64(blobCount.Max, 16),
+                TargetBlobCount = System.Convert.ToUInt64(blobCount.Target, 16),
+                BlobBaseFeeUpdateFraction = System.Convert.ToUInt64(blobCount.BaseFeeUpdateFraction, 16)
+            };
         }
 
         private static (string name, string category) GetNameAndCategory(string key)

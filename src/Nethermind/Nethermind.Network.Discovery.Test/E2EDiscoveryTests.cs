@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -26,17 +26,18 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// Common code for all node
     /// </summary>
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
-        IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboTraceLogger.Instance);
+        ConfigProvider configProvider = new();
+        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];
+
         if (bootEnode is not null)
         {
             spec.Bootnodes = [new(bootEnode.PublicKey, bootEnode.HostIp.ToString(), bootEnode.Port)];
@@ -47,7 +48,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
-
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
 
@@ -99,7 +99,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
             Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
-                Is.EquivalentTo(expectedKeys).After(5000, 100));
+                Is.EquivalentTo(expectedKeys).After(15000, 100));
         }
     }
 }

@@ -29,6 +29,7 @@ using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
@@ -131,7 +132,9 @@ public class ReorgTests
                 specProvider,
                 LimboLogs.Instance),
             stateReader,
-            LimboLogs.Instance, BlockchainProcessor.Options.Default);
+            LimboLogs.Instance,
+            BlockchainProcessor.Options.Default,
+            Substitute.For<IProcessingStats>());
     }
 
     [OneTimeTearDown]

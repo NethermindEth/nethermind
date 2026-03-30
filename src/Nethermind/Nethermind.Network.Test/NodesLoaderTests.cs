@@ -62,7 +62,7 @@ public class NodesLoaderTests
     [Test]
     public void Can_load_bootnodes()
     {
-        _discoveryConfig.Bootnodes = enodesString;
+        _discoveryConfig.Bootnodes = new[] { new NetworkNode(enode1String), new NetworkNode(enode2String) };
         _networkConfig.Bootnodes = _discoveryConfig.Bootnodes;
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(2));
@@ -89,7 +89,7 @@ public class NodesLoaderTests
     public void Can_load_only_static_nodes()
     {
         _networkConfig.StaticPeers = enode1String;
-        _networkConfig.Bootnodes = enode2String;
+        _networkConfig.Bootnodes = new[] { new NetworkNode(enode2String) };
         _networkConfig.OnlyStaticPeers = true;
         List<Node> nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToList();
         Assert.That(nodes.Count, Is.EqualTo(1));

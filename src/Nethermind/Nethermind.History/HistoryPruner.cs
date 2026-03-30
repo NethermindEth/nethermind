@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -274,7 +273,7 @@ public class HistoryPruner : IHistoryPruner
                                     }
 
                                     return Task.CompletedTask;
-                                }))
+                                }, source: "HistoryPruner"))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
@@ -544,7 +543,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateDeletePointer(val.AsRlpStream().DecodeLong());
+            UpdateDeletePointer(val.AsRlpValueContext().DecodeLong());
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }

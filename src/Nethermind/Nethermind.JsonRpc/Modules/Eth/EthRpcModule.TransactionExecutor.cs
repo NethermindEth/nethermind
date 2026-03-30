@@ -25,50 +25,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private bool NoBaseFee { get; set; }
 
-            protected override string? Validate(TransactionForRpc call)
+            protected override Result<Transaction> Prepare(TransactionForRpc call)
             {
-                if (call is LegacyTransactionForRpc legacyTransaction)
-                {
-                    if (legacyTransaction.To is null && legacyTransaction.Input is null or { Length: 0 })
-                        return ContractCreationWithoutDataError;
-                }
+                Result<Transaction> result = call.ToTransaction(validateUserInput: true);
+                if (result.IsError) return result;
 
-                if (call is EIP1559TransactionForRpc eip1559Transaction)
-                {
-                    if (eip1559Transaction.GasPrice != null)
-                        return GasPriceInEip1559Error;
-
-                    if (eip1559Transaction.MaxFeePerGas is not null && eip1559Transaction.MaxFeePerGas == 0)
-                        return ZeroMaxFeePerGasError;
-
-                    if (eip1559Transaction.MaxFeePerGas < eip1559Transaction.MaxPriorityFeePerGas)
-                        return MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
-                            eip1559Transaction.MaxFeePerGas,
-                            eip1559Transaction.MaxPriorityFeePerGas);
-                }
-
-                if (call is BlobTransactionForRpc blobTransaction)
-                {
-                    if (blobTransaction.BlobVersionedHashes is null || blobTransaction.BlobVersionedHashes.Length == 0)
-                        return AtLeastOneBlobInBlobTransactionError;
-
-                    if (blobTransaction.To is null)
-                        return MissingToInBlobTxError;
-
-                    if (blobTransaction.MaxFeePerBlobGas is not null && blobTransaction.MaxFeePerBlobGas == 0)
-                        return ZeroMaxFeePerBlobGasError;
-                }
-
-                return null;
-            }
-
-            protected override Transaction Prepare(TransactionForRpc call)
-            {
-                if (_rpcConfig.GasCap is not null)
-                {
-                    call.EnsureDefaults(_rpcConfig.GasCap);
-                }
-                var tx = call.ToTransaction();
+                Transaction tx = result.Data;
                 tx.ChainId = _blockchainBridge.GetChainId();
                 return tx;
             }
@@ -76,10 +38,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
+
                 if (NoBaseFee)
                 {
                     clonedHeader.BaseFeePerGas = 0;
                 }
+
+                clonedHeader.GasUsed = 0;
+
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
@@ -132,18 +98,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 return ResultWrapper<TResult>.Success(bodyData);
             }
-
-            private const string GasPriceInEip1559Error = "both gasPrice and (maxFeePerGas or maxPriorityFeePerGas) specified";
-            private const string AtLeastOneBlobInBlobTransactionError = "need at least 1 blob for a blob transaction";
-            private const string MissingToInBlobTxError = "missing \"to\" in blob transaction";
-            private const string ZeroMaxFeePerBlobGasError = "maxFeePerBlobGas, if specified, must be non-zero";
-            private const string ZeroMaxFeePerGasError = "maxFeePerGas must be non-zero";
-            private static string MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
-                UInt256? maxFeePerGas,
-                UInt256? maxPriorityFeePerGas)
-                => $"maxFeePerGas ({maxFeePerGas}) < maxPriorityFeePerGas ({maxPriorityFeePerGas})";
-
-            private const string ContractCreationWithoutDataError = "contract creation without any data provided";
         }
 
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
@@ -151,11 +105,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                if (_rpcConfig.GasCap is not null)
-                {
-                    tx.GasLimit = long.Min(tx.GasLimit, _rpcConfig.GasCap.Value);
-                }
-
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
 
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
@@ -180,7 +129,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
+                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
 
                 var rpcAccessListResult = new AccessListResultForRpc(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

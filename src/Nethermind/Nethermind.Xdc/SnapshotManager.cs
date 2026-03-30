@@ -13,13 +13,11 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
 internal class SnapshotManager : ISnapshotManager
 {
-
     private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 
     private readonly SnapshotDecoder _snapshotDecoder = new();
@@ -27,16 +25,14 @@ internal class SnapshotManager : ISnapshotManager
     private readonly IBlockTree blockTree;
     private readonly IMasternodeVotingContract votingContract;
     private readonly ISpecProvider specProvider;
-    private readonly IPenaltyHandler penaltyHandler;
 
-    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
     {
-        blockTree.NewHeadBlock += OnNewHeadBlock;
+        blockTree.BlockAddedToMain += OnBlockAddedToMain;
         this.snapshotDb = snapshotDb;
         this.blockTree = blockTree;
         this.votingContract = votingContract;
         this.specProvider = specProvider;
-        this.penaltyHandler = penaltyHandler;
     }
 
     public Snapshot? GetSnapshotByGapNumber(long gapNumber)
@@ -84,39 +80,10 @@ internal class SnapshotManager : ISnapshotManager
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 
-    public (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(long blockNumber, Hash256 parentHash, IXdcReleaseSpec spec)
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
-        int maxMasternodes = spec.MaxMasternodes;
-        Snapshot previousSnapshot = GetSnapshotByBlockNumber(blockNumber, spec);
-
-        if (previousSnapshot is null)
-            throw new InvalidOperationException($"No snapshot found for header #{blockNumber}");
-
-        Address[] candidates = previousSnapshot.NextEpochCandidates;
-
-        if (blockNumber == spec.SwitchBlock + 1)
-        {
-            if (candidates.Length > maxMasternodes)
-            {
-                Array.Resize(ref candidates, maxMasternodes);
-                return (candidates, []);
-            }
-
-            return (candidates, []);
-        }
-
-        Address[] penalties = penaltyHandler.HandlePenalties(blockNumber, parentHash, candidates);
-
-        candidates = candidates
-            .Except(penalties)        // remove penalties
-            .Take(maxMasternodes)     // enforce max cap
-            .ToArray();
-
-        return (candidates, penalties);
-    }
-
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
+        if (e.Block.Hash is null || !blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+            return;
         UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
     }
 

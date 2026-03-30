@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -58,11 +57,10 @@ namespace Nethermind.Synchronization.Peers
         private readonly CancellationTokenSource _refreshLoopCancellation = new();
         private Task? _refreshLoopTask;
 
-        private readonly ManualResetEvent _signals = new(true);
+        private volatile TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
         private Timer? _upgradeTimer;
 
-        [UseConstructorForDependencyInjection]
         public SyncPeerPool(IBlockTree blockTree,
             INodeStatsManager nodeStatsManager,
             IBetterPeerStrategy betterPeerStrategy,
@@ -243,7 +241,11 @@ namespace Nethermind.Synchronization.Peers
             }
 
             PeerInfo peerInfo = new(syncPeer);
-            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            {
+                return;
+            }
+
             UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
             if (syncPeer.IsPriority)
@@ -333,6 +335,10 @@ namespace Nethermind.Synchronization.Peers
             SyncPeerAllocation allocation = new(allocationContexts, _isAllocatedChecks);
             while (true)
             {
+                // Snapshot the signal task before attempting allocation so that any
+                // signal fired during or after TryAllocateOnce is already on this task.
+                Task signal = _signal.Task;
+
                 if (TryAllocateOnce(peerAllocationStrategy, allocationContexts, allocation))
                 {
                     return allocation;
@@ -347,22 +353,12 @@ namespace Nethermind.Synchronization.Peers
                 int waitTime = 10 * tryCount++;
                 waitTime = Math.Min(waitTime, timeoutMilliseconds - (int)elapsedMilliseconds);
 
-                if (waitTime > 0 && !_signals.SafeWaitHandle.IsClosed)
+                if (waitTime > 0)
                 {
-                    try
-                    {
-                        await _signals.WaitOneAsync(waitTime, cts.Token);
-                    }
-                    catch (OperationCanceledException)
+                    await Task.WhenAny(signal, Task.Delay(waitTime, cts.Token));
+                    if (cts.IsCancellationRequested)
                     {
                         return SyncPeerAllocation.FailedAllocation;
-                    }
-                    finally
-                    {
-                        if (!_signals.SafeWaitHandle.IsClosed)
-                        {
-                            _signals.Reset(); // without this we have no delay
-                        }
                     }
                 }
             }
@@ -552,10 +548,8 @@ namespace Nethermind.Synchronization.Peers
 
         public void SignalPeersChanged()
         {
-            if (!_signals.SafeWaitHandle.IsClosed)
-            {
-                _signals.Set();
-            }
+            Interlocked.Exchange(ref _signal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+                .TrySetResult();
         }
 
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
@@ -719,7 +713,6 @@ namespace Nethermind.Synchronization.Peers
             _peerRefreshQueue.Writer.TryComplete();
             _refreshLoopCancellation.Dispose();
             _refreshLoopTask?.Dispose();
-            _signals.Dispose();
             _upgradeTimer?.Dispose();
         }
     }

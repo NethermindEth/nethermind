@@ -37,7 +37,7 @@
     "cl_image": "chainsafe/lodestar:latest",
     "checkpoint-sync-url": "https://mainnet-checkpoint-sync.attestant.io/",
     "timeout": 180,
-    "agent": "g6-standard-6"
+    "agent": "g6-standard-8"
   },
   {
     "network": "op-sepolia",

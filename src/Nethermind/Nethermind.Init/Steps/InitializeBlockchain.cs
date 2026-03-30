@@ -18,7 +18,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -30,10 +29,10 @@ namespace Nethermind.Init.Steps
         typeof(SetupKeyStore),
         typeof(InitializePrecompiles)
     )]
-    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider) : IStep
+    public class InitializeBlockchain(INethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy) : IStep
     {
         private readonly INethermindApi _api = api;
-        private ILogManager _logManager = api.LogManager;
+        protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
         public async Task Execute(CancellationToken _)
         {
@@ -53,8 +52,6 @@ namespace Nethermind.Init.Steps
             ThisNodeInfo.AddInfo("ExtraData    :", Utf8.IsValid(blocksConfig.GetExtraDataBytes()) ?
                 blocksConfig.ExtraData :
                 "- binary data -");
-
-            _api.TxGossipPolicy.Policies.Add(new SpecDrivenTxGossipPolicy(chainHeadInfoProvider));
 
             ITxPool txPool = _api.TxPool = CreateTxPool(chainHeadInfoProvider);
 
@@ -111,7 +108,7 @@ namespace Nethermind.Init.Steps
                 _api.TxValidator!,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
-                _api.TxGossipPolicy,
+                _txGossipPolicy,
                 null,
                 _api.HeadTxValidator
             );

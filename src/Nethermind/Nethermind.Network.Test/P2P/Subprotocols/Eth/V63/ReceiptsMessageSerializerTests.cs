@@ -1,15 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.SyncLimits;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
@@ -17,6 +19,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63;
 [Parallelizable(ParallelScope.All)]
 public class ReceiptsMessageSerializerTests
 {
+    private const int DecoderLogsLimit = 270_000;
+
     private static void Test(TxReceipt[][]? txReceipts)
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
@@ -83,7 +87,7 @@ public class ReceiptsMessageSerializerTests
         var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        var decoded = decoder.Decode(new RlpStream(encoded));
+        var decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
 
         var expectedDecoded = new TxReceipt
         {
@@ -131,8 +135,8 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
-        buffer.WriteByte(Rlp.OfEmptySequence[0]);
+        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1).AsDisposable();
+        buffer.WriteByte(Rlp.OfEmptyList[0]);
         buffer.ReadByte();
 
         serializer.Serialize(buffer, message);
@@ -163,5 +167,47 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).WithTxType(TxType.AccessList).TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
         Test(data);
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_TooMany_Receipts_In_A_Block()
+    {
+        TxReceipt[][] txReceipts = [new TxReceipt[NethermindSyncLimits.MaxHashesFetch + 1]];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+    }
+
+    [Test]
+    public void Deserialize_Allows_Receipt_Log_Count_At_Current_Limit()
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit).ToArray();
+
+        TxReceipt[][] txReceipts = [new[] { receipt }];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+        using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+        Assert.That(deserialized.TxReceipts[0][0].Logs.Length, Is.EqualTo(DecoderLogsLimit));
+    }
+
+    [Test]
+    public void Deserialize_Throws_On_Receipt_Log_Count_Above_Current_Limit()
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
+        receipt.Logs = Enumerable.Repeat(Build.A.LogEntry.TestObject, DecoderLogsLimit + 1).ToArray();
+
+        TxReceipt[][] txReceipts = [new[] { receipt }];
+        using ReceiptsMessage message = new(txReceipts.ToPooledList());
+        ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
+
+        byte[] serialized = serializer.Serialize(message);
+
+        Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
     }
 }

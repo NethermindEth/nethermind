@@ -18,18 +18,6 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
     {
     }
 
-    protected override void DecodePayload(Transaction transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        transaction.SourceHash = rlpStream.DecodeKeccak();
-        transaction.SenderAddress = rlpStream.DecodeAddress();
-        transaction.To = rlpStream.DecodeAddress();
-        transaction.Mint = rlpStream.DecodeUInt256();
-        transaction.Value = rlpStream.DecodeUInt256();
-        transaction.GasLimit = rlpStream.DecodeLong();
-        transaction.IsOPSystemTransaction = rlpStream.DecodeBool();
-        transaction.Data = rlpStream.DecodeByteArray();
-    }
-
     protected override void DecodePayload(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -38,7 +26,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.To = decoderContext.DecodeAddress();
         transaction.Mint = decoderContext.DecodeUInt256();
         transaction.Value = decoderContext.DecodeUInt256();
-        transaction.GasLimit = decoderContext.DecodeLong();
+        transaction.GasLimit = decoderContext.DecodePositiveLong();
         transaction.IsOPSystemTransaction = decoderContext.DecodeBool();
         transaction.Data = decoderContext.DecodeByteArray();
     }

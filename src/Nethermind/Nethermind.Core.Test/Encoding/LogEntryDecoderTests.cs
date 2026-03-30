@@ -61,7 +61,8 @@ public class LogEntryDecoderTests
         LogEntryDecoder decoder = LogEntryDecoder.Instance;
 
         Rlp encoded = decoder.Encode(logEntry);
-        LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes))!;
+        Rlp.ValueDecoderContext ctx = new(encoded.Bytes);
+        LogEntry deserialized = decoder.Decode(ref ctx)!;
 
         Assert.That(deserialized.Data, Is.EqualTo(logEntry.Data), "data");
         Assert.That(deserialized.Address, Is.EqualTo(logEntry.Address), "address");
@@ -78,5 +79,22 @@ public class LogEntryDecoderTests
 
         Rlp rlp = decoder.Encode(logEntry);
         Assert.That(rlpStreamResult.Bytes.ToHexString(), Is.EqualTo(rlp.Bytes.ToHexString()));
+    }
+
+    [Test]
+    public void Rejects_extra_topic_items_inside_topics_sequence()
+    {
+        Rlp malformed = Rlp.Encode(
+            Rlp.Encode(TestItem.AddressA.Bytes),
+            Rlp.Encode(Rlp.Encode(TestItem.KeccakA.Bytes), Rlp.OfEmptyByteArray),
+            Rlp.OfEmptyByteArray);
+
+        Assert.Throws<RlpException>(() => DecodeMalformed(malformed.Bytes));
+
+        static void DecodeMalformed(byte[] bytes)
+        {
+            Rlp.ValueDecoderContext ctx = new(bytes);
+            LogEntryDecoder.Instance.Decode(ref ctx);
+        }
     }
 }

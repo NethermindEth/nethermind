@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -29,26 +29,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.Encode(message.ResponseBytes);
         }
 
-        protected override GetStorageRangeMessage Deserialize(RlpStream rlpStream)
+        protected override GetStorageRangeMessage Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
             GetStorageRangeMessage message = new();
-            rlpStream.ReadSequenceLength();
+            ctx.ReadSequenceLength();
 
-            message.RequestId = rlpStream.DecodeLong();
+            message.RequestId = ctx.DecodeLong();
 
             message.StorageRange = new();
-            message.StorageRange.RootHash = rlpStream.DecodeKeccak();
-            message.StorageRange.Accounts = rlpStream.DecodeArrayPoolList(DecodePathWithRlpData);
-            message.StorageRange.StartingHash = rlpStream.DecodeKeccak();
-            message.StorageRange.LimitHash = rlpStream.DecodeKeccak();
-            message.ResponseBytes = rlpStream.DecodeLong();
+            message.StorageRange.RootHash = ctx.DecodeKeccak();
+            message.StorageRange.Accounts = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => new PathWithAccount() { Path = c.DecodeKeccak() }, limit: SnapMessageLimits.GetStorageRangeAccountsRlpLimit);
+            message.StorageRange.StartingHash = ctx.DecodeKeccak();
+            message.StorageRange.LimitHash = ctx.DecodeKeccak();
+            message.ResponseBytes = ctx.DecodeLong();
 
             return message;
-        }
-
-        private PathWithAccount DecodePathWithRlpData(RlpStream stream)
-        {
-            return new() { Path = stream.DecodeKeccak() };
         }
 
         public override int GetLength(GetStorageRangeMessage message, out int contentLength)

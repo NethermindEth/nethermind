@@ -239,14 +239,14 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 
         ulong txBlobGas = BlobGasCalculator.CalculateBlobGas(txBlobCount);
 
-        ulong maxBlobGasPerBlock = spec.GetMaxBlobGasPerBlock();
+        ulong maxBlobGasPerBlock = spec.GasCosts.MaxBlobGasPerBlock;
 
         if (txBlobGas > maxBlobGasPerBlock)
         {
             return BlockErrorMessages.BlobGasUsedAboveBlockLimit(maxBlobGasPerBlock, txBlobCount, txBlobGas);
         }
 
-        ulong maxBlobGasPerTx = spec.GetMaxBlobGasPerTx();
+        ulong maxBlobGasPerTx = spec.GasCosts.MaxBlobGasPerTx;
 
         return txBlobGas > maxBlobGasPerTx ? TxErrorMessages.BlobTxGasLimitExceeded(txBlobGas, maxBlobGasPerTx) : ValidationResult.Success;
     }
@@ -335,9 +335,9 @@ public abstract class BaseSignatureTxValidator : ITxValidator
         UInt256 sValue = new(signature.SAsSpan, isBigEndian: true);
         UInt256 rValue = new(signature.RAsSpan, isBigEndian: true);
 
-        UInt256 sMax = releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfNPlusOne : Secp256K1Curve.N;
+        UInt256 sMax = releaseSpec.IsEip2Enabled ? SecP256k1Curve.HalfNPlusOne : SecP256k1Curve.N;
         return sValue.IsZero || sValue >= sMax ? TxErrorMessages.InvalidTxSignature
-            : rValue.IsZero || rValue >= Secp256K1Curve.NMinusOne ? TxErrorMessages.InvalidTxSignature
+            : rValue.IsZero || rValue >= SecP256k1Curve.N ? TxErrorMessages.InvalidTxSignature
             : signature.V is 27 or 28 ? ValidationResult.Success
             : ValidateChainId(transaction, releaseSpec);
     }

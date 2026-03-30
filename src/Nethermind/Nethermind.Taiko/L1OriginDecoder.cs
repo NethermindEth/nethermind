@@ -8,31 +8,31 @@ using System;
 
 namespace Nethermind.Taiko;
 
-public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
+public sealed class L1OriginDecoder : RlpValueDecoder<L1Origin>
 {
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
-    protected override L1Origin DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override L1Origin DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        (int _, int contentLength) = rlpStream.ReadPrefixAndContentLength();
-        int itemsCount = rlpStream.PeekNumberOfItemsRemaining(maxSearch: contentLength);
+        (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
+        int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
 
-        UInt256 blockId = rlpStream.DecodeUInt256();
-        Hash256? l2BlockHash = rlpStream.DecodeKeccak();
-        long? l1BlockHeight = rlpStream.DecodeLong();
-        Hash256 l1BlockHash = rlpStream.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
+        UInt256 blockId = decoderContext.DecodeUInt256();
+        Hash256? l2BlockHash = decoderContext.DecodeKeccak();
+        long? l1BlockHeight = decoderContext.DecodeLong();
+        Hash256 l1BlockHash = decoderContext.DecodeKeccak() ?? throw new RlpException("L1BlockHash is null");
 
         int[]? buildPayloadArgsId = null;
 
         if (itemsCount >= 5)
         {
-            byte[] buildPayloadBytes = rlpStream.DecodeByteArray();
+            byte[] buildPayloadBytes = decoderContext.DecodeByteArray();
             buildPayloadArgsId = buildPayloadBytes.Length > 0 ? Array.ConvertAll(buildPayloadBytes, Convert.ToInt32) : null;
         }
 
-        bool isForcedInclusion = itemsCount >= 6 && rlpStream.DecodeBool();
-        int[]? signature = itemsCount >= 7 ? Array.ConvertAll(rlpStream.DecodeByteArray(), Convert.ToInt32) : null;
+        bool isForcedInclusion = itemsCount >= 6 && decoderContext.DecodeBool();
+        byte[]? signature = itemsCount >= 7 ? decoderContext.DecodeByteArray() : null;
 
         return new(blockId, l2BlockHash, l1BlockHeight, l1BlockHash, buildPayloadArgsId, isForcedInclusion, signature);
     }
@@ -40,7 +40,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
     public Rlp Encode(L1Origin? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
@@ -49,7 +49,7 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
 
     public override void Encode(RlpStream stream, L1Origin item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetLength(item, rlpBehaviors));
+        stream.StartSequence(GetContentLength(item, rlpBehaviors));
 
         stream.Encode(item.BlockId);
         stream.Encode(item.L2BlockHash);
@@ -87,11 +87,16 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
                 throw new RlpException($"{nameof(item.Signature)} should be exactly {SignatureLength}");
             }
 
-            stream.Encode(Array.ConvertAll(item.Signature, Convert.ToByte));
+            stream.Encode(item.Signature);
         }
     }
 
     public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors)
+    {
+        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    }
+
+    private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {
         int buildPayloadLength = 0;
         if (item.BuildPayloadArgsId is not null || item.IsForcedInclusion || item.Signature is not null)
@@ -107,14 +112,12 @@ public sealed class L1OriginDecoder : RlpStreamDecoder<L1Origin>
             isForcedInclusionLength = Rlp.LengthOf(item.IsForcedInclusion);
         }
 
-        return Rlp.LengthOfSequence(
-            Rlp.LengthOf(item.BlockId)
+        return Rlp.LengthOf(item.BlockId)
             + Rlp.LengthOf(item.L2BlockHash)
             + Rlp.LengthOf(item.L1BlockHeight ?? 0)
             + Rlp.LengthOf(item.L1BlockHash)
             + buildPayloadLength
             + isForcedInclusionLength
-            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0))
-        );
+            + (item.Signature is null ? 0 : Rlp.LengthOfByteString(SignatureLength, 0));
     }
 }

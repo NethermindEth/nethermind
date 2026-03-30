@@ -39,14 +39,14 @@ public class ProgressTracker : IDisposable
         if (byteCount < 0)
             throw new ArgumentOutOfRangeException(nameof(byteCount), "Cannot be negative");
 
-        if (byteCount < 1.KB())
+        if (byteCount < 1.KB)
             return $"{byteCount:0.##}B";
-        if (byteCount < 1.MB())
-            return $"{(float)byteCount / 1.KB():0.##}KB";
-        if (byteCount < 1.GB())
-            return $"{(float)byteCount / 1.MB():0.##}MB";
+        if (byteCount < 1.MB)
+            return $"{(float)byteCount / 1.KB:0.##}KB";
+        if (byteCount < 1.GB)
+            return $"{(float)byteCount / 1.MB:0.##}MB";
 
-        return $"{(float)byteCount / 1.GB():0.##}GB";
+        return $"{(float)byteCount / 1.GB:0.##}GB";
     }
 
     private void ReportProgress(object? sender, EventArgs e)
