@@ -23,7 +23,7 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly AssociativeKeyCacheNoReadTicker<ValueHash256> _longTermCache = new(
+        private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize);
 
         private readonly AssociativeKeyCacheNoReadTicker<ValueHash256> _currentBlockCache = new(
