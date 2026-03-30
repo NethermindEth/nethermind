@@ -15,8 +15,9 @@ namespace Nethermind.StateComposition;
 /// <summary>
 /// Enhanced ITreeVisitor that collects all composition metrics in a single pass.
 /// Uses ThreadLocal&lt;VisitorCounters&gt; for lock-free scaling to 64+ cores.
+/// Uses StateCompositionContext for path tracking to reconstruct account hashes (Owner).
 /// </summary>
-public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
+public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionContext>, IDisposable
 {
     private readonly ILogger _logger;
     private readonly CancellationToken _ct;
@@ -44,7 +45,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
     }
 
-    public bool ShouldVisit(in OldStyleTrieVisitContext ctx, in ValueHash256 nextNode)
+    public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
     {
         if (_ct.IsCancellationRequested)
             return false;
@@ -58,17 +59,17 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         return true;
     }
 
-    public void VisitTree(in OldStyleTrieVisitContext ctx, in ValueHash256 rootHash)
+    public void VisitTree(in StateCompositionContext ctx, in ValueHash256 rootHash)
     {
     }
 
-    public void VisitMissingNode(in OldStyleTrieVisitContext ctx, in ValueHash256 nodeHash)
+    public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
     {
         if (_logger.IsWarn)
             _logger.Warn($"StateComposition: missing node at depth {ctx.Level}, storage={ctx.IsStorage}");
     }
 
-    public void VisitBranch(in OldStyleTrieVisitContext ctx, TrieNode node)
+    public void VisitBranch(in StateCompositionContext ctx, TrieNode node)
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
@@ -90,7 +91,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         }
     }
 
-    public void VisitExtension(in OldStyleTrieVisitContext ctx, TrieNode node)
+    public void VisitExtension(in StateCompositionContext ctx, TrieNode node)
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
@@ -111,7 +112,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         }
     }
 
-    public void VisitLeaf(in OldStyleTrieVisitContext ctx, TrieNode node)
+    public void VisitLeaf(in StateCompositionContext ctx, TrieNode node)
     {
         VisitorCounters c = _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
@@ -133,7 +134,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         }
     }
 
-    public void VisitAccount(in OldStyleTrieVisitContext ctx, TrieNode node, in AccountStruct account)
+    public void VisitAccount(in StateCompositionContext ctx, TrieNode node, in AccountStruct account)
     {
         VisitorCounters c = _localCounters.Value!;
 
@@ -145,8 +146,9 @@ public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitCont
         else if (account.HasStorage)
         {
             c.ContractsWithStorage++;
-            // Owner = account hash. OldStyleTrieVisitContext doesn't carry path.
-            c.BeginStorageTrie(account.StorageRoot, default);
+            // Owner = account hash (keccak256 of address), reconstructed from the
+            // accumulated nibble path. At leaf depth the path IS the account hash.
+            c.BeginStorageTrie(account.StorageRoot, ctx.Path.Path);
         }
         else
         {

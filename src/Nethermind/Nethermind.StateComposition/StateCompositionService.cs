@@ -202,7 +202,7 @@ public sealed class StateCompositionService : IStateCompositionService
     /// for a single target contract identified by its storage root.
     /// Skips all non-target storage tries for efficiency.
     /// </summary>
-    private sealed class SingleContractVisitor : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
+    private sealed class SingleContractVisitor : ITreeVisitor<StateCompositionContext>, IDisposable
     {
         private readonly ILogger _logger;
         private readonly CancellationToken _ct;
@@ -228,7 +228,7 @@ public sealed class StateCompositionService : IStateCompositionService
             _targetStorageRoot = targetStorageRoot;
         }
 
-        public bool ShouldVisit(in OldStyleTrieVisitContext ctx, in ValueHash256 nextNode)
+        public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
         {
             if (_ct.IsCancellationRequested) return false;
             if (_targetCompleted) return false;
@@ -236,15 +236,15 @@ public sealed class StateCompositionService : IStateCompositionService
             return true;
         }
 
-        public void VisitTree(in OldStyleTrieVisitContext ctx, in ValueHash256 rootHash) { }
+        public void VisitTree(in StateCompositionContext ctx, in ValueHash256 rootHash) { }
 
-        public void VisitMissingNode(in OldStyleTrieVisitContext ctx, in ValueHash256 nodeHash)
+        public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
         {
             if (_logger.IsWarn)
                 _logger.Warn($"InspectContract: missing node at depth {ctx.Level}");
         }
 
-        public void VisitBranch(in OldStyleTrieVisitContext ctx, TrieNode node)
+        public void VisitBranch(in StateCompositionContext ctx, TrieNode node)
         {
             if (!ctx.IsStorage || !_collectingTarget) return;
             int byteSize = node.FullRlp.Length;
@@ -255,7 +255,7 @@ public sealed class StateCompositionService : IStateCompositionService
             _depths[depth].AddFullNode(byteSize);
         }
 
-        public void VisitExtension(in OldStyleTrieVisitContext ctx, TrieNode node)
+        public void VisitExtension(in StateCompositionContext ctx, TrieNode node)
         {
             if (!ctx.IsStorage || !_collectingTarget) return;
             int byteSize = node.FullRlp.Length;
@@ -266,7 +266,7 @@ public sealed class StateCompositionService : IStateCompositionService
             _depths[depth].AddShortNode(byteSize);
         }
 
-        public void VisitLeaf(in OldStyleTrieVisitContext ctx, TrieNode node)
+        public void VisitLeaf(in StateCompositionContext ctx, TrieNode node)
         {
             if (!ctx.IsStorage || !_collectingTarget) return;
             int byteSize = node.FullRlp.Length;
@@ -278,7 +278,7 @@ public sealed class StateCompositionService : IStateCompositionService
             _depths[depth].AddValueNode(byteSize);
         }
 
-        public void VisitAccount(in OldStyleTrieVisitContext ctx, TrieNode node, in AccountStruct account)
+        public void VisitAccount(in StateCompositionContext ctx, TrieNode node, in AccountStruct account)
         {
             if (_collectingTarget)
             {

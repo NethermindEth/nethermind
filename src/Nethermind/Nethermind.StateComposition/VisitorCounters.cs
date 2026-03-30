@@ -184,7 +184,7 @@ public sealed class VisitorCounters
 
     // --- Deterministic multi-field comparators ---
 
-    /// <summary>MaxDepth DESC → TotalNodes DESC → ValueNodes DESC → Owner ASC</summary>
+    /// <summary>MaxDepth DESC → TotalNodes DESC → ValueNodes DESC → Owner bytes ASC</summary>
     internal static int CompareByDepth(in TopContractEntry a, in TopContractEntry b)
     {
         int c = a.MaxDepth.CompareTo(b.MaxDepth);
@@ -193,11 +193,11 @@ public sealed class VisitorCounters
         if (c != 0) return c;
         c = a.ValueNodes.CompareTo(b.ValueNodes);
         if (c != 0) return c;
-        // Owner: ascending (smaller hash = higher rank), so negate
-        return -a.Owner.CompareTo(b.Owner);
+        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
+        return a.Owner.CompareTo(b.Owner);
     }
 
-    /// <summary>TotalNodes DESC → MaxDepth DESC → ValueNodes DESC → Owner ASC</summary>
+    /// <summary>TotalNodes DESC → MaxDepth DESC → ValueNodes DESC → Owner bytes ASC</summary>
     internal static int CompareByTotalNodes(in TopContractEntry a, in TopContractEntry b)
     {
         int c = a.TotalNodes.CompareTo(b.TotalNodes);
@@ -206,10 +206,11 @@ public sealed class VisitorCounters
         if (c != 0) return c;
         c = a.ValueNodes.CompareTo(b.ValueNodes);
         if (c != 0) return c;
-        return -a.Owner.CompareTo(b.Owner);
+        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
+        return a.Owner.CompareTo(b.Owner);
     }
 
-    /// <summary>ValueNodes DESC → MaxDepth DESC → TotalNodes DESC → Owner ASC</summary>
+    /// <summary>ValueNodes DESC → MaxDepth DESC → TotalNodes DESC → Owner bytes ASC</summary>
     internal static int CompareByValueNodes(in TopContractEntry a, in TopContractEntry b)
     {
         int c = a.ValueNodes.CompareTo(b.ValueNodes);
@@ -218,7 +219,8 @@ public sealed class VisitorCounters
         if (c != 0) return c;
         c = a.TotalNodes.CompareTo(b.TotalNodes);
         if (c != 0) return c;
-        return -a.Owner.CompareTo(b.Owner);
+        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
+        return a.Owner.CompareTo(b.Owner);
     }
 
     private delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
