@@ -25,7 +25,7 @@ using ILogger = Nethermind.Logging.ILogger;
 namespace Nethermind.Merge.Plugin;
 
 public class TestingRpcModule(
-    IMainProcessingContext mainProcessingContext,
+    IBlockProducerEnvFactory blockProducerEnvFactory,
     IGasLimitCalculator gasLimitCalculator,
     ISpecProvider specProvider,
     IBlockFinder blockFinder,
@@ -33,7 +33,6 @@ public class TestingRpcModule(
     : ITestingRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
-    private readonly IBlockchainProcessor _processor = mainProcessingContext.BlockchainProcessor;
 
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null)
     {
@@ -48,8 +47,11 @@ public class TestingRpcModule(
             header.TxRoot = TxTrie.CalculateRoot(transactions);
             Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
 
+            // Create a fresh processor per call with its own WorldState to avoid scope conflicts
+            // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
+            IBlockProducerEnv env = blockProducerEnvFactory.Create();
             FeesTracer feesTracer = new();
-            Block? processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+            Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
 
             if (processedBlock is not null)
             {

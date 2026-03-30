@@ -433,11 +433,14 @@ public class MergePluginTests
                 .Do(callInfo => onProcess(callInfo.Arg<Block>()));
         }
 
-        IMainProcessingContext mainProcessingContext = Substitute.For<IMainProcessingContext>();
-        mainProcessingContext.BlockchainProcessor.Returns(blockchainProcessor);
+        IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
+        blockProducerEnv.ChainProcessor.Returns(blockchainProcessor);
+
+        IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
+        blockProducerEnvFactory.Create().Returns(blockProducerEnv);
 
         return new TestingRpcModule(
-            mainProcessingContext,
+            blockProducerEnvFactory,
             gasLimitCalculator,
             specProvider,
             blockFinder,
