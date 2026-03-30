@@ -22,6 +22,10 @@
   <Folder Name="/Plugins/Signer/">
     <Project Path="Nethermind.ExternalSigner.Plugin/Nethermind.ExternalSigner.Plugin.csproj" />
   </Folder>
+  <Folder Name="/Plugins/StateComposition/">
+    <Project Path="Nethermind.StateComposition/Nethermind.StateComposition.csproj" />
+    <Project Path="Nethermind.StateComposition.Test/Nethermind.StateComposition.Test.csproj" />
+  </Folder>
   <Folder Name="/Plugins/TraceStore/">
     <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />

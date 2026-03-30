@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
-using Nethermind.Core.Crypto;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
@@ -18,7 +16,7 @@ public class PluginBootstrapTests
 
         Assert.That(plugin.Name, Is.EqualTo("StateComposition"));
         Assert.That(plugin.Description, Is.EqualTo("State composition metrics for bloatnet benchmarking"));
-        Assert.That(plugin.Author, Is.EqualTo("Nethermind/StateBenchmarks"));
+        Assert.That(plugin.Author, Is.EqualTo("Nethermind"));
     }
 
     [Test]
@@ -36,50 +34,6 @@ public class PluginBootstrapTests
 
         Assert.That(plugin.Module, Is.Not.Null);
         Assert.That(plugin.Module, Is.InstanceOf<StateCompositionModule>());
-    }
-
-    [Test]
-    public void StateCompositionStats_FromTrieStats_SetsBlockAndStateRoot()
-    {
-        // TrieStats internal fields cannot be set from outside Nethermind.Trie;
-        // verify FromTrieStats correctly wires BlockNumber, StateRoot, and
-        // maps all zero-valued counters from a default TrieStats.
-        TrieStats trieStats = new();
-        Hash256 stateRoot = Keccak.EmptyTreeHash;
-
-        StateCompositionStats stats = StateCompositionStats.FromTrieStats(trieStats, 42, stateRoot);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(stats.BlockNumber, Is.EqualTo(42));
-            Assert.That(stats.StateRoot, Is.EqualTo(stateRoot));
-            Assert.That(stats.AccountsTotal, Is.EqualTo(trieStats.AccountCount));
-            Assert.That(stats.ContractsTotal, Is.EqualTo(trieStats.CodeCount));
-            Assert.That(stats.StorageSlotsTotal, Is.EqualTo(trieStats.StorageLeafCount));
-            Assert.That(stats.AccountTrieBranchNodes, Is.EqualTo(trieStats.StateBranchCount));
-            Assert.That(stats.AccountTrieExtensionNodes, Is.EqualTo(trieStats.StateExtensionCount));
-            Assert.That(stats.AccountTrieLeafNodes, Is.EqualTo(trieStats.AccountCount));
-            Assert.That(stats.StorageTrieBranchNodes, Is.EqualTo(trieStats.StorageBranchCount));
-            Assert.That(stats.StorageTrieExtensionNodes, Is.EqualTo(trieStats.StorageExtensionCount));
-            Assert.That(stats.StorageTrieLeafNodes, Is.EqualTo(trieStats.StorageLeafCount));
-            Assert.That(stats.AccountTrieNodeBytes, Is.EqualTo(trieStats.StateSize));
-            Assert.That(stats.StorageTrieNodeBytes, Is.EqualTo(trieStats.StorageSize));
-            Assert.That(stats.TotalCodeSize, Is.EqualTo(trieStats.CodeSize));
-        });
-    }
-
-    [Test]
-    public void StateCompositionStats_FromTrieStats_NullStateRoot()
-    {
-        TrieStats trieStats = new();
-
-        StateCompositionStats stats = StateCompositionStats.FromTrieStats(trieStats, 99, null);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(stats.BlockNumber, Is.EqualTo(99));
-            Assert.That(stats.StateRoot, Is.Null);
-        });
     }
 
     [Test]
@@ -221,4 +175,9 @@ public class PluginBootstrapTests
         Assert.That(deserialized, Is.EqualTo(original));
     }
 
+    [Test]
+    public void VisitorCounters_MaxTrackedDepth_Is16()
+    {
+        Assert.That(VisitorCounters.MaxTrackedDepth, Is.EqualTo(16));
+    }
 }

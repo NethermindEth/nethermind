@@ -7,9 +7,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.StateComposition;
 
 /// <summary>
-/// Single source of truth for initial scan results.
-/// Phase 2 incremental tracking uses StateCompositionTracker (LRU cache)
-/// instead of ApplyDelta — no delta/stale methods needed here.
+/// Single source of truth for baseline scan results.
 /// </summary>
 public interface IStateCompositionStateHolder
 {
@@ -18,9 +16,7 @@ public interface IStateCompositionStateHolder
     ScanMetadata? LastScanMetadata { get; }
     bool IsInitialized { get; }
     bool IsScanning { get; }
-    double ScanProgress { get; }
     void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist);
     void MarkScanStarted();
     void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration);
-    void UpdateProgress(double progress);
 }

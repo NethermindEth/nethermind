@@ -19,11 +19,7 @@ public interface IStateCompositionRpcModule : IRpcModule
     Task<ResultWrapper<StateCompositionStats>> statecomp_getStats();
 
     [JsonRpcMethod(IsImplemented = true,
-        Description = "Get scan progress during active scan.")]
-    Task<ResultWrapper<ScanProgressResult>> statecomp_getScanProgress();
-
-    [JsonRpcMethod(IsImplemented = true,
-        Description = "Get cached stats with staleness info. " +
+        Description = "Get cached stats from last completed scan. " +
                       "Stats field is null if never scanned.")]
     Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats();
 
@@ -35,8 +31,4 @@ public interface IStateCompositionRpcModule : IRpcModule
         Description = "Get trie depth distribution with byte sizes. " +
                       "Returns cached data or triggers new scan.")]
     Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution();
-
-    [JsonRpcMethod(IsImplemented = true,
-        Description = "Get module info: version, endpoints, description.")]
-    Task<ResultWrapper<ModuleInfo>> statecomp_getModuleInfo();
 }

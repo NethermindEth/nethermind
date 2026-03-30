@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
@@ -188,26 +187,6 @@ public class StateCompositionVisitorTests
     }
 
     [Test]
-    public void Visitor_ProgressCallbackFires()
-    {
-        long lastProgress = 0;
-        int callCount = 0;
-        _visitor.OnProgress += count =>
-        {
-            lastProgress = count;
-            callCount++;
-        };
-
-        SimulateAccounts(2_000_000, hasCode: false, hasStorage: false);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(callCount, Is.EqualTo(2));
-            Assert.That(lastProgress, Is.EqualTo(2_000_000));
-        });
-    }
-
-    [Test]
     public void Visitor_DisposesThreadLocal()
     {
         _visitor.Dispose();
@@ -218,7 +197,7 @@ public class StateCompositionVisitorTests
     }
 
     [Test]
-    public void Visitor_ClampsDepthAt15()
+    public void Visitor_ClampsDepthAtMaxIndex()
     {
         TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
 
@@ -227,9 +206,9 @@ public class StateCompositionVisitorTests
 
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
 
-        // Depth 20 should be clamped to 15
+        // Depth 20 should be clamped to MaxTrackedDepth - 1 = 15
         Assert.That(dist.AccountTrieLevels, Has.Length.EqualTo(1));
-        Assert.That(dist.AccountTrieLevels[0].Depth, Is.EqualTo(15));
+        Assert.That(dist.AccountTrieLevels[0].Depth, Is.EqualTo(VisitorCounters.MaxTrackedDepth - 1));
     }
 
     [Test]
