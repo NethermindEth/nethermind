@@ -191,7 +191,10 @@ namespace Nethermind.Core.Test.Builders
                 })]);
 
 
-                KzgPolynomialCommitments.Initialize();
+                if (!KzgPolynomialCommitments.IsInitialized)
+                {
+                    KzgPolynomialCommitments.InitializeAsync().Wait();
+                }
 
                 proofsManager.ComputeProofsAndCommitments(wrapper);
 

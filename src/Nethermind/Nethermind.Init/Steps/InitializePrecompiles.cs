@@ -27,7 +27,7 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
             {
                 if (!_wasSetup)
                 {
-                    KzgPolynomialCommitments.Initialize(logger, initConfig.KzgSetupPath);
+                    await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
                     _wasSetup = true;
                 }
             }

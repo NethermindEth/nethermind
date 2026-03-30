@@ -50,11 +50,11 @@ namespace Nethermind.Merge.Plugin.Test;
 public abstract partial class BaseEngineModuleTests
 {
     [SetUp]
-    public void Setup()
+    public Task Setup()
     {
         ThreadPool.GetMaxThreads(out int worker, out int completion);
         ThreadPool.SetMinThreads(worker, completion);
-        KzgPolynomialCommitments.Initialize();
+        return KzgPolynomialCommitments.InitializeAsync();
     }
 
     protected virtual MergeTestBlockchain CreateBaseBlockchain(

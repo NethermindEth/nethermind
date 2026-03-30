@@ -12,7 +12,7 @@ namespace Nethermind.Precompiles.Benchmark;
 public class KzgPointEvaluationBenchmark : PrecompileBenchmarkBase
 {
     [GlobalSetup]
-    public void GlobalSetup() => KzgPolynomialCommitments.Initialize();
+    public async Task GlobalSetup() => await KzgPolynomialCommitments.InitializeAsync();
 
     protected override IEnumerable<IPrecompile> Precompiles => new[] { KzgPointEvaluationPrecompile.Instance };
     protected override string InputsDirectory => "point_evaluation";

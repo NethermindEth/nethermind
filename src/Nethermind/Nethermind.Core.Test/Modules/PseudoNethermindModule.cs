@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
@@ -88,7 +89,14 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             ;
 
 
-        // Ensure NetworkNode RLP decoder is registered once via its own static constructor.
-        NetworkNodeDecoder.Init();
+        // Yep... this global thing need to work.
+        builder.RegisterBuildCallback((_) =>
+        {
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            if (assembly is not null)
+            {
+                Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
+            }
+        });
     }
 }

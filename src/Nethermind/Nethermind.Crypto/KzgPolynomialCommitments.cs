@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -20,33 +21,29 @@ public static class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
 
     private static IntPtr _ckzgSetup = IntPtr.Zero;
-    private static readonly object _initLock = new();
     internal static IntPtr CkzgSetup => _ckzgSetup;
+
+    private static Task? _initializeTask;
 
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
 
-    public static void Initialize(ILogger logger = default, string? setupFilePath = null)
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
-        lock (_initLock)
+        string trustedSetupTextFileLocation = setupFilePath ??
+            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                         string.Empty, "kzg_trusted_setup.txt");
+
+        if (logger.IsInfo)
+            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+
+        if (_ckzgSetup == IntPtr.Zero)
         {
-            if (_ckzgSetup != IntPtr.Zero) return;
-
-            string trustedSetupTextFileLocation = setupFilePath ??
-                Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
-                             string.Empty, "kzg_trusted_setup.txt");
-
-            if (logger.IsInfo)
-                logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-            _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
-
-            if (_ckzgSetup == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("Unable to load trusted setup");
-            }
+            throw new InvalidOperationException("Unable to load trusted setup");
         }
-    }
+    });
 
     /// <summary>
     ///

@@ -1,47 +1,22 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using Autofac;
 using Ethereum.Test.Base;
 using FluentAssertions;
-using Nethermind.Config;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
-using Nethermind.State.Proofs;
-using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test;
 
-/// <summary>
-/// Uses ParallelScope.Self (not All) so that the fixture can run alongside TransactionTests
-/// but its own tests run sequentially. ParallelScope.All caused NUnit worker starvation
-/// when the KZG-initialising test competed with 171 parallel RLP tests in checked builds.
-/// Does not inherit GeneralStateTestBase to avoid triggering its static constructor
-/// (KZG init) during NUnit discovery while the thread pool is saturated.
-/// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
-public class TransactionJsonTest
+public class TransactionJsonTest : GeneralStateTestBase
 {
     [Test]
     public void Can_load_access_lists()
@@ -81,8 +56,9 @@ public class TransactionJsonTest
 
     /// <summary>
     /// An AccessList transaction with an empty access list sent against Istanbul (pre-Berlin)
-    /// must be rejected. The post-state root must equal the pre-state root — the invalid tx
+    /// must be rejected. The post-state root must equal the pre-state root - the invalid tx
     /// should not mutate state.
+    /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
     public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
@@ -101,6 +77,7 @@ public class TransactionJsonTest
             .WithValue(0)
             .SignedAndResolved(TestItem.PrivateKeyA)
             .TestObject;
+        // Override sender to match the pyspec fixture key
         transaction.SenderAddress = sender;
 
         GeneralStateTest test = new()
@@ -121,7 +98,7 @@ public class TransactionJsonTest
                 {
                     Nonce = UInt256.One,
                     Balance = UInt256.Zero,
-                    Code = [0x60, 0x01, 0x60, 0x00, 0x55],
+                    Code = [0x60, 0x01, 0x60, 0x00, 0x55],  // PUSH1 1 PUSH1 0 SSTORE
                     Storage = new() { [UInt256.Zero] = new UInt256(0xdeadbeef).ToBigEndian() }
                 },
                 [sender] = new()
@@ -132,119 +109,16 @@ public class TransactionJsonTest
                     Storage = new()
                 }
             },
+            // Expected post-state root from pyspec fixture (pre-state unchanged)
             PostHash = new Hash256("0x43c19943b2c4a638fe07dbc954c1422032ea7c5e17d0d659f25a5324ed75f0be"),
             Transaction = transaction,
         };
 
-        KzgPolynomialCommitments.Initialize();
-        EthereumTestResult result = RunStateTest(test);
+        EthereumTestResult result = RunTest(test);
 
         result.StateRoot.Should().Be(test.PostHash,
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
         result.Pass.Should().BeTrue();
     }
 
-    private static EthereumTestResult RunStateTest(GeneralStateTest test)
-    {
-        test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
-
-        ISpecProvider specProvider =
-            new CustomSpecProvider(test.ChainId, test.ChainId,
-                ((ForkActivation)0, test.GenesisSpec),
-                ((ForkActivation)1, test.Fork));
-
-        IConfigProvider configProvider = new ConfigProvider();
-        ILogManager logManager = LimboLogs.Instance;
-
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
-            .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-            .AddSingleton(specProvider)
-            .AddSingleton(logManager)
-            .Build();
-
-        IMainProcessingContext ctx = container.Resolve<IMainProcessingContext>();
-        IWorldState stateProvider = ctx.WorldState;
-        using System.IDisposable scope = stateProvider.BeginScope(null);
-        IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
-        ITransactionProcessor transactionProcessor = ctx.TransactionProcessor;
-
-        foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
-        {
-            foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
-            {
-                stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                    storageItem.Value.WithoutLeadingZeros().ToArray());
-            }
-
-            stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
-            stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-        }
-
-        stateProvider.Commit(specProvider.GenesisSpec);
-        stateProvider.CommitTree(0);
-        stateProvider.Reset();
-
-        Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
-        test.Transaction.ChainId ??= test.ChainId;
-
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
-        Nethermind.Core.Transaction[] transactions = [test.Transaction];
-        Withdrawal[] withdrawals = spec.WithdrawalsEnabled ? [] : null;
-
-        BlockHeader header = new(
-            test.PreviousHash,
-            Keccak.OfAnEmptySequenceRlp,
-            test.CurrentCoinbase,
-            test.CurrentDifficulty,
-            test.CurrentNumber,
-            test.CurrentGasLimit,
-            test.CurrentTimestamp,
-            [])
-        {
-            BaseFeePerGas = UInt256.Zero,
-            StateRoot = test.PostHash,
-            IsPostMerge = test.CurrentRandom is not null,
-            MixHash = test.CurrentRandom,
-            WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
-            ParentBeaconBlockRoot = test.CurrentBeaconRoot,
-            ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork.IsEip4844Enabled ? 0ul : null),
-            SlotNumber = test.CurrentSlotNumber,
-            BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
-            RequestsHash = test.RequestsHash,
-            BlockAccessListHash = spec.IsEip7928Enabled ? Keccak.OfAnEmptySequenceRlp : null,
-            TxRoot = TxTrie.CalculateRoot(transactions),
-            ReceiptsRoot = test.PostReceiptsRoot,
-        };
-
-        header.Hash = header.CalculateHash();
-        Block block = new(header, new BlockBody(transactions, [], withdrawals));
-
-        TransactionResult? txResult = null;
-
-        if (blockValidator.ValidateOrphanedBlock(block, out _))
-        {
-            txResult = transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header, spec), NullTxTracer.Instance);
-        }
-
-        if (txResult is not null && txResult.Value == TransactionResult.Ok)
-        {
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-            stateProvider.CommitTree(1);
-            stateProvider.CreateAccountIfNotExists(test.CurrentCoinbase, UInt256.Zero);
-            stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
-            stateProvider.RecalculateStateRoot();
-        }
-        else
-        {
-            stateProvider.Restore(preExecutionSnapshot);
-            stateProvider.RecalculateStateRoot();
-        }
-
-        bool pass = test.PostHash == stateProvider.StateRoot;
-        return new EthereumTestResult(test.Name, test.ForkName, pass)
-        {
-            StateRoot = stateProvider.StateRoot
-        };
-    }
 }

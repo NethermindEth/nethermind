@@ -47,6 +47,7 @@ jobs:
           - Ethereum.Legacy.VM.Test
           - Ethereum.PoW.Test
           - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
           - Ethereum.Trie.Test
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
@@ -153,14 +154,6 @@ jobs:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 1of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 2of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 3of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 4of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 5of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 6of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 7of8 }
-          - { project: Ethereum.Transaction.Test, chunk: 8of8 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
