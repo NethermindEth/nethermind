@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -13,7 +14,7 @@ namespace Nethermind.Evm;
 
 public class CacheCodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly AssociativeCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize);
+    private static readonly CodeLruCache _codeCache = new();
 
     private readonly IWorldState _worldState;
     private readonly CodeInfoRepository _inner;
@@ -31,14 +32,17 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             return CodeInfo.Empty;
         }
 
-        if (_codeCache.TryGet(in codeHash, out CodeInfo? cachedCodeInfo))
+        CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
+        if (cachedCodeInfo is null)
+        {
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash);
+            _codeCache.Set(in codeHash, cachedCodeInfo);
+        }
+        else
         {
             Metrics.IncrementCodeDbCache();
-            return cachedCodeInfo;
         }
 
-        cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, in codeHash);
-        _codeCache.Set(in codeHash, cachedCodeInfo);
         return cachedCodeInfo;
     }
 
@@ -53,7 +57,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && !_codeCache.Contains(in codeHash))
+        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
         }
@@ -62,11 +66,28 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
         bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
-        if (result && codeSource != Address.Zero && !_codeCache.Contains(in codeHash))
+        if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 
     internal static void Clear() => _codeCache.Clear();
+
+    private sealed class CodeLruCache
+    {
+        private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(MemoryAllowance.CodeCacheSize);
+
+        public CodeInfo? Get(in ValueHash256 codeHash) => _cache.Get(in codeHash);
+
+        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo) => _cache.Set(in codeHash, codeInfo);
+
+        public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
+        {
+            codeInfo = Get(in codeHash);
+            return codeInfo is not null;
+        }
+
+        internal void Clear() => _cache.Clear();
+    }
 }
