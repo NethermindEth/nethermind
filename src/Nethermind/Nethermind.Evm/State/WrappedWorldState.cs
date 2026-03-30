@@ -20,7 +20,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     /// Gets the underlying world's non-tracking read-only view.
     /// Wrappers forward this by default so speculative reads bypass wrapper-specific tracking behavior.
     /// </summary>
-    public virtual IReadOnlyStateProvider GetUntrackedReader() => _innerWorldState.GetUntrackedReader();
+    public IReadOnlyStateProvider GetUntrackedReader() => _innerWorldState.GetUntrackedReader();
 
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
