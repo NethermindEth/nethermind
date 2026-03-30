@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
+using Autofac.Core.Resolving.Pipeline;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -78,18 +80,31 @@ namespace Ethereum.Test.Base
             }
 
             IConfigProvider configProvider = new ConfigProvider();
-            using IContainer container = new ContainerBuilder()
+            Stopwatch sw = Stopwatch.StartNew();
+            Log($"[{test.Name}] {sw.ElapsedMilliseconds}ms — before container build");
+            ContainerBuilder builder = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddSingleton(specProvider)
-                .AddSingleton(_logManager)
-                .Build();
+                .AddSingleton(_logManager);
+
+            builder.ComponentRegistryBuilder.Registered += (_, args) =>
+            {
+                args.ComponentRegistration.ConfigurePipeline(pipeline =>
+                {
+                    pipeline.Use(new ResolveLogger(), MiddlewareInsertionMode.EndOfPhase);
+                });
+            };
+
+            using IContainer container = builder.Build();
+            Log($"[{test.Name}] {sw.ElapsedMilliseconds}ms — after container build, before resolve");
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
             using IDisposable _ = stateProvider.BeginScope(null);
             IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
+            Log($"[{test.Name}] {sw.ElapsedMilliseconds}ms — after resolve, before test");
 
             InitializeTestState(test.Pre, stateProvider, specProvider);
 
@@ -187,6 +202,8 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            Log($"[{test.Name}] {sw.ElapsedMilliseconds}ms — after test execution");
+
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {
@@ -199,6 +216,7 @@ namespace Ethereum.Test.Base
                 _logger.Info($"\nDifferences from expected\n{string.Join("\n", differences)}");
             }
 
+            Log($"[{test.Name}] {sw.ElapsedMilliseconds}ms — returning result (container dispose next)");
             return testResult;
         }
 
@@ -235,6 +253,23 @@ namespace Ethereum.Test.Base
             }
 
             return differences;
+        }
+
+        private static void Log(string msg)
+        {
+            System.IO.File.AppendAllText("/tmp/test_timing.txt", msg + "\n");
+            Console.Error.WriteLine(msg);
+        }
+
+        private class ResolveLogger : IResolveMiddleware
+        {
+            public PipelinePhase Phase => PipelinePhase.Activation;
+            public void Execute(ResolveRequestContext context, Action<ResolveRequestContext> next)
+            {
+                next(context);
+                if (context.Instance is not null)
+                    System.IO.File.AppendAllText("/tmp/resolved_components.txt", $"{context.Service} -> {context.Instance.GetType().FullName}\n");
+            }
         }
     }
 }
