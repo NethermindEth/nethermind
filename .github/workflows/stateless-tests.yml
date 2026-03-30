@@ -45,6 +45,7 @@ jobs:
         run: make build-zisk
 
       - name: Test Nethermind
+        timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
           block_hash=$(docker run --rm \
