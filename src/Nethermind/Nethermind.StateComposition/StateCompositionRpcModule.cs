@@ -9,31 +9,21 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.StateComposition;
 
-public class StateCompositionRpcModule : IStateCompositionRpcModule
+public class StateCompositionRpcModule(
+    IStateCompositionService service,
+    IStateCompositionStateHolder stateHolder,
+    IBlockTree blockTree)
+    : IStateCompositionRpcModule
 {
-    private readonly IStateCompositionService _service;
-    private readonly StateCompositionStateHolder _stateHolder;
-    private readonly IBlockTree _blockTree;
-
-    public StateCompositionRpcModule(
-        IStateCompositionService service,
-        StateCompositionStateHolder stateHolder,
-        IBlockTree blockTree)
-    {
-        _service = service;
-        _stateHolder = stateHolder;
-        _blockTree = blockTree;
-    }
-
     public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats()
     {
-        Core.Block? head = _blockTree.Head;
+        Core.Block? head = blockTree.Head;
         if (head is null)
             return ResultWrapper<StateCompositionStats>.Fail("No head block available");
 
         try
         {
-            StateCompositionStats stats = await _service.AnalyzeAsync(head.Header, CancellationToken.None)
+            StateCompositionStats stats = await service.AnalyzeAsync(head.Header, CancellationToken.None)
                 .ConfigureAwait(false);
             return ResultWrapper<StateCompositionStats>.Success(stats);
         }
@@ -51,7 +41,7 @@ public class StateCompositionRpcModule : IStateCompositionRpcModule
     {
         CachedStatsResponse response = new()
         {
-            Stats = _stateHolder.IsInitialized ? _stateHolder.CurrentStats : null,
+            Stats = stateHolder.IsInitialized ? stateHolder.CurrentStats : null,
         };
 
         return Task.FromResult(ResultWrapper<CachedStatsResponse>.Success(response));
@@ -60,18 +50,18 @@ public class StateCompositionRpcModule : IStateCompositionRpcModule
     public Task<ResultWrapper<ScanMetadata?>> statecomp_getCacheMetadata()
     {
         return Task.FromResult(
-            ResultWrapper<ScanMetadata?>.Success(_stateHolder.LastScanMetadata));
+            ResultWrapper<ScanMetadata?>.Success(stateHolder.LastScanMetadata));
     }
 
     public async Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
     {
-        Core.Block? head = _blockTree.Head;
+        Core.Block? head = blockTree.Head;
         if (head is null)
             return ResultWrapper<TrieDepthDistribution>.Fail("No head block available");
 
         try
         {
-            TrieDepthDistribution dist = await _service.GetTrieDistributionAsync(
+            TrieDepthDistribution dist = await service.GetTrieDistributionAsync(
                 head.Header, CancellationToken.None).ConfigureAwait(false);
             return ResultWrapper<TrieDepthDistribution>.Success(dist);
         }
@@ -79,5 +69,11 @@ public class StateCompositionRpcModule : IStateCompositionRpcModule
         {
             return ResultWrapper<TrieDepthDistribution>.Fail(ex.Message);
         }
+    }
+
+    public Task<ResultWrapper<bool>> statecomp_cancelScan()
+    {
+        service.CancelScan();
+        return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 }

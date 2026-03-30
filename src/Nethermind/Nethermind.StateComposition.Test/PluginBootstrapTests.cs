@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Text.Json;
 using NUnit.Framework;
 
@@ -37,20 +38,16 @@ public class PluginBootstrapTests
     }
 
     [Test]
-    public void StateCompositionStats_HasByteSizeFields()
+    public void StateCompositionStats_HasTrieNodeByteFields()
     {
         StateCompositionStats stats = new()
         {
-            AccountBytes = 100,
-            StorageBytes = 200,
             AccountTrieNodeBytes = 300,
             StorageTrieNodeBytes = 400,
         };
 
         Assert.Multiple(() =>
         {
-            Assert.That(stats.AccountBytes, Is.EqualTo(100));
-            Assert.That(stats.StorageBytes, Is.EqualTo(200));
             Assert.That(stats.AccountTrieNodeBytes, Is.EqualTo(300));
             Assert.That(stats.StorageTrieNodeBytes, Is.EqualTo(400));
         });
@@ -179,5 +176,81 @@ public class PluginBootstrapTests
     public void VisitorCounters_MaxTrackedDepth_Is16()
     {
         Assert.That(VisitorCounters.MaxTrackedDepth, Is.EqualTo(16));
+    }
+
+    [Test]
+    public void VisitorCounters_TopN_InsertsAndEvictsCorrectly()
+    {
+        VisitorCounters c = new(topN: 3);
+
+        // Insert 5 contracts — only top 3 by depth should survive
+        for (int i = 1; i <= 5; i++)
+        {
+            c.BeginStorageTrie(new Core.Crypto.ValueHash256(new byte[32]));
+            c.TrackStorageNode(depth: i * 2, byteSize: 100, isLeaf: true);
+        }
+
+        c.Flush();
+
+        // Top 3 by depth should be depths 10, 8, 6 (the three largest)
+        Assert.That(c.TopByDepthCount, Is.EqualTo(3));
+
+        int[] depths = new int[c.TopByDepthCount];
+        for (int i = 0; i < c.TopByDepthCount; i++)
+            depths[i] = c.TopByDepth[i].MaxDepth;
+
+        Array.Sort(depths);
+        Assert.That(depths, Is.EqualTo(new[] { 6, 8, 10 }));
+    }
+
+    [Test]
+    public void VisitorCounters_StorageMaxDepthHistogram_TracksCorrectly()
+    {
+        VisitorCounters c = new();
+
+        // 3 contracts with storage at max depth 2, 5, 5
+        c.BeginStorageTrie(default);
+        c.TrackStorageNode(depth: 2, byteSize: 10, isLeaf: true);
+
+        c.BeginStorageTrie(default);
+        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true);
+
+        c.BeginStorageTrie(default);
+        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true);
+
+        c.Flush();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(c.StorageMaxDepthHistogram[2], Is.EqualTo(1));
+            Assert.That(c.StorageMaxDepthHistogram[5], Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void VisitorCounters_Flush_NoOp_WhenNoActiveTrie()
+    {
+        VisitorCounters c = new();
+        c.Flush(); // Should not throw
+
+        Assert.That(c.TopByDepthCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void VisitorCounters_MergeFrom_MergesTopN()
+    {
+        VisitorCounters a = new(topN: 5);
+        a.BeginStorageTrie(default);
+        a.TrackStorageNode(depth: 10, byteSize: 100, isLeaf: true);
+        a.Flush();
+
+        VisitorCounters b = new(topN: 5);
+        b.BeginStorageTrie(default);
+        b.TrackStorageNode(depth: 20, byteSize: 200, isLeaf: true);
+        b.Flush();
+
+        a.MergeFrom(b);
+
+        Assert.That(a.TopByDepthCount, Is.EqualTo(2));
     }
 }

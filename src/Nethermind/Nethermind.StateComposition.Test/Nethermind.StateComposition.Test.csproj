@@ -4,6 +4,7 @@
     <PackageReference Include="NSubstitute" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.StateComposition\Nethermind.StateComposition.csproj" />
   </ItemGroup>
 </Project>
