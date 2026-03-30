@@ -13,13 +13,13 @@ namespace Nethermind.State;
 public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _baseProvider;
-    private readonly Action<double>? _onMetricsUpdated;
+    private readonly Action<double> _updateMetrics;
     private double _stateMerkleizationTime;
 
-    public WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider, Action<double>? onMetricsUpdated = null)
+    public WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvider, Action<double> updateMetrics)
     {
         _baseProvider = baseProvider;
-        _onMetricsUpdated = onMetricsUpdated;
+        _updateMetrics = updateMetrics;
     }
 
     public bool HasRoot(BlockHeader? baseBlock) => _baseProvider.HasRoot(baseBlock);
@@ -40,7 +40,7 @@ public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
             long start = Stopwatch.GetTimestamp();
             baseScope.UpdateRootHash();
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            parent._onMetricsUpdated?.Invoke(parent._stateMerkleizationTime);
+            parent._updateMetrics(parent._stateMerkleizationTime);
         }
 
         public Account? Get(Address address) => baseScope.Get(address);
@@ -58,7 +58,7 @@ public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
             long start = Stopwatch.GetTimestamp();
             baseScope.Commit(blockNumber);
             parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            parent._onMetricsUpdated?.Invoke(parent._stateMerkleizationTime);
+            parent._updateMetrics(parent._stateMerkleizationTime);
         }
     }
 }
