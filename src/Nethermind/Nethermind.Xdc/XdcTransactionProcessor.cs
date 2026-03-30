@@ -20,6 +20,7 @@ namespace Nethermind.Xdc;
 internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 {
     private readonly IMasternodeVotingContract _masternodeVotingContract;
+    internal IWorldState RewardWorldState => WorldState;
 
     public XdcTransactionProcessor(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,

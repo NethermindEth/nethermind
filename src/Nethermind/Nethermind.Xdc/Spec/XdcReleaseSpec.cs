@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using System.Collections.Generic;
 
@@ -23,9 +24,9 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public int TimeoutSyncThreshold { get; set; }        // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }               // Duration in ms
     public double CertificateThreshold { get; set; }            // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }         // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }          // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }           // Block reward per observer - unit Ether
+    public UInt256 MasternodeReward { get; set; }        // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }         // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }          // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized
@@ -111,9 +112,9 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public int TimeoutSyncThreshold { get; set; }    // send syncInfo after number of timeout
     public int TimeoutPeriod { get; set; }           // Duration in ms
     public double CertificateThreshold { get; set; }        // Necessary number of messages from master nodes to form a certificate
-    public double MasternodeReward { get; set; }     // Block reward per master node (core validator) - unit Ether
-    public double ProtectorReward { get; set; }      // Block reward per protector - unit Ether
-    public double ObserverReward { get; set; }       // Block reward per observer - unit Ether
+    public UInt256 MasternodeReward { get; set; }    // Block reward per masternode (core validator) in Wei
+    public UInt256 ProtectorReward { get; set; }     // Block reward per protector in Wei
+    public UInt256 ObserverReward { get; set; }      // Block reward per observer in Wei
     public int MinimumMinerBlockPerEpoch { get; set; }   // Minimum block per epoch for a miner to not be penalized
     public long LimitPenaltyEpoch { get; set; }           // Epochs in a row that a penalty node needs to be penalized
     public long LimitPenaltyEpochV2 { get; set; }           // Epochs in a row that a penalty node needs to be penalized

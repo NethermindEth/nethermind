@@ -10,7 +10,6 @@ using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Evm.TransactionProcessing;
@@ -33,6 +32,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IMasternodeVotingContract _masternodeVotingContract;
+        private readonly IMintedRecordContract _mintedRecordContract;
         private readonly ISigningTxCache _signingTxCache;
         private readonly ITransactionProcessor _transactionProcessor;
 
@@ -41,6 +41,7 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IMasternodeVotingContract masternodeVotingContract,
+            IMintedRecordContract mintedRecordContract,
             ISigningTxCache signingTxCache,
             ITransactionProcessor transactionProcessor)
         {
@@ -49,6 +50,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider;
             _blockTree = blockTree;
             _masternodeVotingContract = masternodeVotingContract;
+            _mintedRecordContract = mintedRecordContract;
             _signingTxCache = signingTxCache;
             _transactionProcessor = transactionProcessor;
         }
@@ -81,31 +83,39 @@ namespace Nethermind.Xdc
             if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
             UInt256 totalFoundationWalletReward = UInt256.Zero;
+            UInt256 totalMintedInEpoch = UInt256.Zero;
             var rewards = new List<BlockReward>();
-            var (masternodeSigners, protectorSigners, observerSigners) = GetSigningTxCount(xdcHeader, spec);
+            var (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
 
             bool isTipUpgradeRewardEnabled = xdcHeader.Number >= spec.TipUpgradeRewardBlock;
             if (!isTipUpgradeRewardEnabled)
             {
                 UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
                 Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
-                AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward);
+                AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
             }
             else
             {
                 Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
-                    ConvertEtherToWei(spec.MasternodeReward),
+                    spec.MasternodeReward,
                     masternodeSigners);
                 Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
-                    ConvertEtherToWei(spec.ProtectorReward),
+                    spec.ProtectorReward,
                     protectorSigners);
                 Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
-                    ConvertEtherToWei(spec.ObserverReward),
+                    spec.ObserverReward,
                     observerSigners);
 
-                AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward);
-                AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward);
-                AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward);
+                AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+                AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+                AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+
+                _mintedRecordContract.UpdateAccounting(
+                    _transactionProcessor,
+                    xdcHeader,
+                    spec,
+                    totalMintedInEpoch,
+                    burnedInOneEpoch);
             }
 
             if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
@@ -115,13 +125,15 @@ namespace Nethermind.Xdc
         private (
             Dictionary<Address, long> MasternodeSigners,
             Dictionary<Address, long> ProtectorSigners,
-            Dictionary<Address, long> ObserverSigners) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
+            Dictionary<Address, long> ObserverSigners,
+            UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
             var masternodeSigners = new Dictionary<Address, long>();
             var protectorSigners = new Dictionary<Address, long>();
             var observerSigners = new Dictionary<Address, long>();
+            UInt256 burnedInOneEpoch = UInt256.Zero;
             long number = epochHeader.Number;
-            if (number == 0) return (masternodeSigners, protectorSigners, observerSigners);
+            if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
 
             long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
@@ -138,6 +150,11 @@ namespace Nethermind.Xdc
                 Hash256 parentHash = h.ParentHash;
                 h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
+                if (epochCount == 0 && !h.BaseFeePerGas.IsZero)
+                {
+                    UInt256 burnedInBlock = h.BaseFeePerGas * (UInt256)h.GasUsed;
+                    burnedInOneEpoch += burnedInBlock;
+                }
                 if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && h.Number != spec.SwitchBlock + 1)
                 {
                     epochCount++;
@@ -207,28 +224,13 @@ namespace Nethermind.Xdc
                         IncrementSignerCount(observerSigners, addr);
                 }
             }
-            return (masternodeSigners, protectorSigners, observerSigners);
+            return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
         }
 
         private static void IncrementSignerCount(Dictionary<Address, long> signers, Address addr)
         {
             if (!signers.TryAdd(addr, 1))
                 signers[addr] += 1;
-        }
-
-        private static UInt256 ConvertEtherToWei(double rewardInEther)
-        {
-            if (rewardInEther <= 0)
-                return UInt256.Zero;
-
-            decimal weiPerEther = decimal.Parse(
-                Unit.Ether.ToString(CultureInfo.InvariantCulture),
-                CultureInfo.InvariantCulture);
-            decimal ether = decimal.Parse(
-                rewardInEther.ToString("R", CultureInfo.InvariantCulture),
-                CultureInfo.InvariantCulture);
-            decimal wei = decimal.Truncate(ether * weiPerEther);
-            return UInt256.Parse(wei.ToString(CultureInfo.InvariantCulture));
         }
 
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
@@ -321,12 +323,14 @@ namespace Nethermind.Xdc
             XdcBlockHeader header,
             Dictionary<Address, UInt256> rewardSigners,
             List<BlockReward> rewards,
-            ref UInt256 totalFoundationWalletReward)
+            ref UInt256 totalFoundationWalletReward,
+            ref UInt256 totalMintedInEpoch)
         {
             foreach ((Address signer, UInt256 reward) in rewardSigners)
             {
                 (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, header);
                 totalFoundationWalletReward += foundationWalletReward;
+                totalMintedInEpoch += holderReward.Value + foundationWalletReward;
                 rewards.Add(holderReward);
             }
         }

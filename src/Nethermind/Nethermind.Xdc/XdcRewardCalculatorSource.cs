@@ -14,10 +14,11 @@ internal class XdcRewardCalculatorSource(
     ISpecProvider specProvider,
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
+    IMintedRecordContract mintedRecordContract,
     ISigningTxCache signingTxCache) : IRewardCalculatorSource
 {
     public IRewardCalculator Get(ITransactionProcessor processor)
     {
-        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, signingTxCache, processor);
+        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, processor);
     }
 }
