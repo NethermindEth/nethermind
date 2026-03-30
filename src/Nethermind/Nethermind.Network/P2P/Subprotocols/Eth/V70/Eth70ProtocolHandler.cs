@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Evm;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V70;
 /// <summary>
 /// https://eips.ethereum.org/EIPS/eip-7975 - partial block receipt lists.
 /// </summary>
-public class Eth70ProtocolHandler : Eth69ProtocolHandler
+public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 {
     private readonly MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70> _receiptsRequests70;
 
@@ -52,7 +53,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
 
     public override string Name => "eth70";
 
-    public override byte ProtocolVersion => EthVersions.Eth70;
+    public new static byte Version => EthVersions.Eth70;
+    public override byte ProtocolVersion => Version;
 
     public override void HandleMessage(ZeroPacket message)
     {
@@ -75,10 +77,11 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler
 
     private void Handle(ReceiptsMessage70 msg, long size) => _receiptsRequests70.Handle(msg.RequestId, msg, size);
 
-    private async Task<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
+    internal async Task<ReceiptsMessage70> Handle(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
-        ReceiptsResponse response = await FulfillReceiptsRequest(getReceiptsMessage, cancellationToken);
-        return new ReceiptsMessage70(getReceiptsMessage.RequestId, new(response.TxReceipts), response.LastBlockIncomplete);
+        using GetReceiptsMessage70 message = getReceiptsMessage;
+        ReceiptsResponse response = await FulfillReceiptsRequest(message, cancellationToken);
+        return new ReceiptsMessage70(message.RequestId, new(response.TxReceipts), response.LastBlockIncomplete);
     }
 
     private Task<ReceiptsResponse> FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)

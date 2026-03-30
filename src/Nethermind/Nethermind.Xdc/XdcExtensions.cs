@@ -48,6 +48,18 @@ internal static partial class XdcExtensions
         spec.ApplyV2Config(round);
         return spec;
     }
+
+    public static Address[] ParseV1Masternodes(this byte[] extraData)
+    {
+        int length = (extraData.Length - XdcConstants.ExtraVanity - XdcConstants.ExtraSeal) / Address.Size;
+        if (length <= 0)
+            throw new ArgumentException($"ExtraData too short to contain masternodes: length={extraData.Length}", nameof(extraData));
+        Address[] masternodes = new Address[length];
+        for (int i = 0; i < length; i++)
+            masternodes[i] = new Address(extraData.AsSpan(XdcConstants.ExtraVanity + i * Address.Size, Address.Size));
+        return masternodes;
+    }
+
     public static Address[]? ExtractAddresses(this Span<byte> data)
     {
         if (data.Length % Address.Size != 0)

@@ -54,9 +54,9 @@ public class XdcTestBlockchain : TestBlockchain
         XdcTestBlockchain chain = new(useHotStuffModule, withPenalty);
         await chain.Build(configurer);
 
-        var fromXdcContainer = (FromContainer)chain.Container.Resolve<FromXdcContainer>();
+        var fromXdcContainer = chain.Container.Resolve<FromXdcContainer>();
 
-        Configuration testConfiguration = fromXdcContainer.Configuration;
+        Configuration testConfiguration = chain.Container.Resolve<FromContainer>().Configuration;
 
         if (testConfiguration.SuggestGenesisOnStart)
         {
@@ -96,35 +96,7 @@ public class XdcTestBlockchain : TestBlockchain
     public Signer Signer => (Signer)_fromXdcContainer.Signer;
 
     private FromXdcContainer _fromXdcContainer = null!;
-    public class FromXdcContainer(
-        Lazy<IStateReader> stateReader,
-        Lazy<IEthereumEcdsa> ethereumEcdsa,
-        Lazy<INonceManager> nonceManager,
-        Lazy<IReceiptStorage> receiptStorage,
-        Lazy<ITxPool> txPool,
-        Lazy<IWorldStateManager> worldStateManager,
-        Lazy<IBlockPreprocessorStep> blockPreprocessorStep,
-        Lazy<IBlockTree> blockTree,
-        Lazy<IBlockFinder> blockFinder,
-        Lazy<ILogFinder> logFinder,
-        Lazy<IChainHeadInfoProvider> chainHeadInfoProvider,
-        Lazy<IDbProvider> dbProvider,
-        Lazy<ISpecProvider> specProvider,
-        Lazy<ISealEngine> sealEngine,
-        Lazy<ITransactionComparerProvider> transactionComparerProvider,
-        Lazy<IPoSSwitcher> poSSwitcher,
-        Lazy<IChainLevelInfoRepository> chainLevelInfoRepository,
-        Lazy<IMainProcessingContext> mainProcessingContext,
-        Lazy<IReadOnlyTxProcessingEnvFactory> readOnlyTxProcessingEnvFactory,
-        Lazy<IBlockProducerEnvFactory> blockProducerEnvFactory,
-        Lazy<Configuration> configuration,
-        Lazy<TestBlockchainUtil> testBlockchainUtil,
-        Lazy<PoWTestBlockchainUtil> poWTestBlockchainUtil,
-        Lazy<ManualTimestamper> manualTimestamper,
-        Lazy<IManualBlockProductionTrigger> blockProductionTrigger,
-        Lazy<IShareableTxProcessorSource> shareableTxProcessorSource,
-        Lazy<ISealer> sealer,
-        Lazy<IForkInfo> forkInfo,
+    public sealed class FromXdcContainer(
         Lazy<IEpochSwitchManager> epochSwitchManager,
         Lazy<IQuorumCertificateManager> quorumCertificateManager,
         Lazy<ITimeoutCertificateManager> timeoutCertificateManager,
@@ -132,7 +104,7 @@ public class XdcTestBlockchain : TestBlockchain
         Lazy<IMasternodesCalculator> masternodesCalculator,
         Lazy<IVotesManager> votesManager,
         Lazy<ISigner> signer
-    ) : FromContainer(stateReader, ethereumEcdsa, nonceManager, receiptStorage, txPool, worldStateManager, blockPreprocessorStep, blockTree, blockFinder, logFinder, chainHeadInfoProvider, dbProvider, specProvider, sealEngine, transactionComparerProvider, poSSwitcher, chainLevelInfoRepository, mainProcessingContext, readOnlyTxProcessingEnvFactory, blockProducerEnvFactory, configuration, testBlockchainUtil, poWTestBlockchainUtil, manualTimestamper, blockProductionTrigger, shareableTxProcessorSource, sealer, forkInfo)
+    )
     {
         public IEpochSwitchManager EpochSwitchManager => epochSwitchManager.Value;
         public IQuorumCertificateManager QuorumCertificateManager => quorumCertificateManager.Value;
@@ -159,7 +131,7 @@ public class XdcTestBlockchain : TestBlockchain
         RandomSigner = new TestRandomSigner(MasterNodeCandidates, Container.Resolve<IBlockTree>(), Container.Resolve<IEpochSwitchManager>());
 
         _fromXdcContainer = Container.Resolve<FromXdcContainer>();
-        _fromContainer = (FromContainer)_fromXdcContainer;
+        _fromContainer = Container.Resolve<FromContainer>();
 
         BlockchainProcessor.Start();
 
@@ -208,16 +180,6 @@ public class XdcTestBlockchain : TestBlockchain
 
             .AddSingleton<ITxPool>((ctx) =>
             {
-                var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
-
-                var compoundPolicy = new CompositeTxGossipPolicy();
-                if (gossipPolicy != null)
-                {
-                    compoundPolicy.Policies.Add(gossipPolicy);
-                }
-
-                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
-
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
                     ctx.Resolve<IChainHeadInfoProvider>(),
@@ -225,7 +187,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
-                    compoundPolicy,
+                    ctx.Resolve<ITxGossipPolicy>(),
                     new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );

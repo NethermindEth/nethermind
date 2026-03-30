@@ -145,6 +145,13 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         ArrayPoolListCore<T>.Sort(_array, _count, comparison);
     }
 
+    public void Sort<TComparer>(TComparer comparer)
+        where TComparer : IComparer<T>
+    {
+        GuardDispose();
+        ArrayPoolListCore<T>.Sort(_array, _count, comparer);
+    }
+
     public int Capacity => _capacity;
 
     bool IList.IsFixedSize => false;

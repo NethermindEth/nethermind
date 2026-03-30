@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -9,7 +9,7 @@ namespace Nethermind.Db
 {
     public class InMemoryColumnWriteBatch<TKey> : IColumnsWriteBatch<TKey>
     {
-        private readonly IList<IWriteBatch> _underlyingBatch = new List<IWriteBatch>();
+        private readonly ConcurrentDictionary<TKey, IWriteBatch> _writeBatches = new();
         private readonly IColumnsDb<TKey> _columnsDb;
 
         public InMemoryColumnWriteBatch(IColumnsDb<TKey> columnsDb)
@@ -19,14 +19,12 @@ namespace Nethermind.Db
 
         public IWriteBatch GetColumnBatch(TKey key)
         {
-            InMemoryWriteBatch writeBatch = new InMemoryWriteBatch(_columnsDb.GetColumnDb(key));
-            _underlyingBatch.Add(writeBatch);
-            return writeBatch;
+            return _writeBatches.GetOrAdd(key, key => new InMemoryWriteBatch(_columnsDb.GetColumnDb(key)));
         }
 
         public void Clear()
         {
-            foreach (IWriteBatch batch in _underlyingBatch)
+            foreach (IWriteBatch batch in _writeBatches.Values)
             {
                 batch.Clear();
             }
@@ -34,7 +32,7 @@ namespace Nethermind.Db
 
         public void Dispose()
         {
-            foreach (IWriteBatch batch in _underlyingBatch)
+            foreach (IWriteBatch batch in _writeBatches.Values)
             {
                 batch.Dispose();
             }

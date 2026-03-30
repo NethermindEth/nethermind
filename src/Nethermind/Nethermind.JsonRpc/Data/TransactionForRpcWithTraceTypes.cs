@@ -22,7 +22,7 @@ public class TransactionForRpcWithTraceTypes
 
             if (reader.TokenType != JsonTokenType.StartArray)
             {
-                throw new JsonException();
+                throw new JsonException($"Expected array but got {reader.TokenType}");
             }
 
             reader.Read();

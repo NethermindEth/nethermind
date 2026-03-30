@@ -26,7 +26,6 @@ internal sealed class XdcBlockInfoDecoder : RlpValueDecoder<BlockRoundInfo>
         long number = decoderContext.DecodePositiveLong();
 
         return new BlockRoundInfo(new Hash256(hashBytes), round, number);
-
     }
 
     public override void Encode(RlpStream stream, BlockRoundInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

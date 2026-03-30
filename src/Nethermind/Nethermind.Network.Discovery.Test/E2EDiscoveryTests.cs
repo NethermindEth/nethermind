@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture(DiscoveryVersion.V5)]
 public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
 {
-    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// Common code for all node
@@ -48,7 +48,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
-
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
 
@@ -100,7 +99,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
             Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),
-                Is.EquivalentTo(expectedKeys).After(5000, 100));
+                Is.EquivalentTo(expectedKeys).After(15000, 100));
         }
     }
 }

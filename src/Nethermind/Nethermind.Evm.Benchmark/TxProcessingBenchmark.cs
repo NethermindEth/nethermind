@@ -50,7 +50,7 @@ public class TxProcessingBenchmark
     {
         public TxProcessingConfig()
         {
-            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Instance));
+            AddJob(Job.MediumRun.WithToolchain(InProcessNoEmitToolchain.Default));
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
             AddColumn(StatisticColumn.Median);

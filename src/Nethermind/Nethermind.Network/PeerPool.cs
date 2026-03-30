@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
@@ -92,8 +93,7 @@ namespace Nethermind.Network
         {
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Adding a {(arg.Node.IsBootnode ? "bootnode" : "stored")} candidate peer {arg.Node:s}");
+                if (_logger.IsDebug) DebugAddingCandidatePeer(arg.Node);
             }
             Peer peer = new(arg.Node, _stats.GetOrAdd(arg.Node));
             if (arg.Node.IsStatic)
@@ -103,6 +103,10 @@ namespace Nethermind.Network
 
             PeerAdded?.Invoke(this, new PeerEventArgs(peer));
             return peer;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void DebugAddingCandidatePeer(Node node)
+                => _logger.Debug($"Adding a {(node.IsBootnode ? "bootnode" : "stored")} candidate peer {node:s}");
         }
 
         private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
@@ -143,11 +147,6 @@ namespace Nethermind.Network
                 // this should happen
                 if (previousPeer.InSession == session || previousPeer.OutSession == session)
                 {
-                    if (previousPeer.Node.IsStatic)
-                    {
-                        session.Node.IsStatic = true;
-                    }
-
                     // (what with the other session?)
 
                     _staticPeers.TryRemove(session.ObsoleteRemoteNodeId, out _);
@@ -203,9 +202,12 @@ namespace Nethermind.Network
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during peer storage commit: {ex}");
+                    if (_logger.IsError) ErrorPeerStorageCommit(ex);
                 }
             }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void ErrorPeerStorageCommit(Exception ex) => _logger.Error($"Error during peer storage commit: {ex}");
         }
 
         private void UpdateReputationAndMaxPeersCount()
@@ -250,7 +252,11 @@ namespace Nethermind.Network
                 removedNodes++;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Removing persisted peers: {removedNodes}, prevPersistedCount: {storedNodes.Length}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
+            if (_logger.IsDebug) DebugRemovingPersistedPeers(removedNodes, storedNodes.Length);
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void DebugRemovingPersistedPeers(int removed, int prevCount)
+                => _logger.Debug($"Removing persisted peers: {removed}, prevPersistedCount: {prevCount}, newPersistedCount: {_peerStorage.PersistedNodesCount}, PersistedPeerCountCleanupThreshold: {_networkConfig.PersistedPeerCountCleanupThreshold}, MaxPersistedPeerCount: {_networkConfig.MaxPersistedPeerCount}");
         }
 
         private void StopTimers()
@@ -279,7 +285,7 @@ namespace Nethermind.Network
 
             await foreach (Node node in _nodeSource.DiscoverNodes(token))
             {
-                while (PeerCount >= _networkConfig.MaxCandidatePeerCount && ActivePeerCount >= _networkConfig.MaxActivePeers)
+                while (PeerCount >= _networkConfig.MaxCandidatePeerCount || ActivePeerCount >= _networkConfig.MaxActivePeers)
                 {
                     if (_logger.IsDebug) _logger.Debug("Peer cleanup threshold reached. Throttling discovery.");
                     await Task.Delay(1000, token);
@@ -291,6 +297,7 @@ namespace Nethermind.Network
 
         public async Task StopAsync()
         {
+            _nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
             _cancellationTokenSource.Cancel();
 
             StopTimers();

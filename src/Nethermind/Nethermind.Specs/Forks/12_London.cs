@@ -1,26 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
+namespace Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs.Forks
+public class London() : NamedReleaseSpec<London>(Berlin.Instance)
 {
-    public class London : Berlin
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected London()
-        {
-            Name = "London";
-            DifficultyBombDelay = 9700000L;
-            IsEip1559Enabled = true;
-            IsEip3198Enabled = true;
-            IsEip3529Enabled = true;
-            IsEip3541Enabled = true;
-            Eip1559TransitionBlock = 12965000;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new London());
+        spec.Name = "London";
+        spec.DifficultyBombDelay = 9700000L;
+        spec.IsEip1559Enabled = true;
+        spec.IsEip3198Enabled = true;
+        spec.IsEip3529Enabled = true;
+        spec.IsEip3541Enabled = true;
+        spec.Eip1559TransitionBlock = 12965000;
     }
 }

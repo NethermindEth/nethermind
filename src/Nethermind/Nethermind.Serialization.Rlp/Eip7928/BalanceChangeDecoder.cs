@@ -5,40 +5,17 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class BalanceChangeDecoder : IRlpValueDecoder<BalanceChange>, IRlpStreamEncoder<BalanceChange>
+public class BalanceChangeDecoder : IndexedChangeDecoder<BalanceChange>
 {
-    private static BalanceChangeDecoder? _instance = null;
+    private static BalanceChangeDecoder? _instance;
     public static BalanceChangeDecoder Instance => _instance ??= new();
 
-    public int GetLength(BalanceChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    protected override BalanceChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
+        => new(ctx.DecodeUShort(), ctx.DecodeUInt256());
 
-    public BalanceChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-    {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
+    protected override void EncodeValue(RlpStream stream, BalanceChange item)
+        => stream.Encode(item.PostBalance);
 
-        BalanceChange balanceChange = new()
-        {
-            BlockAccessIndex = ctx.DecodeUShort(),
-            PostBalance = ctx.DecodeUInt256()
-        };
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
-
-        return balanceChange;
-    }
-
-    public void Encode(RlpStream stream, BalanceChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.PostBalance);
-    }
-
-    public static int GetContentLength(BalanceChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.PostBalance);
+    protected override int GetValueLength(BalanceChange item)
+        => Rlp.LengthOf(item.PostBalance);
 }

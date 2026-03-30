@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
@@ -39,7 +40,7 @@ public class Eth68ProtocolHandler(ISession session,
     ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null
     )
-    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+    : Eth67ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
     private readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
@@ -52,7 +53,8 @@ public class Eth68ProtocolHandler(ISession session,
 
     public override string Name => "eth68";
 
-    public override byte ProtocolVersion => EthVersions.Eth68;
+    public new static byte Version => EthVersions.Eth68;
+    public override byte ProtocolVersion => Version;
 
     public override void HandleMessage(ZeroPacket message)
     {

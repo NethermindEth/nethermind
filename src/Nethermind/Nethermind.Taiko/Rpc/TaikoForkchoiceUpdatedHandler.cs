@@ -77,6 +77,11 @@ internal class TaikoForkchoiceUpdatedHandler(
         return blockHeader;
     }
 
+    // Taiko allows equal timestamps because multiple L2 blocks can be derived
+    // from a single L1 block, all sharing the same L1 anchor timestamp.
+    protected override bool IsPayloadTimestampValid(Block newHeadBlock, PayloadAttributes payloadAttributes)
+        => payloadAttributes.Timestamp >= newHeadBlock.Timestamp;
+
     protected override bool TryGetBranch(Block newHeadBlock, out Block[] blocks)
     {
         // Allow resetting to any block already on the main chain (including genesis)

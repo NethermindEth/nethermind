@@ -3,24 +3,22 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.Types;
 
-public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool isMyVote = false) : IXdcPoolItem
+public class Timeout(ulong round, Signature? signature, ulong gapNumber, bool isMyVote = false) : RlpHashEqualityBase, IXdcPoolItem
 {
     private static readonly TimeoutDecoder _decoder = new();
-    private Hash256 _hash;
     public ulong Round { get; set; } = round;
     public Signature? Signature { get; set; } = signature;
     public ulong GapNumber { get; set; } = gapNumber;
     public Address? Signer { get; set; }
-    public Hash256 Hash => _hash ??= Keccak.Compute(_decoder.Encode(this, RlpBehaviors.None).Bytes);
     public bool IsMyVote { get; } = isMyVote;
     public override string ToString() => $"{Round}:{GapNumber}";
     public (ulong Round, Hash256 hash) PoolKey() => (Round, Keccak.Compute(_decoder.Encode(this, RlpBehaviors.ForSealing).Bytes));
-    public override bool Equals(object? obj) =>
-        obj is Timeout other && Hash == other.Hash;
-    public override int GetHashCode() => Hash.GetHashCode();
+    protected override void Encode(KeccakRlpStream stream) =>
+        _decoder.Encode(stream, this, RlpBehaviors.None);
 }

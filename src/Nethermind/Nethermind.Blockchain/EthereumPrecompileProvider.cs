@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Blockchain;
 
@@ -17,7 +16,7 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
     {
         get => new Dictionary<AddressAsKey, CodeInfo>
         {
-            [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
+            [ECRecoverPrecompile.Address] = new(ECRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
             [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
@@ -29,17 +28,17 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
 
             [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
 
-            [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
-            [G1MSMPrecompile.Address] = new(G1MSMPrecompile.Instance),
-            [G2AddPrecompile.Address] = new(G2AddPrecompile.Instance),
-            [G2MSMPrecompile.Address] = new(G2MSMPrecompile.Instance),
-            [PairingCheckPrecompile.Address] = new(PairingCheckPrecompile.Instance),
-            [MapFpToG1Precompile.Address] = new(MapFpToG1Precompile.Instance),
-            [MapFp2ToG2Precompile.Address] = new(MapFp2ToG2Precompile.Instance),
+            [Bls12381G1AddPrecompile.Address] = new(Bls12381G1AddPrecompile.Instance),
+            [Bls12381G1MsmPrecompile.Address] = new(Bls12381G1MsmPrecompile.Instance),
+            [Bls12381G2AddPrecompile.Address] = new(Bls12381G2AddPrecompile.Instance),
+            [Bls12381G2MsmPrecompile.Address] = new(Bls12381G2MsmPrecompile.Instance),
+            [Bls12381PairingCheckPrecompile.Address] = new(Bls12381PairingCheckPrecompile.Instance),
+            [Bls12381FpToG1Precompile.Address] = new(Bls12381FpToG1Precompile.Instance),
+            [Bls12381Fp2ToG2Precompile.Address] = new(Bls12381Fp2ToG2Precompile.Instance),
 
-            [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
+            [KzgPointEvaluationPrecompile.Address] = new(KzgPointEvaluationPrecompile.Instance),
 
-            [Secp256r1Precompile.Address] = new(Secp256r1Precompile.Instance),
+            [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
 
             [L1SloadPrecompile.Address] = new(L1SloadPrecompile.Instance),
         }.ToFrozenDictionary();

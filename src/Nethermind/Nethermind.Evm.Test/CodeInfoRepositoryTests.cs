@@ -29,26 +29,26 @@ public class CodeInfoRepositoryTests
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
     }
 
-    public static IEnumerable<object[]> NotDelegationCodeCases()
+    public static IEnumerable<TestCaseData> NotDelegationCodeCases()
     {
         byte[] rndAddress = new byte[20];
         TestContext.CurrentContext.Random.NextBytes(rndAddress);
         //Change first byte of the delegation header
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[0] = TestContext.CurrentContext.Random.NextByte(0xee);
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Corrupted first byte of delegation header");
         //Change second byte of the delegation header
         code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[1] = TestContext.CurrentContext.Random.NextByte(0x2, 0xff);
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Corrupted second byte of delegation header");
         //Change third byte of the delegation header
         code = [.. Eip7702Constants.DelegationHeader, .. rndAddress];
         code[2] = TestContext.CurrentContext.Random.NextByte(0x1, 0xff);
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Corrupted third byte of delegation header");
         code = [.. Eip7702Constants.DelegationHeader, .. new byte[21]];
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Address too long (21 bytes)");
         code = [.. Eip7702Constants.DelegationHeader, .. new byte[19]];
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Address too short (19 bytes)");
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -64,14 +64,14 @@ public class CodeInfoRepositoryTests
     }
 
 
-    public static IEnumerable<object[]> DelegationCodeCases()
+    public static IEnumerable<TestCaseData> DelegationCodeCases()
     {
         byte[] address = new byte[20];
         byte[] code = [.. Eip7702Constants.DelegationHeader, .. address];
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Valid delegation with zero address");
         TestContext.CurrentContext.Random.NextBytes(address);
         code = [.. Eip7702Constants.DelegationHeader, .. address];
-        yield return [code];
+        yield return new TestCaseData(code).SetName("Valid delegation with random address");
     }
 
     [TestCaseSource(nameof(DelegationCodeCases))]

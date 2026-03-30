@@ -4,11 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
@@ -30,20 +28,10 @@ namespace Nethermind.Synchronization.SnapSync
             IByteArrayList proofs = null
         )
         {
-            using ISnapTree tree = factory.CreateStateTree();
-
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(accounts.Count);
-            for (int index = 0; index < accounts.Count; index++)
-            {
-                PathWithAccount account = accounts[index];
-                Account accountValue = account.Account;
-                Rlp rlp = accountValue.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(accountValue);
-                entries.Add(new PatriciaTree.BulkSetEntry(account.Path, rlp.Bytes));
-                Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
-            }
+            using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
 
             (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
-                tree, entries, startingHash, limitHash, expectedRootHash, proofs);
+                tree, accounts, startingHash, limitHash, expectedRootHash, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
@@ -72,34 +60,25 @@ namespace Nethermind.Synchronization.SnapSync
             IByteArrayList? proofs = null
         )
         {
-            using ISnapTree tree = factory.CreateStorageTree(account.Path);
+            using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
 
             ValueHash256 effectiveLimitHash = limitHash ?? Keccak.MaxValue;
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
 
-            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(slots.Count);
-            for (int index = 0; index < slots.Count; index++)
-            {
-                PathWithStorageSlot slot = slots[index];
-
-                Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                entries.Add(new PatriciaTree.BulkSetEntry(slot.Path, slot.SlotRlpValue));
-            }
-
             (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
-                tree, entries, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
+                tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
             return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
         }
 
-        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange(
-            ISnapTree tree,
-            in ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries,
+        private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
+            ISnapTree<TEntry> tree,
+            IReadOnlyList<TEntry> entries,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            IByteArrayList? proofs)
+            IByteArrayList? proofs) where TEntry : ISnapEntry
         {
             if (entries.Count == 0)
                 return (AddRangeResult.EmptyRange, true, false);
@@ -122,13 +101,6 @@ namespace Nethermind.Synchronization.SnapSync
             if (result != AddRangeResult.OK)
                 return (result, true, false);
 
-            tree.BulkSetAndUpdateRootHash(entries);
-
-            if (tree.RootHash.ValueHash256 != expectedRootHash)
-                return (AddRangeResult.DifferentRootHash, true, false);
-
-            StitchBoundaries(sortedBoundaryList, tree, startingHash);
-
             // The upper bound is used to prevent proof nodes that covers next range from being persisted, except if
             // this is the last range. This prevent double node writes per path which break flat. It also prevent leaf o
             // that is after the range from being persisted, which prevent double write again.
@@ -141,6 +113,14 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
             }
+
+            tree.BulkSetAndUpdateRootHash(entries);
+
+            if (tree.RootHash.ValueHash256 != expectedRootHash)
+                return (AddRangeResult.DifferentRootHash, true, false);
+
+            StitchBoundaries(sortedBoundaryList, tree, startingHash);
+
             tree.Commit(upperBound);
 
             bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
@@ -148,14 +128,14 @@ namespace Nethermind.Synchronization.SnapSync
         }
 
         [SkipLocalsInit]
-        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
-            ISnapTree tree,
+        private static (AddRangeResult result, List<(TrieNode, TreePath)> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree<TEntry>(
+            ISnapTree<TEntry> tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs = null
-        )
+        ) where TEntry : ISnapEntry
         {
             if (proofs is null || proofs.Count == 0)
             {
@@ -215,7 +195,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                         moreChildrenToRight |= childPath.Path > limitHash;
 
-                        if (dict.TryGetValue(childKeccak, out TrieNode child))
+                        if (childPath.CompareTo(leftBoundaryPath.Truncate(childPath.Length)) >= 0 && dict.TryGetValue(childKeccak, out TrieNode child))
                         {
                             node.SetChild(0, child);
 
@@ -299,9 +279,10 @@ namespace Nethermind.Synchronization.SnapSync
                                 TreePath wholePath = childPath.Append(child.Key);
                                 if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                                 {
-                                    node.SetChild(ci, child);
-                                    proofNodesToProcess.Push((child, childPath));
-                                    sortedBoundaryList.Add((child, childPath));
+                                    // Leaf are range proof, proof that the range covers the requested path.
+                                    // But we dont persist them as it should be persisted by the range itself through
+                                    // other range.
+                                    node.NodeData[ci] = child.Keccak;
                                 }
                             }
                         }
@@ -332,7 +313,7 @@ namespace Nethermind.Synchronization.SnapSync
             return dict;
         }
 
-        private static void StitchBoundaries(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree tree, ValueHash256 startPath)
+        private static void StitchBoundaries<TEntry>(List<(TrieNode, TreePath)>? sortedBoundaryList, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
         {
             if (sortedBoundaryList is null || sortedBoundaryList.Count == 0)
             {
@@ -383,7 +364,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        private static bool IsChildPersisted(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree tree, ValueHash256 startPath)
+        private static bool IsChildPersisted<TEntry>(TrieNode node, ref TreePath nodePath, object? child, int childIndex, ISnapTree<TEntry> tree, ValueHash256 startPath) where TEntry : ISnapEntry
         {
             if (child is TrieNode childNode)
             {

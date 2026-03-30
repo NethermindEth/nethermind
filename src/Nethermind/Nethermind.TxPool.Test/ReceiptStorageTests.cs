@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -61,70 +62,49 @@ namespace Nethermind.TxPool.Test
 
         [Test]
         public void should_add_and_fetch_receipt_from_in_memory_storage()
-            => TestAddAndGetReceipt(_inMemoryStorage);
+            => TestAddAndGetReceipt(_inMemoryStorage, clearSender: false);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage()
-            => TestAddAndGetReceipt(_persistentStorage, _receiptFinder);
+            => TestAddAndGetReceipt(_persistentStorage, _receiptFinder, clearSender: true);
 
         [Test]
         public void should_add_and_fetch_receipt_from_persistent_storage_with_eip_658()
-            => TestAddAndGetReceiptEip658(_persistentStorage);
+            => TestAddAndGetReceipt(_persistentStorage, clearSender: false);
 
-        [Test]
-        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_block()
+        [TestCase(true, TestName = "should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_block")]
+        [TestCase(false, TestName = "should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_hash")]
+        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts(bool byBlock)
         {
             Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
-            TxReceipt[] receipts = _receiptFinder.Get(block);
+            TxReceipt[] receipts = byBlock ? _receiptFinder.Get(block) : _receiptFinder.Get(block.Hash);
             receipts.Should().BeEmpty();
         }
 
-        [Test]
-        public void should_not_throw_if_receiptFinder_asked_for_not_existing_receipts_by_hash()
+        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null, bool clearSender = false)
         {
-            Block block = Build.A.Block.WithNumber(0).WithTransactions(5, _specProvider).TestObject;
-            TxReceipt[] receipts = _receiptFinder.Get(block.Hash);
-            receipts.Should().BeEmpty();
-        }
-
-        private void TestAddAndGetReceipt(IReceiptStorage storage, IReceiptFinder receiptFinder = null)
-        {
-            bool recoverSender = receiptFinder is not null;
             receiptFinder ??= storage;
 
-            var transaction = GetSignedTransaction();
-            transaction.SenderAddress = null;
-            var block = GetBlock(transaction);
+            Transaction transaction = GetSignedTransaction();
+            if (clearSender)
+            {
+                transaction.SenderAddress = null;
+            }
+            Block block = GetBlock(transaction);
             _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader);
-            var receipt = GetReceipt(transaction, block);
+            TxReceipt receipt = GetReceipt(transaction, block);
             storage.Insert(block, receipt);
             receipt = storage.Get(block)[0];
-            var blockHash = storage.FindBlockHash(transaction.Hash);
+            Hash256 blockHash = storage.FindBlockHash(transaction.Hash);
             blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
+            TxReceipt fetchedReceipt = receiptFinder.Get(block).ForTransaction(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
             receipt.TxHash.Should().Be(transaction.Hash);
-            if (recoverSender)
+            if (clearSender)
             {
                 receipt.Sender.Should().BeEquivalentTo(TestItem.AddressA);
             }
-        }
-
-        private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
-        {
-            var transaction = GetSignedTransaction();
-            var block = GetBlock(transaction);
-            _blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader);
-            var receipt = GetReceipt(transaction, block);
-            storage.Insert(block, receipt);
-            receipt = storage.Get(block)[0];
-            var blockHash = storage.FindBlockHash(transaction.Hash);
-            blockHash.Should().Be(block.Hash);
-            var fetchedReceipt = storage.Get(block).ForTransaction(transaction.Hash);
-            receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
-            receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
-            receipt.TxHash.Should().Be(transaction.Hash);
         }
 
         private Transaction GetSignedTransaction(Address to = null)

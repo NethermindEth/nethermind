@@ -638,11 +638,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _noWalWrite.DisableWal(1);
 
         _lowPriorityWriteOptions = CreateWriteOptions(dbConfig);
-        _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, true);
+        _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityWriteOptions.Handle, 1);
 
         _lowPriorityAndNoWalWrite = CreateWriteOptions(dbConfig);
         _lowPriorityAndNoWalWrite.DisableWal(1);
-        _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
+        _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, 1);
 
         _defaultReadOptions = CreateReadOptions();
 
@@ -1390,7 +1390,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     {
         try
         {
-            _rocksDbNative.rocksdb_flush_wal(_db.Handle, true);
+            _rocksDbNative.rocksdb_flush_wal(_db.Handle, 1);
 
             if (!onlyWal)
             {

@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -398,6 +399,129 @@ public class RecreateStateFromAccountRangesTests
 
         // The special case
         HasMoreChildren(Keccak.MaxValue).Should().BeTrue();
+    }
+
+    [Test]
+    public void LeafProofNodesAtBoundaryDoNotBreakRootHash()
+    {
+        // Build a tree with many accounts spread across different prefixes — this creates
+        // leaf proof nodes at range boundaries. With the keccak-only leaf change, these leaves
+        // are referenced by hash rather than fully added to the boundary list.
+        // The root hash verification inside AddAccountRange validates correctness.
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 100);
+        Hash256 rootHash = inputTree.RootHash;
+
+        List<PathWithAccount> allAccounts = new();
+        for (int i = 0; i < 100; i++)
+        {
+            Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+            Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
+            allAccounts.Add(new PathWithAccount(path, acc));
+        }
+        allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
+
+        using IContainer container = CreateContainer();
+        ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+        // Add first half
+        PathWithAccount[] firstHalf = allAccounts.GetRange(0, 50).ToArray();
+        byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes, inputTree);
+        byte[][] lastProof = CreateProofForPath(firstHalf[^1].Path.Bytes, inputTree);
+
+        (AddRangeResult result1, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, Keccak.Zero, Keccak.MaxValue, firstHalf, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
+
+        // Add second half — boundary proof contains leaf nodes from first range's edge
+        PathWithAccount[] secondHalf = allAccounts.GetRange(50, 50).ToArray();
+        firstProof = CreateProofForPath(secondHalf[0].Path.Bytes, inputTree);
+        lastProof = CreateProofForPath(secondHalf[^1].Path.Bytes, inputTree);
+
+        (AddRangeResult result2, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, secondHalf[0].Path, Keccak.MaxValue, secondHalf, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
+
+        // Root hash verification inside AddAccountRange validates that the keccak-only leaf
+        // reference produces a correct root hash — if leaves were handled incorrectly,
+        // the computed root would differ from expectedRootHash
+        result1.Should().Be(AddRangeResult.OK);
+        result2.Should().Be(AddRangeResult.OK);
+    }
+
+    [Test]
+    public void ExtensionNodeBeforeLeftBoundaryIsSkipped()
+    {
+        // Build tree with accounts in different nibble-prefix subtrees
+        // Accounts with hashed paths give good distribution
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 50);
+        Hash256 rootHash = inputTree.RootHash;
+
+        List<PathWithAccount> allAccounts = new();
+        for (int i = 0; i < 50; i++)
+        {
+            Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+            Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
+            allAccounts.Add(new PathWithAccount(path, acc));
+        }
+        allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
+
+        // Pick start hash at ~midpoint so accounts in earlier subtrees are before the boundary
+        int midpoint = allAccounts.Count / 2;
+        PathWithAccount[] rangeAccounts = allAccounts.GetRange(midpoint, allAccounts.Count - midpoint).ToArray();
+
+        byte[][] firstProof = CreateProofForPath(rangeAccounts[0].Path.Bytes, inputTree);
+        byte[][] lastProof = CreateProofForPath(rangeAccounts[^1].Path.Bytes, inputTree);
+        byte[][] proofs = firstProof.Concat(lastProof).ToArray();
+
+        using IContainer container = CreateContainer();
+        ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+        // The range starts at midpoint — extension nodes for subtrees before this should be skipped
+        (AddRangeResult result, bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
+            SnapProviderHelper.AddAccountRange(factory, 0, rootHash, rangeAccounts[0].Path, Keccak.MaxValue, rangeAccounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proofs.Length, proofs)));
+
+        result.Should().Be(AddRangeResult.OK);
+    }
+
+    [Test]
+    public void MultiRangeWithLeafBoundaryProofsReconstructsCorrectRoot()
+    {
+        // Use a richer tree to exercise leaf boundary proof handling across multiple ranges
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 80);
+        Hash256 rootHash = inputTree.RootHash;
+
+        List<PathWithAccount> allAccounts = new();
+        for (int i = 0; i < 80; i++)
+        {
+            Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+            Account acc = Build.An.Account.WithBalance((UInt256)i).TestObject;
+            allAccounts.Add(new PathWithAccount(path, acc));
+        }
+        allAccounts.Sort((a, b) => a.Path.CompareTo(b.Path));
+
+        using IContainer container = CreateContainer();
+        ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+        // Split into 4 ranges
+        int chunkSize = allAccounts.Count / 4;
+        AddRangeResult[] results = new AddRangeResult[4];
+
+        for (int r = 0; r < 4; r++)
+        {
+            int start = r * chunkSize;
+            int count = r == 3 ? allAccounts.Count - start : chunkSize;
+            PathWithAccount[] chunk = allAccounts.GetRange(start, count).ToArray();
+
+            ValueHash256 startHash = r == 0 ? ValueKeccak.Zero : chunk[0].Path;
+            byte[][] firstProof = CreateProofForPath(r == 0 ? Keccak.Zero.Bytes : chunk[0].Path.Bytes, inputTree);
+            byte[][] lastProof = CreateProofForPath(chunk[^1].Path.Bytes, inputTree);
+
+            (results[r], bool _, IList<PathWithAccount> _, IList<ValueHash256> _, Hash256 _) =
+                SnapProviderHelper.AddAccountRange(factory, 0, rootHash, startHash.ToCommitment(), Keccak.MaxValue, chunk, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
+        }
+
+        results.Should().AllSatisfy(r => r.Should().Be(AddRangeResult.OK));
     }
 
     [Test]

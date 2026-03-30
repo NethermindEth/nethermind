@@ -115,6 +115,18 @@ public class Metrics
     public static long TotalBackgroundTasksQueued => _totalBackgroundTasksQueued;
     public static void IncrementTotalBackgroundTasksQueued() => Interlocked.Increment(ref _totalBackgroundTasksQueued);
 
+    private static long _totalBackgroundTasksDropped;
+    [GaugeMetric]
+    [Description("Total number of background tasks dropped because queue was full.")]
+    public static long TotalBackgroundTasksDropped => _totalBackgroundTasksDropped;
+    public static void IncrementTotalBackgroundTasksDropped() => Interlocked.Increment(ref _totalBackgroundTasksDropped);
+
+    private static long _totalBackgroundTasksExecuted;
+    [GaugeMetric]
+    [Description("Total number of background tasks executed.")]
+    public static long TotalBackgroundTasksExecuted => _totalBackgroundTasksExecuted;
+    public static void IncrementTotalBackgroundTasksExecuted() => Interlocked.Increment(ref _totalBackgroundTasksExecuted);
+
     internal static long BlockTransactions { get; set; }
 
     private static float _blockAveGasPrice;

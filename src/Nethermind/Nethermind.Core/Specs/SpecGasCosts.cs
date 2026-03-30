@@ -22,36 +22,9 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     public readonly long SStoreResetCost;
     public readonly long TxDataNonZeroMultiplier;
 
-#if DEBUG
-    public long NetMeteredSStoreCost
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    public long ClearReversalRefund
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    public long SetReversalRefund
-    {
-        get => GetWithFreeGuard(field);
-        init;
-    }
-
-    private static long GetWithFreeGuard(long field) =>
-        field == GasCostOf.Free
-            ? throw new InvalidOperationException("Asking about the net metered cost when net metering not enabled")
-            : field;
-
-#else
     public readonly long NetMeteredSStoreCost;
-
     public readonly long ClearReversalRefund;
     public readonly long SetReversalRefund;
-#endif
     public readonly long SClearRefund;
     public readonly long DestroyRefund;
 
@@ -141,19 +114,30 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
         _hashCode = HashCode.Combine(hashCode1, hashCode2);
     }
 
+    public long RefundFromReversal<TEip8037>(bool originalIsZero)
+        where TEip8037 : struct, IFlag
+    {
+        return originalIsZero
+            ? TEip8037.IsActive
+                ? RefundOf.SSetReversedEip8037
+                : SetReversalRefund
+            : ClearReversalRefund;
+    }
+
     public bool Equals(SpecGasCosts? other)
     {
         if (other is null) return false;
         if (ReferenceEquals(this, other)) return true;
-        return SLoadCost == other.SLoadCost
+        return _hashCode == other._hashCode
+            && SLoadCost == other.SLoadCost
             && BalanceCost == other.BalanceCost
             && ExtCodeCost == other.ExtCodeCost
             && ExtCodeHashCost == other.ExtCodeHashCost
             && CallCost == other.CallCost
             && ExpByteCost == other.ExpByteCost
             && SStoreResetCost == other.SStoreResetCost
-            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && TxDataNonZeroMultiplier == other.TxDataNonZeroMultiplier
+            && NetMeteredSStoreCost == other.NetMeteredSStoreCost
             && ClearReversalRefund == other.ClearReversalRefund
             && SetReversalRefund == other.SetReversalRefund
             && SClearRefund == other.SClearRefund

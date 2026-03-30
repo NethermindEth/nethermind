@@ -29,9 +29,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
 
-    public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
-
     public virtual bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
 
@@ -89,9 +86,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);
 
-    public virtual void IncrementNonce(Address address, UInt256 delta)
-        => _innerWorldState.IncrementNonce(address, delta);
-
     public virtual void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
         => _innerWorldState.IncrementNonce(address, delta, out oldNonce);
 
@@ -124,9 +118,6 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 
     public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => _innerWorldState.SetTransientState(storageCell, newValue);
-
-    public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
-        => _innerWorldState.SubtractFromBalance(address, balanceChange, spec);
 
     public virtual void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         => _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);

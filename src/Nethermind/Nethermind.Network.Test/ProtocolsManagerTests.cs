@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Numerics;
-using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -23,9 +22,13 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V67;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -70,6 +73,9 @@ public class ProtocolsManagerTests
         private readonly IGossipPolicy _gossipPolicy;
         private readonly IPeerManager _peerManager;
         private readonly INetworkConfig _networkConfig;
+        private readonly ITxPoolConfig _txPoolConfig;
+        private readonly ISpecProvider _specProvider;
+        private readonly IForkInfo _forkInfo;
 
         public Context()
         {
@@ -99,33 +105,58 @@ public class ProtocolsManagerTests
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
-            _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
+            _blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
-            ForkInfo forkInfo = new(MainnetSpecProvider.Instance, _syncServer);
+            _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
             _networkConfig = new NetworkConfig();
-            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
+            _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _forkInfo, _peerManager, _networkConfig, LimboLogs.Instance);
             _peerStorage = Substitute.For<INetworkStorage>();
             _syncPeerPool = Substitute.For<ISyncPeerPool>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
+            _txPoolConfig = Substitute.For<ITxPoolConfig>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _manager = new ProtocolsManager(
                 _syncPeerPool,
-                _syncServer,
-                RunImmediatelyScheduler.Instance,
                 _txPool,
                 _discoveryApp,
-                _serializer,
                 _rlpxHost,
                 _nodeStatsManager,
                 _protocolValidator,
                 _peerStorage,
-                forkInfo,
-                _gossipPolicy,
-                Substitute.For<IWorldStateManager>(),
-                LimboLogs.Instance,
-                Substitute.For<ITxPoolConfig>(),
-                Substitute.For<ISpecProvider>());
+                BuildProtocolHandlerFactories(),
+                LimboLogs.Instance);
+        }
+
+        private IProtocolHandlerFactory[] BuildProtocolHandlerFactories()
+        {
+            return
+            [
+                new ReusableProtocolHandlerFactory<P2PProtocolHandler>(
+                    session => new P2PProtocolHandler(session, _rlpxHost.LocalNodeId, _nodeStatsManager, _serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance),
+                    Protocol.P2P),
+                new ReusableProtocolHandlerFactory<Eth66ProtocolHandler>(
+                    session => new Eth66ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    66),
+                new ReusableProtocolHandlerFactory<Eth67ProtocolHandler>(
+                    session => new Eth67ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance),
+                    Protocol.Eth,
+                    67),
+                new ReusableProtocolHandlerFactory<Eth68ProtocolHandler>(
+                    session => new Eth68ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    68),
+                new ReusableProtocolHandlerFactory<Eth69ProtocolHandler>(
+                    session => new Eth69ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    69),
+                new ReusableProtocolHandlerFactory<Eth70ProtocolHandler>(
+                    session => new Eth70ProtocolHandler(session, _serializer, _nodeStatsManager, _syncServer, RunImmediatelyScheduler.Instance, _txPool, _gossipPolicy, _forkInfo, LimboLogs.Instance, _txPoolConfig, _specProvider),
+                    Protocol.Eth,
+                    70)
+            ];
         }
 
         public Context CreateIncomingSession()
@@ -180,7 +211,7 @@ public class ProtocolsManagerTests
         public Context ReceiveDisconnect()
         {
             using DisconnectMessage message = new(EthDisconnectReason.Other);
-            IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer disconnectPacket = _serializer.ZeroSerialize(message).AsDisposable();
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
@@ -227,7 +258,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveStatus(StatusMessage msg)
         {
-            IByteBuffer statusPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
             _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
@@ -253,7 +284,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveHello(HelloMessage msg)
         {
-            IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer helloPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
@@ -445,7 +476,7 @@ public class ProtocolsManagerTests
 
     [TestCase(TestBlockchainIds.NetworkId + 1)]
     [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(int networkId)
+    public void Disconnects_on_wrong_network_id(ulong networkId)
     {
         When
             .CreateIncomingSession()
@@ -454,7 +485,7 @@ public class ProtocolsManagerTests
             .Init()
             .VerifyInitialized()
             .ReceiveHello()
-            .ReceiveStatusWrongChain((ulong)networkId)
+            .ReceiveStatusWrongChain(networkId)
             .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
             .VerifyDisconnected();
     }

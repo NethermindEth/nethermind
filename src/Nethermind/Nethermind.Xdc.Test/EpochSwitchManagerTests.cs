@@ -40,6 +40,26 @@ internal class EpochSwitchManagerTests
         _epochSwitchManager = new EpochSwitchManager(_config, _tree, _snapshotManager);
     }
 
+    [TestCase(50, 100, 10, true)]
+    [TestCase(53, 100, 10, false)]
+    [TestCase(0, 100, 10, true)]
+    public void IsEpochSwitchAtBlock_PreSwitchBlock(long blockNumber, long switchBlock, int epochLength, bool expected)
+    {
+        XdcReleaseSpec releaseSpec = new()
+        {
+            EpochLength = epochLength,
+            SwitchBlock = switchBlock,
+            V2Configs = [new V2ConfigParams()]
+        };
+        _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
+
+        XdcBlockHeader header = Build.A.XdcBlockHeader().WithNumber(blockNumber).TestObject;
+
+        bool result = _epochSwitchManager.IsEpochSwitchAtBlock(header);
+
+        Assert.That(result, Is.EqualTo(expected));
+    }
+
     [Test]
     public void IsEpochSwitchAtBlock_ShouldReturnTrue_WhenBlockNumberIsSwitchBlock()
     {

@@ -16,6 +16,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -53,7 +54,6 @@ public class InitializeNetwork : IStep
     protected readonly INodeStatsManager NodeStatsManager;
     protected readonly ISynchronizer _synchronizer;
     protected readonly ISyncPeerPool _syncPeerPool;
-    protected readonly IForkInfo _forkInfo;
     protected readonly IDiscoveryApp _discoveryApp;
     protected readonly Lazy<IPeerPool> _peerPool;
     protected readonly INetworkStorage _peerStorage;
@@ -62,6 +62,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
 
@@ -74,8 +75,8 @@ public class InitializeNetwork : IStep
         NodeSourceToDiscV4Feeder enrDiscoveryAppFeeder,
         IDiscoveryApp discoveryApp,
         Lazy<IPeerPool> peerPool, // Require IRlpxPeer to be created first, hence, lazy.
-        IForkInfo forkInfo,
         [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IProtocolHandlerFactory[] protocolHandlerFactories,
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
@@ -89,8 +90,8 @@ public class InitializeNetwork : IStep
         _enrDiscoveryAppFeeder = enrDiscoveryAppFeeder;
         _discoveryApp = discoveryApp;
         _peerPool = peerPool;
-        _forkInfo = forkInfo;
         _peerStorage = peerStorage;
+        _protocolHandlerFactories = protocolHandlerFactories;
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
@@ -120,8 +121,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -139,6 +138,7 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
@@ -291,24 +291,15 @@ public class InitializeNetwork : IStep
 
     protected virtual IProtocolsManager CreateProtocolManager()
     {
-        ISyncServer syncServer = _api.SyncServer!;
         return new ProtocolsManager(
             _api.SyncPeerPool!,
-            syncServer,
-            _api.BackgroundTaskScheduler,
             _api.TxPool!,
             _discoveryApp,
-            _api.MessageSerializationService,
             _api.RlpxPeer,
             NodeStatsManager,
             _api.ProtocolValidator,
             _peerStorage,
-            _forkInfo,
-            _api.GossipPolicy,
-            _api.WorldStateManager!,
-            _api.LogManager,
-            _api.Config<ITxPoolConfig>(),
-            _api.SpecProvider!,
-            _api.TxGossipPolicy);
+            _protocolHandlerFactories,
+            _api.LogManager);
     }
 }

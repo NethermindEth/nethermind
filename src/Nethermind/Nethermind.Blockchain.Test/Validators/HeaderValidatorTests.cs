@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Consensus;
@@ -75,70 +76,45 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_too_high()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(0, false, TestName = "When_gas_limit_too_high")]
+    [TestCase(-1, true, TestName = "When_gas_limit_just_correct_high")]
+    public void When_gas_limit_above_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_high()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCase(1, true, TestName = "When_gas_limit_just_correct_low")]
+    [TestCase(0, false, TestName = "When_gas_limit_is_just_too_low")]
+    public void When_gas_limit_below_parent(int adjustment, bool expectedResult)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) - 1;
+        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + adjustment;
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.True);
+        Assert.That(result, Is.EqualTo(expectedResult));
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_just_correct_low()
+    private static IEnumerable<TestCaseData> InvalidFieldCases()
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024) + 1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.True);
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.GasUsed = parent.Header.GasLimit + 1))
+            .SetName("When_gas_used_above_gas_limit");
+        yield return new TestCaseData(new Action<Block, Block>((block, _) => block.Header.ParentHash = Keccak.Zero))
+            .SetName("When_no_parent_invalid");
+        yield return new TestCaseData(new Action<Block, Block>((block, parent) => block.Header.Timestamp = parent.Header.Timestamp))
+            .SetName("When_timestamp_same_as_parent");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_just_too_low()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(InvalidFieldCases))]
+    public void Header_field_invalidation_returns_false(Action<Block, Block> corrupt)
     {
-        _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_above_gas_limit()
-    {
-        _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_no_parent_invalid()
-    {
-        _block.Header.ParentHash = Keccak.Zero;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_timestamp_same_as_parent()
-    {
-        _block.Header.Timestamp = _parentBlock.Header.Timestamp;
+        corrupt(_block, _parentBlock);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -191,30 +167,21 @@ public class HeaderValidatorTests
         }
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_extra_data_too_long()
+    private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
-        _block.Header.ExtraData = new byte[33];
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
+        yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))
+            .SetName("When_extra_data_too_long");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Difficulty = 1))
+            .SetName("When_incorrect_difficulty_then_invalid");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number += 1))
+            .SetName("When_incorrect_number_then_invalid");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_difficulty_then_invalid()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(CorruptedFieldCases))]
+    public void Header_field_corruption_returns_false(Action<Block> corrupt)
     {
-        _block.Header.Difficulty = 1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_incorrect_number_then_invalid()
-    {
-        _block.Header.Number += 1;
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -282,20 +249,21 @@ public class HeaderValidatorTests
         Assert.That(result, Is.True);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_block_number_is_negative()
+    private static IEnumerable<TestCaseData> NegativeFieldCases()
     {
-        _block.Header.Number = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
+        yield return new TestCaseData(new Action<Block>(b => b.Header.Number = -1))
+            .SetName("When_block_number_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasUsed = -1))
+            .SetName("When_gas_used_is_negative");
+        yield return new TestCaseData(new Action<Block>(b => b.Header.GasLimit = -1))
+            .SetName("When_gas_limit_is_negative");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_used_is_negative()
+    [MaxTime(Timeout.MaxTestTime)]
+    [TestCaseSource(nameof(NegativeFieldCases))]
+    public void When_header_field_is_negative(Action<Block> corrupt)
     {
-        _block.Header.GasUsed = -1;
+        corrupt(_block);
         _block.Header.Hash = _block.CalculateHash();
 
         bool result = _validator.Validate(_block.Header, _parentBlock.Header);
@@ -343,16 +311,6 @@ public class HeaderValidatorTests
         HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.EqualTo(expectedResult));
-    }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void When_gas_limit_is_negative()
-    {
-        _block.Header.GasLimit = -1;
-        _block.Header.Hash = _block.CalculateHash();
-
-        bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-        Assert.That(result, Is.False);
     }
 
     [Test]

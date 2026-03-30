@@ -13,49 +13,25 @@ using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncProgressResolver : ISyncProgressResolver
+    public class SyncProgressResolver(
+        IBlockTree blockTree,
+        IFullStateFinder fullStateFinder,
+        ISyncConfig syncConfig,
+        [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
+        ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
+        ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
+        ISyncFeed<SnapSyncBatch?> snapSyncFeed)
+        : ISyncProgressResolver
     {
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly ISyncConfig _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+        private readonly IFullStateFinder _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
 
-        private readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
-        private readonly IFullStateFinder _fullStateFinder;
-
-        private readonly ISyncFeed<HeadersSyncBatch?> _headersSyncFeed;
-        private readonly ISyncFeed<BodiesSyncBatch?> _bodiesSyncFeed;
-        private readonly ISyncFeed<ReceiptsSyncBatch?> _receiptsSyncFeed;
-        private readonly ISyncFeed<SnapSyncBatch?> _snapSyncFeed;
-
-        public SyncProgressResolver(
-            IBlockTree blockTree,
-            IFullStateFinder fullStateFinder,
-            ISyncConfig syncConfig,
-            [KeyFilter(nameof(HeadersSyncFeed))] ISyncFeed<HeadersSyncBatch?> headersSyncFeed,
-            ISyncFeed<BodiesSyncBatch?> bodiesSyncFeed,
-            ISyncFeed<ReceiptsSyncBatch?> receiptsSyncFeed,
-            ISyncFeed<SnapSyncBatch?> snapSyncFeed)
-        {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
-            _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-
-            _headersSyncFeed = headersSyncFeed;
-            _bodiesSyncFeed = bodiesSyncFeed;
-            _receiptsSyncFeed = receiptsSyncFeed;
-            _snapSyncFeed = snapSyncFeed;
-        }
-
-        public long FindBestFullState()
-        {
-            return _fullStateFinder.FindBestFullState();
-        }
-
+        public long FindBestFullState() => _fullStateFinder.FindBestFullState();
         public long FindBestHeader() => _blockTree.BestSuggestedHeader?.Number ?? 0;
         public long FindBestFullBlock() => Math.Min(FindBestHeader(), _blockTree.BestSuggestedBody?.Number ?? 0); // avoiding any potential concurrency issue
-
         public bool IsLoadingBlocksFromDb() => !_blockTree.CanAcceptNewBlocks;
-
         public long FindBestProcessedBlock() => _blockTree.Head?.Number ?? -1;
-
         public UInt256 ChainDifficulty => _blockTree.BestSuggestedBody?.TotalDifficulty ?? UInt256.Zero;
 
         public UInt256? GetTotalDifficulty(Hash256 blockHash)
@@ -75,22 +51,16 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
             }
 
-            return _blockTree.FindHeader(blockHash)?.TotalDifficulty == 0 ? null : _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+            UInt256? totalDifficulty = _blockTree.FindHeader(blockHash)?.TotalDifficulty;
+            return totalDifficulty?.IsZero == true ? null : totalDifficulty;
         }
 
-        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || _headersSyncFeed.IsFinished;
-
-        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed.IsFinished;
-
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed.IsFinished;
-
-        public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
-
+        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || headersSyncFeed.IsFinished;
+        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || bodiesSyncFeed.IsFinished;
+        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || receiptsSyncFeed.IsFinished;
+        public bool IsSnapGetRangesFinished() => snapSyncFeed?.IsFinished ?? true;
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
         public (long BlockNumber, Hash256 BlockHash) SyncPivot => _blockTree.SyncPivot;
-
         private bool IsFastBlocks() => _syncConfig.FastSync && _blockTree.SyncPivot.BlockNumber != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
-
-
     }
 }

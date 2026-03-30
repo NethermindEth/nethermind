@@ -315,25 +315,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
+        private static IEnumerable<TestCaseData> GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
-            return
-            [
-                new object[]
-                {
-                    new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
+            yield return new TestCaseData(
+                    new double[][] { [20, 40, 60, 80.5], [10, 20, 30, 40] },
                     new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
                     3,
-                    15
-                },
-                new object[]
-                {
-                    new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
-                    new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    15)
+                .SetName("High then low percentiles");
+            yield return new TestCaseData(
+                    new double[][] { [10, 20, 30, 40], [20, 40, 60, 80.5] },
+                    new ulong[][] { [4, 4, 10, 10], [4, 10, 10, 22] },
                     3,
-                    15
-                }
-            ];
+                    15)
+                .SetName("Low then high percentiles");
         }
 
         [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases))]

@@ -3,12 +3,43 @@
 
 namespace Nethermind.Consensus;
 
+/// <summary>
+/// Engine API method version constants, grouped by method.
+/// Use the nested classes (<see cref="Fcu"/>, <see cref="NewPayload"/>, <see cref="GetPayload"/>)
+/// to select the appropriate version when calling Execution Engine API methods.
+/// </summary>
 public static class EngineApiVersions
 {
-    public const int Paris = 1;
-    public const int Shanghai = 2;
-    public const int Cancun = 3;
-    public const int Prague = 4;
-    public const int Osaka = 5;
-    public const int Amsterdam = 6;
+    /// <summary>forkchoiceUpdated method versions.</summary>
+    /// <remarks>Multiple forks may share the same version (e.g. Cancun/Prague/Osaka all use V3).</remarks>
+    public static class Fcu
+    {
+        public const int V1 = 1; // Paris
+        public const int V2 = 2; // Shanghai
+        public const int V3 = 3; // Cancun/Prague/Osaka
+        public const int V4 = 4; // Amsterdam
+        public const int Latest = V4;
+    }
+
+    /// <summary>engine_newPayload method versions.</summary>
+    public static class NewPayload
+    {
+        public const int V1 = 1; // Paris
+        public const int V2 = 2; // Shanghai
+        public const int V3 = 3; // Cancun
+        public const int V4 = 4; // Prague/Osaka
+        public const int V5 = 5; // Amsterdam
+        public const int Latest = V5;
+    }
+
+    /// <summary>engine_getPayload method versions.</summary>
+    public static class GetPayload
+    {
+        public const int V1 = 1; // Paris
+        public const int V2 = 2; // Shanghai
+        public const int V3 = 3; // Cancun
+        public const int V4 = 4; // Prague
+        public const int V5 = 5; // Osaka
+        public const int V6 = 6; // Amsterdam
+    }
 }

@@ -3,10 +3,8 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,39 +13,7 @@ namespace Nethermind.Serialization.Json;
 
 public class ULongConverter : JsonConverter<ulong>
 {
-    public static ulong FromString(ReadOnlySpan<byte> s)
-    {
-        if (s.Length == 0)
-        {
-            throw new JsonException("null cannot be assigned to ulong");
-        }
-
-        if (s.SequenceEqual("0x0"u8))
-        {
-            return 0uL;
-        }
-
-        ulong value;
-        if (s.StartsWith("0x"u8))
-        {
-            s = s[2..];
-            if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-            {
-                return value;
-            }
-        }
-        else if (Utf8Parser.TryParse(s, out value, out _))
-        {
-            return value;
-        }
-
-
-        ThrowJsonException();
-        return default;
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowJsonException() => throw new JsonException("hex to long");
-    }
+    public static ulong FromString(ReadOnlySpan<byte> s) => NumericConverterHelper.Parse<ulong>(s);
 
     [SkipLocalsInit]
     public override void Write(
@@ -55,28 +21,7 @@ public class ULongConverter : JsonConverter<ulong>
         ulong value,
         JsonSerializerOptions options)
     {
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-        switch (usedConversion)
-        {
-            case NumberConversion.Hex:
-                if (value == 0)
-                {
-                    writer.WriteStringValue("0x0"u8);
-                }
-                else
-                {
-                    HexWriter.WriteUlongHexRawValue(writer, value);
-                }
-                break;
-            case NumberConversion.Decimal:
-                writer.WriteStringValue(value == 0 ? "0" : value.ToString(CultureInfo.InvariantCulture));
-                break;
-            case NumberConversion.Raw:
-                writer.WriteNumberValue(value);
-                break;
-            default:
-                throw new NotSupportedException();
-        }
+        NumericConverterHelper.Write(writer, value);
     }
 
     internal static ulong ReadCore(ref Utf8JsonReader reader)
@@ -85,11 +30,12 @@ public class ULongConverter : JsonConverter<ulong>
         {
             return reader.GetUInt64();
         }
+
         if (reader.TokenType == JsonTokenType.String)
         {
             return !reader.HasValueSequence
-                ? FromString(reader.ValueSpan)
-                : FromString(reader.ValueSequence.ToArray());
+                ? NumericConverterHelper.Parse<ulong>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<ulong>(reader.ValueSequence.ToArray());
         }
 
         ThrowJsonException();

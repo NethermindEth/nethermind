@@ -10,14 +10,13 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Test.Runner;
 
 public class StateTestTxTracer : ITxTracer, IDisposable
 {
     private StateTestTxTraceEntry _traceEntry;
-    private StateTestTxTrace _trace = new();
+    private readonly StateTestTxTrace _trace = new();
     private bool _gasAlreadySetForCurrentOp;
 
     public bool IsTracingReceipt => true;
@@ -51,17 +50,17 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
-        _traceEntry = new StateTestTxTraceEntry();
-        _traceEntry.Pc = pc + (env.CodeInfo is EofCodeInfo eofCodeInfo ? eofCodeInfo.PcOffset() : 0);
-        _traceEntry.Section = codeSection;
-        _traceEntry.Operation = (byte)opcode;
-        _traceEntry.OperationName = opcode.GetName();
-        _traceEntry.Gas = gas;
-        _traceEntry.Depth = env.GetGethTraceDepth();
-        _traceEntry.FunctionDepth = functionDepth;
+        _traceEntry = new StateTestTxTraceEntry
+        {
+            Pc = pc,
+            Operation = (byte)opcode,
+            OperationName = Enum.GetName(opcode),
+            Gas = gas,
+            Depth = env.GetGethTraceDepth(),
+        };
         _trace.Entries.Add(_traceEntry);
     }
 

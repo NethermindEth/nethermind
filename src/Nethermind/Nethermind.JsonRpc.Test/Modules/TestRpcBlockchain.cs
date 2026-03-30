@@ -39,6 +39,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Network;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats;
@@ -217,22 +218,14 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ProtocolsManager = new ProtocolsManager(
                 Substitute.For<ISyncPeerPool>(),
-                Substitute.For<ISyncServer>(),
-                Substitute.For<IBackgroundTaskScheduler>(),
                 TxPool,
                 Substitute.For<IDiscoveryApp>(),
-                Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IRlpxHost>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<IProtocolValidator>(),
                 Substitute.For<INetworkStorage>(),
-                Container.Resolve<IForkInfo>(),
-                Substitute.For<IGossipPolicy>(),
-                WorldStateManager,
-                LimboLogs.Instance,
-                Substitute.For<ITxPoolConfig>(),
-                Substitute.For<ISpecProvider>(),
-                Substitute.For<ITxGossipPolicy>()
+                Array.Empty<IProtocolHandlerFactory>(),
+                LimboLogs.Instance
             );
 
             EthRpcModule = _ethRpcModuleBuilder(this);

@@ -62,7 +62,7 @@ public class BN254PairingPrecompileTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outcome, Is.EqualTo(status));
-            Assert.That(outputData, Is.EquivalentTo(Convert.FromHexString(output)));
+            Assert.That(outputData, Is.EqualTo(Convert.FromHexString(output)));
         }
     }
 }

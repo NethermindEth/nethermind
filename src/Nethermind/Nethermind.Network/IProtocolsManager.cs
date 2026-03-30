@@ -12,7 +12,6 @@ namespace Nethermind.Network
     {
         void AddSupportedCapability(Capability capability);
         void RemoveSupportedCapability(Capability capability);
-        void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory);
         int GetHighestProtocolVersion(string protocol);
     }
 }

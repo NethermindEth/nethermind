@@ -5,6 +5,7 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -49,30 +50,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
-
-            ctx.ReadSequenceLength();
-
             AccountRangeMessage message = new();
-            message.RequestId = ctx.DecodeLong();
+            ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
-            int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
-            int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
-            ArrayPoolList<PathWithAccount> pathsWithAccounts = new(count);
-            for (int i = 0; i < count; i++)
+            try
             {
                 ctx.ReadSequenceLength();
-                pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                message.RequestId = ctx.DecodeLong();
+
+                int pwasCheck = ctx.ReadSequenceLength() + ctx.Position;
+                int count = ctx.PeekNumberOfItemsRemaining(pwasCheck);
+                ctx.GuardLimit(count, SnapMessageLimits.AccountRangeEntriesRlpLimit);
+                pathsWithAccounts = new ArrayPoolList<PathWithAccount>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    ctx.ReadSequenceLength();
+                    pathsWithAccounts.Add(new PathWithAccount(ctx.DecodeKeccak(), _decoder.Decode(ref ctx)));
+                }
+
+                message.PathsWithAccounts = pathsWithAccounts;
+                pathsWithAccounts = null;
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+
+                return message;
             }
-
-            message.PathsWithAccounts = pathsWithAccounts;
-            message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
-
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
-
-            return message;
+            catch
+            {
+                pathsWithAccounts?.Dispose();
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
 
         private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)

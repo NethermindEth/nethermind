@@ -122,6 +122,19 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_getReceiptRecoveryBlock_returns_null_when_block_not_in_db()
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+
+        ReceiptRecoveryBlock? result = store.GetReceiptRecoveryBlock(block.Number, block.Hash!);
+
+        result.Should().BeNull();
+    }
+
+    [Test]
     public void Test_ClearCache_removes_cached_blocks()
     {
         TestMemDb db = new();

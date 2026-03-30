@@ -8,13 +8,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -22,9 +25,9 @@ using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Find;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Internal;
 
 namespace Nethermind.Blockchain.Test.Find;
 
@@ -39,6 +42,7 @@ public class LogFinderTests
     private IBloomStorage _bloomStorage = null!;
     private IReceiptsRecovery _receiptsRecovery = null!;
     private Block _headTestBlock = null!;
+    private ISpecProvider? _specProvider;
 
     [SetUp]
     public void SetUp()
@@ -51,8 +55,8 @@ public class LogFinderTests
 
     private void SetUp(bool allowReceiptIterator, int chainLength = 5)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
-        specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
+        _specProvider = Substitute.For<ISpecProvider>();
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip155Enabled.Returns(true);
         _receiptStorage = new InMemoryReceiptStorage(allowReceiptIterator);
         _rawBlockTree = Build.A.BlockTree()
             .WithTransactions(_receiptStorage, LogsForBlockBuilder)
@@ -436,6 +440,24 @@ public class LogFinderTests
             logIndexStorage.DidNotReceiveWithAnyArgs().GetEnumerator(Arg.Any<Address>(), Arg.Any<int>(), Arg.Any<int>());
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void filter_throws_descriptive_exception_when_receipts_exist_in_compact_encoding_but_block_missing()
+    {
+        PersistentReceiptStorage receiptStorage = CreateCompactEncodedReceiptStorage();
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+
+        receiptStorage.Insert(block, [
+            Build.A.Receipt.WithLogs(Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject).TestObject,
+            Build.A.Receipt.TestObject
+        ]);
+        receiptStorage.ClearCache();
+
+        CreateLogFinder(_rawBlockTree, receiptStorage)
+            .Invoking(lf => lf.FindLogs(FilterBuilder.New().FromBlock(1).ToBlock(1).Build()).ToArray())
+            .Should().Throw<InvalidOperationException>()
+            .WithMessage("*missing block data*");
+    }
+
     private static FilterBuilder AllBlockFilter() => FilterBuilder.New().FromEarliestBlock().ToPendingBlock();
 
     private void StoreTreeBlooms(bool withBloomDb)
@@ -449,6 +471,18 @@ public class LogFinderTests
         }
     }
 
-    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null) =>
-        new(blockFinder ?? _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+    private LogFinder CreateLogFinder(IBlockFinder? blockFinder = null, IReceiptStorage? receiptStorage = null) =>
+        new(blockFinder ?? _blockTree, receiptStorage ?? _receiptStorage, receiptStorage ?? _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery);
+
+    private PersistentReceiptStorage CreateCompactEncodedReceiptStorage()
+    {
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        receiptsDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, []);
+
+        return new PersistentReceiptStorage(
+            receiptsDb, _specProvider!, _receiptsRecovery, _rawBlockTree, new BlockStore(new MemDb()),
+            new ReceiptConfig(), new ReceiptArrayStorageDecoder(true)
+        )
+        { MigratedBlockNumber = 0 };
+    }
 }

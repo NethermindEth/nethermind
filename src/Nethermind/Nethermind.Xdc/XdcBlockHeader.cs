@@ -60,7 +60,7 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
         set { _penaltiesAddress = value; }
     }
 
-    private ExtraFieldsV2 _extraFieldsV2;
+    private ExtraFieldsV2? _extraFieldsV2;
     /// <summary>
     /// Consensus data that must be included in a V2 block, which contains the quorum certificate and round information.
     /// </summary>
@@ -83,7 +83,11 @@ public class XdcBlockHeader : BlockHeader, IHashResolver
             _extraFieldsV2 = _extraConsensusDataDecoder.Decode(ref valueDecoderContext);
             return _extraFieldsV2;
         }
-        set { _extraFieldsV2 = value; }
+        internal set
+        {
+            _extraFieldsV2 = value;
+            ExtraData = value is null ? [] : [XdcConstants.ConsensusVersion, .. _extraConsensusDataDecoder.Encode(value).Bytes];
+        }
     }
 
     public virtual ValueHash256 CalculateHash()

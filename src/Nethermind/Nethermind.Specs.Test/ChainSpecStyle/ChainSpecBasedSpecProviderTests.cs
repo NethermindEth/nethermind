@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -427,10 +426,12 @@ public class ChainSpecBasedSpecProviderTests
         IReleaseSpec? postCancunSpec = provider.GetSpec((1, GnosisSpecProvider.CancunTimestamp));
         IReleaseSpec? prePragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp - 1));
         IReleaseSpec? postPragueSpec = provider.GetSpec((1, GnosisSpecProvider.PragueTimestamp));
+        IReleaseSpec? postOsakaSpec = provider.GetSpec((1, GnosisSpecProvider.OsakaTimestamp));
 
         VerifyGnosisShanghaiSpecifics(preShanghaiSpec, postShanghaiSpec);
         VerifyGnosisCancunSpecifics(postCancunSpec);
         VerifyGnosisPragueSpecifics(prePragueSpec, postPragueSpec, GnosisSpecProvider.FeeCollector);
+        VerifyGnosisOsakaSpecifics(postOsakaSpec, GnosisSpecProvider.FeeCollector);
 
         using (Assert.EnterMultipleScope())
         {
@@ -799,7 +800,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_block_number()
+    public void Max_code_size_forks_by_block_number()
     {
         ChainSpec chainSpec = new()
         {
@@ -828,7 +829,7 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
-    public void Eip150_and_Eip2537_fork_by_timestamp()
+    public void Max_code_size_forks_by_timestamp()
     {
         ChainSpec chainSpec = new()
         {
@@ -836,6 +837,7 @@ public class ChainSpecBasedSpecProviderTests
             {
                 MaxCodeSizeTransitionTimestamp = 10,
                 Eip2537TransitionTimestamp = 20,
+                Eip7954TransitionTimestamp = 30,
                 MaxCodeSize = 1
             },
             EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
@@ -853,6 +855,11 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec((100, 19)).IsEip2537Enabled, Is.False);
             Assert.That(provider.GetSpec((100, 20)).IsEip2537Enabled, Is.True);
             Assert.That(provider.GetSpec((100, 21)).IsEip2537Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 29)).IsEip7954Enabled, Is.False);
+            Assert.That(provider.GetSpec((100, 29)).MaxCodeSize, Is.EqualTo(1));
+            Assert.That(provider.GetSpec((100, 30)).IsEip7954Enabled, Is.True);
+            Assert.That(provider.GetSpec((100, 30)).MaxCodeSize, Is.EqualTo(CodeSizeConstants.MaxCodeSizeEip7954));
+            Assert.That(provider.GetSpec((100, 30)).MaxInitCodeSize, Is.EqualTo(2L * CodeSizeConstants.MaxCodeSizeEip7954));
         }
     }
 

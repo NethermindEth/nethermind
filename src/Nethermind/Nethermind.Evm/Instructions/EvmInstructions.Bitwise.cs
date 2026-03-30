@@ -66,7 +66,7 @@ internal static partial class EvmInstructions
         WriteUnaligned(ref bytesRef, TOpBitwise.Operation(aVec, bVec));
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

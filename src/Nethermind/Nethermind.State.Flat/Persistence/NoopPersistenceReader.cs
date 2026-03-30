@@ -22,9 +22,9 @@ public class NoopPersistenceReader : IPersistence.IPersistenceReader
 
     public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
 
-    public byte[]? GetAccountRaw(Hash256? addrHash) => null;
+    public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
 
-    public bool TryGetStorageRaw(Hash256 addrHash, Hash256 slotHash, ref SlotValue value) => false;
+    public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref SlotValue value) => false;
 
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => new EmptyIterator();
 

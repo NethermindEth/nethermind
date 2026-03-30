@@ -97,14 +97,14 @@ namespace Nethermind.Synchronization.SnapSync
                     _progressTracker.EnqueueAccountStorage(item);
                 }
 
-                using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                using ArrayPoolListRef<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
                 {
                     if (_codeExistKeyCache.Get(code)) return false;
 
                     bool exist = _codeDb.KeyExists(code.Bytes);
                     if (exist) _codeExistKeyCache.Set(code);
                     return !exist;
-                }).ToPooledList(codeHashes.Count);
+                }).ToPooledListRef(codeHashes.Count);
 
                 _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
 

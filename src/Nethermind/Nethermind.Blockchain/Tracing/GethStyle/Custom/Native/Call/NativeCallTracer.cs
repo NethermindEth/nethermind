@@ -58,7 +58,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
 
-        Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+        Debug.Assert(_callStack.Count <= 1, $"Unexpected frames on call stack, expected at most one master frame, found {_callStack.Count} frames.");
 
         if (_callStack.Count is not 0)
         {

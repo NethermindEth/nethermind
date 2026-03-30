@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Test.Runner;
 
@@ -44,8 +43,6 @@ public class BlockchainTestsRunner(
 
             if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
                 continue;
-            Setup();
-
             Console.Write($"{test,-120} ");
             if (test.LoadFailure is not null)
             {

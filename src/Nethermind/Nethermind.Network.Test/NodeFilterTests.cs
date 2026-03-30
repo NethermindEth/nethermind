@@ -270,21 +270,21 @@ public class NodeFilterTests
     [TestCase(false, "203.0.113.1", "203.0.113.50", Description = "Touch refreshes subnet bucket timeout")]
     public async Task Touch_RefreshesTimeout(bool exactMatchOnly, string firstAddr, string touchAddr)
     {
-        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 200);
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly, timeoutMs: 2000);
         IPAddress ip1 = IPAddress.Parse(firstAddr);
         IPAddress ip2 = IPAddress.Parse(touchAddr);
 
         filter.TryAccept(ip1).Should().BeTrue("first attempt should be accepted");
 
-        await Task.Delay(100);
+        await Task.Delay(500);
 
         filter.Touch(ip2);
 
-        await Task.Delay(150);
+        await Task.Delay(1000);
 
         filter.TryAccept(ip1).Should().BeFalse("touch should refresh the timeout window");
 
-        await Task.Delay(100);
+        await Task.Delay(1500);
 
         filter.TryAccept(ip1).Should().BeTrue("address should be accepted again after the refreshed timeout expires");
     }

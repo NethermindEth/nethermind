@@ -333,6 +333,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
+
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
         {
             return ToUnsignedBigInteger(bytes.AsSpan());
@@ -768,25 +769,8 @@ namespace Nethermind.Core.Extensions
                     uint block = Unsafe.ReadUnaligned<uint>(
                         ref Unsafe.Add(ref input, pos));
 
-                    // TODO: Remove once cross-platform Shuffle is landed
-                    // https://github.com/dotnet/runtime/issues/63331
-                    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                    static Vector128<byte> Shuffle(Vector128<byte> value, Vector128<byte> mask)
-                    {
-                        if (Ssse3.IsSupported)
-                        {
-                            return Ssse3.Shuffle(value, mask);
-                        }
-                        else if (!AdvSimd.Arm64.IsSupported)
-                        {
-                            ThrowHelper.ThrowNotSupportedException();
-                        }
-
-                        return AdvSimd.Arm64.VectorTableLookup(value, mask);
-                    }
-
                     // Calculate nibbles
-                    Vector128<byte> lowNibbles = Shuffle(
+                    Vector128<byte> lowNibbles = Vector128.Shuffle(
                         Vector128.CreateScalarUnsafe(block).AsByte(), shuffleMask);
 
                     // ExtractVector128 is not entirely the same as ShiftRightLogical128BitLane, but it works here since
@@ -797,7 +781,7 @@ namespace Nethermind.Core.Extensions
 
                     // Lookup the hex values at the positions of the indices
                     Vector128<byte> indices = (lowNibbles | highNibbles) & Vector128.Create((byte)0xF);
-                    Vector128<byte> hex = Shuffle(asciiTable, indices);
+                    Vector128<byte> hex = Vector128.Shuffle(asciiTable, indices);
 
                     // The high bytes (0x00) of the chars have also been converted
                     // to ascii hex '0', so clear them out.
@@ -945,7 +929,7 @@ namespace Nethermind.Core.Extensions
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
                 int i = 0;
-                for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
+                for (; i <= data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
                 {
                     Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
                     ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
@@ -954,11 +938,12 @@ namespace Nethermind.Core.Extensions
 
                 data = data[i..];
             }
+
             if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
                 int i = 0;
-                for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
+                for (; i <= data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
                 {
                     Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
                     uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
@@ -967,15 +952,31 @@ namespace Nethermind.Core.Extensions
 
                 data = data[i..];
             }
+
             if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
                 int i = 0;
-                for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+
+                // ARM: Sum uses native horizontal add (addv) at 128-bit NEON width,
+                // avoiding the expensive multi-instruction ExtractMsb decomposition.
+                // x86: ExtractMostSignificantBits compiles to single pmovmskb instruction.
+                if (AdvSimd.IsSupported)
                 {
-                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
-                    uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
-                    totalZeros += BitOperations.PopCount(flags);
+                    for (; i <= data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+                    {
+                        Vector128<byte> v = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref bytes, i));
+                        totalZeros += Vector128.Sum(~Vector128.Equals(v, default) + Vector128<byte>.One);
+                    }
+                }
+                else
+                {
+                    for (; i <= data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+                    {
+                        Vector128<byte> v = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref bytes, i));
+                        totalZeros += BitOperations.PopCount(
+                            Vector128.ExtractMostSignificantBits(Vector128.Equals(v, default)));
+                    }
                 }
 
                 data = data[i..];

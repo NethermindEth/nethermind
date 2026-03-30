@@ -3,6 +3,8 @@
 
 #if DEBUG
 using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using NUnit.Framework;
 using System.Threading;
@@ -23,6 +25,15 @@ public class DebugTracerTests : VirtualMachineTestsBase
     public override void Setup()
     {
         base.Setup();
+    }
+
+    // Match VirtualMachine's AsAlignedSpan: the pinned DataStack array may not start
+    // at a 32-byte boundary, so the VM applies an alignment offset we must replicate.
+    private static unsafe Span<byte> AlignedStack(byte[] pinnedArray)
+    {
+        nuint addr = (nuint)(byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(pinnedArray));
+        int offset = (int)((uint)(-(nint)addr) & (EvmStack.WordSize - 1u));
+        return pinnedArray.AsSpan(offset, StackPool.StackLength);
     }
 
     private void ExecuteSafe(DebugTracer tracer, byte[] bytecode)
@@ -302,7 +313,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
             if (tracer.CanReadState)
             {
                 // we pop the condition and overwrite it with a false to force breaking out of the loop
-                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, tracer.CurrentState.DataStack);
+                EvmStack stack = new(tracer.CurrentState.DataStackHead, tracer, AlignedStack(tracer.CurrentState.DataStack));
                 if (!stack.PopLimbo()) throw new EvmStackUnderflowException();
                 stack.PushByte<OffFlag>(0x00);
 

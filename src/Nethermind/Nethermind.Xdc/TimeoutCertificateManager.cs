@@ -95,8 +95,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
-
-        SyncInfo syncInfo = GetSyncInfo();
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)

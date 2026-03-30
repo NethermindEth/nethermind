@@ -24,7 +24,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
-    public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer
+    public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, IStaticProtocolInfo
     {
         private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(EmptyByteArrayList.Instance);
 
@@ -34,8 +34,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
 
-        public override byte ProtocolVersion => 1;
-        public override string ProtocolCode => Protocol.Snap;
+        public static byte Version => 1;
+        public static string Code => Protocol.Snap;
+        public override byte ProtocolVersion => Version;
+        public override string ProtocolCode => Code;
         public override int MessageIdSpaceSize => 8;
 
         private const string DisconnectMessage = "Serving snap data in not implemented in this node.";

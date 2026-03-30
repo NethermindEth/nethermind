@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Runtime.Intrinsics.X86;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto.Blake2;
@@ -32,6 +33,7 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void avx2_should_compute_correct_values((int Rounds, string Output) testCase)
         {
+            if (!Avx2.IsSupported) Assert.Ignore("AVX2 is not supported on this platform");
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Avx2);
         }
@@ -39,6 +41,7 @@ namespace Nethermind.Core.Test
         [TestCaseSource(nameof(TestCaseSource))]
         public void sse41_should_compute_correct_values((int Rounds, string Output) testCase)
         {
+            if (!Sse41.IsSupported) Assert.Ignore("SSE4.1 is not supported on this platform");
             (int rounds, string output) = testCase;
             Test(rounds, output, Blake2CompressMethod.Sse41);
         }

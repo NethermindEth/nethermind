@@ -130,8 +130,12 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -147,8 +151,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -237,8 +243,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((h1 & (TagMask | LockMarker)) == expectedTag)
         {
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e0.Key;
             TValue? storedValue = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h1 == h2 && storedKey.Equals(in key))
@@ -254,8 +262,10 @@ public sealed class SeqlockCache<TKey, TValue>
 
         if ((w1 & (TagMask | LockMarker)) == expectedTag)
         {
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
             TKey storedKey = e1.Key;
             TValue? storedValue = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (w1 == w2 && storedKey.Equals(in key))
@@ -287,6 +297,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k0 = e0.Key;
             TValue? v0 = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
             if (h0 == h0_2 && k0.Equals(in key))
@@ -306,6 +317,7 @@ public sealed class SeqlockCache<TKey, TValue>
         {
             TKey k1 = e1.Key;
             TValue? v1 = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
             long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
             if (h1 == h1_2 && k1.Equals(in key))

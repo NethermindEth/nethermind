@@ -33,7 +33,7 @@ public class MetricsTests
         public static long OneTwoThreeSpecial { get; set; }
 
         [System.ComponentModel.Description("Another test description.")]
-        [KeyIsLabel("somelabel")]
+        [KeyIsLabel("some_label")]
         public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
 
         [KeyIsLabel("label1", "label2", "label3")]

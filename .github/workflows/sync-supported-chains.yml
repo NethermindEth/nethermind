@@ -16,6 +16,10 @@ on:
         description: "Docker image to be used by action"
         default: ""
         required: false
+      mode:
+        description: "Sync mode to run. Leave empty to run both HalfPath and Flat."
+        default: ""
+        required: false
       network_filter:
         description: "Useful for manual execution on only specified networks - provide partial or full name. Will execute action only on networks which contains phrase."
         default: ""
@@ -49,6 +53,33 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
           fi
 
+          requested_mode="${{ github.event.inputs.mode }}"
+          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "$requested_mode" in
+              "")
+                modes='["HalfPath","Flat"]'
+                ;;
+              halfpath)
+                modes='["HalfPath"]'
+                ;;
+              flat)
+                modes='["Flat"]'
+                ;;
+              *)
+                echo "Unsupported mode '$requested_mode'. Expected empty, 'halfpath', or 'flat'."
+                exit 1
+                ;;
+            esac
+          elif [ "${{ github.event_name }}" = "schedule" ]; then
+            modes='["HalfPath","Flat"]'
+          else
+            modes='["HalfPath"]'
+          fi
+
+          matrix=$(echo "$matrix" | jq --argjson modes "$modes" '[.[] as $config | $modes[] as $mode | ($config + {mode: $mode})]')
+
           echo "matrix=$(echo "$matrix" | jq -c .)" >> $GITHUB_OUTPUT
 
   create_a_runner:
@@ -79,7 +110,7 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "create"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           machine_type: "${{ matrix.config.agent }}"
           image: "linode/ubuntu24.04"
@@ -95,8 +126,8 @@ jobs:
       matrix:
         config: ${{fromJson(needs.setup-matrix.outputs.matrix)}}
 
-    name: "Run sync of ${{ matrix.config.network }} chain"
-    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}
+    name: "Run sync of ${{ matrix.config.network }} (${{ matrix.config.mode || 'HalfPath' }}) chain"
+    runs-on: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
     timeout-minutes: ${{ matrix.config.timeout }}
 
     steps:
@@ -153,7 +184,22 @@ jobs:
         run: |
           docker_image=""
           network="${{ matrix.config.network }}"
-          node_name="SyncSupportedChains-${network}-${GITHUB_RUN_ID}"
+          sync_mode="${{ matrix.config.mode || 'HalfPath' }}"
+
+          case "${sync_mode,,}" in
+            halfpath)
+              flatdb_enabled=false
+              ;;
+            flat)
+              flatdb_enabled=true
+              ;;
+            *)
+              echo "Unsupported sync mode: ${sync_mode}"
+              exit 1
+              ;;
+          esac
+
+          node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
             REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
@@ -240,6 +286,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --el-op-extra-flag FlatDb.Enabled=$flatdb_enabled \
               --el-op-extra-flag Sync.NonValidatorNode=true \
               --el-op-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-op-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -280,6 +327,7 @@ jobs:
               --network $stripped_network \
               --consensus-url $CONSENSUS_URL \
               --execution-api-url $EXECUTION_URL \
+              --el-l2-extra-flag FlatDb.Enabled=$flatdb_enabled \
               --el-l2-extra-flag Sync.NonValidatorNode=true \
               --el-l2-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-l2-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -306,6 +354,7 @@ jobs:
               --no-mev-boost \
               --no-validator \
               --network ${{ matrix.config.network }} \
+              --el-extra-flag FlatDb.Enabled=$flatdb_enabled \
               --el-extra-flag Sync.NonValidatorNode=true \
               --el-extra-flag Sync.DownloadBodiesInFastSync=false \
               --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -325,11 +374,15 @@ jobs:
         id: wait
         env:
           NETWORK: ${{ matrix.config.network }}
+          SYNC_MODE: ${{ matrix.config.mode || 'HalfPath' }}
         run: |
           python scripts/wait-for-sync.py
       - name: Get Nethermind Debug Logs
         if: ${{ failure() || cancelled() }}
         id: find-and-upload
+        env:
+          NETWORK: ${{ matrix.config.network }}
+          SYNC_MODE: ${{ matrix.config.mode || 'HalfPath' }}
         run: |
           target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
           cd "$target_dir"
@@ -337,7 +390,7 @@ jobs:
           ls
           log_file=$(find . -type f -name "*.log" | head -n 1)
           echo "Found log file: $log_file"
-          artifact_name=$(basename "$log_file")-${{ github.run_id }}
+          artifact_name=$(basename "$log_file")-${NETWORK}-${SYNC_MODE}-${{ github.run_id }}
           zip "${artifact_name}.zip" "$log_file"
           echo "Compressed log file into ${artifact_name}.zip"
           echo "artifact_name=$artifact_name" >> $GITHUB_ENV
@@ -372,8 +425,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           action: "destroy-machine-async"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -401,8 +454,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-machine"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"
@@ -413,8 +466,8 @@ jobs:
           linode_token: ${{ secrets.LINODE_TOKEN }}
           github_token: "${{ steps.gh-app.outputs.token }}"
           action: "destroy-runner"
-          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}
-          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}
+          runner_label: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
+          search_phrase: t-${{ github.run_id }}-${{ matrix.config.network }}-${{ matrix.config.mode || 'HalfPath' }}
           root_password: ${{ secrets.LINODE_ROOT_PASSWORD }}
           organization: "NethermindEth"
           repo_name: "nethermind"

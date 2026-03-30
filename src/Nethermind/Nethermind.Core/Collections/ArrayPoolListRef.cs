@@ -67,6 +67,7 @@ public ref struct ArrayPoolListRef<T>
     public void ReduceCount(int newCount) => ArrayPoolListCore<T>.ReduceCount(SafeArrayPool<T>.Shared, ref _array, ref _capacity, ref _count, newCount);
     public void Truncate(int newLength) => ArrayPoolListCore<T>.Truncate(newLength, _array, ref _count);
     public readonly void Sort(Comparison<T> comparison) => ArrayPoolListCore<T>.Sort(_array, _count, comparison);
+    public readonly void Sort<TComparer>(TComparer comparer) where TComparer : IComparer<T> => ArrayPoolListCore<T>.Sort(_array, _count, comparer);
     public readonly void Reverse() => ArrayPoolListCore<T>.Reverse(_array, _count);
     public readonly ref T GetRef(int index) => ref ArrayPoolListCore<T>.GetRef(_array, index, _count);
     public readonly Span<T> AsSpan() => _array.AsSpan(0, _count);

@@ -4,10 +4,12 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Types;
 using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test
@@ -15,10 +17,16 @@ namespace Nethermind.Xdc.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class XdcHeaderDecoderTests
     {
-        private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec, bool includeBaseFee = true)
+        private static (XdcBlockHeader Header, byte[] Bytes) BuildHeaderAndDefaultEncode(XdcHeaderDecoder codec,
+            Action<XdcBlockHeaderBuilder>? buildCallback = null, bool includeBaseFee = true)
         {
             XdcBlockHeaderBuilder builder = Build.A.XdcBlockHeader();
-            XdcBlockHeader header = (includeBaseFee ? builder.WithBaseFee((UInt256)1_000_000_000) : builder).TestObject;
+
+            if (includeBaseFee)
+                builder.WithBaseFee((UInt256)1_000_000_000);
+            buildCallback?.Invoke(builder);
+
+            XdcBlockHeader header = builder.TestObject;
 
             Rlp encoded = codec.Encode(header);
             return (header, encoded.Bytes);
@@ -28,7 +36,15 @@ namespace Nethermind.Xdc.Test
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
             var codec = new XdcHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec);
+            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, b => b
+                .WithValidators([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+                .WithPenalties([TestItem.AddressD, TestItem.AddressE, TestItem.AddressF])
+                .WithExtraConsensusData(new ExtraFieldsV2(1, Build.A.QuorumCertificate()
+                    .WithBlockInfo(new BlockRoundInfo(Hash256.Zero, 1, 0))
+                    .WithSignatures(TestItem.RandomSignatureA, TestItem.RandomSignatureB)
+                    .TestObject)
+                )
+            );
 
             // Decode
             BlockHeader? decodedBase = codec.Decode((ReadOnlySpan<byte>)encodedBytes);
@@ -45,7 +61,7 @@ namespace Nethermind.Xdc.Test
         public void No_BaseFee()
         {
             var codec = new XdcHeaderDecoder();
-            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, false);
+            var (original, encodedBytes) = BuildHeaderAndDefaultEncode(codec, includeBaseFee: false);
 
             // Decode back
             var decoded = (XdcBlockHeader)codec.Decode((ReadOnlySpan<byte>)encodedBytes)!;

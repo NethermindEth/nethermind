@@ -131,56 +131,38 @@ public static class BaseTriePersistence
     }
 
     public readonly struct WriteBatch(
+        ISortedKeyValueStore stateTopNodesSnap,
+        ISortedKeyValueStore stateNodesSnap,
         ISortedKeyValueStore storageNodesSnap,
         ISortedKeyValueStore fallbackNodesSnap,
-        IWriteOnlyKeyValueStore stateTopNodes,
-        IWriteOnlyKeyValueStore stateNodes,
-        IWriteOnlyKeyValueStore storageNodes,
-        IWriteOnlyKeyValueStore fallbackNodes,
+        IWriteBatch stateTopNodes,
+        IWriteBatch stateNodes,
+        IWriteBatch storageNodes,
+        IWriteBatch fallbackNodes,
         WriteFlags flags
     ) : BasePersistence.ITrieWriteBatch
     {
-
         [SkipLocalsInit]
         public void SelfDestruct(in ValueHash256 accountPath)
         {
-            Span<byte> firstKeyAlloc = stackalloc byte[1 + StoragePrefixPortion];
-            Span<byte> lastKeyAlloc = stackalloc byte[FullStorageNodesKeyLength + 1];
+            ReadOnlySpan<byte> addressSuffix = accountPath.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
+
+            Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
+            Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
 
             // Technically, this is kinda not needed for nodes as it's always traversed so orphaned trie just get skipped.
-            {
-                Span<byte> firstKey = firstKeyAlloc[..StoragePrefixPortion];
-                Span<byte> lastKey = lastKeyAlloc[..(ShortenedStorageNodesKeyLength + 1)];
-                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey, lastKey);
+            // Delete from StorageNodes
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)]);
+            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
+                firstKey[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
+                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
 
-                using ISortedView storageNodeReader = storageNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (storageNodeReader.MoveNext())
-                {
-                    // Double-check the end portion
-                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(StoragePrefixPortion + ShortenedPathLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                    {
-                        storageNodes.Remove(storageNodeReader.CurrentKey);
-                    }
-                }
-            }
-
-            {
-                Span<byte> firstKey = firstKeyAlloc;
-                Span<byte> lastKey = lastKeyAlloc;
-                // Do the same for the fallback nodes, except that the key must be prefixed `1` also
-                firstKey[0] = 1;
-                lastKey[0] = 1;
-                BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
-                using ISortedView storageNodeReader = fallbackNodesSnap.GetViewBetween(firstKey, lastKey);
-                while (storageNodeReader.MoveNext())
-                {
-                    // Double-check the end portion
-                    if (Bytes.AreEqual(storageNodeReader.CurrentKey[(1 + StoragePrefixPortion + FullPathLength + PathLengthLength)..], accountPath.Bytes[StoragePrefixPortion..(StorageHashPrefixLength)]))
-                    {
-                        fallbackNodes.Remove(storageNodeReader.CurrentKey);
-                    }
-                }
-            }
+            // Delete from FallbackNodes (prefix 0x01)
+            firstKey[0] = 1;
+            lastKey[0] = 1;
+            BasePersistence.CreateStorageRange(accountPath.Bytes, firstKey[1..], lastKey[1..]);
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
+                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
         }
 
         public void SetStateTrieNode(in TreePath path, TrieNode tn)
@@ -211,8 +193,75 @@ public static class BaseTriePersistence
                     break;
             }
         }
-    }
 
+        [SkipLocalsInit]
+        public void DeleteStateTrieNodeRange(in TreePath fromPath, in TreePath toPath)
+        {
+            // State trie nodes are stored across 3 columns based on path length:
+            // - StateNodesTop: path length 0-5 (3 byte keys)
+            // - StateNodes: path length 6-15 (8 byte keys)
+            // - FallbackNodes: path length 16+ (34 byte keys with 0x00 prefix)
+
+            Span<byte> firstKeyBuf = stackalloc byte[FullStateNodesKeyLength];
+            Span<byte> lastKeyBuf = stackalloc byte[FullStateNodesKeyLength + 1];
+
+            // Delete from StateNodesTop (path length 0-5)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
+            EncodeStateTopNodeKey(firstKeyBuf[..StateNodesTopPathLength], fromPath);
+            EncodeStateTopNodeKey(lastKeyBuf[..StateNodesTopPathLength], toPath.Truncate(StateNodesTopThreshold));
+            lastKeyBuf[StateNodesTopPathLength] = 0;
+            BasePersistence.DeleteMatchingKeys(stateTopNodesSnap, stateTopNodes,
+                firstKeyBuf[..StateNodesTopPathLength], lastKeyBuf[..(StateNodesTopPathLength + 1)],
+                StateNodesTopPathLength);
+
+            // Delete from StateNodes (path length 6-15)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
+            EncodeShortenedStateNodeKey(firstKeyBuf[..ShortenedPathLength], fromPath);
+            EncodeShortenedStateNodeKey(lastKeyBuf[..ShortenedPathLength], toPath.Truncate(ShortenedPathThreshold));
+            lastKeyBuf[ShortenedPathLength] = 0;
+            BasePersistence.DeleteMatchingKeys(stateNodesSnap, stateNodes,
+                firstKeyBuf[..ShortenedPathLength], lastKeyBuf[..(ShortenedPathLength + 1)],
+                ShortenedPathLength);
+
+            // Delete from FallbackNodes (path length 16+, prefix 0x00)
+            EncodeFullStateNodeKey(firstKeyBuf, fromPath);
+            EncodeFullStateNodeKey(lastKeyBuf[..FullStateNodesKeyLength], toPath);
+            lastKeyBuf[FullStateNodesKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+                firstKeyBuf, lastKeyBuf[..(FullStateNodesKeyLength + 1)], FullStateNodesKeyLength);
+        }
+
+        [SkipLocalsInit]
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in TreePath fromPath, in TreePath toPath)
+        {
+            // Storage trie nodes are stored across 2 columns based on path length:
+            // - StorageNodes: path length 0-15 (28 byte keys)
+            // - FallbackNodes: path length 16+ (54 byte keys with 0x01 prefix)
+
+            Hash256 address = new(addressHash);
+            ReadOnlySpan<byte> addressSuffix = addressHash.Bytes[StoragePrefixPortion..StorageHashPrefixLength];
+
+            Span<byte> firstKeyBuf = stackalloc byte[FullStorageNodesKeyLength];
+            Span<byte> lastKeyBuf = stackalloc byte[FullStorageNodesKeyLength + 1];
+
+            // Delete from StorageNodes (path length 0-15)
+            // Truncate toPath to max length for this column to ensure all keys in range are included
+            EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], address, fromPath);
+            EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], address, toPath.Truncate(ShortenedPathThreshold));
+            lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(storageNodesSnap, storageNodes,
+                firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
+                StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+
+            // Delete from FallbackNodes (path length 16+, prefix 0x01)
+            EncodeFullStorageNodeKey(firstKeyBuf, address, fromPath);
+            EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], address, toPath);
+            lastKeyBuf[FullStorageNodesKeyLength] = 0;
+            BasePersistence.DeleteMatchingKeys(fallbackNodesSnap, fallbackNodes,
+                firstKeyBuf, lastKeyBuf[..(FullStorageNodesKeyLength + 1)],
+                1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
+        }
+    }
 
     public readonly struct Reader(
         IReadOnlyKeyValueStore stateTopNodes,

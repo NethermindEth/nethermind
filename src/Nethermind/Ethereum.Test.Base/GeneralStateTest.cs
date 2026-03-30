@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.IO;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -37,6 +36,8 @@ namespace Ethereum.Test.Base
         public Hash256? CurrentBeaconRoot { get; set; }
         public Hash256? CurrentWithdrawalsRoot { get; set; }
         public ulong? CurrentExcessBlobGas { get; set; }
+        public ulong? CurrentSlotNumber { get; set; }
+
 
         public Hash256? RequestsHash { get; set; }
 

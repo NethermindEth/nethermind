@@ -62,8 +62,11 @@ public class SocketClient<TStream>(
 
                 if (result.EndOfMessage)
                 {
-                    // process the already filled bytes
-                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
+                    if (currentMessageLength > 0)
+                    {
+                        await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength), cancellationToken);
+                    }
+
                     currentMessageLength = 0; // reset message length
 
                     // if we grew the buffer too big lets reset it

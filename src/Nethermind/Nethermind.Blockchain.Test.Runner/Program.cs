@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -168,13 +167,6 @@ namespace Nethermind.Blockchain.Test.Runner
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmIOandFlowOperations", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmLogTests", testWildcard)));
             WrapAndRunDirectoryStateTests(testRunnerBuilder(new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), "vmTests", testWildcard)));
-
-            /* 
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcEIP158ToByzantium", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcFrontierToHomestead", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToDao", testWildcard));
-            await Run(testRunnerBuilder(new DirectoryTestsSource("bcHomesteadToEIP150", testWildcard));
-            */
         }
 
         private static async Task RunAllBlockchainTestAsync(string testWildcard, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)

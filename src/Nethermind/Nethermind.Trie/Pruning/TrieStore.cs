@@ -404,7 +404,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _scopeLock.Exit();
 
             // Try exit and flush async
-            Task.Factory.StartNew(TryExitCommitBufferMode);
+            Task.Factory.StartNew(TryExitCommitBufferMode, CancellationToken.None, TaskCreationOptions.None, TaskScheduler.Default);
         });
     }
 
@@ -583,7 +583,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
         else
         {
-            await Task.Delay(pruneDelayMs);
+            if (!await Nethermind.Core.Extensions.TaskExtensions.DelaySafe(pruneDelayMs, _pruningTaskCancellationTokenSource.Token)) return;
         }
 
         using (_pruningLock.EnterScope())
@@ -1140,9 +1140,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
                 });
             }
 
-            using ArrayPoolList<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
+            using ArrayPoolListRef<Task> persistNodeStartingFromTasks = parallelStartNodes.Select(
                     entry => Task.Run(() => PersistNodeStartingFrom(entry.trieNode, entry.address2, entry.path, commitSet.BlockNumber, persistedNodeRecorder, writeFlags, disposeQueue)))
-                .ToPooledList(parallelStartNodes.Count);
+                .ToPooledListRef(parallelStartNodes.Count);
 
             Task.WaitAll(persistNodeStartingFromTasks.AsSpan());
         }
@@ -1434,10 +1434,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (!HasRoot(stateRoot)) return false;
 
         // Reject blocks whose state may have been partially pruned (root exists but child nodes don't)
-        long lastPersisted = LastPersistedBlockNumber;
-        if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+        if (_deleteOldNodes)
         {
-            return false;
+            long lastPersisted = LastPersistedBlockNumber;
+            if (lastPersisted > 0 && blockNumber < lastPersisted - _maxDepth)
+            {
+                return false;
+            }
         }
 
         return true;

@@ -30,7 +30,6 @@ public abstract class AbstractMinimalTrieStore : IScopedTrieStore
 
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
 
-
     public abstract class AbstractMinimalCommitter(ConcurrencyController quota) : ICommitter
     {
         public void Dispose() { }

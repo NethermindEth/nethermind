@@ -154,10 +154,12 @@ public class Eip7708Tests(bool eip7708Enabled)
         AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedTransferLog(contractAddress, inheritor, contractBalance)], contractBalance != 0);
     }
 
-    [TestCase(1_000_000ul, 1, TestName = "selfdestruct to self")]
-    [TestCase(0ul, 0, TestName = "selfdestruct to self zero balance")]
-    public async Task SelfDestruct_ToSelf_EmitsSelfDestructLog(ulong contractBalance, int expectedLogCountWhenEnabled)
+    [TestCase(1_000_000ul, TestName = "selfdestruct to self")]
+    [TestCase(0ul, TestName = "selfdestruct to self zero balance")]
+    public async Task SelfDestruct_ToSelf_NoOp_EmitsNoLog(ulong contractBalance)
     {
+        // Post-EIP-6780: selfdestruct to self when contract was NOT created in the same tx
+        // is a complete no-op — no destruction, no ETH movement, no log.
         BasicTestBlockchain chain = await CreateChain();
 
         UInt256 senderNonce = chain.StateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressA);
@@ -196,7 +198,8 @@ public class Eip7708Tests(bool eip7708Enabled)
 
         Block block = await chain.AddBlock(callTx);
 
-        AssertLogs(chain.ReceiptStorage.Get(block), [ExpectedSelfDestructLog(contractAddress, contractBalance)], contractBalance != 0);
+        // No-op selfdestruct should emit no logs — no ETH moves
+        AssertLogs(chain.ReceiptStorage.Get(block), []);
     }
 
     [Test]
