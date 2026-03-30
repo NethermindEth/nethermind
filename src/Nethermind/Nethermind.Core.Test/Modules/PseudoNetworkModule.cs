@@ -50,10 +50,6 @@ public class PseudoNetworkModule() : Module
                             protocolManager.AddSupportedCapability(new Capability(Protocol.Snap, 1));
                         }
 
-                        if (worldStateManager.HashServer is null)
-                        {
-                            protocolManager.RemoveSupportedCapability(new Capability(Protocol.NodeData, 1));
-                        }
 
                     });
             })
