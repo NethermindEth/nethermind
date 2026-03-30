@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Ethereum.Test.Base;
 using FluentAssertions;
 using Nethermind.Core;
@@ -18,6 +19,11 @@ namespace Ethereum.Blockchain.Test;
 [Parallelizable(ParallelScope.All)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
+    static TransactionJsonTest()
+    {
+        Console.Error.WriteLine("[TransactionJsonTest] static ctor");
+    }
+
     [Test]
     public void Can_load_access_lists()
     {
