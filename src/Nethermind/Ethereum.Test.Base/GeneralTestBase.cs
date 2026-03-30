@@ -65,13 +65,23 @@ namespace Ethereum.Test.Base
             return RunTestAsync(test, NullTxTracer.Instance);
         }
 
-        protected async Task<EthereumTestResult> RunTestAsync(GeneralStateTest test, ITxTracer txTracer)
+        protected Task<EthereumTestResult> RunTestAsync(GeneralStateTest test, ITxTracer txTracer)
         {
-            (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
-            await using (container)
+            // Run the entire test on a dedicated thread-pool thread so that
+            // container disposal (IAsyncDisposable via BackgroundTaskScheduler) can
+            // schedule its own continuations without competing with the thread that
+            // called this method.  Using Task.Run here avoids the thread-pool
+            // saturation deadlock that occurs in [checked]/debug builds when many
+            // parallel tests occupy the pool while DisposeAsync tries to drain
+            // background-task queues.
+            return Task.Run(async () =>
             {
-                return RunTestCore(test, txTracer, specProvider, container);
-            }
+                (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
+                await using (container)
+                {
+                    return RunTestCore(test, txTracer, specProvider, container);
+                }
+            });
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
