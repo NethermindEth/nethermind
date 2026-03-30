@@ -43,6 +43,12 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
     {
+        if (_mainDb._disableGetSpan)
+        {
+            byte[]? data = ((IReadOnlyKeyValueStore)this).Get(key, flags);
+            return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+        }
+
         Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
         return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
     }

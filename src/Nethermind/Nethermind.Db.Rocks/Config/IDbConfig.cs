@@ -35,6 +35,12 @@ public interface IDbConfig : IConfig
     double CompressibilityHint { get; set; }
     bool FlushOnExit { get; set; }
 
+    /// <summary>
+    /// When true, disables the native GetSpan path and forces all reads through
+    /// managed byte[] copies. Useful for diagnosing block cache corruption.
+    /// </summary>
+    bool DisableGetSpan { get; set; }
+
     string BadBlocksDbRocksDbOptions { get; set; }
     string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
 

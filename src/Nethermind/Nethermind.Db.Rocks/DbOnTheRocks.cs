@@ -97,6 +97,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
     private ulong _writeBufferSize;
     private int _maxWriteBufferNumber;
     private readonly RocksDbReader _reader;
+    internal readonly bool _disableGetSpan;
     private bool _isUsingSharedBlockCache;
 
     public DbOnTheRocks(
@@ -117,6 +118,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         _rocksDbNative = rocksDbNative ?? Native.Instance;
         _rocksDbConfigFactory = rocksDbConfigFactory;
         _perTableDbConfig = rocksDbConfigFactory.GetForDatabase(Name, null);
+        _disableGetSpan = _perTableDbConfig.DisableGetSpan;
         _db = Init(basePath, dbSettings.DbPath, dbConfig, logManager, columnFamilies, dbSettings.DeleteOnStart, sharedCache);
         _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
 
@@ -684,6 +686,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
     {
+        if (_disableGetSpan)
+        {
+            byte[]? data = ((IReadOnlyKeyValueStore)this).Get(key, flags);
+            return data is null or { Length: 0 } ? null : new ArrayMemoryManager(data);
+        }
+
         Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
         return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
     }
@@ -885,6 +893,11 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
         try
         {
+            if (_disableGetSpan)
+            {
+                return Get(key, cf, readOptions);
+            }
+
             Span<byte> span = _db.GetSpan(key, cf, readOptions);
 
             if (!span.IsNullOrEmpty())
@@ -987,6 +1000,9 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
+        if (_disableGetSpan)
+            return;
+
         if (!span.IsNullOrEmpty())
         {
             Interlocked.Decrement(ref _allocatedSpan);

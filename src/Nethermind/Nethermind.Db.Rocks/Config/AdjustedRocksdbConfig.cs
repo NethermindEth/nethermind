@@ -40,5 +40,6 @@ public class AdjustedRocksdbConfig(
     public double CompressibilityHint => baseConfig.CompressibilityHint;
 
     public bool FlushOnExit => baseConfig.FlushOnExit;
+    public bool DisableGetSpan => baseConfig.DisableGetSpan;
     public IntPtr? BlockCache => blockCache ?? baseConfig.BlockCache;
 }

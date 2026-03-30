@@ -84,6 +84,7 @@ public class DbConfig : IDbConfig
     public bool EnableFileWarmer { get; set; } = false;
     public double CompressibilityHint { get; set; } = 1.0;
     public bool FlushOnExit { get; set; } = true;
+    public bool DisableGetSpan { get; set; } = true;
 
     public string BadBlocksDbRocksDbOptions { get; set; } = "";
     public string? BadBlocksDbAdditionalRocksDbOptions { get; set; }
