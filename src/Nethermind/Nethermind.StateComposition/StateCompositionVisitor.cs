@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,22 +16,36 @@ namespace Nethermind.StateComposition;
 /// Enhanced ITreeVisitor that collects all composition metrics in a single pass.
 /// Uses ThreadLocal&lt;VisitorCounters&gt; for lock-free scaling to 64+ cores.
 /// </summary>
-public sealed class StateCompositionVisitor(ILogManager logManager)
-    : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
+public sealed class StateCompositionVisitor : ITreeVisitor<OldStyleTrieVisitContext>, IDisposable
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger;
+    private readonly CancellationToken _ct;
+    private readonly int _topN;
 
-    private readonly ThreadLocal<VisitorCounters> _localCounters =
-        new(() => new VisitorCounters(), trackAllValues: true);
+    private readonly ThreadLocal<VisitorCounters> _localCounters;
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
+
+    // Cached aggregation result — computed once after scan completes
+    private VisitorCounters? _aggregated;
 
     public bool IsFullDbScan => true;
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
 
+    public StateCompositionVisitor(ILogManager logManager, CancellationToken ct = default, int topN = 20)
+    {
+        _logger = logManager.GetClassLogger();
+        _ct = ct;
+        _topN = topN;
+        _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
+    }
+
     public bool ShouldVisit(in OldStyleTrieVisitContext ctx, in ValueHash256 nextNode)
     {
+        if (_ct.IsCancellationRequested)
+            return false;
+
         // Track branch occupancy: ShouldVisit is called for each non-null child
         // of a branch node, with BranchChildIndex set to the child's position.
         // Only count account trie children to match TotalBranchNodes (account-only).
@@ -61,6 +76,7 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             c.StorageBranches++;
             c.StorageNodeBytes += byteSize;
             c.StorageDepths[depth].AddBranch(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false);
         }
         else
         {
@@ -82,6 +98,7 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             c.StorageExtensions++;
             c.StorageNodeBytes += byteSize;
             c.StorageDepths[depth].AddExtension(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: false);
         }
         else
         {
@@ -103,6 +120,7 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             c.StorageLeaves++;
             c.StorageNodeBytes += byteSize;
             c.StorageDepths[depth].AddLeaf(byteSize);
+            c.TrackStorageNode(ctx.Level, byteSize, isLeaf: true);
         }
         else
         {
@@ -115,18 +133,27 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
     public void VisitAccount(in OldStyleTrieVisitContext ctx, TrieNode node, in AccountStruct account)
     {
         VisitorCounters c = _localCounters.Value!;
+
+        // Finalize previous contract's storage trie or flush if current has no storage
+        if (account.HasStorage)
+        {
+            c.ContractsWithStorage++;
+            c.BeginStorageTrie(account.StorageRoot);
+        }
+        else
+        {
+            c.Flush();
+        }
+
         c.AccountsTotal++;
 
         if (account.HasCode)
             c.ContractsTotal++;
-
-        if (account.HasStorage)
-            c.ContractsWithStorage++;
     }
 
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
     {
-        VisitorCounters agg = AggregateCounters();
+        VisitorCounters agg = GetAggregated();
 
         return new StateCompositionStats
         {
@@ -136,9 +163,6 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             ContractsTotal = agg.ContractsTotal,
             ContractsWithStorage = agg.ContractsWithStorage,
             StorageSlotsTotal = agg.StorageSlotsTotal,
-            TotalCodeSize = agg.TotalCodeSize,
-            AccountBytes = agg.AccountNodeBytes,
-            StorageBytes = agg.StorageNodeBytes,
             AccountTrieNodeBytes = agg.AccountNodeBytes,
             StorageTrieNodeBytes = agg.StorageNodeBytes,
             AccountTrieBranchNodes = agg.AccountBranches,
@@ -147,12 +171,15 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             StorageTrieBranchNodes = agg.StorageBranches,
             StorageTrieExtensionNodes = agg.StorageExtensions,
             StorageTrieLeafNodes = agg.StorageLeaves,
+            TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, static e => e.MaxDepth),
+            TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, static e => e.TotalNodes),
+            TopContractsBySlots = BuildSortedTopN(agg.TopBySlots, agg.TopBySlotsCount, static e => e.StorageSlots),
         };
     }
 
     public TrieDepthDistribution GetTrieDistribution()
     {
-        VisitorCounters agg = AggregateCounters();
+        VisitorCounters agg = GetAggregated();
 
         return new TrieDepthDistribution
         {
@@ -165,16 +192,40 @@ public sealed class StateCompositionVisitor(ILogManager logManager)
             AvgBranchOccupancy = agg.TotalBranchNodes > 0
                 ? (double)agg.TotalBranchChildren / agg.TotalBranchNodes
                 : 0.0,
+            StorageMaxDepthHistogram = ImmutableArray.Create(agg.StorageMaxDepthHistogram),
         };
     }
 
-    private VisitorCounters AggregateCounters()
+    /// <summary>
+    /// Returns cached aggregation or computes it once. Flushes all per-thread
+    /// storage trie accumulators before merging.
+    /// </summary>
+    private VisitorCounters GetAggregated()
     {
-        VisitorCounters agg = new();
-        foreach (VisitorCounters local in _localCounters.Values)
-            agg.MergeFrom(local);
+        if (_aggregated is not null)
+            return _aggregated;
 
+        VisitorCounters agg = new(_topN);
+        foreach (VisitorCounters local in _localCounters.Values)
+        {
+            local.Flush(); // Finalize last contract's storage trie per thread
+            agg.MergeFrom(local);
+        }
+
+        _aggregated = agg;
         return agg;
+    }
+
+    private static ImmutableArray<TopContractEntry> BuildSortedTopN(
+        TopContractEntry[] entries, int count, Func<TopContractEntry, long> key)
+    {
+        if (count == 0)
+            return ImmutableArray<TopContractEntry>.Empty;
+
+        return entries
+            .Take(count)
+            .OrderByDescending(key)
+            .ToImmutableArray();
     }
 
     private static ImmutableArray<TrieLevelStat> BuildLevelStats(DepthCounter[] depths)

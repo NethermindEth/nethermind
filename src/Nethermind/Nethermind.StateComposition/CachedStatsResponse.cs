@@ -7,7 +7,7 @@ namespace Nethermind.StateComposition;
 /// Wraps cached stats from last completed scan.
 /// Stats are null before the first scan completes.
 /// </summary>
-public class CachedStatsResponse
+public readonly record struct CachedStatsResponse
 {
     public StateCompositionStats? Stats { get; init; }
 }

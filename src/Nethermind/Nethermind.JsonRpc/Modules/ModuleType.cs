@@ -31,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules
         public const string Trace = nameof(Trace);
         public const string TxPool = nameof(TxPool);
         public const string Web3 = nameof(Web3);
+        public const string Statecomp = nameof(Statecomp);
 
         public static IEnumerable<string> DefaultModules { get; } = new List<string>()
         {

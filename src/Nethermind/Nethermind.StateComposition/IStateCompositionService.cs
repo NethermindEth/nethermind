@@ -20,8 +20,13 @@ public interface IStateCompositionService
     Task<StateCompositionStats> AnalyzeAsync(BlockHeader header, CancellationToken ct);
 
     /// <summary>
-    /// Get trie depth distribution. Returns cached data if available,
-    /// otherwise triggers a scan.
+    /// Get trie depth distribution. Returns cached data if available.
+    /// Throws <see cref="System.InvalidOperationException"/> if no cached data exists.
     /// </summary>
     Task<TrieDepthDistribution> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct);
+
+    /// <summary>
+    /// Cancel the currently running scan, if any.
+    /// </summary>
+    void CancelScan();
 }

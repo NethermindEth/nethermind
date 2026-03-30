@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -226,6 +227,74 @@ public class StateCompositionVisitorTests
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
         Assert.That(stats.StorageSlotsTotal, Is.EqualTo(30));
+    }
+
+    [Test]
+    public void Visitor_ShouldVisit_ReturnsFalse_WhenCancelled()
+    {
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        using StateCompositionVisitor cancelled = new(LimboLogs.Instance, cts.Token);
+
+        OldStyleTrieVisitContext ctx = new(level: 0, isStorage: false, branchChildIndex: null);
+        ValueHash256 hash = default;
+
+        Assert.That(cancelled.ShouldVisit(in ctx, in hash), Is.False);
+    }
+
+    [Test]
+    public void Visitor_TracksTopContractsByDepth()
+    {
+        // Visit 3 accounts with storage, each with different depth storage nodes
+        TrieNode leafNode = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
+        OldStyleTrieVisitContext storageCtx3 = new(level: 3, isStorage: true, branchChildIndex: null);
+        OldStyleTrieVisitContext storageCtx7 = new(level: 7, isStorage: true, branchChildIndex: null);
+        OldStyleTrieVisitContext accountCtx = new(level: 0, isStorage: false, branchChildIndex: null);
+
+        // Account 1: storage max depth 3
+        AccountStruct acc1 = new(0, 0, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc1);
+        _visitor.VisitLeaf(in storageCtx3, leafNode);
+
+        // Account 2: storage max depth 7
+        AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc2);
+        _visitor.VisitLeaf(in storageCtx7, leafNode);
+
+        // Account 3: no storage (flushes acc2)
+        AccountStruct acc3 = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc3);
+
+        StateCompositionStats stats = _visitor.GetStats(1, null);
+
+        Assert.That(stats.TopContractsByDepth, Has.Length.EqualTo(2));
+        Assert.That(stats.TopContractsByDepth[0].MaxDepth, Is.EqualTo(7)); // Sorted descending
+    }
+
+    [Test]
+    public void Visitor_StorageMaxDepthHistogram_PopulatedCorrectly()
+    {
+        TrieNode leafNode = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
+        OldStyleTrieVisitContext storageCtx = new(level: 4, isStorage: true, branchChildIndex: null);
+        OldStyleTrieVisitContext accountCtx = new(level: 0, isStorage: false, branchChildIndex: null);
+
+        // 2 accounts with storage tries, each with max depth 4
+        for (int i = 0; i < 2; i++)
+        {
+            AccountStruct acc = new(0, 0, Keccak.Compute($"root{i}").ValueHash256, Keccak.Zero.ValueHash256);
+            _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc);
+            _visitor.VisitLeaf(in storageCtx, leafNode);
+        }
+
+        // Flush last account via non-storage account
+        AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in eoa);
+
+        TrieDepthDistribution dist = _visitor.GetTrieDistribution();
+
+        Assert.That(dist.StorageMaxDepthHistogram, Has.Length.EqualTo(VisitorCounters.MaxTrackedDepth));
+        Assert.That(dist.StorageMaxDepthHistogram[4], Is.EqualTo(2));
     }
 
     private void SimulateAccounts(int count, bool hasCode, bool hasStorage)
