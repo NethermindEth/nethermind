@@ -3,28 +3,32 @@
 
 namespace Nethermind.StateComposition;
 
+/// <summary>
+/// Mutable per-depth node counters.
+/// Short=Extension, Full=Branch, Value=Leaf.
+/// </summary>
 public struct DepthCounter
 {
-    public long Branches;
-    public long Extensions;
-    public long Leaves;
-    public long ByteSize;
+    public long ShortNodes;
+    public long FullNodes;
+    public long ValueNodes;
+    public long TotalSize;
 
-    public void AddBranch(int byteSize)
+    public void AddFullNode(int byteSize)
     {
-        Branches++;
-        ByteSize += byteSize;
+        FullNodes++;
+        TotalSize += byteSize;
     }
 
-    public void AddExtension(int byteSize)
+    public void AddShortNode(int byteSize)
     {
-        Extensions++;
-        ByteSize += byteSize;
+        ShortNodes++;
+        TotalSize += byteSize;
     }
 
-    public void AddLeaf(int byteSize)
+    public void AddValueNode(int byteSize)
     {
-        Leaves++;
-        ByteSize += byteSize;
+        ValueNodes++;
+        TotalSize += byteSize;
     }
 }

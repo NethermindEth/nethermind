@@ -54,18 +54,18 @@ public class PluginBootstrapTests
     }
 
     [Test]
-    public void TrieLevelStat_HasByteSize()
+    public void TrieLevelStat_HasTotalSize()
     {
         TrieLevelStat stat = new()
         {
             Depth = 3,
-            BranchNodes = 10,
-            ExtensionNodes = 5,
-            LeafNodes = 20,
-            ByteSize = 1500,
+            FullNodeCount = 10,
+            ShortNodeCount = 5,
+            ValueNodeCount = 20,
+            TotalSize = 1500,
         };
 
-        Assert.That(stat.ByteSize, Is.EqualTo(1500));
+        Assert.That(stat.TotalSize, Is.EqualTo(1500));
     }
 
     [Test]
@@ -83,25 +83,25 @@ public class PluginBootstrapTests
         {
             AccountsTotal = 10,
             ContractsTotal = 3,
-            AccountBranches = 5,
-            StorageLeaves = 20,
+            AccountFullNodes = 5,
+            StorageValueNodes = 20,
             AccountNodeBytes = 100,
             TotalBranchChildren = 40,
             TotalBranchNodes = 5,
         };
-        a.AccountDepths[2].AddBranch(50);
+        a.AccountDepths[2].AddFullNode(50);
 
         VisitorCounters b = new()
         {
             AccountsTotal = 15,
             ContractsTotal = 7,
-            AccountBranches = 8,
-            StorageLeaves = 30,
+            AccountFullNodes = 8,
+            StorageValueNodes = 30,
             AccountNodeBytes = 200,
             TotalBranchChildren = 60,
             TotalBranchNodes = 8,
         };
-        b.AccountDepths[2].AddBranch(75);
+        b.AccountDepths[2].AddFullNode(75);
 
         a.MergeFrom(b);
 
@@ -109,46 +109,46 @@ public class PluginBootstrapTests
         {
             Assert.That(a.AccountsTotal, Is.EqualTo(25));
             Assert.That(a.ContractsTotal, Is.EqualTo(10));
-            Assert.That(a.AccountBranches, Is.EqualTo(13));
-            Assert.That(a.StorageLeaves, Is.EqualTo(50));
+            Assert.That(a.AccountFullNodes, Is.EqualTo(13));
+            Assert.That(a.StorageValueNodes, Is.EqualTo(50));
             Assert.That(a.AccountNodeBytes, Is.EqualTo(300));
             Assert.That(a.TotalBranchChildren, Is.EqualTo(100));
             Assert.That(a.TotalBranchNodes, Is.EqualTo(13));
-            Assert.That(a.AccountDepths[2].Branches, Is.EqualTo(2));
-            Assert.That(a.AccountDepths[2].ByteSize, Is.EqualTo(125));
+            Assert.That(a.AccountDepths[2].FullNodes, Is.EqualTo(2));
+            Assert.That(a.AccountDepths[2].TotalSize, Is.EqualTo(125));
         });
     }
 
     [Test]
-    public void DepthCounter_AddBranch_UpdatesCountAndSize()
+    public void DepthCounter_AddFullNode_UpdatesCountAndSize()
     {
         DepthCounter counter = new();
 
-        counter.AddBranch(100);
-        counter.AddBranch(200);
+        counter.AddFullNode(100);
+        counter.AddFullNode(200);
 
         Assert.Multiple(() =>
         {
-            Assert.That(counter.Branches, Is.EqualTo(2));
-            Assert.That(counter.ByteSize, Is.EqualTo(300));
-            Assert.That(counter.Extensions, Is.EqualTo(0));
-            Assert.That(counter.Leaves, Is.EqualTo(0));
+            Assert.That(counter.FullNodes, Is.EqualTo(2));
+            Assert.That(counter.TotalSize, Is.EqualTo(300));
+            Assert.That(counter.ShortNodes, Is.EqualTo(0));
+            Assert.That(counter.ValueNodes, Is.EqualTo(0));
         });
     }
 
     [Test]
-    public void DepthCounter_AddExtensionAndLeaf()
+    public void DepthCounter_AddShortNodeAndValueNode()
     {
         DepthCounter counter = new();
 
-        counter.AddExtension(50);
-        counter.AddLeaf(75);
+        counter.AddShortNode(50);
+        counter.AddValueNode(75);
 
         Assert.Multiple(() =>
         {
-            Assert.That(counter.Extensions, Is.EqualTo(1));
-            Assert.That(counter.Leaves, Is.EqualTo(1));
-            Assert.That(counter.ByteSize, Is.EqualTo(125));
+            Assert.That(counter.ShortNodes, Is.EqualTo(1));
+            Assert.That(counter.ValueNodes, Is.EqualTo(1));
+            Assert.That(counter.TotalSize, Is.EqualTo(125));
         });
     }
 
@@ -160,10 +160,10 @@ public class PluginBootstrapTests
         TrieLevelStat original = new()
         {
             Depth = 3,
-            BranchNodes = 10,
-            ExtensionNodes = 5,
-            LeafNodes = 20,
-            ByteSize = 500,
+            FullNodeCount = 10,
+            ShortNodeCount = 5,
+            ValueNodeCount = 20,
+            TotalSize = 500,
         };
 
         string json = JsonSerializer.Serialize(original);
@@ -186,8 +186,8 @@ public class PluginBootstrapTests
         // Insert 5 contracts — only top 3 by depth should survive
         for (int i = 1; i <= 5; i++)
         {
-            c.BeginStorageTrie(new Core.Crypto.ValueHash256(new byte[32]));
-            c.TrackStorageNode(depth: i * 2, byteSize: 100, isLeaf: true);
+            c.BeginStorageTrie(new Core.Crypto.ValueHash256(new byte[32]), default);
+            c.TrackStorageNode(depth: i * 2, byteSize: 100, isLeaf: true, isBranch: false);
         }
 
         c.Flush();
@@ -209,14 +209,14 @@ public class PluginBootstrapTests
         VisitorCounters c = new();
 
         // 3 contracts with storage at max depth 2, 5, 5
-        c.BeginStorageTrie(default);
-        c.TrackStorageNode(depth: 2, byteSize: 10, isLeaf: true);
+        c.BeginStorageTrie(default, default);
+        c.TrackStorageNode(depth: 2, byteSize: 10, isLeaf: true, isBranch: false);
 
-        c.BeginStorageTrie(default);
-        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true);
+        c.BeginStorageTrie(default, default);
+        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true, isBranch: false);
 
-        c.BeginStorageTrie(default);
-        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true);
+        c.BeginStorageTrie(default, default);
+        c.TrackStorageNode(depth: 5, byteSize: 10, isLeaf: true, isBranch: false);
 
         c.Flush();
 
@@ -240,17 +240,76 @@ public class PluginBootstrapTests
     public void VisitorCounters_MergeFrom_MergesTopN()
     {
         VisitorCounters a = new(topN: 5);
-        a.BeginStorageTrie(default);
-        a.TrackStorageNode(depth: 10, byteSize: 100, isLeaf: true);
+        a.BeginStorageTrie(default, default);
+        a.TrackStorageNode(depth: 10, byteSize: 100, isLeaf: true, isBranch: false);
         a.Flush();
 
         VisitorCounters b = new(topN: 5);
-        b.BeginStorageTrie(default);
-        b.TrackStorageNode(depth: 20, byteSize: 200, isLeaf: true);
+        b.BeginStorageTrie(default, default);
+        b.TrackStorageNode(depth: 20, byteSize: 200, isLeaf: true, isBranch: false);
         b.Flush();
 
         a.MergeFrom(b);
 
         Assert.That(a.TopByDepthCount, Is.EqualTo(2));
+    }
+
+    // --- Deterministic comparator tests ---
+
+    [Test]
+    public void Comparator_TopByDepth_DeterministicTiebreaking()
+    {
+        // Same MaxDepth → tiebreak on TotalNodes DESC
+        TopContractEntry a = new() { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 };
+        TopContractEntry b = new() { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 };
+
+        int result = VisitorCounters.CompareByDepth(in a, in b);
+        Assert.That(result, Is.LessThan(0)); // b has more TotalNodes → a < b
+    }
+
+    [Test]
+    public void Comparator_TopByNodes_DeterministicTiebreaking()
+    {
+        // Same TotalNodes → tiebreak on MaxDepth DESC
+        TopContractEntry a = new() { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 };
+        TopContractEntry b = new() { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 };
+
+        int result = VisitorCounters.CompareByTotalNodes(in a, in b);
+        Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
+    }
+
+    [Test]
+    public void Comparator_TopByValueNodes_DeterministicTiebreaking()
+    {
+        // Same ValueNodes → tiebreak on MaxDepth DESC
+        TopContractEntry a = new() { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 };
+        TopContractEntry b = new() { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 };
+
+        int result = VisitorCounters.CompareByValueNodes(in a, in b);
+        Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
+    }
+
+    [Test]
+    public void TopContractEntry_HasOwnerAndLevels()
+    {
+        Core.Crypto.ValueHash256 owner = new(new byte[32]);
+        TopContractEntry entry = new()
+        {
+            Owner = owner,
+            StorageRoot = default,
+            MaxDepth = 5,
+            TotalNodes = 100,
+            ValueNodes = 50,
+            TotalSize = 2000,
+            Levels = System.Collections.Immutable.ImmutableArray<TrieLevelStat>.Empty,
+            Summary = new TrieLevelStat { Depth = -1, FullNodeCount = 30, ShortNodeCount = 20, ValueNodeCount = 50, TotalSize = 2000 },
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(entry.Owner, Is.EqualTo(owner));
+            Assert.That(entry.Levels, Is.Not.Null);
+            Assert.That(entry.Summary.TotalSize, Is.EqualTo(2000));
+        });
     }
 }

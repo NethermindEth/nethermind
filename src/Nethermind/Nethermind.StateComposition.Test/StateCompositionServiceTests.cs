@@ -26,6 +26,8 @@ public class StateCompositionServiceTests
         config.ScanMemoryBudget.Returns(1_000_000_000L);
         config.ScanQueueTimeoutSeconds.Returns(5);
         config.TopNContracts.Returns(20);
+        config.ScanCooldownSeconds.Returns(0);
+        config.ExcludeStorage.Returns(false);
         return config;
     }
 

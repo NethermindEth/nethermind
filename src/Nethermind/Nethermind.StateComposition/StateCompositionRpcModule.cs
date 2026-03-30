@@ -76,4 +76,22 @@ public class StateCompositionRpcModule(
         service.CancelScan();
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
+
+    public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Core.Address address)
+    {
+        Core.Block? head = blockTree.Head;
+        if (head is null)
+            return ResultWrapper<TopContractEntry?>.Fail("No head block available");
+
+        try
+        {
+            TopContractEntry? result = await service.InspectContractAsync(
+                address, head.Header, CancellationToken.None).ConfigureAwait(false);
+            return ResultWrapper<TopContractEntry?>.Success(result);
+        }
+        catch (OperationCanceledException)
+        {
+            return ResultWrapper<TopContractEntry?>.Fail("Inspection was cancelled");
+        }
+    }
 }

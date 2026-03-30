@@ -24,4 +24,12 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Number of top contracts to track per ranking category",
         DefaultValue = "20")]
     int TopNContracts { get; set; }
+
+    [ConfigItem(Description = "Skip storage trie traversal during scans",
+        DefaultValue = "false")]
+    bool ExcludeStorage { get; set; }
+
+    [ConfigItem(Description = "Minimum seconds between consecutive scans to prevent DoS",
+        DefaultValue = "60")]
+    int ScanCooldownSeconds { get; set; }
 }

@@ -9,13 +9,13 @@ namespace Nethermind.StateComposition;
 
 /// <summary>
 /// Orchestrates state composition analysis: full trie scans, cached lookups,
-/// and trie distribution queries. Owns the scan lifecycle.
+/// single-contract inspection, and trie distribution queries. Owns the scan lifecycle.
 /// </summary>
 public interface IStateCompositionService
 {
     /// <summary>
     /// Run a full state composition scan at the given block.
-    /// Fails fast if a scan is already in progress.
+    /// Fails fast if a scan is already in progress or cooldown is active.
     /// </summary>
     Task<StateCompositionStats> AnalyzeAsync(BlockHeader header, CancellationToken ct);
 
@@ -24,6 +24,12 @@ public interface IStateCompositionService
     /// Throws <see cref="System.InvalidOperationException"/> if no cached data exists.
     /// </summary>
     Task<TrieDepthDistribution> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct);
+
+    /// <summary>
+    /// Inspect a single contract's storage trie structure.
+    /// Returns null if the address has no storage.
+    /// </summary>
+    Task<TopContractEntry?> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct);
 
     /// <summary>
     /// Cancel the currently running scan, if any.
