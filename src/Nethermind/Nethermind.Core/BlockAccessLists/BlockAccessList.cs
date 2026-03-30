@@ -294,7 +294,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public int TakeSnapshot()
         => _changes.Count;
 
-    public void Restore(int snapshot, int? blockAccessIndex = null)
+    public void Restore(int snapshot)
     {
         snapshot = int.Max(0, snapshot);
         while (_changes.Count > snapshot)

@@ -220,26 +220,27 @@ public class BlockAccessListBasedWorldState(
 
     private bool IsStorageEmptyInternal(Address address)
     {
-        // todo fix
-        AccountChanges? accountChanges = new AccountChanges();
-        HashSet<UInt256> zeroedSlots = [];
-        foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-        {
-            if (slotChanges.Changes.Last().Value.NewValue != 0)
-            {
-                return false;
-            }
-            zeroedSlots.Add(slotChanges.Slot);
-        }
+        // todo work out expected behavior
+        return true;
+        // AccountChanges? accountChanges = new AccountChanges();
+        // HashSet<UInt256> zeroedSlots = [];
+        // foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+        // {
+        //     if (slotChanges.Changes.Last().Value.NewValue != 0)
+        //     {
+        //         return false;
+        //     }
+        //     zeroedSlots.Add(slotChanges.Slot);
+        // }
 
-        accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null)
-        {
-            HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
-            return allSlots.SetEquals(zeroedSlots);
-        }
+        // accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        // if (accountChanges is not null)
+        // {
+        //     HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
+        //     return allSlots.SetEquals(zeroedSlots);
+        // }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
+        // throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
     }
 
     private AccountStruct? GetAccountInternal(Address address)
