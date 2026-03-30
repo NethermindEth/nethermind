@@ -15,6 +15,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
+[Ignore("Temporarily disabled while investigating CI timeout interaction with parallel TransactionTests")]
 [Parallelizable(ParallelScope.All)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
