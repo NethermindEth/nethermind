@@ -245,7 +245,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
     public long GasUsed()
         => _gasUsed;
 
-    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining)
+    public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool isFinal = false)
     {
         if (_suggestedBlockAccessList is null)
         {
@@ -332,7 +332,9 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
             AdvanceSuggested();
         }
 
-        if (gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        // StorageReads.Count is a running total across all transactions, not per-index.
+        // Only check reads budget after all transactions when both BALs are complete.
+        if (isFinal && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException(block, "Suggested block-level access list contained invalid storage reads.");
         }
