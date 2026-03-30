@@ -54,8 +54,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
-        protected AssociativeKeyCacheNoReadTicker<ValueHash256>? _notifiedTransactions;
-        protected AssociativeKeyCacheNoReadTicker<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
+        protected AssociativeKeyCacheOnlyTrackWrites<ValueHash256>? _notifiedTransactions;
+        protected AssociativeKeyCacheOnlyTrackWrites<ValueHash256> NotifiedTransactions => _notifiedTransactions ??= new(2 * MemoryAllowance.MemPoolSize);
 
         protected SyncPeerProtocolHandlerBase(ISession session,
             IMessageSerializationService serializer,

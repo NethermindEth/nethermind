@@ -26,7 +26,7 @@ namespace Nethermind.TxPool
         private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize);
 
-        private readonly AssociativeKeyCacheNoReadTicker<ValueHash256> _currentBlockCache = new(
+        private readonly AssociativeKeyCacheOnlyTrackWrites<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
 
         public bool Get(Hash256 hash)

@@ -311,6 +311,6 @@ public sealed class AssociativeKeyCache<TKey>(int maxCapacity)
 /// AssociativeKeyCache without ticker refresh on reads. Eviction is based on most-recently-written only.
 /// Use for Set-then-Get patterns (e.g. HashCache, NotifiedTransactions) where read-tracking adds no value.
 /// </summary>
-public sealed class AssociativeKeyCacheNoReadTicker<TKey>(int maxCapacity)
+public sealed class AssociativeKeyCacheOnlyTrackWrites<TKey>(int maxCapacity)
     : AssociativeKeyCache<TKey, OffFlag>(maxCapacity)
     where TKey : struct, IHash64bit<TKey>;

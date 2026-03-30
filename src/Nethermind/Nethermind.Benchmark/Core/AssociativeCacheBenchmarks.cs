@@ -22,7 +22,7 @@ public class AssociativeCacheSingleOpBenchmarks
     private LruCache<AddressAsKey, Account> _lru = null!;
     private ClockCache<AddressAsKey, Account> _clock = null!;
     private AssociativeCache<AddressAsKey, Account> _assoc = null!;
-    private AssociativeCacheNoReadTicker<AddressAsKey, Account> _assocNoTicker = null!;
+    private AssociativeCacheOnlyTrackWrites<AddressAsKey, Account> _assocNoTicker = null!;
 
     private AddressAsKey[] _keys = null!;
     private Account[] _accounts = null!;
@@ -37,7 +37,7 @@ public class AssociativeCacheSingleOpBenchmarks
         _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
         _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
         _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
-        _assocNoTicker = new AssociativeCacheNoReadTicker<AddressAsKey, Account>(KeyCount);
+        _assocNoTicker = new AssociativeCacheOnlyTrackWrites<AddressAsKey, Account>(KeyCount);
 
         _keys = new AddressAsKey[KeyCount];
         _accounts = new Account[KeyCount];
