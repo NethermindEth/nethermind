@@ -18,7 +18,7 @@ public interface IBlockAccessListBuilder
     public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContract);
     // public void SetupGeneratedAccessLists(ILogManager logManager, int txCount);
     // public void MergeIntermediateBalsUpTo(ushort index);
-    public void AddAccountRead(Address address, int? blockAccessIndex = null);
+    public void AddAccountRead(Address address);
     // public void LoadSuggestedBlockAccessList(Block suggestedBlock, long gasUsed);
     // public long GasUsed();
     // public void ValidateBlockAccessList(BlockHeader block, ushort index, long gasRemaining, bool validateStorageReads = true);

@@ -213,10 +213,10 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, vm.VmState))
                 goto OutOfGas;
 
-            vm.WorldState.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
+            vm.WorldState.AddAccountRead(address);
 
             CodeInfo codeInfo = vm.CodeInfoRepository
-                .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex);
+                .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
             // Get the external code from the repository.
             ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
@@ -241,7 +241,7 @@ internal static partial class EvmInstructions
         }
         else
         {
-            vm.WorldState.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
+            vm.WorldState.AddAccountRead(address);
         }
 
         return EvmExceptionType.None;
@@ -288,7 +288,7 @@ internal static partial class EvmInstructions
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address))
             goto OutOfGas;
 
-        vm.WorldState.AddAccountRead(address, vm.TxExecutionContext.BlockAccessIndex);
+        vm.WorldState.AddAccountRead(address);
 
         // Attempt a peephole optimization when tracing is not active and code is available.
         ReadOnlySpan<byte> codeSection = vm.VmState.Env.CodeInfo.CodeSpan;
@@ -322,7 +322,7 @@ internal static partial class EvmInstructions
                 TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
-                bool isCodeLengthNotZero = vm.WorldState.IsContract(address, vm.TxExecutionContext.BlockAccessIndex);
+                bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {
@@ -344,7 +344,7 @@ internal static partial class EvmInstructions
 
         // No optimization applied: load the account's code from storage.
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _, vm.TxExecutionContext.BlockAccessIndex)
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
         stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         return EvmExceptionType.None;

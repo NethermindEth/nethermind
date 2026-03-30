@@ -25,7 +25,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
     }
 
-    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec, int? blockAccessIndex = null)
+    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -35,7 +35,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, address, in codeHash, spec, blockAccessIndex);
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, address, in codeHash, spec);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else
@@ -46,26 +46,26 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         return cachedCodeInfo;
     }
 
-    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress, int? blockAccessIndex = null) =>
-        _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress, blockAccessIndex);
+    public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress) =>
+        _inner.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
 
     // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) =>
     //     _inner.GetExecutableCodeHash(address, spec);
 
-    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress, int? blockAccessIndex = null) =>
-        _inner.TryGetDelegation(address, spec, out delegatedAddress, blockAccessIndex);
+    public bool TryGetDelegation(Address address, IReleaseSpec spec, out Address? delegatedAddress) =>
+        _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, int? blockAccessIndex = null)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
-        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash, blockAccessIndex) && _codeCache.Get(in codeHash) is null)
+        if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
         }
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec, int? blockAccessIndex = null)
+    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
     {
-        bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer, blockAccessIndex);
+        bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
         if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
             _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));

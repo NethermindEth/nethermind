@@ -15,13 +15,13 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     private readonly Dictionary<Address, AccountStruct> _accounts = [];
     private readonly Dictionary<ValueHash256, byte[]> _codes = [];
 
-    public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
+    public bool TryGetAccount(Address address, out AccountStruct account)
     {
         return _accounts.TryGetValue(address, out account);
     }
 
     public Hash256 StateRoot => throw new NotImplementedException();
-    public byte[]? GetCode(Address address, int? _ = null)
+    public byte[]? GetCode(Address address)
     {
         if (TryGetAccount(address, out AccountStruct account)) return _codes[account.CodeHash];
         return null;
@@ -32,17 +32,17 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
         return _codes[codeHash];
     }
 
-    public bool IsContract(Address address, int? _ = null)
+    public bool IsContract(Address address)
     {
         return TryGetAccount(address, out AccountStruct account) && account.IsContract;
     }
 
-    public bool AccountExists(Address address, int? _ = null)
+    public bool AccountExists(Address address)
     {
         return TryGetAccount(address, out AccountStruct _);
     }
 
-    public bool IsDeadAccount(Address address, int? _ = null)
+    public bool IsDeadAccount(Address address)
     {
         return !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;
     }
@@ -53,7 +53,7 @@ public class TestReadOnlyStateProvider : IReadOnlyStateProvider
     }
 
 
-    public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec, int? _ = null)
+    public void InsertCode(Address address, Memory<byte> code, IReleaseSpec spec)
     {
         InsertCode(code.ToArray(), address);
     }

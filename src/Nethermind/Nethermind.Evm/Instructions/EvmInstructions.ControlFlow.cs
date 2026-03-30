@@ -233,16 +233,16 @@ internal static partial class EvmInstructions
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
-        UInt256 result = state.GetBalance(executingAccount, vm.TxExecutionContext.BlockAccessIndex);
+        UInt256 result = state.GetBalance(executingAccount);
 
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
         // Charge gas if transferring to a dead or non-existent account.
-        bool inheritorAccountExists = state.AccountExists(inheritor, vm.TxExecutionContext.BlockAccessIndex);
+        bool inheritorAccountExists = state.AccountExists(inheritor);
         bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            true => !result.IsZero && state.IsDeadAccount(inheritor, vm.TxExecutionContext.BlockAccessIndex),
+            true => !result.IsZero && state.IsDeadAccount(inheritor),
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
@@ -258,11 +258,11 @@ internal static partial class EvmInstructions
         if (!inheritorAccountExists)
         {
             // should only be recorded if result != 0 ?
-            state.CreateAccount(inheritor, result, blockAccessIndex: vm.TxExecutionContext.BlockAccessIndex);
+            state.CreateAccount(inheritor, result);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            state.AddToBalance(inheritor, result, spec, vm.TxExecutionContext.BlockAccessIndex);
+            state.AddToBalance(inheritor, result, spec);
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
@@ -273,7 +273,7 @@ internal static partial class EvmInstructions
         vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         // Subtract the balance from the executing account.
-        state.SubtractFromBalance(executingAccount, result, spec, vm.TxExecutionContext.BlockAccessIndex);
+        state.SubtractFromBalance(executingAccount, result, spec);
 
         // Jump forward to be unpredicted by the branch predictor.
     Stop:

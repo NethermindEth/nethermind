@@ -571,7 +571,7 @@ internal static partial class EvmInstructions
         // Charge gas for account access. If insufficient gas remains, abort.
         if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.TxTracer.IsTracingAccess, address)) goto OutOfGas;
 
-        UInt256 result = vm.WorldState.GetBalance(address, vm.TxExecutionContext.BlockAccessIndex);
+        UInt256 result = vm.WorldState.GetBalance(address);
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
@@ -601,7 +601,7 @@ internal static partial class EvmInstructions
         TGasPolicy.Consume(ref gas, GasCostOf.SelfBalance);
 
         // Get balance for currently executing account.
-        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount, vm.TxExecutionContext.BlockAccessIndex);
+        UInt256 result = vm.WorldState.GetBalance(vm.VmState.Env.ExecutingAccount);
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
@@ -636,14 +636,14 @@ internal static partial class EvmInstructions
 
         IWorldState state = vm.WorldState;
         // For dead accounts, the specification requires pushing zero.
-        if (state.IsDeadAccount(address, vm.TxExecutionContext.BlockAccessIndex))
+        if (state.IsDeadAccount(address))
         {
             stack.PushZero<TTracingInst>();
         }
         else
         {
             // Otherwise, push the account's code hash.
-            ValueHash256 hash = state.GetCodeHash(address, vm.TxExecutionContext.BlockAccessIndex);
+            ValueHash256 hash = state.GetCodeHash(address);
             stack.Push32Bytes<TTracingInst>(in hash);
         }
 

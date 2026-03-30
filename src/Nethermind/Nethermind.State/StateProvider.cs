@@ -348,7 +348,7 @@ namespace Nethermind.State
         /// <exception cref="InvalidOperationException">
         /// Thrown if <paramref name="snapshot"/> is beyond the current position,
         /// or if internal consistency checks fail during rollback.</exception>
-        public void Restore(int snapshot, int? blockAccessIndex = null)
+        public void Restore(int snapshot)
         {
             int lastIndex = _changes.Count - 1;
             if (snapshot > lastIndex) ThrowCannotRestore(lastIndex, snapshot);

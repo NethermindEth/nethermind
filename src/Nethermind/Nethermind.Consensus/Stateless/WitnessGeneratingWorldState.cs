@@ -93,9 +93,9 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
 
-    public void Restore(Snapshot snapshot, int? _ = null) => inner.Restore(snapshot);
+    public void Restore(Snapshot snapshot) => inner.Restore(snapshot);
 
-    public bool TryGetAccount(Address address, out AccountStruct account, int? _ = null)
+    public bool TryGetAccount(Address address, out AccountStruct account)
     {
         RecordEmptySlots(address);
         return inner.TryGetAccount(address, out account);
@@ -107,7 +107,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public IWorldStateScopeProvider ScopeProvider => inner.ScopeProvider;
 
-    public byte[]? GetCode(Address address, int? _ = null)
+    public byte[]? GetCode(Address address)
     {
         RecordEmptySlots(address);
         byte[] code = inner.GetCode(address);
@@ -122,71 +122,71 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         return code;
     }
 
-    public bool IsContract(Address address, int? _ = null)
+    public bool IsContract(Address address)
     {
         RecordEmptySlots(address);
         return inner.IsContract(address);
     }
 
-    public bool AccountExists(Address address, int? _ = null)
+    public bool AccountExists(Address address)
     {
         RecordEmptySlots(address);
         return inner.AccountExists(address);
     }
 
-    public bool IsDeadAccount(Address address, int? _ = null)
+    public bool IsDeadAccount(Address address)
     {
         RecordEmptySlots(address);
         return inner.IsDeadAccount(address);
     }
 
-    public UInt256 GetBalance(Address address, int? _ = null)
+    public UInt256 GetBalance(Address address)
     {
         RecordEmptySlots(address);
         return inner.GetBalance(address);
     }
 
-    public ValueHash256 GetCodeHash(Address address, int? _ = null)
+    public ValueHash256 GetCodeHash(Address address)
     {
         RecordEmptySlots(address);
         return inner.GetCodeHash(address);
     }
 
-    public byte[] GetOriginal(in StorageCell storageCell, int? _ = null)
+    public byte[] GetOriginal(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.GetOriginal(in storageCell);
     }
 
-    public ReadOnlySpan<byte> Get(in StorageCell storageCell, int? _ = null)
+    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
     {
         RecordSlot(storageCell);
         return inner.Get(in storageCell);
     }
 
-    public void Set(in StorageCell storageCell, byte[] newValue, int? _ = null)
+    public void Set(in StorageCell storageCell, byte[] newValue)
     {
         RecordSlot(storageCell);
         inner.Set(in storageCell, newValue);
     }
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell, int? _ = null)
+    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         => inner.GetTransientState(in storageCell);
 
     // Transient state does not need trie node capture as it's purely in-memory storage, no trie representation whatsoever
-    public void SetTransientState(in StorageCell storageCell, byte[] newValue, int? _ = null)
+    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => inner.SetTransientState(in storageCell, newValue);
 
     public void Reset(bool resetBlockChanges = true) => inner.Reset(resetBlockChanges);
 
-    public Snapshot TakeSnapshot(bool newTransactionStart = false, int? _ = null) => inner.TakeSnapshot(newTransactionStart);
+    public Snapshot TakeSnapshot(bool newTransactionStart = false) => inner.TakeSnapshot(newTransactionStart);
 
     public void WarmUp(AccessList? accessList) => inner.WarmUp(accessList);
 
     public void WarmUp(Address address) => inner.WarmUp(address);
 
-    public void ClearStorage(Address address, int? _ = null)
+    public void ClearStorage(Address address)
     {
         RecordEmptySlots(address);
         inner.ClearStorage(address);
@@ -194,55 +194,55 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public void RecalculateStateRoot() => inner.RecalculateStateRoot();
 
-    public void DeleteAccount(Address address, int? _ = null)
+    public void DeleteAccount(Address address)
     {
         RecordEmptySlots(address);
         inner.DeleteAccount(address);
     }
 
-    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null)
+    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
         inner.CreateAccount(address, in balance, in nonce);
     }
 
-    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default, int? _ = null)
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
         RecordEmptySlots(address);
         inner.CreateAccountIfNotExists(address, in balance, in nonce);
     }
 
-    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, int? _ = null)
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
     {
         RecordEmptySlots(address);
         return inner.InsertCode(address, in codeHash, code, spec, isGenesis);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, int? _ = null)
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
     {
         RecordEmptySlots(address);
         inner.AddToBalance(address, in balanceChange, spec);
     }
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
         inner.AddToBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
         return inner.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance, int? _ = null)
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         RecordEmptySlots(address);
         inner.SubtractFromBalance(address, in balanceChange, spec, out oldBalance);
     }
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce, int? _ = null)
+    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         RecordEmptySlots(address);
         inner.IncrementNonce(address, delta, out oldNonce);
@@ -254,7 +254,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
         inner.DecrementNonce(address, delta);
     }
 
-    public void SetNonce(Address address, in UInt256 nonce, int? _ = null)
+    public void SetNonce(Address address, in UInt256 nonce)
     {
         RecordEmptySlots(address);
         inner.SetNonce(address, nonce);
@@ -270,7 +270,7 @@ public class WitnessGeneratingWorldState(IWorldState inner, IStateReader stateRe
 
     public ArrayPoolList<AddressAsKey>? GetAccountChanges() => inner.GetAccountChanges();
 
-    public void ResetTransient(int? _ = null) => inner.ResetTransient();
+    public void ResetTransient() => inner.ResetTransient();
 
     public IDisposable BeginScope(BlockHeader? baseBlock) => inner.BeginScope(baseBlock);
 

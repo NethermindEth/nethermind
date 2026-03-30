@@ -429,7 +429,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
-                _codeInfoRepository.InsertCode(code, callCodeOwner, spec, TxExecutionContext.BlockAccessIndex);
+                _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
                 if (_txTracer.IsTracingActions)
                 {
                     _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas) - regularDepositCost, callCodeOwner, code);
@@ -445,10 +445,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
-            _worldState.Restore(previousState.Snapshot, TxExecutionContext.BlockAccessIndex);
+            _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
-                _worldState.DeleteAccount(callCodeOwner, TxExecutionContext.BlockAccessIndex);
+                _worldState.DeleteAccount(callCodeOwner);
             }
 
             _previousCallResult = BytesZero;
@@ -485,7 +485,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     protected void HandleRevert(VmState<TGasPolicy> previousState, in CallResult callResult, ref ZeroPaddedSpan previousCallOutput)
     {
         // Restore the world state to the snapshot taken before the execution of the call.
-        _worldState.Restore(previousState.Snapshot, TxExecutionContext.BlockAccessIndex);
+        _worldState.Restore(previousState.Snapshot);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
         ReadOnlyMemory<byte> outputBytes = callResult.Output;
@@ -535,7 +535,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Revert the world state to the snapshot taken at the start of the current state's execution.
-        _worldState.Restore(_currentState.Snapshot, TxExecutionContext.BlockAccessIndex);
+        _worldState.Restore(_currentState.Snapshot);
 
         // Revert any modifications specific to the Parity touch bug, if applicable.
         RevertParityTouchBugAccount();
@@ -651,7 +651,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         // Restore the world state to its snapshot before the current call execution.
-        _worldState.Restore(_currentState.Snapshot, TxExecutionContext.BlockAccessIndex);
+        _worldState.Restore(_currentState.Snapshot);
 
         // Revert any modifications that might have been applied due to the Parity touch bug.
         RevertParityTouchBugAccount();
@@ -852,9 +852,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
-            if (_worldState.AccountExists(_parityTouchBugAccount.Address, TxExecutionContext.BlockAccessIndex))
+            if (_worldState.AccountExists(_parityTouchBugAccount.Address))
             {
-                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec, TxExecutionContext.BlockAccessIndex);
+                _worldState.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, BlockExecutionContext.Spec);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -873,7 +873,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec, TxExecutionContext.BlockAccessIndex);
+        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
         // An additional issue was found in Parity,
@@ -984,12 +984,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         {
             IReleaseSpec spec = BlockExecutionContext.Spec;
             // Ensure the executing account has sufficient balance and exists in the world state.
-            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec, TxExecutionContext.BlockAccessIndex);
+            _worldState.AddToBalanceAndCreateIfNotExists(env.ExecutingAccount, env.TransferValue, spec);
 
             // For contract creation calls, increment the nonce if the specification requires it.
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
             {
-                _worldState.IncrementNonce(env.ExecutingAccount, TxExecutionContext.BlockAccessIndex);
+                _worldState.IncrementNonce(env.ExecutingAccount);
             }
         }
 
