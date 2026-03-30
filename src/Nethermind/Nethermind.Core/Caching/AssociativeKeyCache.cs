@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -30,6 +29,7 @@ public sealed class AssociativeKeyCache<TKey>
     private readonly int _hashShift;
     private readonly int[] _setGates;
     private long _epochAndCount;
+    private long _ticker;
 
     public int Count => ReadCount(ref _epochAndCount);
 
@@ -94,7 +94,7 @@ public sealed class AssociativeKeyCache<TKey>
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                    e.Ticker = Interlocked.Increment(ref _ticker);
                 return true;
             }
         }
@@ -153,7 +153,7 @@ public sealed class AssociativeKeyCache<TKey>
                         // Unlike AssociativeCache.SetCore (which calls WriteEntry to update the value),
                         // the key-only variant has nothing to write, so a bare ticker store suffices.
                         // The seqlock header is unchanged, which is correct: readers see a stable entry.
-                        e.Ticker = Stopwatch.GetTimestamp();
+                        e.Ticker = Interlocked.Increment(ref _ticker);
                         return false;
                     }
                 }
@@ -170,7 +170,7 @@ public sealed class AssociativeKeyCache<TKey>
             // Early retry if epoch already changed before we pick a slot
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
-            long timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Interlocked.Increment(ref _ticker);
             int target;
             if (bestEmpty >= 0)
             {

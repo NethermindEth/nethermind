@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -75,6 +74,13 @@ public sealed class AssociativeCache<TKey, TValue>
     /// Count occupies bits 0-36. Atomic CAS in Clear() bumps epoch + resets count in one operation.
     /// </summary>
     private long _epochAndCount;
+
+    /// <summary>
+    /// Monotonic counter for eviction-age tracking. Interlocked.Increment is faster
+    /// than Stopwatch.GetTimestamp() (RDTSC) — ~7.6ns vs ~19ns single-threaded,
+    /// and scales better under contention (20% faster at 8 threads).
+    /// </summary>
+    private long _ticker;
 
     public int Count => ReadCount(ref _epochAndCount);
 
@@ -155,7 +161,7 @@ public sealed class AssociativeCache<TKey, TValue>
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
                 if (TRefreshTicker.IsActive)
-                    e.Ticker = Stopwatch.GetTimestamp();
+                    e.Ticker = Interlocked.Increment(ref _ticker);
                 value = storedValue;
                 return true;
             }
@@ -217,7 +223,7 @@ public sealed class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
-                        long now = Stopwatch.GetTimestamp();
+                        long now = Interlocked.Increment(ref _ticker);
                         WriteEntry(ref e, h, in key, val, tagToStore, now);
                         return false;
                     }
@@ -235,7 +241,7 @@ public sealed class AssociativeCache<TKey, TValue>
             // Early retry if epoch already changed before we pick a slot
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
-            long timestamp = Stopwatch.GetTimestamp();
+            long timestamp = Interlocked.Increment(ref _ticker);
             int target;
             if (bestEmpty >= 0)
             {
@@ -376,7 +382,7 @@ public sealed class AssociativeCache<TKey, TValue>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                e.Ticker = Stopwatch.GetTimestamp();
+                e.Ticker = Interlocked.Increment(ref _ticker);
                 return true;
             }
         }
