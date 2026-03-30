@@ -31,7 +31,9 @@ public class EraExporter(
         : eraConfig.NetworkName.Trim().ToLower();
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
-    private const int EraSize = EraWriter.MaxEraSize;
+    private readonly int _eraSize = eraConfig.MaxEraSize is > 0 and <= EraWriter.MaxEraSize
+        ? eraConfig.MaxEraSize
+        : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
 
     public const string AccumulatorFileName = "accumulators.txt";
     public const string ChecksumsFileName = "checksums_sha256.txt";
@@ -70,8 +72,8 @@ public class EraExporter(
         progress.Reset(0, to - from + 1);
         int totalProcessed = 0;
 
-        long startEpoch = from / EraSize;
-        long endEpoch = to / EraSize;
+        long startEpoch = from / _eraSize;
+        long endEpoch = to / _eraSize;
         long epochCount = endEpoch - startEpoch + 1;
 
         using ArrayPoolList<long> epochIdxs = new((int)epochCount);
@@ -104,9 +106,9 @@ public class EraExporter(
             long epoch = startEpoch + epochIdx;
             // Each epoch covers exactly [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
-            long epochBlockStart = epoch * EraSize;
+            long epochBlockStart = epoch * _eraSize;
             long writeFrom = Math.Max(epochBlockStart, from);
-            long writeTo = Math.Min(epochBlockStart + EraSize - 1, to);
+            long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
             string filePath = Path.Combine(
                 destinationPath,
