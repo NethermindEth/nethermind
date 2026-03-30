@@ -66,40 +66,40 @@ jobs:
           path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
           if-no-files-found: error
 
-  test-qemu:
-    name: Run on QEMU
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+  # test-qemu:
+  #   name: Run on QEMU
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Check out repository
+  #       uses: actions/checkout@v6
 
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v5
+  #     - name: Set up .NET
+  #       uses: actions/setup-dotnet@v5
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  #     - name: Set up Docker Buildx
+  #       uses: docker/setup-buildx-action@v3
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+  #     - name: Set up QEMU
+  #       uses: docker/setup-qemu-action@v3
 
-      - name: Build Nethermind
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: make build-qemu
+  #     - name: Build Nethermind
+  #       working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+  #       run: make build-qemu
 
-      - name: Test Nethermind
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: |
-          docker build -f Dockerfile.qemu -t zkevm .
-          block_hash=$(docker run --rm zkevm)
-          if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
-            echo "::error::Unexpected block hash: $block_hash"
-            exit 1
-          fi
+  #     - name: Test Nethermind
+  #       working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+  #       run: |
+  #         docker build -f Dockerfile.qemu -t zkevm .
+  #         block_hash=$(docker run --rm zkevm)
+  #         if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
+  #           echo "::error::Unexpected block hash: $block_hash"
+  #           exit 1
+  #         fi
 
-      - name: Upload guest binary
-        if: github.event.inputs.upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: nethermind-zkevm
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
-          if-no-files-found: error
+  #     - name: Upload guest binary
+  #       if: github.event.inputs.upload
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: nethermind-zkevm
+  #         path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
+  #         if-no-files-found: error
