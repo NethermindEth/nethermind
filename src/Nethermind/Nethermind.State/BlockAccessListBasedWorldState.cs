@@ -220,27 +220,15 @@ public class BlockAccessListBasedWorldState(
 
     private bool IsStorageEmptyInternal(Address address)
     {
-        // todo work out expected behavior
-        return true;
-        // AccountChanges? accountChanges = new AccountChanges();
-        // HashSet<UInt256> zeroedSlots = [];
-        // foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-        // {
-        //     if (slotChanges.Changes.Last().Value.NewValue != 0)
-        //     {
-        //         return false;
-        //     }
-        //     zeroedSlots.Add(slotChanges.Slot);
-        // }
+        // see https://eips.ethereum.org/EIPS/eip-7610
+        // storage could only be non-empty for 28 old accounts
+        AccountChanges? accountChanges = new AccountChanges();
+        if (accountChanges is not null)
+        {
+            return accountChanges.EmptyBeforeBlock;
+        }
 
-        // accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        // if (accountChanges is not null)
-        // {
-        //     HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex);
-        //     return allSlots.SetEquals(zeroedSlots);
-        // }
-
-        // throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
     }
 
     private AccountStruct? GetAccountInternal(Address address)

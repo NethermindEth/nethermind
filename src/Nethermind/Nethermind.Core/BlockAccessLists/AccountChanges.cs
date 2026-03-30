@@ -38,6 +38,9 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore]
     public bool ExistedBeforeBlock { get; set; }
 
+    [JsonIgnore]
+    public bool EmptyBeforeBlock { get; set; }
+
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedList<UInt256, SlotChanges> _storageChanges;
     private readonly SortedSet<StorageRead> _storageReads;

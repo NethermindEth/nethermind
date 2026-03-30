@@ -357,6 +357,7 @@ public partial class BlockProcessor(
 
             bool exists = _stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
             accountChanges.ExistedBeforeBlock = exists;
+            accountChanges.EmptyBeforeBlock = !account.HasStorage;
 
             accountChanges.AddBalanceChange(new(-1, account.Balance));
             accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));

@@ -184,7 +184,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override bool IsStorageEmpty(Address address)
     {
-        // todo: work out behavior
         AddAccountRead(address);
         return IsStorageEmptyInternal(address);
     }
