@@ -41,7 +41,12 @@ namespace Ethereum.Test.Base
         {
             _logManager ??= LimboLogs.Instance;
             _logger = _logManager.GetClassLogger();
-            KzgPolynomialCommitments.InitializeAsync().Wait();
+            // Skip the blocking .Wait() if KZG was already pre-initialized (e.g. by an
+            // assembly-level [SetUpFixture]).  Calling .Wait() when the task is still
+            // in-flight from a concurrent thread-pool worker risks a thread-pool
+            // deadlock under [checked]/debug builds with many parallel tests.
+            if (!KzgPolynomialCommitments.IsInitialized)
+                KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
         [SetUp]
@@ -65,23 +70,13 @@ namespace Ethereum.Test.Base
             return RunTestAsync(test, NullTxTracer.Instance);
         }
 
-        protected Task<EthereumTestResult> RunTestAsync(GeneralStateTest test, ITxTracer txTracer)
+        protected async Task<EthereumTestResult> RunTestAsync(GeneralStateTest test, ITxTracer txTracer)
         {
-            // Run the entire test on a dedicated thread-pool thread so that
-            // container disposal (IAsyncDisposable via BackgroundTaskScheduler) can
-            // schedule its own continuations without competing with the thread that
-            // called this method.  Using Task.Run here avoids the thread-pool
-            // saturation deadlock that occurs in [checked]/debug builds when many
-            // parallel tests occupy the pool while DisposeAsync tries to drain
-            // background-task queues.
-            return Task.Run(async () =>
+            (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
+            await using (container)
             {
-                (ISpecProvider specProvider, IContainer container) = BuildContainer(test);
-                await using (container)
-                {
-                    return RunTestCore(test, txTracer, specProvider, container);
-                }
-            });
+                return RunTestCore(test, txTracer, specProvider, container);
+            }
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
