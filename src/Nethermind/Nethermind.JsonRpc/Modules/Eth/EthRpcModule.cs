@@ -211,9 +211,9 @@ public partial class EthRpcModule(
         int totalSlots = 0;
         foreach (UInt256[] slots in requests.Values)
         {
-            totalSlots += slots.Length;
-            if (totalSlots > MaxGetStorageSlots)
+            if (slots.Length > MaxGetStorageSlots - totalSlots)
                 return TooManySlotsError();
+            totalSlots += slots.Length;
         }
 
         if (totalSlots == 0)
