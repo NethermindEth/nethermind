@@ -18,5 +18,5 @@ public interface ITestingRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
 
-    public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]> txRlps, byte[]? extraData = null);
+    public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null);
 }

@@ -17,6 +17,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -367,6 +368,127 @@ public class MergePluginTests
             .SetName("Testing_buildBlockV1_json_rpc_returns_payload_with_txs_for_amsterdam");
     }
 
+    [Test]
+    public async Task Testing_buildBlockV1_null_transactions_builds_from_mempool()
+    {
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        Transaction mempoolTx = Nethermind.Core.Test.Builders.Build.A.Transaction
+            .WithNonce(0)
+            .WithTo(Nethermind.Core.Test.Builders.TestItem.AddressC)
+            .WithValue(1)
+            .WithGasLimit(21_000)
+            .WithType(TxType.EIP1559)
+            .WithChainId(1)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(Nethermind.Core.Test.Builders.TestItem.PrivateKeyA)
+            .TestObject;
+
+        ITxSource txSource = Substitute.For<ITxSource>();
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(new[] { mempoolTx });
+
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator, txSource: txSource);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+        };
+
+        // Pass null for transactions — should build from mempool
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, null, Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().BeOfType<GetPayloadV5Result>();
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        payloadResult.ExecutionPayload.Transactions.Should().HaveCount(1);
+
+        txSource.Received(1).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), true);
+    }
+
+    [Test]
+    public async Task Testing_buildBlockV1_fails_when_transaction_is_invalid()
+    {
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        // Simulate processor dropping 1 of 2 transactions (e.g., invalid nonce)
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator,
+            processOverride: block =>
+            {
+                // Simulate: processor accepts the block but only includes 1 of 2 transactions
+                Block processedBlock = new(block.Header, [block.Transactions[0]], Array.Empty<BlockHeader>(), block.Withdrawals);
+                processedBlock.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                processedBlock.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                processedBlock.Header.Bloom ??= Bloom.Empty;
+                processedBlock.Header.GasUsed = 21_000;
+                processedBlock.Header.Hash ??= Keccak.Compute("produced");
+                return processedBlock;
+            });
+
+        Transaction[] transactions = BuildSignedTransactions(2);
+        byte[][] txRlps = EncodeTransactions(transactions, out _);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+        };
+
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, txRlps, Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
+    }
+
+    [Test]
+    public async Task Testing_buildBlockV1_empty_array_builds_empty_block()
+    {
+        (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) = CreateDefaultParentBlock();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Osaka.Instance);
+        IGasLimitCalculator gasLimitCalculator = Substitute.For<IGasLimitCalculator>();
+        gasLimitCalculator.GetGasLimit(Arg.Any<BlockHeader>()).Returns(parentHeader.GasLimit);
+
+        ITxSource txSource = Substitute.For<ITxSource>();
+        TestingRpcModule module = CreateTestingRpcModule(parentHash, parentBlock, specProvider, gasLimitCalculator, txSource: txSource);
+
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot")
+        };
+
+        // Pass empty array — should NOT use mempool
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(parentHash, payloadAttributes, Array.Empty<byte[]>(), Array.Empty<byte>());
+
+        result.Result.ResultType.Should().Be(ResultType.Success);
+        result.Data.Should().BeOfType<GetPayloadV5Result>();
+        GetPayloadV5Result payloadResult = (GetPayloadV5Result)result.Data!;
+        payloadResult.ExecutionPayload.Transactions.Should().BeEmpty();
+
+        // TxSource should NOT have been called
+        txSource.DidNotReceive().GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+    }
+
     private static (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) CreateDefaultParentBlock(ulong? slotNumber = null)
     {
         Hash256 parentHash = Keccak.Compute("parent");
@@ -401,30 +523,42 @@ public class MergePluginTests
         Block parentBlock,
         ISpecProvider specProvider,
         IGasLimitCalculator gasLimitCalculator,
-        Action<Block>? onProcess = null)
+        Action<Block>? onProcess = null,
+        Func<Block, Block?>? processOverride = null,
+        ITxSource? txSource = null)
     {
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(parentHash).Returns(parentBlock);
 
         IBlockchainProcessor blockchainProcessor = Substitute.For<IBlockchainProcessor>();
-        blockchainProcessor
-            .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
-            .Returns(static callInfo =>
-            {
-                Block block = callInfo.Arg<Block>();
-                block.Header.StateRoot ??= Keccak.EmptyTreeHash;
-                block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
-                block.Header.Bloom ??= Bloom.Empty;
-                block.Header.GasUsed = 0;
-                block.Header.Hash ??= Keccak.Compute("produced");
 
-                if (block.Header.SlotNumber is not null && block.BlockAccessList is null && block.Header.ParentHash is not null)
+        if (processOverride is not null)
+        {
+            blockchainProcessor
+                .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+                .Returns(callInfo => processOverride(callInfo.Arg<Block>()));
+        }
+        else
+        {
+            blockchainProcessor
+                .Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+                .Returns(static callInfo =>
                 {
-                    block.BlockAccessList = Nethermind.Core.Test.Builders.Build.A.BlockAccessList.WithPrecompileChanges(block.Header.ParentHash, block.Header.Timestamp).TestObject;
-                }
+                    Block block = callInfo.Arg<Block>();
+                    block.Header.StateRoot ??= Keccak.EmptyTreeHash;
+                    block.Header.ReceiptsRoot ??= Keccak.EmptyTreeHash;
+                    block.Header.Bloom ??= Bloom.Empty;
+                    block.Header.GasUsed = 0;
+                    block.Header.Hash ??= Keccak.Compute("produced");
 
-                return block;
-            });
+                    if (block.Header.SlotNumber is not null && block.BlockAccessList is null && block.Header.ParentHash is not null)
+                    {
+                        block.BlockAccessList = Nethermind.Core.Test.Builders.Build.A.BlockAccessList.WithPrecompileChanges(block.Header.ParentHash, block.Header.Timestamp).TestObject;
+                    }
+
+                    return block;
+                });
+        }
 
         if (onProcess is not null)
         {
@@ -435,6 +569,10 @@ public class MergePluginTests
 
         IBlockProducerEnv blockProducerEnv = Substitute.For<IBlockProducerEnv>();
         blockProducerEnv.ChainProcessor.Returns(blockchainProcessor);
+        if (txSource is not null)
+        {
+            blockProducerEnv.TxSource.Returns(txSource);
+        }
 
         IBlockProducerEnvFactory blockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>();
         blockProducerEnvFactory.Create().Returns(blockProducerEnv);
