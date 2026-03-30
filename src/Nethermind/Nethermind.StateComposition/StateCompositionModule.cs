@@ -13,10 +13,6 @@ public class StateCompositionModule : Module
     {
         base.Load(builder);
 
-        builder.RegisterType<StateCompositionVisitor>()
-            .AsSelf()
-            .InstancePerDependency();
-
         builder.RegisterType<StateCompositionStateHolder>()
             .AsSelf()
             .As<IStateCompositionStateHolder>()

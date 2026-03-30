@@ -4,16 +4,10 @@
 namespace Nethermind.StateComposition;
 
 /// <summary>
-/// Wraps cached stats with a staleness indicator.
-/// Stats is null before the first scan completes.
+/// Wraps cached stats from last completed scan.
+/// Stats are null before the first scan completes.
 /// </summary>
 public class CachedStatsResponse
 {
     public StateCompositionStats? Stats { get; init; }
-
-    /// <summary>
-    /// Number of blocks processed since baseline scan.
-    /// Higher values indicate staler data.
-    /// </summary>
-    public long BlocksSinceBaseline { get; init; }
 }
