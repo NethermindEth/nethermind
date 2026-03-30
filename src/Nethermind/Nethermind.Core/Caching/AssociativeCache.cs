@@ -57,9 +57,10 @@ namespace Nethermind.Core.Caching;
 /// collected promptly after Clear, use <see cref="Delete"/> on individual keys instead, or consider
 /// LruCache/ClockCache whose Clear zeroes the backing store.</para>
 /// </summary>
-public sealed class AssociativeCache<TKey, TValue>
+public class AssociativeCache<TKey, TValue, TRefreshTicker>
     where TKey : struct, IHash64bit<TKey>
     where TValue : class?
+    where TRefreshTicker : struct, IFlag
 {
     private const int Ways = 8;
     private const int WayShift = 3;
@@ -146,7 +147,9 @@ public sealed class AssociativeCache<TKey, TValue>
                 // On x64, aligned 8-byte stores are atomic so no tearing occurs.
                 // Worst case: concurrent WriteEntry overwrites our timestamp,
                 // resulting in slightly suboptimal eviction ordering.
-                e.Ticker = Stopwatch.GetTimestamp();
+                // JIT eliminates this branch entirely per TRefreshTicker instantiation.
+                if (TRefreshTicker.IsActive)
+                    e.Ticker = Stopwatch.GetTimestamp();
                 value = storedValue;
                 return true;
             }
@@ -367,8 +370,8 @@ public sealed class AssociativeCache<TKey, TValue>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                // Refresh ticker so Contains counts as an access for eviction purposes
-                e.Ticker = Stopwatch.GetTimestamp();
+                if (TRefreshTicker.IsActive)
+                    e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
         }
@@ -407,7 +410,7 @@ public sealed class AssociativeCache<TKey, TValue>
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Entry
+    private protected struct Entry
     {
         public long Header;
         public long Ticker;
@@ -415,3 +418,21 @@ public sealed class AssociativeCache<TKey, TValue>
         public TValue? Value;
     }
 }
+
+/// <summary>
+/// AssociativeCache with ticker refresh on reads (default). Frequently-read entries
+/// are protected from eviction. Use for read-heavy caches like CodeCache.
+/// </summary>
+public sealed class AssociativeCache<TKey, TValue>(int maxCapacity)
+    : AssociativeCache<TKey, TValue, OnFlag>(maxCapacity)
+    where TKey : struct, IHash64bit<TKey>
+    where TValue : class?;
+
+/// <summary>
+/// AssociativeCache without ticker refresh on reads. Eviction is based on most-recently-written only.
+/// Use for Set-then-Get patterns (e.g. HashCache) where read-tracking adds no eviction value.
+/// </summary>
+public sealed class AssociativeCacheNoReadTicker<TKey, TValue>(int maxCapacity)
+    : AssociativeCache<TKey, TValue, OffFlag>(maxCapacity)
+    where TKey : struct, IHash64bit<TKey>
+    where TValue : class?;

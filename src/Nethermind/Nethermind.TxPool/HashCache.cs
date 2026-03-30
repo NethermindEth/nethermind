@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -22,10 +23,10 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
 
-        private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
+        private readonly AssociativeKeyCacheNoReadTicker<ValueHash256> _longTermCache = new(
             MemoryAllowance.TxHashCacheSize);
 
-        private readonly AssociativeKeyCache<ValueHash256> _currentBlockCache = new(
+        private readonly AssociativeKeyCacheNoReadTicker<ValueHash256> _currentBlockCache = new(
             SafeCapacity);
 
         public bool Get(Hash256 hash)

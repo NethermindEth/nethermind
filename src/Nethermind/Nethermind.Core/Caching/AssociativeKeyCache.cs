@@ -18,8 +18,9 @@ namespace Nethermind.Core.Caching;
 /// 8-way set-associative cache with lock-free reads and 3-random eviction.
 /// See <see cref="AssociativeCache{TKey,TValue}"/> for full design notes and tradeoff comparison.
 /// </summary>
-public sealed class AssociativeKeyCache<TKey>
+public class AssociativeKeyCache<TKey, TRefreshTicker>
     where TKey : struct, IHash64bit<TKey>
+    where TRefreshTicker : struct, IFlag
 {
     private const int Ways = 8;
     private const int WayShift = 3;
@@ -83,7 +84,8 @@ public sealed class AssociativeKeyCache<TKey>
             long h2 = Volatile.Read(ref e.Header);
             if (h1 == h2 && storedKey.Equals(in key))
             {
-                e.Ticker = Stopwatch.GetTimestamp();
+                if (TRefreshTicker.IsActive)
+                    e.Ticker = Stopwatch.GetTimestamp();
                 return true;
             }
         }
@@ -289,10 +291,26 @@ public sealed class AssociativeKeyCache<TKey>
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Entry
+    private protected struct Entry
     {
         public long Header;
         public long Ticker;
         public TKey Key;
     }
 }
+
+/// <summary>
+/// AssociativeKeyCache with ticker refresh on reads (default). Frequently-read entries
+/// are protected from eviction.
+/// </summary>
+public sealed class AssociativeKeyCache<TKey>(int maxCapacity)
+    : AssociativeKeyCache<TKey, OnFlag>(maxCapacity)
+    where TKey : struct, IHash64bit<TKey>;
+
+/// <summary>
+/// AssociativeKeyCache without ticker refresh on reads. Eviction is based on most-recently-written only.
+/// Use for Set-then-Get patterns (e.g. HashCache, NotifiedTransactions) where read-tracking adds no value.
+/// </summary>
+public sealed class AssociativeKeyCacheNoReadTicker<TKey>(int maxCapacity)
+    : AssociativeKeyCache<TKey, OffFlag>(maxCapacity)
+    where TKey : struct, IHash64bit<TKey>;
