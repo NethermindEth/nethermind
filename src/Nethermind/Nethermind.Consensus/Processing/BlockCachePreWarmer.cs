@@ -108,8 +108,9 @@ public sealed class BlockCachePreWarmer(
         }
         finally
         {
-            // Don't compete the task until address warmer is also done.
+            // Don't complete the task until address warmer is also done.
             addressWarmer.Wait();
+            addressWarmer.Dispose();
         }
     }
 
@@ -276,7 +277,7 @@ public sealed class BlockCachePreWarmer(
     }
 
     private class AddressWarmer(ParallelOptions parallelOptions, Block block, BlockHeader parent, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists, BlockCachePreWarmer preWarmer)
-        : IThreadPoolWorkItem
+        : IThreadPoolWorkItem, IDisposable
     {
         private readonly Block Block = block;
         private readonly BlockCachePreWarmer PreWarmer = preWarmer;
@@ -284,6 +285,8 @@ public sealed class BlockCachePreWarmer(
         private readonly ManualResetEventSlim _doneEvent = new(initialState: false);
 
         public void Wait() => _doneEvent.Wait();
+
+        public void Dispose() => _doneEvent.Dispose();
 
         private static ArrayPoolList<AccessList>? GetAccessLists(Block block, IReleaseSpec spec, ReadOnlySpan<IHasAccessList> systemAccessLists)
         {

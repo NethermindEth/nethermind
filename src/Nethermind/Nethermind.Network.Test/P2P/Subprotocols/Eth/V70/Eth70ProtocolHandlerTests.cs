@@ -22,6 +22,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
@@ -580,6 +581,24 @@ public class Eth70ProtocolHandlerTests
             m.EthMessage.TxReceipts.Count == 1 &&
             m.EthMessage.TxReceipts[0].Length == smallBlockReceipts.Length &&
             !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public async Task Handle_GetReceipts_disposes_request_message()
+    {
+        TrackableGetReceiptsMessage70 request = new(1111, 0, new GetReceiptsMessage(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        using ReceiptsMessage70 response = await _handler.Handle(request, CancellationToken.None);
+
+        Assert.That(request.IsDisposed, Is.True, "Handler must dispose the request message to release the pooled hash list");
+    }
+
+    private sealed class TrackableGetReceiptsMessage70(long requestId, long firstBlockReceiptIndex, GetReceiptsMessage ethMessage)
+        : GetReceiptsMessage70(requestId, firstBlockReceiptIndex, ethMessage)
+    {
+        public bool IsDisposed { get; private set; }
+        public override void Dispose() { IsDisposed = true; base.Dispose(); }
     }
 
     private void HandleIncomingStatusMessage()
