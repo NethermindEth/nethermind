@@ -18,40 +18,40 @@ public interface ITxGossipPolicy
 // not yet available during init step construction.
 public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGossipPolicy
 {
-    public bool ShouldListenToGossipedTransactions
-    {
-        get
-        {
-            ITxGossipPolicy[] p = policies.Value;
-            for (int i = 0; i < p.Length; i++)
-            {
-                if (!p[i].ShouldListenToGossipedTransactions)
-                    return false;
-            }
-            return true;
-        }
-    }
+    private bool? _canGossipTransactions;
+    private bool? _shouldListenToGossipedTransactions;
 
-    public bool CanGossipTransactions
-    {
-        get
-        {
-            ITxGossipPolicy[] p = policies.Value;
-            for (int i = 0; i < p.Length; i++)
-            {
-                if (!p[i].CanGossipTransactions)
-                    return false;
-            }
-            return true;
-        }
-    }
+    public bool ShouldListenToGossipedTransactions => _shouldListenToGossipedTransactions ??= CalcautateShouldListen();
+    public bool CanGossipTransactions => _canGossipTransactions ??= CalculateCanGossip();
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        ITxGossipPolicy[] p = policies.Value;
-        for (int i = 0; i < p.Length; i++)
+        ITxGossipPolicy[] policy = policies.Value;
+        for (int i = 0; i < policy.Length; i++)
         {
-            if (!p[i].ShouldGossipTransaction(tx))
+            if (!policy[i].ShouldGossipTransaction(tx))
+                return false;
+        }
+        return true;
+    }
+
+    private bool CalcautateShouldListen()
+    {
+        ITxGossipPolicy[] policy = policies.Value;
+        for (int i = 0; i < policy.Length; i++)
+        {
+            if (!policy[i].ShouldListenToGossipedTransactions)
+                return false;
+        }
+        return true;
+    }
+
+    private bool CalculateCanGossip()
+    {
+        ITxGossipPolicy[] policy = policies.Value;
+        for (int i = 0; i < policy.Length; i++)
+        {
+            if (!policy[i].CanGossipTransactions)
                 return false;
         }
         return true;
