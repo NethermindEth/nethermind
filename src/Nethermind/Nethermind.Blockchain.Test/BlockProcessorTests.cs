@@ -233,6 +233,28 @@ public class BlockProcessorTests
         stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
     }
 
+    [TestCase(2_000, false)]
+    [TestCase(1_999, true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_read_budget_uses_eip_7928_item_cost(long gasRemaining, bool shouldThrow)
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, gasRemaining);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, gasRemaining);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+        }
+        else
+        {
+            Assert.That(act, Throws.Nothing);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
