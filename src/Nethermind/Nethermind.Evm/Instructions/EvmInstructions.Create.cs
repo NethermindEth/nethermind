@@ -104,22 +104,20 @@ internal static partial class EvmInstructions
             salt = stack.PopWord256();
         }
 
-        // EIP-3860: Limit the maximum size of the initialization code.
+        // EIP-3860/EIP-7954: initcode size is validated before CREATE/CREATE2 execution.
+        // Amsterdam/geth charges regular CREATE costs first and only charges state gas
+        // if the frame can afford the regular portion before the exceptional halt.
         bool isEip3860 = spec.IsEip3860Enabled;
-        if (isEip3860)
-        {
-            if (initCodeLength > spec.MaxInitCodeSize)
-            {
-                // EIP-8037: charge state gas before halting so StateGasSpill is recorded
-                // for correct block gas accounting (block_regular excludes state gas).
-                if (TEip8037.IsActive)
-                    TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState);
-                goto OutOfGas;
-            }
-        }
+        bool isOverMaxInitCode = isEip3860 && initCodeLength > spec.MaxInitCodeSize;
+        if (isOverMaxInitCode && !TEip8037.IsActive)
+            goto OutOfGas;
+
+        UInt256 initCodeLengthForWordGas = isOverMaxInitCode
+            ? checked((ulong)spec.MaxInitCodeSize)
+            : initCodeLength;
 
         bool outOfGas = false;
-        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
+        long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLengthForWordGas, out outOfGas);
         if (outOfGas)
             goto OutOfGas;
 
@@ -127,17 +125,25 @@ internal static partial class EvmInstructions
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
 
-        bool createOutOfGas = TEip8037.IsActive switch
-        {
-            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
-            false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
-        };
+        bool createOutOfGas = TEip8037.IsActive
+            ? !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost)
+            : !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost);
+        if (createOutOfGas)
+            goto OutOfGas;
 
-        if (createOutOfGas) goto OutOfGas;
-
-        // Update memory gas cost based on the required memory expansion for the init code.
+        // Charge all regular gas before state gas so oversized CREATE exceptional halts
+        // only record state gas when the frame could also afford the regular portion.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
             goto OutOfGas;
+
+        if (TEip8037.IsActive)
+        {
+            if (!TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState))
+                goto OutOfGas;
+
+            if (isOverMaxInitCode)
+                goto OutOfGas;
+        }
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.
         // This guard ensures we do not create nested contract calls beyond EVM limits.

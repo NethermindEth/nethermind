@@ -33,10 +33,13 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                long? gasRemaining = _balBuilder?.GasUsed();
-                if (gasRemaining is not null)
+                bool shouldValidateBlockAccessList =
+                    _balBuilder is not null &&
+                    !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                long? gasRemaining = shouldValidateBlockAccessList ? _balBuilder!.GasUsed() : null;
+                if (shouldValidateBlockAccessList)
                 {
-                    _balBuilder.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
+                    _balBuilder!.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
                 }
 
                 for (int i = 0; i < block.Transactions.Length; i++)
@@ -45,10 +48,10 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
-                    if (gasRemaining is not null)
+                    if (shouldValidateBlockAccessList)
                     {
                         gasRemaining -= currentTx.BlockGasUsed;
-                        _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
+                        _balBuilder!.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }
                 _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();

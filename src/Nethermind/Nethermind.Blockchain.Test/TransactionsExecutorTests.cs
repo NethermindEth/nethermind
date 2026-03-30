@@ -23,11 +23,13 @@ using Nethermind.Evm.State;
 using Nethermind.TxPool.Comparison;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.State;
+using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -361,6 +363,60 @@ namespace Nethermind.Blockchain.Test
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
 
             Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
+        }
+
+        [Test]
+        public void BlockProductionTransactionsExecutor_does_not_trace_tx_picker_world_state_reads_into_bal()
+        {
+            IWorldState innerStateProvider = TestWorldStateFactory.CreateForTest();
+            ParallelWorldState stateProvider = new(innerStateProvider);
+
+            using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+            stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
+            stateProvider.GeneratedBlockAccessList.Clear();
+            stateProvider.TracingEnabled = true;
+
+            Transaction includedTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressA)
+                .WithNonce(0)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Transaction skippedTx = Build.A.Transaction
+                .WithSenderAddress(TestItem.AddressB)
+                .WithNonce(0)
+                .WithGasPrice(1)
+                .WithGasLimit(GasCostOf.Transaction)
+                .SignedAndResolved(TestItem.PrivateKeyB)
+                .TestObject;
+
+            Block block = Build.A.Block
+                .WithGasLimit(GasCostOf.Transaction * 2)
+                .WithTransactions([includedTx, skippedTx])
+                .TestObject;
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+
+            ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+            transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
+
+            IReleaseSpec spec = Homestead.Instance;
+            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                transactionProcessor,
+                stateProvider,
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
+                LimboLogs.Instance);
+
+            BlockReceiptsTracer receiptsTracer = new();
+            receiptsTracer.StartNewBlockTrace(blockToProduce);
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+
+            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
+
+            blockToProduce.Transactions.Should().ContainSingle().Which.Should().BeSameAs(includedTx);
+            stateProvider.GeneratedBlockAccessList.AccountChanges.Should().BeEmpty();
         }
     }
 

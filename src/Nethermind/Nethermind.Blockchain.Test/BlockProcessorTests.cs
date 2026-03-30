@@ -228,9 +228,34 @@ public class BlockProcessorTests
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
 
-        txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
+        txExecutor.ProcessTransactions(block, ProcessingOptions.None, receiptsTracer, CancellationToken.None);
 
         stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested()
+    {
+        TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
+
+        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
+        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
+        {
+            Transaction transaction = callInfo.Arg<Transaction>();
+            transaction.SpentGas = 63_586;
+            transaction.BlockGasUsed = 37_568;
+            return TransactionResult.Ok;
+        });
+
+        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
+        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(block);
+
+        txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
+
+        stateProvider.ValidatedGasRemaining.Should().BeEmpty();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -274,14 +299,14 @@ public class BlockProcessorTests
 
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
-        WorldStateStab stateProvider = new();
+        IWorldState stateProvider = new WorldStateStab();
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
