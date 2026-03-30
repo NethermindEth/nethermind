@@ -20,6 +20,7 @@ public static class KzgPolynomialCommitments
     public const byte KzgBlobHashVersionV1 = 1;
 
     private static IntPtr _ckzgSetup = IntPtr.Zero;
+    private static readonly object _initLock = new();
     internal static IntPtr CkzgSetup => _ckzgSetup;
 
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
@@ -28,17 +29,22 @@ public static class KzgPolynomialCommitments
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
-        string trustedSetupTextFileLocation = setupFilePath ??
-            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
-                         string.Empty, "kzg_trusted_setup.txt");
-
-        if (logger.IsInfo)
-            logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
-        _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
-
-        if (_ckzgSetup == IntPtr.Zero)
+        lock (_initLock)
         {
-            throw new InvalidOperationException("Unable to load trusted setup");
+            if (_ckzgSetup != IntPtr.Zero) return;
+
+            string trustedSetupTextFileLocation = setupFilePath ??
+                Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
+                             string.Empty, "kzg_trusted_setup.txt");
+
+            if (logger.IsInfo)
+                logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
+            _ckzgSetup = Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation, 8);
+
+            if (_ckzgSetup == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("Unable to load trusted setup");
+            }
         }
     }
 
