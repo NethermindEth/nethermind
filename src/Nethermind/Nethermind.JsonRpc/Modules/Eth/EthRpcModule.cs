@@ -208,6 +208,9 @@ public partial class EthRpcModule(
         if (requests.Count == 0)
             return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
 
+        if (requests.Count > MaxGetStorageSlots)
+            return TooManySlotsError();
+
         int totalSlots = 0;
         foreach (UInt256[] slots in requests.Values)
         {
