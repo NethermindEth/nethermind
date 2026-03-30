@@ -61,7 +61,6 @@ public class TransactionJsonTest : GeneralStateTestBase
     /// Expected hash from pyspec: test_eip2930_tx_validity[fork_Istanbul-invalid-state_test]
     /// </summary>
     [Test]
-    [Ignore("Temporarily disabled while investigating CI timeout")]
     public void Invalid_pre_berlin_access_list_tx_with_empty_list_preserves_prestate_root()
     {
         Address sender = new("0x1ad9bc24818784172ff393bb6f89f094d4d2ca29");
