@@ -140,6 +140,8 @@ public class NethermindNodeTests
         var currentBlockStr = await Utils.SendEngineRequestAsync(httpClient, "eth_blockNumber");
         var currentBlock = currentBlockStr.GetValue<string>();
         currentBlock.Should().Be("0x1");
+        var result = await Utils.SendEngineRequestAsync(httpClient, "eth_syncing");
+        result.GetValue<bool>().Should().Be(false);
     }
 
     [Test]
