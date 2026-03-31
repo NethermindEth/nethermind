@@ -26,15 +26,15 @@ public class NodeStatsLight : INodeStats
     // 0.5 means that the reported speed will be (oldSpeed + newSpeed)/2;
     // 0.25 here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
     // modification to account for jitter.
-    private readonly double _latestSpeedWeight;
+    private readonly float _latestSpeedWeight;
 
     // NaN signals "no value yet" (replaces nullable decimal)
-    private double _averageNodesTransferSpeed = double.NaN;
-    private double _averageHeadersTransferSpeed = double.NaN;
-    private double _averageBodiesTransferSpeed = double.NaN;
-    private double _averageReceiptsTransferSpeed = double.NaN;
-    private double _averageSnapRangesTransferSpeed = double.NaN;
-    private double _averageLatency = double.NaN;
+    private float _averageNodesTransferSpeed = float.NaN;
+    private float _averageHeadersTransferSpeed = float.NaN;
+    private float _averageBodiesTransferSpeed = float.NaN;
+    private float _averageReceiptsTransferSpeed = float.NaN;
+    private float _averageSnapRangesTransferSpeed = float.NaN;
+    private float _averageLatency = float.NaN;
 
     private readonly int[] _statCountersArray;
 
@@ -91,7 +91,7 @@ public class NodeStatsLight : INodeStats
         upperWatermark: TimeSpan.FromMilliseconds(3500)
     );
 
-    public NodeStatsLight(Node node, double latestSpeedWeight = 0.25)
+    public NodeStatsLight(Node node, float latestSpeedWeight = 0.25f)
     {
         _statCountersArray = new int[_statsLength];
         _statsParameters = StatsParameters.Instance;
@@ -235,18 +235,18 @@ public class NodeStatsLight : INodeStats
         }
     }
 
-    private void UpdateValue(ref double currentValue, double newValue)
+    private void UpdateValue(ref float currentValue, float newValue)
     {
-        double current = Volatile.Read(ref currentValue);
-        double updated = double.IsNaN(current)
+        float current = Volatile.Read(ref currentValue);
+        float updated = float.IsNaN(current)
             ? newValue
-            : (current * (1.0 - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+            : (current * (1.0f - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
         Volatile.Write(ref currentValue, updated);
     }
 
     public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
     {
-        double value = transferSpeedType switch
+        float value = transferSpeedType switch
         {
             TransferSpeedType.Latency => _averageLatency,
             TransferSpeedType.NodeData => _averageNodesTransferSpeed,
@@ -257,7 +257,7 @@ public class NodeStatsLight : INodeStats
             _ => throw new ArgumentOutOfRangeException()
         };
 
-        if (double.IsNaN(value))
+        if (float.IsNaN(value))
             return transferSpeedType == TransferSpeedType.Latency ? int.MaxValue : null;
 
         return (long)value;
