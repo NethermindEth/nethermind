@@ -25,8 +25,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 
 namespace Nethermind.Consensus.Processing;
@@ -41,15 +43,10 @@ public class BlockAccessListManager(
 {
 
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    // private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
     private BlockExecutionContext _blockExecutionContext;
-    // private BlockAccessList[] _intermediateBlockAccessLists;
-    // private ITransactionProcessorAdapter[] _transactionProcessorAdapters;
-    // private ITransactionProcessor[] _transactionProcessors;
-    // private TracedAccessWorldState[] _parallelWorldState;
     private TxProcessorWithWorldStateManager _txProcessorWithWorldStateManager;
     private const int GasValidationChunkSize = 8;
-    private long _gasUsed;
+    private long _gasRemaining;
 
     public void Setup(Block block, ProcessingOptions processingOptions)
     {
@@ -63,13 +60,23 @@ public class BlockAccessListManager(
         }
     }
 
+    public void SetGasUsed(long gasUsed)
+        => _gasRemaining = gasUsed;
+    
+    public void SpendGas(long gas)
+        => _gasRemaining -= gas;
 
-    private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers)
+    public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
+        => _blockExecutionContext = blockExecutionContext;
+
+    public ITransactionProcessorAdapter GetTxProcessorAtIndex(int balIndex)
+        => _txProcessorWithWorldStateManager.GetAtBalIndex(balIndex).TxProcessorAdapter;
+
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
     {
         int len = block.Transactions.Length;
-        long gasRemaining = _gasUsed;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-        ValidateBlockAccessList(block, 0, gasRemaining);
+        ValidateBlockAccessList(block, 0);
 
         long totalGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
@@ -84,11 +91,11 @@ public class BlockAccessListManager(
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
                 totalGas += blockGasUsed.Value;
-                gasRemaining -= blockGasUsed.Value;
+                SpendGas(blockGasUsed.Value);
 
                 bool validateStorageReads = j == chunkEnd - 1;
                 _txProcessorWithWorldStateManager.GetAtBalIndex(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-                ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
+                ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
             }
 
             if (totalGas > block.Header.GasLimit)
@@ -166,7 +173,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void ValidateBlockAccessList(Block block, ushort index, long gasRemaining, bool validateStorageReads = true)
+    public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
     {
         if (block.BlockAccessList is null)
         {
@@ -253,7 +260,7 @@ public class BlockAccessListManager(
             AdvanceSuggested();
         }
 
-        if (validateStorageReads && gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        if (validateStorageReads && _gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
@@ -281,24 +288,42 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
+    public void LoadPreStateToSuggestedBlockAccessList(IReleaseSpec spec, Block suggested)
+    {
+        foreach (AccountChanges accountChanges in suggested.BlockAccessList.AccountChanges)
+        {
+            // check if changed before loading prestate
+            accountChanges.CheckWasChanged();
+
+            bool exists = stateProvider.TryGetAccount(accountChanges.Address, out AccountStruct account);
+            accountChanges.ExistedBeforeBlock = exists;
+            accountChanges.EmptyBeforeBlock = !account.HasStorage;
+
+            accountChanges.AddBalanceChange(new(-1, account.Balance));
+            accountChanges.AddNonceChange(new(-1, (ulong)account.Nonce));
+            accountChanges.AddCodeChange(new(-1, stateProvider.GetCode(accountChanges.Address)));
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                StorageCell storageCell = new(accountChanges.Address, slotChanges.Slot);
+                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
+            }
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            {
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
+                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
+            }
+        }
+    }
+
     private static bool HasNoChanges(in ChangeAtIndex c)
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&
             !c.SlotChanges.GetEnumerator().MoveNext();
 
-
-    // private void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
-    // {
-    //     if (index == 0)
-    //     {
-    //         GeneratedBlockAccessList = intermediateBlockAccessLists[0];
-    //     }
-    //     else
-    //     {
-    //         GeneratedBlockAccessList.Merge(intermediateBlockAccessLists[index]);
-    //     }
-    // }
 
     private interface TxProcessorWithWorldStateManager
     {

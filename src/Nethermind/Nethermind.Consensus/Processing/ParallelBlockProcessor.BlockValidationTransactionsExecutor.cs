@@ -1,15 +1,19 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -18,21 +22,20 @@ public partial class ParallelBlockProcessor
     public class ParallelBlockValidationTransactionsExecutor(
         IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ISpecProvider specProvider,
-        IBlockhashProvider blockHashProvider,
         ILogManager logManager,
         IBlocksConfig blocksConfig,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
     {
-        private BlockExecutionContext _blockExecutionContext;
+        private BlockAccessListManager _balManager;
         private TxReceipt[] _txReceipts;
 
         public override void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-        {
-            _blockExecutionContext = blockExecutionContext;
-        }
+            => _balManager.SetBlockExecutionContext(blockExecutionContext);
+
+        public override void SetBlockAccessListManager(in BlockAccessListManager balManager)
+            => _balManager = balManager;
 
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
@@ -47,32 +50,16 @@ public partial class ParallelBlockProcessor
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            // VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-            // ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, -1, block, new(), GeneratedBlockAccessList, new(logManager), processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
-            // TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
-            // ExecuteTransactionProcessorAdapter transactionProcessorAdapter = CreateTransactionProcessor(block, -1, _intermediateBlockAccessLists[bal], );
-            // transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
-
-
-            long? gasRemaining = _gasUsed;
-            if (gasRemaining is not null)
-            {
-                ValidateBlockAccessList(block, 0, gasRemaining.Value);
-            }
+            _balManager.ValidateBlockAccessList(block, 0);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                GeneratedBlockAccessList.IncrementBlockAccessIndex();
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(_transactionProcessorAdapters[i + 1], block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(_balManager.GetTxProcessorAtIndex(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
-                if (gasRemaining is not null)
-                {
-                    gasRemaining -= currentTx.BlockGasUsed;
-                    ValidateBlockAccessList(block, (ushort)(i + 1), gasRemaining!.Value);
-                }
+                _balManager.SpendGas(currentTx.BlockGasUsed);
+                _balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
             }
-            GeneratedBlockAccessList.IncrementBlockAccessIndex();
 
             return [.. receiptsTracer.TxReceipts];
         }
@@ -97,19 +84,18 @@ public partial class ParallelBlockProcessor
                 gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>();
             }
 
-            Task incrementalValidationTask = Task.Run(() => IncrementalValidation(block, gasResults, receiptsTracers), token);
+            Task incrementalValidationTask = Task.Run(() => _balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
 
             ParallelUnbalancedWork.For(
                 0,
                 len + 1,
                 ParallelUnbalancedWork.DefaultOptions,
-                (block, processingOptions, _stateProvider, transactionProcessors: _transactionProcessorAdapters, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                (block, processingOptions, stateProvider: _stateProvider, balManager: _balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
                 static (i, state) =>
                 {
                     if (i == 0)
                     {
-                        // (state.stateProvider as IBlockAccessListBuilder)?.ApplyStateChanges(state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
-                        ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
+                        BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                         return state;
                     }
 
@@ -117,8 +103,8 @@ public partial class ParallelBlockProcessor
                     try
                     {
                         Transaction tx = state.txs[txIndex];
-                        ProcessTransactionParallel(
-                            state.transactionProcessors[i],
+                        ProcessTransaction(
+                            state.balManager.GetTxProcessorAtIndex(i),
                             state.stateProvider,
                             state.block,
                             tx,
@@ -159,5 +145,17 @@ public partial class ParallelBlockProcessor
             return result;
         }
 
+        private static void ProcessTransaction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            Block block,
+            Transaction currentTx,
+            int index,
+            BlockReceiptsTracer receiptsTracer,
+            ProcessingOptions processingOptions)
+        {
+            TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+            if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
+        }
     }
 }

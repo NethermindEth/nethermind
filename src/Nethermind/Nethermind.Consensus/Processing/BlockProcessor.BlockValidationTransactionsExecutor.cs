@@ -23,11 +23,14 @@ namespace Nethermind.Consensus.Processing
             : IBlockProcessor.IBlockTransactionsExecutor
         {
             protected IWorldState _stateProvider = stateProvider;
+            protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
 
             public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
             {
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
             }
+
+            public virtual void SetBlockAccessListManager(in BlockAccessListManager balManager) {}
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
@@ -46,11 +49,11 @@ namespace Nethermind.Consensus.Processing
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);
-                transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
+                _transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(index, currentTx, block.Header, receiptsTracer.TxReceipts[index]));
             }
 
             [DoesNotReturn, StackTraceHidden]
-            private void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
+            protected static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
             {
                 throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
             }
