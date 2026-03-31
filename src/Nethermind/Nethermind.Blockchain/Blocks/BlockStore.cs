@@ -88,6 +88,11 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public void Cache(Block block)
     {
+        // Clear processing-time data before caching to avoid retaining large
+        // BAL/account-change structures. GeneratedBlockAccessList and
+        // EncodedBlockAccessList are already cleared by IBlockAccessListStore.InsertFromBlock.
+        block.BlockAccessList = null;
+        block.AccountChanges = null;
         _blockCache.Set(block.Hash, block);
     }
 
