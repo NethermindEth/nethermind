@@ -64,7 +64,7 @@ public class NetworkModuleTest
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference CreateDisposeAndTrack(IProtocolHandlerFactory handlerFactory)
     {
-        ISession session = new Session(0, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+        using ISession session = new Session(0, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
             Substitute.For<DotNetty.Transport.Channels.IChannel>(),
             Substitute.For<IDisconnectsAnalyzer>(),
             LimboLogs.Instance);
@@ -73,7 +73,7 @@ public class NetworkModuleTest
         // versioned factories match their specific version (e.g. Eth68 = 68)
         for (int version = 0; version <= 100; version++)
         {
-            if (handlerFactory.TryCreate(session, version, out var handler))
+            if (handlerFactory.TryCreate(session, version, out IProtocolHandler handler))
             {
                 WeakReference weakRef = new(handler);
                 handler.Dispose();
