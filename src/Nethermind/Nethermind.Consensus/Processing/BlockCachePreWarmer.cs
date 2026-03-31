@@ -20,7 +20,6 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
@@ -30,8 +29,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly int _concurrencyLevel;
     private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
     private readonly ILogger _logger;
-    private readonly PreBlockCaches preBlockCaches;
-    private readonly NodeStorageCache nodeStorageCache;
+    private readonly PreBlockCaches _preBlockCaches;
+    private readonly NodeStorageCache _nodeStorageCache;
 
     public BlockCachePreWarmer(
         PrewarmerEnvFactory envFactory,
@@ -60,17 +59,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         _concurrencyLevel = concurrency == 0 ? Math.Min(Environment.ProcessorCount - 1, 16) : concurrency;
         _envPool = new DefaultObjectPoolProvider { MaximumRetained = maxPoolSize }.Create(poolPolicy);
         _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
-        this.preBlockCaches = preBlockCaches;
-        this.nodeStorageCache = nodeStorageCache;
+        _preBlockCaches = preBlockCaches;
+        _nodeStorageCache = nodeStorageCache;
     }
 
     public Task PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default, params ReadOnlySpan<IHasAccessList> systemAccessLists)
     {
-        if (preBlockCaches is not null)
+        if (_preBlockCaches is not null)
         {
-            CacheType result = preBlockCaches.ClearCaches();
-            nodeStorageCache.ClearCaches();
-            nodeStorageCache.Enabled = true;
+            CacheType result = _preBlockCaches.ClearCaches();
+            _nodeStorageCache.ClearCaches();
+            _nodeStorageCache.Enabled = true;
             if (result != default)
             {
                 if (_logger.IsWarn) _logger.Warn($"Caches {result} are not empty. Clearing them.");
@@ -95,13 +94,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     public CacheType ClearCaches()
     {
         if (_logger.IsDebug) _logger.Debug("Clearing caches");
-        CacheType cachesCleared = preBlockCaches?.ClearCaches() ?? default;
-        cachesCleared |= nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
+        CacheType cachesCleared = _preBlockCaches?.ClearCaches() ?? default;
+        cachesCleared |= _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
     }
 
-    public void Dispose() => ((IDisposable)_envPool).Dispose();
+    public void Dispose() => (_envPool as IDisposable)?.Dispose();
 
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
@@ -439,9 +438,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     /// <summary>
     /// Pool policy for <see cref="IReadOnlyTxProcessorSource"/> envs used by the prewarmer.
     /// </summary>
-    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
+    internal class ReadOnlyTxProcessingEnvPooledObjectPolicy(PrewarmerEnvFactory envFactory, PreBlockCaches _preBlockCaches) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
-        public IReadOnlyTxProcessorSource Create() => envFactory.Create(preBlockCaches);
+        public IReadOnlyTxProcessorSource Create() => envFactory.Create(_preBlockCaches);
 
         /// <remarks>
         /// Always returns true — the env is valid for reuse. The pool that owns this policy

@@ -46,11 +46,11 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
         private readonly IReadOnlyTxProcessorSource _source;
         private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
 
-        public ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool2, IReadOnlyTxProcessingScope scope)
+        public ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool, IReadOnlyTxProcessingScope scope)
         {
             _scope = scope;
             _source = source;
-            _envPool = envPool2;
+            _envPool = envPool;
         }
 
         public void Dispose()
