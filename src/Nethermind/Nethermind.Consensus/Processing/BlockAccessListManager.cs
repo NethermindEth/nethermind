@@ -16,6 +16,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
@@ -60,34 +61,14 @@ public class BlockAccessListManager(
         {
             _txProcessorWithWorldStateManager = new FixedSizeTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
-        // int len = block.Transactions.Length;
-        // _transactionProcessorAdapters = new ITransactionProcessorAdapter[len + 2];
-        // _transactionProcessors = new ITransactionProcessor[len + 2];
-        // _parallelWorldState = new TracedAccessWorldState[len + 2];
-        // _intermediateBlockAccessLists = new BlockAccessList[len + 2];
-
-        // for (int i = 0; i < len + 2; i++)
-        // {
-        //     BlockAccessList bal = new()
-        //     {
-        //         Index = i
-        //     };
-        //     _intermediateBlockAccessLists[i] = bal;
-
-        //     (ExecuteTransactionProcessorAdapter transactionProcessorAdapter, TransactionProcessor<EthereumGasPolicy> transactionProcessor, TracedAccessWorldState parallelWorldState) = CreateTransactionProcessor(block, i, processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
-        //     _transactionProcessors[i] = transactionProcessor;
-        //     _transactionProcessorAdapters[i] = transactionProcessorAdapter;
-        //     _parallelWorldState[i] = parallelWorldState;
-        // }
     }
-
 
 
     private void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers)
     {
         int len = block.Transactions.Length;
         long gasRemaining = _gasUsed;
-        MergeIntermediateBalsUpTo(0, _intermediateBlockAccessLists);
+        _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0, gasRemaining);
 
         long totalGas = 0;
@@ -106,7 +87,7 @@ public class BlockAccessListManager(
                 gasRemaining -= blockGasUsed.Value;
 
                 bool validateStorageReads = j == chunkEnd - 1;
-                MergeIntermediateBalsUpTo((ushort)(j + 1), _intermediateBlockAccessLists);
+                _txProcessorWithWorldStateManager.GetAtBalIndex(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
                 ValidateBlockAccessList(block, (ushort)(j + 1), gasRemaining, validateStorageReads);
             }
 
@@ -178,7 +159,7 @@ public class BlockAccessListManager(
         }
         else
         {
-            MergeIntermediateBalsUpTo((ushort)(block.Transactions.Length + 1), _intermediateBlockAccessLists);
+            _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
             block.GeneratedBlockAccessList = GeneratedBlockAccessList;
             block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
             block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
@@ -307,17 +288,17 @@ public class BlockAccessListManager(
             !c.SlotChanges.GetEnumerator().MoveNext();
 
 
-    private void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
-    {
-        if (index == 0)
-        {
-            GeneratedBlockAccessList = intermediateBlockAccessLists[0];
-        }
-        else
-        {
-            GeneratedBlockAccessList.Merge(intermediateBlockAccessLists[index]);
-        }
-    }
+    // private void MergeIntermediateBalsUpTo(ushort index, BlockAccessList[] intermediateBlockAccessLists)
+    // {
+    //     if (index == 0)
+    //     {
+    //         GeneratedBlockAccessList = intermediateBlockAccessLists[0];
+    //     }
+    //     else
+    //     {
+    //         GeneratedBlockAccessList.Merge(intermediateBlockAccessLists[index]);
+    //     }
+    // }
 
     private interface TxProcessorWithWorldStateManager
     {
