@@ -242,7 +242,7 @@ public class NodeStatsLight : INodeStats
             case TransferSpeedType.Bodies: return ref _averageBodiesTransferSpeed;
             case TransferSpeedType.Receipts: return ref _averageReceiptsTransferSpeed;
             case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
-            default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType));
+            default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, "Unsupported transfer speed type.");
         }
     }
 
