@@ -84,6 +84,11 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
+        // Load existing hash manifests so TrySkipExistingEpoch can look up checksums and
+        // accumulator roots by filename — O(1) per epoch — instead of reading each era file.
+        Dictionary<string, ValueHash256> cachedChecksums = LoadHashFile(Path.Combine(destinationPath, ChecksumsFileName));
+        Dictionary<string, ValueHash256> cachedAccumulators = LoadHashFile(Path.Combine(destinationPath, AccumulatorFileName));
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
             MaxDegreeOfParallelism = concurrency,
@@ -112,7 +117,7 @@ public class EraExporter(
             long writeFrom = Math.Max(epochBlockStart, from);
             long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
-            if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, ref totalProcessed))
+            if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, cachedChecksums, cachedAccumulators, ref totalProcessed))
                 return;
 
             string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
@@ -202,6 +207,8 @@ public class EraExporter(
         ArrayPoolList<ValueHash256> accumulators,
         ArrayPoolList<ValueHash256> checksums,
         ArrayPoolList<string> fileNames,
+        Dictionary<string, ValueHash256> cachedChecksums,
+        Dictionary<string, ValueHash256> cachedAccumulators,
         ref int totalProcessed)
     {
         string? existingFile = fileSystem.Directory
@@ -211,23 +218,58 @@ public class EraExporter(
         if (existingFile is null)
             return false;
 
-        fileNames[idx] = Path.GetFileName(existingFile);
-        using EraReader reader = new(existingFile);
+        string fileName = Path.GetFileName(existingFile);
+        fileNames[idx] = fileName;
 
-        try
+        if (cachedChecksums.TryGetValue(fileName, out ValueHash256 cachedChecksum))
         {
-            accumulators[idx] = reader.ReadAccumulatorRoot();
+            // Fast path: both values available from the manifest files — no era file reads needed.
+            checksums[idx] = cachedChecksum;
+            accumulators[idx] = cachedAccumulators.GetValueOrDefault(fileName);
         }
-        catch (EraException)
+        else
         {
-            accumulators[idx] = default;
+            // Slow path: manifest missing or stale — read the era file directly.
+            using EraReader reader = new(existingFile);
+            try
+            {
+                accumulators[idx] = reader.ReadAccumulatorRoot();
+            }
+            catch (EraException)
+            {
+                accumulators[idx] = default;
+            }
+            checksums[idx] = reader.CalculateChecksum();
         }
 
-        checksums[idx] = reader.CalculateChecksum();
         Interlocked.Add(ref totalProcessed, (int)(writeTo - writeFrom + 1));
-
         if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
         return true;
+    }
+
+    /// <summary>
+    /// Parses a hash manifest file (checksums or accumulators) into a filename → hash lookup.
+    /// Returns an empty dictionary if the file does not exist or cannot be read.
+    /// </summary>
+    private Dictionary<string, ValueHash256> LoadHashFile(string path)
+    {
+        Dictionary<string, ValueHash256> result = new();
+        if (!fileSystem.File.Exists(path))
+            return result;
+
+        foreach (string line in fileSystem.File.ReadAllLines(path))
+        {
+            // Format: "{hash}  {filename}"  (two spaces, same as sha256sum output)
+            int sep = line.IndexOf("  ", StringComparison.Ordinal);
+            if (sep < 0) continue;
+
+            string hashHex = line[..sep].Trim();
+            string fileName = line[(sep + 2)..].Trim();
+            if (hashHex.Length != 64) continue;
+            result[fileName] = new ValueHash256(hashHex);
+        }
+
+        return result;
     }
 
     private async Task WriteHashFile(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellation)
