@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Microsoft.Extensions.ObjectPool;
@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using System;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -17,7 +18,7 @@ namespace Nethermind.Consensus.Processing;
 /// <param name="envFactory"></param>
 public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFactory) : IShareableTxProcessorSource
 {
-    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPool<IReadOnlyTxProcessorSource>(new EnvPoolPolicy(envFactory));
+    ObjectPool<IReadOnlyTxProcessorSource> _envPool = new DefaultObjectPoolProvider().Create(new EnvPoolPolicy(envFactory));
 
     public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock)
     {
@@ -43,19 +44,19 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
     {
         private readonly IReadOnlyTxProcessingScope _scope;
         private readonly IReadOnlyTxProcessorSource _source;
-        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool2;
+        private readonly ObjectPool<IReadOnlyTxProcessorSource> _envPool;
 
         public ScopeWrapper(IReadOnlyTxProcessorSource source, ObjectPool<IReadOnlyTxProcessorSource> envPool2, IReadOnlyTxProcessingScope scope)
         {
             _scope = scope;
             _source = source;
-            _envPool2 = envPool2;
+            _envPool = envPool2;
         }
 
         public void Dispose()
         {
             _scope.Dispose();
-            _envPool2.Return(_source);
+            _envPool.Return(_source);
         }
 
         public ITransactionProcessor TransactionProcessor => _scope.TransactionProcessor;
