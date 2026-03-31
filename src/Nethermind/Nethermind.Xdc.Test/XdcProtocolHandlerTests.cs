@@ -43,7 +43,10 @@ public class XdcProtocolHandlerTests
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.IsSyncing().Returns((false, 0, 0));
+        var headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        var headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindBestSuggestedHeader().Returns(headHeader);
 
         XdcProtocolHandler handler = new(
             timeoutManager,
