@@ -22,21 +22,21 @@ public class NodeStatsLight : INodeStats
     private readonly StatsParameters _statsParameters;
 
     // How much weight to put on latest speed.
-    // 1.0m means that the reported speed will always replaced with latest speed.
-    // 0.5m means that the reported speed will be (oldSpeed + newSpeed)/2;
-    // 0.25m here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
+    // 1.0 means that the reported speed will always replaced with latest speed.
+    // 0.5 means that the reported speed will be (oldSpeed + newSpeed)/2;
+    // 0.25 here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
     // modification to account for jitter.
-    private readonly decimal _latestSpeedWeight;
+    private readonly double _latestSpeedWeight;
 
-    private decimal? _averageNodesTransferSpeed;
-    private decimal? _averageHeadersTransferSpeed;
-    private decimal? _averageBodiesTransferSpeed;
-    private decimal? _averageReceiptsTransferSpeed;
-    private decimal? _averageSnapRangesTransferSpeed;
-    private decimal? _averageLatency;
+    // NaN signals "no value yet" (replaces nullable decimal)
+    private double _averageNodesTransferSpeed = double.NaN;
+    private double _averageHeadersTransferSpeed = double.NaN;
+    private double _averageBodiesTransferSpeed = double.NaN;
+    private double _averageReceiptsTransferSpeed = double.NaN;
+    private double _averageSnapRangesTransferSpeed = double.NaN;
+    private double _averageLatency = double.NaN;
 
     private readonly int[] _statCountersArray;
-    private readonly Lock _speedLock = new();
 
     private DisconnectReason? _lastLocalDisconnect;
     private DisconnectReason? _lastRemoteDisconnect;
@@ -91,7 +91,7 @@ public class NodeStatsLight : INodeStats
         upperWatermark: TimeSpan.FromMilliseconds(3500)
     );
 
-    public NodeStatsLight(Node node, decimal latestSpeedWeight = 0.25m)
+    public NodeStatsLight(Node node, double latestSpeedWeight = 0.25)
     {
         _statCountersArray = new int[_statsLength];
         _statsParameters = StatsParameters.Instance;
@@ -210,51 +210,57 @@ public class NodeStatsLight : INodeStats
 
     public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
     {
-        lock (_speedLock)
+        switch (transferSpeedType)
         {
-            switch (transferSpeedType)
-            {
-                case TransferSpeedType.Latency:
-                    UpdateValue(ref _averageLatency, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.NodeData:
-                    UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Headers:
-                    UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Bodies:
-                    UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.Receipts:
-                    UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
-                    break;
-                case TransferSpeedType.SnapRanges:
-                    UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
-            }
+            case TransferSpeedType.Latency:
+                UpdateValue(ref _averageLatency, bytesPerMillisecond);
+                break;
+            case TransferSpeedType.NodeData:
+                UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
+                break;
+            case TransferSpeedType.Headers:
+                UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
+                break;
+            case TransferSpeedType.Bodies:
+                UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
+                break;
+            case TransferSpeedType.Receipts:
+                UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
+                break;
+            case TransferSpeedType.SnapRanges:
+                UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
         }
     }
 
-    private void UpdateValue(ref decimal? currentValue, decimal newValue)
+    private void UpdateValue(ref double currentValue, double newValue)
     {
-        currentValue = ((currentValue ?? newValue) * (1.0m - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+        double current = Volatile.Read(ref currentValue);
+        double updated = double.IsNaN(current)
+            ? newValue
+            : (current * (1.0 - _latestSpeedWeight)) + (newValue * _latestSpeedWeight);
+        Volatile.Write(ref currentValue, updated);
     }
 
     public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
     {
-        return (long?)(transferSpeedType switch
+        double value = transferSpeedType switch
         {
-            TransferSpeedType.Latency => _averageLatency ?? int.MaxValue,
+            TransferSpeedType.Latency => _averageLatency,
             TransferSpeedType.NodeData => _averageNodesTransferSpeed,
             TransferSpeedType.Headers => _averageHeadersTransferSpeed,
             TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
             TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
             TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
             _ => throw new ArgumentOutOfRangeException()
-        });
+        };
+
+        if (double.IsNaN(value))
+            return transferSpeedType == TransferSpeedType.Latency ? int.MaxValue : null;
+
+        return (long)value;
     }
 
     public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC)
