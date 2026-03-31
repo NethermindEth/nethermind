@@ -119,17 +119,19 @@ internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionConte
         for (int i = 0; i < VisitorCounters.MaxTrackedDepth; i++)
         {
             ref DepthCounter dc = ref _depths[i];
+            // Geth counts valueNode at depth+1 from its leaf shortNode
+            long shiftedValue = i > 0 ? _depths[i - 1].ValueNodes : 0;
             levelsBuilder.Add(new TrieLevelStat
             {
                 Depth = i,
-                ShortNodeCount = dc.ShortNodes,
+                ShortNodeCount = dc.ShortNodes + dc.ValueNodes,
                 FullNodeCount = dc.FullNodes,
-                ValueNodeCount = dc.ValueNodes,
+                ValueNodeCount = shiftedValue,
                 TotalSize = dc.TotalSize,
             });
-            summaryShort += dc.ShortNodes;
+            summaryShort += dc.ShortNodes + dc.ValueNodes;
             summaryFull += dc.FullNodes;
-            summaryValue += dc.ValueNodes;
+            summaryValue += dc.ValueNodes; // Real total (not shifted)
             summarySize += dc.TotalSize;
         }
 
@@ -137,8 +139,8 @@ internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionConte
         {
             Owner = owner,
             StorageRoot = storageRoot,
-            MaxDepth = _maxDepth,
-            TotalNodes = _totalNodes,
+            MaxDepth = _maxDepth + 1, // +1: Geth counts valueNode as extra depth level
+            TotalNodes = _totalNodes + _valueNodes, // Geth: Full+Short(ext+leaf)+Value(leaf)
             ValueNodes = _valueNodes,
             TotalSize = _totalSize,
             Levels = levelsBuilder.MoveToImmutable(),

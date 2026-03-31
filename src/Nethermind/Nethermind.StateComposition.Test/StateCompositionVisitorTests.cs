@@ -269,7 +269,7 @@ public class StateCompositionVisitorTests
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
         Assert.That(stats.TopContractsByDepth, Has.Length.EqualTo(2));
-        Assert.That(stats.TopContractsByDepth[0].MaxDepth, Is.EqualTo(7)); // Sorted descending
+        Assert.That(stats.TopContractsByDepth[0].MaxDepth, Is.EqualTo(8)); // Sorted descending (+1 Geth convention)
     }
 
     [Test]
@@ -294,7 +294,7 @@ public class StateCompositionVisitorTests
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
 
         Assert.That(dist.StorageMaxDepthHistogram, Has.Length.EqualTo(VisitorCounters.MaxTrackedDepth));
-        Assert.That(dist.StorageMaxDepthHistogram[4], Is.EqualTo(2));
+        Assert.That(dist.StorageMaxDepthHistogram[5], Is.EqualTo(2)); // bucket 5 = raw depth 4 + 1 (Geth convention)
     }
 
     [Test]
