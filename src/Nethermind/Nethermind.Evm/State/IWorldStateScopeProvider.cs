@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -66,6 +69,46 @@ public interface IWorldStateScopeProvider
         /// first.
         /// </summary>
         void Commit(long blockNumber);
+
+        /// <summary>
+        /// Hint that the given Block Access List will be accessed during block execution.
+        /// For prewarmer scopes, this triggers asynchronous prefetching of all addresses
+        /// and storage slots listed in the BAL into the prewarmer cache.
+        /// Non-prewarmer scopes may ignore this hint.
+        /// </summary>
+        /// <param name="bal">The Block Access List describing addresses and storage slots to prefetch.</param>
+        void HintBal(BlockAccessList bal);
+
+        /// <summary>
+        /// Reads all account and storage data referenced by the Block Access List from
+        /// the underlying trie/db and pushes the results to <paramref name="sink"/>.
+        /// </summary>
+        /// <param name="bal">The Block Access List to read.</param>
+        /// <param name="sink">The sink that receives each account/storage read result.</param>
+        /// <param name="cancellationToken">Token to cancel the operation.</param>
+        /// <returns>A task that completes when all BAL entries have been read.</returns>
+        Task ReadBalAsync(BlockAccessList bal, IAsyncBalReaderSink sink, CancellationToken cancellationToken);
+    }
+
+    /// <summary>
+    /// Sink that receives account and storage values read from the underlying
+    /// trie/db during a BAL (Block Access List) scan.
+    /// </summary>
+    public interface IAsyncBalReaderSink
+    {
+        /// <summary>
+        /// Called when an account has been read for the given address.
+        /// </summary>
+        /// <param name="address">The account address from the BAL.</param>
+        /// <param name="account">The account data, or null if the account does not exist.</param>
+        void OnAccountRead(Address address, Account? account);
+
+        /// <summary>
+        /// Called when a storage slot has been read for the given cell.
+        /// </summary>
+        /// <param name="storageCell">The storage cell (address + slot index).</param>
+        /// <param name="value">The storage value bytes.</param>
+        void OnStorageRead(in StorageCell storageCell, byte[] value);
     }
 
     public interface ICodeDb

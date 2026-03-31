@@ -11,6 +11,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
@@ -86,6 +87,42 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         public void HintGet(Address address, Account? account)
         {
             _loadedAccounts.TryAdd(address, account);
+        }
+
+        public void HintBal(BlockAccessList bal) { }
+
+        public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+        {
+            foreach (AccountChanges accountChanges in bal.AccountChanges)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                Address address = accountChanges.Address;
+                Account? account = Get(address);
+                sink.OnAccountRead(address, account);
+
+                IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
+
+                foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    UInt256 slot = slotChanges.Slot;
+                    StorageCell cell = new(address, slot);
+                    byte[] value = storageTree.Get(in slot);
+                    sink.OnStorageRead(in cell, value);
+                }
+
+                foreach (StorageRead storageRead in accountChanges.StorageReads)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    UInt256 key = storageRead.Key;
+                    StorageCell cell = new(address, key);
+                    byte[] value = storageTree.Get(in key);
+                    sink.OnStorageRead(in cell, value);
+                }
+            }
+
+            return Task.CompletedTask;
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;

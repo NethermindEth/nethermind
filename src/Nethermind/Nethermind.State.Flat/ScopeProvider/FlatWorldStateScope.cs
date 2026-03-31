@@ -7,11 +7,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -113,6 +115,46 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         {
             _warmer.PushAddressJob(this, address, _hintSequenceId);
         }
+    }
+
+    public void HintBal(BlockAccessList bal) { }
+
+    public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
+    {
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Address address = accountChanges.Address;
+            // Get() already calls HintGet internally, which triggers _warmer.PushAddressJob
+            Account? account = Get(address);
+            sink.OnAccountRead(address, account);
+
+            IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
+
+            foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                UInt256 slot = slotChanges.Slot;
+                StorageCell cell = new(address, slot);
+                byte[] value = storageTree.Get(in slot);
+                // HintGet triggers _trieCacheWarmer.PushSlotJob to warm the trie path
+                storageTree.HintGet(in slot, value);
+                sink.OnStorageRead(in cell, value);
+            }
+
+            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                UInt256 key = storageRead.Key;
+                StorageCell cell = new(address, key);
+                byte[] value = storageTree.Get(in key);
+                storageTree.HintGet(in key, value);
+                sink.OnStorageRead(in cell, value);
+            }
+        }
+
+        return Task.CompletedTask;
     }
 
     public IWorldStateScopeProvider.ICodeDb CodeDb { get; }
