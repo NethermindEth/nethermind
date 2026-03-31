@@ -17,6 +17,5 @@ public interface ITestingRpcModule : IRpcModule
         Description = "Building a block from provided transactions, under provided rules.",
         IsSharable = true,
         IsImplemented = true)]
-
     public Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null);
 }

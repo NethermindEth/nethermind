@@ -186,6 +186,7 @@ internal static partial class EvmInstructions
         };
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+
         if (newAccountOutOfGas) goto OutOfGas;
 
 

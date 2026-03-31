@@ -350,58 +350,6 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit - GasCostOf.NewAccount + GasCostOf.PerAuthBaseCost));
     }
 
-    [TestCaseSource(nameof(EvmExecutionErrorCases))]
-    public void Execute_AmsterdamTxWithDelegationFailure_DelegationStateRefundIsStillApplied(byte[] executionErrorCode)
-    {
-        TestSpecProvider amsterdamSpecProvider = new(Amsterdam.Instance);
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-        IDisposable worldStateCloser = stateProvider.BeginScope(IWorldState.PreGenesis);
-
-        try
-        {
-            EthereumCodeInfoRepository codeInfoRepository = new(stateProvider);
-            EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(amsterdamSpecProvider), amsterdamSpecProvider, LimboLogs.Instance);
-            ITransactionProcessor transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, amsterdamSpecProvider, stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
-            EthereumEcdsa ethereumEcdsa = new(amsterdamSpecProvider.ChainId);
-
-            PrivateKey sender = TestItem.PrivateKeyA;
-            Address codeSource = TestItem.AddressB;
-
-            stateProvider.CreateAccount(codeSource, 0);
-            stateProvider.InsertCode(codeSource, executionErrorCode, Amsterdam.Instance);
-            stateProvider.CreateAccount(sender.Address, 1.Ether);
-
-            const long gasLimit = 10_000_000;
-            Transaction tx = Build.A.Transaction
-                .WithType(TxType.SetCode)
-                .WithTo(codeSource)
-                .WithGasLimit(gasLimit)
-                .WithAuthorizationCode(
-                    ethereumEcdsa.Sign(
-                        sender,
-                        amsterdamSpecProvider.ChainId,
-                        Address.Zero,
-                        1))
-                .SignedAndResolved(ethereumEcdsa, sender, true)
-                .TestObject;
-            Block block = Build.A.Block.WithNumber(long.MaxValue)
-                .WithTimestamp(MainnetSpecProvider.AmsterdamBlockTimestamp)
-                .WithTransactions(tx)
-                .WithGasLimit(long.MaxValue).TestObject;
-
-            CallOutputTracer tracer = new();
-
-            transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, amsterdamSpecProvider.GetSpec(block.Header)), tracer);
-
-            Assert.That(tracer.GasSpent, Is.EqualTo(gasLimit - GasCostOf.NewAccountState));
-            Assert.That(tx.BlockGasUsed, Is.EqualTo(gasLimit - GasCostOf.NewAccountState - GasCostOf.PerAuthBaseState));
-        }
-        finally
-        {
-            worldStateCloser.Dispose();
-        }
-    }
-
     [Test]
     public void Execute_TxAuthorizationListWithBALANCE_WarmAccountReadGasIsCharged()
     {

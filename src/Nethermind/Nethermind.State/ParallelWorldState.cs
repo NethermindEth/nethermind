@@ -33,9 +33,6 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
         _gasUsed = gasUsed;
     }
 
-    public override IReadOnlyStateProvider GetUntrackedReader()
-        => _innerWorldState.GetUntrackedReader();
-
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         => AddToBalance(address, balanceChange, spec, out _);
 

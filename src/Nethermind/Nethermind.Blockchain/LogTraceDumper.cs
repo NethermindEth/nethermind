@@ -108,14 +108,9 @@ public static class BlockTraceDumper
         {
             condition = "valid on rerun";
 
-            if (blocks.Count == 1)
-            {
-                blockHash = blocks[0].Hash?.ToString() ?? UnknownHash;
-            }
-            else
-            {
-                blockHash = string.Join("|", blocks.Select(static b => b.Hash?.ToString() ?? UnknownHash));
-            }
+            blockHash = blocks.Count == 1
+                ? HashToString(blocks[0].Hash)
+                : string.Join("|", blocks.Select(static b => HashToString(b.Hash)));
             return true;
         }
 
@@ -123,6 +118,8 @@ public static class BlockTraceDumper
         blockHash = UnknownHash;
         return false;
     }
+
+    private static string HashToString(Hash256? hash) => hash?.ToString() ?? UnknownHash;
 
     private static FileStream GetFileStream(string name) =>
         new(

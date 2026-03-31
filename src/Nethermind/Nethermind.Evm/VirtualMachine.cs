@@ -1047,22 +1047,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // - OffFlag is used when cancellation is not needed.
         // - OnFlag is used when cancellation is enabled.
         // This leverages the compile-time evaluation of TTracingInst to optimize away runtime checks.
-        try
+        return _txTracer.IsCancelable switch
         {
-            return _txTracer.IsCancelable switch
-            {
-                false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
-                true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
-            };
-        }
-        catch (Exception ex) when (ex is EvmException or OverflowException)
-        {
-            // Some failures, such as stack overflow, are thrown instead of returned as an EVM status.
-            // Persist the in-flight gas first so top-level refund and block-gas accounting see prior state-gas charges.
-            vmState.Gas = gas;
-            vmState.DataStackHead = stack.Head;
-            throw;
-        }
+            false => RunByteCode<TTracingInst, OffFlag>(ref stack, ref gas),
+            true => RunByteCode<TTracingInst, OnFlag>(ref stack, ref gas),
+        };
 
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
