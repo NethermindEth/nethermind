@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
@@ -178,7 +180,7 @@ public class BlockCachePreWarmerTests
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader baseBlock) =>
+            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
                 inner.Build(baseBlock);
 
             public void Dispose()
