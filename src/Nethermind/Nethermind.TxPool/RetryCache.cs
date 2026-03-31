@@ -131,8 +131,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             // Got existing entry — return unused bag and update
             _handlerBagsPool.Return(newBag);
-            // Capture lease from the live bag to detect recycling
-            bag.TryAdd(handler, _maxRetryRequests, bag.Lease);
+            bag.TryAdd(handler, _maxRetryRequests);
             return AnnounceResult.Delayed;
         }
 
@@ -194,40 +193,33 @@ public enum AnnounceResult
 }
 
 /// <summary>
-/// Poolable handler collection with lease-guarded lifecycle.
+/// Poolable handler collection with active/inactive lifecycle guard.
 /// <para>
-/// Each bag has a monotonically increasing <see cref="Lease"/> counter. Callers capture
-/// the lease at <c>GetOrAdd</c> time and pass it to <see cref="TryAdd"/>. If the bag has
-/// been drained/returned to the pool (bumping the lease), the stale lease won't match
-/// and the add is silently rejected — preventing cross-resource contamination.
+/// <see cref="Drain"/> deactivates the bag so any in-flight <see cref="TryAdd"/> is
+/// silently rejected — preventing cross-resource contamination when the bag is returned
+/// to the pool and reused. <see cref="Reset"/> clears and reactivates for the next use.
 /// </para>
 /// <para>
 /// Uses <see cref="HashSet{T}"/> internally to preserve set semantics (no duplicate handlers).
+/// All operations use a single lock acquisition.
 /// </para>
 /// </summary>
 internal sealed class HandlerBag<TMessage>
 {
     private readonly HashSet<IMessageHandler<TMessage>> _handlers = [];
     private readonly Lock _lock = new();
-    private int _lease;
+    private bool _active = true;
 
     /// <summary>
-    /// Current lease. Callers capture this before <see cref="TryAdd"/> to detect stale references.
-    /// </summary>
-    public int Lease
-    {
-        get { lock (_lock) return _lease; }
-    }
-
-    /// <summary>
-    /// Try to add a handler. Rejected if the lease changed (bag was recycled),
+    /// Try to add a handler. Rejected if the bag has been drained/returned (inactive),
     /// the handler is already present (set semantics), or the bag is full.
+    /// Single lock acquisition — no separate Lease read needed.
     /// </summary>
-    public bool TryAdd(IMessageHandler<TMessage> handler, int maxCount, int expectedLease)
+    public bool TryAdd(IMessageHandler<TMessage> handler, int maxCount)
     {
         lock (_lock)
         {
-            if (_lease != expectedLease)
+            if (!_active)
                 return false;
 
             if (_handlers.Count >= maxCount)
@@ -238,14 +230,14 @@ internal sealed class HandlerBag<TMessage>
     }
 
     /// <summary>
-    /// Snapshot the handlers, clear the set, and bump the lease. After this call,
-    /// any in-flight TryAdd with a stale lease will be rejected.
+    /// Snapshot the handlers, clear the set, and deactivate. After this call,
+    /// any in-flight TryAdd will be rejected.
     /// </summary>
     public IMessageHandler<TMessage>[] Drain()
     {
         lock (_lock)
         {
-            _lease++;
+            _active = false;
 
             if (_handlers.Count == 0)
                 return [];
@@ -257,15 +249,15 @@ internal sealed class HandlerBag<TMessage>
     }
 
     /// <summary>
-    /// Called by the pool on Return. Clears handlers and bumps lease so any
-    /// stale references from previous use are invalidated.
+    /// Called by the pool on Return. Clears any late additions and reactivates
+    /// the bag for reuse by a new resource.
     /// </summary>
     public void Reset()
     {
         lock (_lock)
         {
-            _lease++;
             _handlers.Clear();
+            _active = true;
         }
     }
 }
