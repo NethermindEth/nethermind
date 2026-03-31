@@ -301,7 +301,7 @@ namespace Nethermind.Xdc
                     await Task.Delay(delay, ct);
                 }
 
-                payloadAttributes.Timestamp = (ulong)DateTimeOffset.ToUnixTimeSeconds();
+                payloadAttributes.Timestamp = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
 
                 Task<Block?> proposedBlockTask =
                     _blockBuilder.BuildBlock(parentHeader, null, payloadAttributes, IBlockProducer.Flags.None, ct);
