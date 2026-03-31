@@ -71,7 +71,7 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
-    public const int MaxGetStorageSlots = 1024;
+    public const int MaxGetStorageSlots = StorageRequestConverter.MaxSlots;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -235,10 +235,7 @@ public partial class EthRpcModule(
             for (int i = 0; i < slots.Length; i++)
             {
                 ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slots[i]);
-                byte[] slot = new byte[32];
-                if (!storage.IsEmpty)
-                    storage.CopyTo(slot.AsSpan(32 - storage.Length));
-                values[i] = slot;
+                values[i] = storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage.PadLeft(32);
             }
             result[entry.Key] = values;
         }
