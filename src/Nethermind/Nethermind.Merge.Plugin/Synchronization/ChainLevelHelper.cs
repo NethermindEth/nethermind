@@ -36,13 +36,38 @@ public class ChainLevelHelper : IChainLevelHelper
         _logger = logManager.GetClassLogger();
     }
 
+    /// <summary>
+    /// Called when a block level is missing during forward header processing.
+    /// Sets ShouldForceStartNewSync only if the block should actually exist — i.e., it is
+    /// below where BeaconHeadersSyncFeed has downloaded to so far.
+    ///
+    /// Two cases where the block is expected to be missing (not an error):
+    /// 1. BeaconHeaders hasn't started yet (LowestInsertedBeaconHeader is null) — the block
+    ///    is above the global sync pivot, in the range BeaconHeaders will download once it starts.
+    /// 2. BeaconHeaders has started but hasn't reached this block yet (blockNumber is at or above
+    ///    LowestInsertedBeaconHeader).
+    ///
+    /// Firing ShouldForceStartNewSync in either case causes an infinite restart loop because the
+    /// restart resets BeaconHeaders, which then has to re-download the same range, and the missing
+    /// block reappears before it can commit. See NethermindEth/nethermind#6304, #6611.
+    /// </summary>
     private void OnMissingBeaconHeader(long blockNumber)
     {
         if (_beaconPivot.ProcessDestination?.Number > blockNumber)
         {
-            // For some reason, this block number is missing when it should not.
-            // anyway, lets just restart the whole sync.
             if (_beaconPivot.ShouldForceStartNewSync) return;
+
+            long? lowestBeacon = _blockTree.LowestInsertedBeaconHeader?.Number;
+
+            // BeaconHeadersSyncFeed hasn't started or hasn't reached this block yet.
+            // The block will be downloaded once beacon headers sync progresses — not an error.
+            if (lowestBeacon is null || blockNumber >= lowestBeacon.Value)
+            {
+                if (_logger.IsDebug) _logger.Debug(
+                    $"Beacon header at height {blockNumber} not yet downloaded (lowest beacon header: {lowestBeacon?.ToString() ?? "none"}). " +
+                    $"Waiting for beacon headers sync.");
+                return;
+            }
 
             if (_logger.IsWarn) _logger.Warn($"Unable to find beacon header at height {blockNumber}. This is unexpected, forcing a new beacon sync.");
             _beaconPivot.ShouldForceStartNewSync = true;

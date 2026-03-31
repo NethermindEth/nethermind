@@ -99,18 +99,24 @@ public class StartingSyncPivotUpdater : IDisposable
 
     private async Task<bool> TrySetFreshPivot(CancellationToken cancellationToken)
     {
-        (Hash256 Hash, long Number)? potentialPivotData = await TryGetPivotData(cancellationToken);
+        BlockHeader? pivotHeader = await TryGetPivotData(cancellationToken);
 
-        if (potentialPivotData is null)
+        if (pivotHeader is null)
         {
             if (_logger.IsInfo && (_maxAttempts - _attemptsLeft) % 10 == 0) _logger.Info($"Waiting for Forkchoice message from Consensus Layer to set fresh pivot block [{_maxAttempts - _attemptsLeft}s]");
             return false;
         }
 
-        return TryOverwritePivot(potentialPivotData.Value.Hash, potentialPivotData.Value.Number);
+        return TryOverwritePivot(pivotHeader);
     }
 
-    protected virtual async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
+    /// <summary>
+    /// Resolves the finalized block header to use as the global sync pivot.
+    /// Checks the block cache, block tree, and peers in that order.
+    /// Returns the full BlockHeader (not just hash+number) because the caller needs to insert it
+    /// into the block tree to close the structural gap at PivotDestinationNumber.
+    /// </summary>
+    protected virtual async Task<BlockHeader?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting finalized block hash as it is safe, because can't be reorganized
         Hash256? finalizedBlockHash = _beaconSyncStrategy.GetFinalizedHash();
@@ -119,11 +125,11 @@ public class StartingSyncPivotUpdater : IDisposable
         {
             UpdateAndPrintPotentialNewPivot(finalizedBlockHash);
 
-            long? finalizedBlockNumber = TryGetBlockNumberFromBlockCache(finalizedBlockHash)
-                                         ?? TryGetFinalizedBlockNumberFromBlockTree(finalizedBlockHash)
-                                         ?? await TryGetFromPeers(finalizedBlockHash, cancellationToken);
+            BlockHeader? header = TryGetHeaderFromBlockCache(finalizedBlockHash)
+                                  ?? TryGetHeaderFromBlockTree(finalizedBlockHash)
+                                  ?? await TryGetHeaderFromPeers(finalizedBlockHash, cancellationToken);
 
-            return finalizedBlockNumber is null ? null : (finalizedBlockHash, (long)finalizedBlockNumber);
+            return header;
         }
 
         return null;
@@ -145,22 +151,41 @@ public class StartingSyncPivotUpdater : IDisposable
         return null;
     }
 
-    private long? TryGetFinalizedBlockNumberFromBlockTree(Hash256 finalizedBlockHash)
+    private BlockHeader? TryGetHeaderFromBlockCache(Hash256 blockHash)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
-        BlockHeader? finalizedHeader = _blockTree.FindHeader(finalizedBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (finalizedHeader is not null)
+        if (_logger.IsDebug) _logger.Debug("Looking for pivot block in block cache");
+        if (_blockCacheService.BlockCache.TryGetValue(blockHash, out Block? block))
         {
-            if (HeaderValidator.ValidateHash(finalizedHeader))
+            if (HeaderValidator.ValidateHash(block.Header))
             {
-                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
-                return finalizedHeader.Number;
+                if (_logger.IsDebug) _logger.Debug("Found pivot block in block cache");
+                return block.Header;
             }
-            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {finalizedHeader.Hash} when expecting {finalizedBlockHash}");
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block cache is {block.Header.Hash} when expecting {blockHash}");
         }
 
         return null;
     }
+
+    private BlockHeader? TryGetHeaderFromBlockTree(Hash256 blockHash)
+    {
+        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in blockTree");
+        BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+        if (header is not null)
+        {
+            if (HeaderValidator.ValidateHash(header))
+            {
+                if (_logger.IsDebug) _logger.Debug("Found header of pivot block in block tree");
+                return header;
+            }
+            if (_logger.IsDebug) _logger.Debug($"Hash of header found in block tree is {header.Hash} when expecting {blockHash}");
+        }
+
+        return null;
+    }
+
+    private async Task<BlockHeader?> TryGetHeaderFromPeers(Hash256 blockHash, CancellationToken cancellationToken) =>
+        await TryGetFromPeers(blockHash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token));
 
     protected async Task<long?> TryGetFromPeers(Hash256? hash, CancellationToken cancellationToken, string type = Pivot) =>
         (await TryGetFromPeers(hash, cancellationToken, static (peer, hash256, token) => peer.GetHeadBlockHeader(hash256, token), type))?.Number;
@@ -203,15 +228,17 @@ public class StartingSyncPivotUpdater : IDisposable
         return null;
     }
 
-    private bool TryOverwritePivot(Hash256 potentialPivotBlockHash, long potentialPivotBlockNumber)
+    private bool TryOverwritePivot(BlockHeader pivotHeader)
     {
+        long potentialPivotBlockNumber = pivotHeader.Number;
+        Hash256 potentialPivotBlockHash = pivotHeader.Hash!;
         long targetBlock = _beaconSyncStrategy.GetTargetBlockHeight() ?? 0;
         bool isCloseToHead = targetBlock <= potentialPivotBlockNumber || (targetBlock - potentialPivotBlockNumber) < Constants.MaxDistanceFromHead;
         bool newPivotHigherThanOld = potentialPivotBlockNumber > _blockTree.SyncPivot.BlockNumber;
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            UpdateConfigValues(potentialPivotBlockHash, potentialPivotBlockNumber);
+            UpdateConfigValues(pivotHeader);
 
             if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
             return true;
@@ -222,9 +249,20 @@ public class StartingSyncPivotUpdater : IDisposable
         return false;
     }
 
-    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
+    /// <summary>
+    /// Sets the global sync pivot and inserts the pivot header into the block tree.
+    /// The header insert is critical: without it, the pivot block has no ChainLevelInfo entry,
+    /// creating a structural gap between BeaconHeadersSyncFeed (which stops at pivot+1) and
+    /// FastHeadersSyncFeed (which starts at pivot going backward). ChainLevelHelper.GetNextHeaders
+    /// hits this gap and fires OnMissingBeaconHeader, triggering an infinite beacon sync restart loop.
+    /// See NethermindEth/nethermind#6304, #6611.
+    /// </summary>
+    private void UpdateConfigValues(BlockHeader pivotHeader)
     {
-        _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
+        long pivotNumber = pivotHeader.Number;
+        Hash256 pivotHash = pivotHeader.Hash!;
+        _blockTree.SyncPivot = (pivotNumber, pivotHash);
+        _blockTree.Insert(pivotHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
         _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
