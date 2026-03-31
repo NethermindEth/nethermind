@@ -64,7 +64,7 @@ public class NetworkModuleTest
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static WeakReference CreateDisposeAndTrack(IProtocolHandlerFactory handlerFactory)
     {
-        using ISession session = new Session(0, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+        ISession session = new Session(0, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
             Substitute.For<DotNetty.Transport.Channels.IChannel>(),
             Substitute.For<IDisconnectsAnalyzer>(),
             LimboLogs.Instance);
