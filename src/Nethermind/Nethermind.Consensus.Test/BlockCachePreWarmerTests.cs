@@ -178,7 +178,7 @@ public class BlockCachePreWarmerTests
             ConcurrentBag<IReadOnlyTxProcessorSource> disposed)
             : IReadOnlyTxProcessorSource
         {
-            public IReadOnlyTxProcessingScope Build(BlockHeader? baseBlock) =>
+            public IReadOnlyTxProcessingScope Build(BlockHeader baseBlock) =>
                 inner.Build(baseBlock);
 
             public void Dispose()
