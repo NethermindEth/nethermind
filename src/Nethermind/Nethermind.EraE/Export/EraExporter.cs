@@ -40,6 +40,7 @@ public class EraExporter(
 
     private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
+    private const int MaxDefaultConcurrency = 8;
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
     {
@@ -83,9 +84,13 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
 
+        int concurrency = eraConfig.Concurrency == 0
+            ? Math.Min(Environment.ProcessorCount, MaxDefaultConcurrency)
+            : eraConfig.Concurrency;
+
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
-            MaxDegreeOfParallelism = eraConfig.Concurrency == 0 ? Environment.ProcessorCount : eraConfig.Concurrency,
+            MaxDegreeOfParallelism = concurrency,
             CancellationToken = cancellation
         },
         async (epochIdx, cancel) => await WriteEpoch(epochIdx, cancel));
@@ -103,28 +108,30 @@ public class EraExporter(
 
         async Task WriteEpoch(long epochIdx, CancellationToken cancel)
         {
+            int idx = (int)epochIdx;
             long epoch = startEpoch + epochIdx;
-            // Each epoch covers exactly [epoch * eraSize, epoch * eraSize + eraSize - 1].
+            // Each epoch covers [epoch * eraSize, epoch * eraSize + eraSize - 1].
             // Clamp to [from, to] to handle partial first and last epochs.
             long epochBlockStart = epoch * _eraSize;
             long writeFrom = Math.Max(epochBlockStart, from);
             long writeTo = Math.Min(epochBlockStart + _eraSize - 1, to);
 
-            string filePath = Path.Combine(
-                destinationPath,
-                EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
+            if (TrySkipExistingEpoch(destinationPath, epoch, idx, writeFrom, writeTo, accumulators, checksums, fileNames, ref totalProcessed))
+                return;
+
+            string placeholderPath = Path.Combine(destinationPath, EraPathUtils.Filename(_networkName, epoch, Keccak.Zero));
 
             ValueHash256 accumulator;
             ValueHash256 sha256;
             Hash256 lastBlockHash = Keccak.Zero;
 
-            using (EraWriter eraWriter = new(fileSystem.File.Create(filePath), specProvider, beaconRootsProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
             {
-                for (long y = writeFrom; y <= writeTo; y++)
+                for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
-                    Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+                    Block? block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                     if (block is null)
-                        throw new EraException($"Could not find block {y}. The node may not have finished syncing block bodies for this range.");
+                        throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
 
                     // IsPostMerge is not part of the RLP encoding and defaults to false when read from
                     // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
@@ -147,22 +154,22 @@ public class EraExporter(
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
             }
 
-            // Safe concurrent indexed writes: each epoch has a unique epochIdx slot;
+            // Safe concurrent indexed writes: each epoch has a unique idx slot;
             // reads from these arrays happen only after Parallel.ForEachAsync completes.
-            accumulators[(int)epochIdx] = accumulator;
-            checksums[(int)epochIdx] = sha256;
+            accumulators[idx] = accumulator;
+            checksums[idx] = sha256;
             // Filename uses the last block hash as the epoch identifier — same convention as go-ethereum execdb.
             string finalName = EraPathUtils.Filename(_networkName, epoch, lastBlockHash);
-            fileNames[(int)epochIdx] = finalName;
+            fileNames[idx] = finalName;
 
-            string rename = Path.Combine(destinationPath, finalName);
+            string finalPath = Path.Combine(destinationPath, finalName);
             try
             {
                 for (int attempt = 0; ; attempt++)
                 {
                     try
                     {
-                        fileSystem.File.Move(filePath, rename, true);
+                        fileSystem.File.Move(placeholderPath, finalPath, true);
                         break;
                     }
                     catch (IOException) when (attempt < 3)
@@ -173,10 +180,47 @@ public class EraExporter(
             }
             catch
             {
-                fileSystem.File.Delete(filePath);
+                fileSystem.File.Delete(placeholderPath);
                 throw;
             }
         }
+    }
+
+    private bool TrySkipExistingEpoch(
+        string destinationPath,
+        long epoch,
+        int idx,
+        long writeFrom,
+        long writeTo,
+        ArrayPoolList<ValueHash256> accumulators,
+        ArrayPoolList<ValueHash256> checksums,
+        ArrayPoolList<string> fileNames,
+        ref int totalProcessed)
+    {
+        string? existingFile = fileSystem.Directory
+            .EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}")
+            .FirstOrDefault();
+
+        if (existingFile is null)
+            return false;
+
+        fileNames[idx] = Path.GetFileName(existingFile);
+        using EraReader reader = new(existingFile);
+
+        try
+        {
+            accumulators[idx] = reader.ReadAccumulatorRoot();
+        }
+        catch (EraException)
+        {
+            accumulators[idx] = default;
+        }
+
+        checksums[idx] = reader.CalculateChecksum();
+        Interlocked.Add(ref totalProcessed, (int)(writeTo - writeFrom + 1));
+
+        if (_logger.IsDebug) _logger.Debug($"Skipping already exported epoch {epoch}.");
+        return true;
     }
 
     private async Task WriteHashFile(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellation)
