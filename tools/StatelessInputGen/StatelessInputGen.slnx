@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/Nethermind/">
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
+  </Folder>
+  <Project Path="StatelessInputGen.csproj" />
+</Solution>

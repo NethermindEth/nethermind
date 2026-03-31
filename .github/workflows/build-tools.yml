@@ -29,6 +29,7 @@ jobs:
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
+          - StatelessInputGen/StatelessInputGen.slnx
           - TxParser/TxParser.slnx
     steps:
       - name: Check out repository
