@@ -176,10 +176,10 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             AccountTrieNodeBytes = agg.AccountNodeBytes,
             StorageTrieNodeBytes = agg.StorageNodeBytes,
             AccountTrieFullNodes = agg.AccountFullNodes,
-            AccountTrieShortNodes = agg.AccountShortNodes,
+            AccountTrieShortNodes = agg.AccountShortNodes + agg.AccountValueNodes,
             AccountTrieValueNodes = agg.AccountValueNodes,
             StorageTrieFullNodes = agg.StorageFullNodes,
-            StorageTrieShortNodes = agg.StorageShortNodes,
+            StorageTrieShortNodes = agg.StorageShortNodes + agg.StorageValueNodes,
             StorageTrieValueNodes = agg.StorageValueNodes,
             TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, VisitorCounters.CompareByDepth),
             TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, VisitorCounters.CompareByTotalNodes),
@@ -245,15 +245,20 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
         ImmutableArray<TrieLevelStat>.Builder builder = ImmutableArray.CreateBuilder<TrieLevelStat>();
         for (int i = 0; i < depths.Length; i++)
         {
-            if (depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes == 0)
+            // Geth counts valueNode at depth+1 from its leaf shortNode, so
+            // Value[i] in Geth output = leaves physically at depth i-1 in our counter.
+            long shiftedValue = i > 0 ? depths[i - 1].ValueNodes : 0;
+
+            if (depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes == 0
+                && shiftedValue == 0)
                 continue;
 
             builder.Add(new TrieLevelStat
             {
                 Depth = i,
                 FullNodeCount = depths[i].FullNodes,
-                ShortNodeCount = depths[i].ShortNodes,
-                ValueNodeCount = depths[i].ValueNodes,
+                ShortNodeCount = depths[i].ShortNodes + depths[i].ValueNodes,
+                ValueNodeCount = shiftedValue,
                 TotalSize = depths[i].TotalSize,
             });
         }

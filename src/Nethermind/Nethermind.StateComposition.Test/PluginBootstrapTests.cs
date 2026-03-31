@@ -201,7 +201,7 @@ public class PluginBootstrapTests
             depths[i] = c.TopByDepth[i].MaxDepth;
 
         Array.Sort(depths);
-        Assert.That(depths, Is.EqualTo(new[] { 6, 8, 10 }));
+        Assert.That(depths, Is.EqualTo(new[] { 7, 9, 11 })); // +1 Geth convention per depth
     }
 
     [Test]
@@ -223,8 +223,8 @@ public class PluginBootstrapTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(c.StorageMaxDepthHistogram[2], Is.EqualTo(1));
-            Assert.That(c.StorageMaxDepthHistogram[5], Is.EqualTo(2));
+            Assert.That(c.StorageMaxDepthHistogram[3], Is.EqualTo(1)); // raw depth 2 + 1
+            Assert.That(c.StorageMaxDepthHistogram[6], Is.EqualTo(2)); // raw depth 5 + 1
         });
     }
 

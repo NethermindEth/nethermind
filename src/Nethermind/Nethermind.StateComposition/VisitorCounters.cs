@@ -11,7 +11,7 @@ namespace Nethermind.StateComposition;
 /// Mutable counters for ThreadLocal usage in StateCompositionVisitor.
 /// Each worker thread gets its own instance — no locking needed.
 /// Aggregate via MergeFrom() after traversal completes.
-/// Short=Extension, Full=Branch, Value=Leaf.
+/// Short=Extension+Leaf (matches Geth shortNode), Full=Branch, Value=Leaf.
 /// </summary>
 public sealed class VisitorCounters
 {
@@ -133,8 +133,12 @@ public sealed class VisitorCounters
     {
         _hasActiveStorageTrie = false;
 
-        // Update histogram: which depth bucket does this trie's max depth fall into?
-        int depthBucket = Math.Min(_currentStorageMaxDepth, MaxTrackedDepth - 1);
+        // Geth counts the valueNode inside a shortNode as a separate depth level,
+        // so a single-leaf storage trie has MaxDepth=1 in Geth (not 0). Apply +1.
+        int gethMaxDepth = _currentStorageMaxDepth + 1;
+
+        // Update histogram using Geth-compatible depth
+        int depthBucket = Math.Min(gethMaxDepth, MaxTrackedDepth - 1);
         StorageMaxDepthHistogram[depthBucket]++;
 
         // Build per-depth Levels[16] and Summary from current storage depth counters
@@ -144,17 +148,19 @@ public sealed class VisitorCounters
         for (int i = 0; i < MaxTrackedDepth; i++)
         {
             ref DepthCounter dc = ref _currentStorageDepths[i];
+            // Geth counts valueNode at depth+1 from its leaf shortNode
+            long shiftedValue = i > 0 ? _currentStorageDepths[i - 1].ValueNodes : 0;
             levelsBuilder.Add(new TrieLevelStat
             {
                 Depth = i,
-                ShortNodeCount = dc.ShortNodes,
+                ShortNodeCount = dc.ShortNodes + dc.ValueNodes,
                 FullNodeCount = dc.FullNodes,
-                ValueNodeCount = dc.ValueNodes,
+                ValueNodeCount = shiftedValue,
                 TotalSize = dc.TotalSize,
             });
-            summaryShort += dc.ShortNodes;
+            summaryShort += dc.ShortNodes + dc.ValueNodes;
             summaryFull += dc.FullNodes;
-            summaryValue += dc.ValueNodes;
+            summaryValue += dc.ValueNodes; // Real total (not shifted)
             summarySize += dc.TotalSize;
         }
 
@@ -162,8 +168,8 @@ public sealed class VisitorCounters
         {
             Owner = _currentOwner,
             StorageRoot = _currentStorageRoot,
-            MaxDepth = _currentStorageMaxDepth,
-            TotalNodes = _currentStorageNodes,
+            MaxDepth = gethMaxDepth,
+            TotalNodes = _currentStorageNodes + _currentStorageValueNodes,
             ValueNodes = _currentStorageValueNodes,
             TotalSize = _currentStorageTotalSize,
             Levels = levelsBuilder.MoveToImmutable(),
