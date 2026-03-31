@@ -106,7 +106,6 @@ namespace Nethermind.Serialization.Json
                     new DoubleConverter(),
                     new DoubleArrayConverter(),
                     new BooleanConverter(),
-                    new StorageRequestConverter(),
                     new DictionaryAddressKeyConverter(),
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),

@@ -71,7 +71,7 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
-    public const int MaxGetStorageSlots = StorageRequestConverter.MaxSlots;
+    public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -202,21 +202,13 @@ public partial class EthRpcModule(
     }
 
     public ResultWrapper<Dictionary<Address, byte[][]>> eth_getStorageValues(
-        Dictionary<Address, UInt256[]> requests,
+        StorageValuesRequest requests,
         BlockParameter blockParameter)
     {
-        if (requests.Count == 0)
-            return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
+        if (requests.TooManySlots)
+            return TooManySlotsError();
 
-        int totalSlots = 0;
-        foreach (UInt256[] slots in requests.Values)
-        {
-            if (slots.Length > MaxGetStorageSlots - totalSlots)
-                return TooManySlotsError();
-            totalSlots += slots.Length;
-        }
-
-        if (totalSlots == 0)
+        if (requests.Entries.Count == 0 || requests.TotalSlots == 0)
             return ResultWrapper<Dictionary<Address, byte[][]>>.Fail("empty request", ErrorCodes.InvalidParams);
 
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
@@ -227,8 +219,8 @@ public partial class EthRpcModule(
         if (!_blockchainBridge.HasStateForBlock(header))
             return GetStateFailureResult<Dictionary<Address, byte[][]>>(header);
 
-        Dictionary<Address, byte[][]> result = new(requests.Count);
-        foreach (KeyValuePair<Address, UInt256[]> entry in requests)
+        Dictionary<Address, byte[][]> result = new(requests.Entries.Count);
+        foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
         {
             UInt256[] slots = entry.Value;
             byte[][] values = new byte[slots.Length][];
