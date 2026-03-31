@@ -28,7 +28,7 @@ public interface IEraEConfig : IConfig
     [ConfigItem(Description = "Network name used for EraE directory naming. When null, inferred from chain spec.", DefaultValue = "null", HiddenFromDocs = true)]
     string? NetworkName { get; set; }
 
-    [ConfigItem(Description = "Maximum concurrency. 0 uses logical core count.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Export parallelism. 0 = ProcessorCount/4 (default, background-friendly). -1 = all cores. >0 = exact.", DefaultValue = "0", HiddenFromDocs = true)]
     int Concurrency { get; set; }
 
     [ConfigItem(Description = "[Technical] Block buffer size during era import.", DefaultValue = "4096", HiddenFromDocs = true)]

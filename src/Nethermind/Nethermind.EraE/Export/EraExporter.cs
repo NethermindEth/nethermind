@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
-using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -23,8 +22,6 @@ public class EraExporter(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
-    IHardwareInfo hardwareInfo,
-    IInitConfig initConfig,
     ILogManager logManager,
     IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
@@ -43,10 +40,6 @@ public class EraExporter(
 
     private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
-
-    // Each concurrent worker holds one epoch (~8192 blocks + receipts) in memory.
-    // Post-merge mainnet epochs can reach ~1 GB (full blocks, large receipt sets).
-    private const long BytesPerWorker = 1L * 1024 * 1024 * 1024;
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
     {
@@ -128,7 +121,7 @@ public class EraExporter(
             ValueHash256 sha256;
             Hash256 lastBlockHash = Keccak.Zero;
 
-            using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, destinationPath, beaconRootsProvider))
             {
                 for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
@@ -189,17 +182,16 @@ public class EraExporter(
         }
     }
 
-    private int CalculateConcurrency(int configured)
+    // Follows the same convention as FullPruningMaxDegreeOfParallelism / VisitingOptions.AdjustMaxDegreeOfParallelism:
+    //   0  → ProcessorCount / 4 (default: background-friendly, leaves 75% of CPU for the live node)
+    //  -1  → ProcessorCount     (aggressive: fastest export, use when the node has no other responsibilities)
+    //  >0  → exact value
+    private static int CalculateConcurrency(int configured) => configured switch
     {
-        if (configured > 0) return configured;
-
-        // MemoryHint is what Nethermind has allocated to its internal caches (RocksDB, trie, etc.).
-        // The remainder is genuinely free for the export workers.
-        long nodeMemory = initConfig.MemoryHint ?? hardwareInfo.AvailableMemoryBytes / 2;
-        long exportBudget = Math.Max(0, hardwareInfo.AvailableMemoryBytes - nodeMemory);
-        int memoryConcurrency = (int)Math.Max(1, exportBudget / BytesPerWorker);
-        return Math.Min(memoryConcurrency, Environment.ProcessorCount);
-    }
+        0 => Math.Max(Environment.ProcessorCount / 4, 1),
+        < 0 => Environment.ProcessorCount,
+        _ => configured
+    };
 
     private bool TrySkipExistingEpoch(
         string destinationPath,
