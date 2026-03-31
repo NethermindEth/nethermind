@@ -130,10 +130,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 return AnnounceResult.RequestRequired;
             }
 
-            // Lost the race — deactivate and return the unused bag
-            newBag.Deactivate();
-
-            // Got existing entry — return unused bag and update
+            // Lost the race — bag was never published, Return/Reset handles cleanup
             _handlerBagsPool.Return(newBag);
             bag.TryAdd(handler, _maxRetryRequests);
             return AnnounceResult.Delayed;
