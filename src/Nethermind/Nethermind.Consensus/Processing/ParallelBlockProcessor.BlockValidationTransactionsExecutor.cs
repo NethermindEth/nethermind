@@ -80,32 +80,17 @@ public partial class ParallelBlockProcessor
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
         {
             int len = block.Transactions.Length;
-            // ITransactionProcessorAdapter[] transactionProcessors = new ITransactionProcessorAdapter[len];
-            // _intermediateBlockAccessLists = new BlockAccessList[len + 2];
             TransientStorageProvider[] transientStorageProviders = new TransientStorageProvider[len + 2];
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
             TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
 
             for (int i = 0; i < len + 2; i++)
             {
-                // BlockAccessList bal = new()
-                // {
-                //     Index = i
-                // };
-                // _intermediateBlockAccessLists[i] = bal;
                 transientStorageProviders[i] = new(logManager);
             }
 
             for (int i = 0; i < len; i++)
             {
-                // todo: look into reusing / reducing allocation
-                // VirtualMachine virtualMachine = new(blockHashProvider, specProvider, logManager);
-                // ParallelWorldState parallelWorldState = new(stateProvider, specProvider, blocksConfig, i + 1, block, _intermediateBlockAccessLists[i + 1], GeneratedBlockAccessList, transientStorageProviders[i + 1], processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock));
-                // TransactionProcessor<EthereumGasPolicy> transactionProcessor = new(blobBaseFeeCalculator, specProvider, parallelWorldState, virtualMachine, codeInfoRepository, logManager);
-                // ExecuteTransactionProcessorAdapter transactionProcessorAdapter = new(transactionProcessor);
-                // transactionProcessorAdapter.SetBlockExecutionContext(_blockExecutionContext);
-                // transactionProcessors[i] = transactionProcessorAdapter;
-
                 BlockReceiptsTracer tracer = new();
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;

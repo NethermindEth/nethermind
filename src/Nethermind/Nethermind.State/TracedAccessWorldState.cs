@@ -156,6 +156,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public void AddAccountRead(Address address)
         => _generatingBlockAccessList.AddAccountRead(address);
+    
+    public void SetIndex(int index)
+        => _generatingBlockAccessList.Index = index;
 
     public override void Restore(Snapshot snapshot)
     {
