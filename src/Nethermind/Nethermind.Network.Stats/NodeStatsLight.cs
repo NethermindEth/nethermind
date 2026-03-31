@@ -210,29 +210,7 @@ public class NodeStatsLight : INodeStats
 
     public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long bytesPerMillisecond)
     {
-        switch (transferSpeedType)
-        {
-            case TransferSpeedType.Latency:
-                UpdateValue(ref _averageLatency, bytesPerMillisecond);
-                break;
-            case TransferSpeedType.NodeData:
-                UpdateValue(ref _averageNodesTransferSpeed, bytesPerMillisecond);
-                break;
-            case TransferSpeedType.Headers:
-                UpdateValue(ref _averageHeadersTransferSpeed, bytesPerMillisecond);
-                break;
-            case TransferSpeedType.Bodies:
-                UpdateValue(ref _averageBodiesTransferSpeed, bytesPerMillisecond);
-                break;
-            case TransferSpeedType.Receipts:
-                UpdateValue(ref _averageReceiptsTransferSpeed, bytesPerMillisecond);
-                break;
-            case TransferSpeedType.SnapRanges:
-                UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
-        }
+        UpdateValue(ref GetSpeedRef(transferSpeedType), bytesPerMillisecond);
     }
 
     private void UpdateValue(ref float currentValue, float newValue)
@@ -246,21 +224,26 @@ public class NodeStatsLight : INodeStats
 
     public long? GetAverageTransferSpeed(TransferSpeedType transferSpeedType)
     {
-        float value = transferSpeedType switch
-        {
-            TransferSpeedType.Latency => _averageLatency,
-            TransferSpeedType.NodeData => _averageNodesTransferSpeed,
-            TransferSpeedType.Headers => _averageHeadersTransferSpeed,
-            TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
-            TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
-            TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
-            _ => throw new ArgumentOutOfRangeException()
-        };
+        float value = Volatile.Read(ref GetSpeedRef(transferSpeedType));
 
         if (float.IsNaN(value))
             return transferSpeedType == TransferSpeedType.Latency ? int.MaxValue : null;
 
         return (long)value;
+    }
+
+    private ref float GetSpeedRef(TransferSpeedType transferSpeedType)
+    {
+        switch (transferSpeedType)
+        {
+            case TransferSpeedType.Latency: return ref _averageLatency;
+            case TransferSpeedType.NodeData: return ref _averageNodesTransferSpeed;
+            case TransferSpeedType.Headers: return ref _averageHeadersTransferSpeed;
+            case TransferSpeedType.Bodies: return ref _averageBodiesTransferSpeed;
+            case TransferSpeedType.Receipts: return ref _averageReceiptsTransferSpeed;
+            case TransferSpeedType.SnapRanges: return ref _averageSnapRangesTransferSpeed;
+            default: throw new ArgumentOutOfRangeException(nameof(transferSpeedType));
+        }
     }
 
     public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC)
