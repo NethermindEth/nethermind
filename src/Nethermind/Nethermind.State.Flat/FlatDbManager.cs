@@ -363,28 +363,22 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
                 // This wait only occurs after several blocks have already entered the queue without blocking,
                 // so attempting to not block here to avoid blocking block processing is redundant.
-                using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
-                timeoutCts.CancelAfter(_compactorStallTimeout);
-                try
+                TimeSpan delay = _compactorStallTimeout;
+
+                while (true)
                 {
-                    _compactorJobs.Writer.WriteAsync(endBlock, timeoutCts.Token).AsTask().Wait();
-                }
-                catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
-                {
-                    // After the initial stall, retry with shorter intervals so logs become more urgent.
-                    while (true)
+                    using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
+                    cts.CancelAfter(delay);
+
+                    try
                     {
+                        _compactorJobs.Writer.WriteAsync(endBlock, cts.Token).AsTask().Wait();
+                        break;
+                    }
+                    catch (AggregateException ex) when (ex.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
+                    {
+                        delay = TimeSpan.FromSeconds(5);
                         if (_logger.IsWarn) _logger.Warn("Compactor job stall! Persistence is too slow for the network.");
-                        using CancellationTokenSource retryCts = CancellationTokenSource.CreateLinkedTokenSource(_cancelTokenSource.Token);
-                        retryCts.CancelAfter(TimeSpan.FromSeconds(5));
-                        try
-                        {
-                            _compactorJobs.Writer.WriteAsync(endBlock, retryCts.Token).AsTask().Wait();
-                            break;
-                        }
-                        catch (AggregateException retryEx) when (retryEx.InnerException is OperationCanceledException && !_cancelTokenSource.Token.IsCancellationRequested)
-                        {
-                        }
                     }
                 }
             }
