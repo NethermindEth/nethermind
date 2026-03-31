@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
+using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Benchmarks.Store;
 
 [MemoryDiagnoser]
+[SimpleJob(iterationCount: 16)]
 public class PatriciaTreeBulkReadBenchmarks
 {
     private const int TreeSize = 16384;
@@ -109,7 +111,7 @@ public class PatriciaTreeBulkReadBenchmarks
     /// </summary>
     private sealed class CachingSlowTrieStore(IScopedTrieStore inner) : IScopedTrieStore
     {
-        private const int SpinIterations = 50; // ~1µs spin per LoadRlp call
+        private const int SpinIterations = 200; // ~4µs spin per LoadRlp call
         private readonly ConcurrentDictionary<Hash256, TrieNode> _cache = new();
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
