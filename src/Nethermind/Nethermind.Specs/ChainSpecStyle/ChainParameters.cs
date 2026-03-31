@@ -111,6 +111,7 @@ public class ChainParameters
 
     public UInt256? TerminalTotalDifficulty { get; set; }
     public ulong? BeaconChainGenesisTimestamp { get; set; }
+    public long? Eip3651Transition { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
     public long? Eip3855Transition { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }

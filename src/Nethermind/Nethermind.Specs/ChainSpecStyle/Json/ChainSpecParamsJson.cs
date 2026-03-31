@@ -135,6 +135,7 @@ public class ChainSpecParamsJson
 
     public long? Eip1153Transition { get; set; }
     public ulong? Eip1153TransitionTimestamp { get; set; }
+    public long? Eip3651Transition { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
     public long? Eip3855Transition { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
