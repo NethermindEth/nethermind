@@ -2629,6 +2629,45 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_WhenForwardProcessingWithBeaconSyncedDescendants_DoesNotClearMarkers()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+
+        Block[] chain = BuildAndSuggestChain(blockTree, genesis, 4);
+        blockTree.UpdateMainChain(new[] { chain[0] }, wereProcessed: true, forceUpdateHeadBlock: true);
+        for (int i = 1; i < chain.Length; i++)
+            blockTree.UpdateMainChain(new[] { chain[i] }, wereProcessed: false);
+
+        // Forward processing H=2 (forceUpdateHeadBlock: false) must not clear H=3, H=4
+        blockTree.UpdateMainChain(new[] { chain[1] }, wereProcessed: true, forceUpdateHeadBlock: false);
+
+        blockTree.IsMainChain(chain[2].Header).Should().BeTrue("H=3 marker must survive");
+        blockTree.IsMainChain(chain[3].Header).Should().BeTrue("H=4 marker must survive");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void UpdateMainChain_WhenFcuForwardReorgToLongerChain_ClearsStaleMarkersAboveNewHead()
+    {
+        (BlockTree blockTree, Block genesis) = BuildBlockTreeWithGenesis(forceUpdateHead: true);
+
+        Block[] chainA = BuildAndSuggestChain(blockTree, genesis, 4);
+        blockTree.UpdateMainChain(new[] { chainA[0] }, wereProcessed: true, forceUpdateHeadBlock: true);
+        for (int i = 1; i < chainA.Length; i++)
+            blockTree.UpdateMainChain(new[] { chainA[i] }, wereProcessed: false);
+
+        // FCU to chain B at H=3 (forceUpdateHeadBlock: true) must clear A4
+        Block b1 = Build.A.Block.WithNumber(1).WithParent(genesis).WithExtraData([0xBB]).TestObject;
+        Block b2 = Build.A.Block.WithNumber(2).WithParent(b1).WithExtraData([0xBB]).TestObject;
+        Block b3 = Build.A.Block.WithNumber(3).WithParent(b2).WithExtraData([0xBB]).TestObject;
+        blockTree.SuggestBlock(b1);
+        blockTree.SuggestBlock(b2);
+        blockTree.SuggestBlock(b3);
+        blockTree.UpdateMainChain(new[] { b1, b2, b3 }, wereProcessed: true, forceUpdateHeadBlock: true);
+
+        blockTree.IsMainChain(chainA[3].Header).Should().BeFalse("A4 stale marker must be cleared");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void FindBlock_WhenBlockOrphanedAfterReorgInPoS_ReturnsNull()
     {
         // In PoS all blocks share the same cumulative TotalDifficulty (difficulty=0 per block).
