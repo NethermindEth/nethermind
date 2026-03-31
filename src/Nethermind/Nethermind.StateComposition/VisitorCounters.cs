@@ -20,6 +20,17 @@ public sealed class VisitorCounters
     /// </summary>
     public const int MaxTrackedDepth = 16;
 
+    // --- Distribution bucket counts ---
+
+    /// <summary>Balance: 0 | &lt;0.01 ETH | 0.01-1 | 1-10 | 10-100 | 100-1K | 1K-10K | 10K+</summary>
+    public const int BalanceBucketCount = 8;
+
+    /// <summary>Nonce: 0 | 1 | 2-10 | 11-100 | 101-1K | 1K+</summary>
+    public const int NonceBucketCount = 6;
+
+    /// <summary>Slots per contract: 1 | 2-10 | 11-100 | 101-1K | 1K-10K | 10K-100K | 100K+</summary>
+    public const int StorageSlotBucketCount = 7;
+
     private readonly int _topN;
 
     // --- Global counters ---
@@ -27,6 +38,7 @@ public sealed class VisitorCounters
     public long ContractsTotal;
     public long ContractsWithStorage;
     public long StorageSlotsTotal;
+    public long EmptyAccounts;
 
     public long AccountNodeBytes;
     public long StorageNodeBytes;
@@ -44,6 +56,20 @@ public sealed class VisitorCounters
 
     public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
     public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
+
+    // --- Distribution histograms ---
+
+    /// <summary>Balance distribution across 8 buckets (see BalanceBucketCount).</summary>
+    public readonly long[] BalanceBuckets = new long[BalanceBucketCount];
+
+    /// <summary>Nonce distribution across 6 buckets (see NonceBucketCount).</summary>
+    public readonly long[] NonceBuckets = new long[NonceBucketCount];
+
+    /// <summary>Storage slot count distribution across 7 buckets (see StorageSlotBucketCount).</summary>
+    public readonly long[] StorageSlotBuckets = new long[StorageSlotBucketCount];
+
+    /// <summary>Branch occupancy histogram: index i = count of account-trie branches with (i+1) children.</summary>
+    public readonly long[] BranchOccupancyHistogram = new long[MaxTrackedDepth];
 
     // --- Per-contract storage trie tracking ---
     public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
@@ -64,9 +90,11 @@ public sealed class VisitorCounters
     public TopContractEntry[] TopByDepth;
     public TopContractEntry[] TopByNodes;
     public TopContractEntry[] TopByValueNodes;
+    public TopContractEntry[] TopBySize;
     public int TopByDepthCount;
     public int TopByNodesCount;
     public int TopByValueNodesCount;
+    public int TopBySizeCount;
 
     public VisitorCounters(int topN = 20)
     {
@@ -74,7 +102,23 @@ public sealed class VisitorCounters
         TopByDepth = new TopContractEntry[topN];
         TopByNodes = new TopContractEntry[topN];
         TopByValueNodes = new TopContractEntry[topN];
+        TopBySize = new TopContractEntry[topN];
     }
+
+    /// <summary>
+    /// Maps a storage slot count to a distribution bucket index.
+    /// Buckets: 1 | 2-10 | 11-100 | 101-1K | 1K-10K | 10K-100K | 100K+
+    /// </summary>
+    public static int SlotBucket(long slotCount) => slotCount switch
+    {
+        <= 1 => 0,
+        <= 10 => 1,
+        <= 100 => 2,
+        <= 1_000 => 3,
+        <= 10_000 => 4,
+        <= 100_000 => 5,
+        _ => 6,
+    };
 
     /// <summary>
     /// Begin tracking a new storage trie. Finalizes the previous one if active.
@@ -186,6 +230,10 @@ public sealed class VisitorCounters
         TryInsert(TopByDepth, ref TopByDepthCount, entry, CompareByDepth);
         TryInsert(TopByNodes, ref TopByNodesCount, entry, CompareByTotalNodes);
         TryInsert(TopByValueNodes, ref TopByValueNodesCount, entry, CompareByValueNodes);
+        TryInsert(TopBySize, ref TopBySizeCount, entry, CompareBySize);
+
+        // Storage slot distribution bucket
+        StorageSlotBuckets[SlotBucket(_currentStorageValueNodes)]++;
     }
 
     // --- Deterministic multi-field comparators ---
@@ -229,6 +277,18 @@ public sealed class VisitorCounters
         return a.Owner.CompareTo(b.Owner);
     }
 
+    /// <summary>TotalSize DESC → TotalNodes DESC → MaxDepth DESC → Owner bytes ASC</summary>
+    internal static int CompareBySize(in TopContractEntry a, in TopContractEntry b)
+    {
+        int c = a.TotalSize.CompareTo(b.TotalSize);
+        if (c != 0) return c;
+        c = a.TotalNodes.CompareTo(b.TotalNodes);
+        if (c != 0) return c;
+        c = a.MaxDepth.CompareTo(b.MaxDepth);
+        if (c != 0) return c;
+        return a.Owner.CompareTo(b.Owner);
+    }
+
     private delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
 
     private void TryInsert(TopContractEntry[] heap, ref int count, TopContractEntry entry, EntryComparer comparer)
@@ -258,6 +318,7 @@ public sealed class VisitorCounters
         ContractsTotal += other.ContractsTotal;
         ContractsWithStorage += other.ContractsWithStorage;
         StorageSlotsTotal += other.StorageSlotsTotal;
+        EmptyAccounts += other.EmptyAccounts;
 
         AccountNodeBytes += other.AccountNodeBytes;
         StorageNodeBytes += other.StorageNodeBytes;
@@ -286,11 +347,22 @@ public sealed class VisitorCounters
             StorageDepths[i].TotalSize += other.StorageDepths[i].TotalSize;
 
             StorageMaxDepthHistogram[i] += other.StorageMaxDepthHistogram[i];
+            BranchOccupancyHistogram[i] += other.BranchOccupancyHistogram[i];
         }
+
+        for (int i = 0; i < BalanceBucketCount; i++)
+            BalanceBuckets[i] += other.BalanceBuckets[i];
+
+        for (int i = 0; i < NonceBucketCount; i++)
+            NonceBuckets[i] += other.NonceBuckets[i];
+
+        for (int i = 0; i < StorageSlotBucketCount; i++)
+            StorageSlotBuckets[i] += other.StorageSlotBuckets[i];
 
         MergeTopN(TopByDepth, ref TopByDepthCount, other.TopByDepth, other.TopByDepthCount, CompareByDepth);
         MergeTopN(TopByNodes, ref TopByNodesCount, other.TopByNodes, other.TopByNodesCount, CompareByTotalNodes);
         MergeTopN(TopByValueNodes, ref TopByValueNodesCount, other.TopByValueNodes, other.TopByValueNodesCount, CompareByValueNodes);
+        MergeTopN(TopBySize, ref TopBySizeCount, other.TopBySize, other.TopBySizeCount, CompareBySize);
     }
 
     private void MergeTopN(TopContractEntry[] target, ref int targetCount,
