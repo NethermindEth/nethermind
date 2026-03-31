@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using NUnit.Framework;
@@ -147,6 +151,99 @@ public class ScopeProviderTests(bool useFlat)
             }
 
             writeBatch.Set(TestItem.AddressA, null);
+        }
+    }
+
+    [Test]
+    public void Test_ReadBalAsync_MatchesIndividualReads()
+    {
+        using Context ctx = new(useFlat);
+
+        // Setup: write accounts with storage
+        Hash256 stateRoot;
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(null))
+        {
+            using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(2))
+            {
+                writeBatch.Set(TestItem.AddressA, new Account(100, 100));
+                writeBatch.Set(TestItem.AddressB, new Account(200, 200));
+
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageA = writeBatch.CreateStorageWriteBatch(TestItem.AddressA, 2))
+                {
+                    storageA.Set(1, [10, 20]);
+                    storageA.Set(2, [30, 40]);
+                }
+
+                using (IWorldStateScopeProvider.IStorageWriteBatch storageB = writeBatch.CreateStorageWriteBatch(TestItem.AddressB, 1))
+                {
+                    storageB.Set(5, [50, 60]);
+                }
+            }
+
+            scope.Commit(1);
+            stateRoot = scope.RootHash;
+        }
+
+        // Build a BAL referencing these accounts and storage slots
+        BlockAccessList bal = new();
+        bal.AddAccountRead(TestItem.AddressA);
+        bal.AddAccountRead(TestItem.AddressB);
+        bal.AddAccountRead(TestItem.AddressC); // not in state — should be null
+        bal.AddStorageRead(TestItem.AddressA, 1);
+        bal.AddStorageRead(TestItem.AddressA, 2);
+        bal.AddStorageRead(TestItem.AddressB, 5);
+
+        // Collect results via ReadBalAsync
+        CollectingBalSink sink = new();
+        using (IWorldStateScopeProvider.IScope scope = ctx.ScopeProvider.BeginScope(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject))
+        {
+            scope.ReadBalAsync(bal, sink, CancellationToken.None).Wait();
+
+            // Verify accounts match individual reads
+            sink.Accounts.Should().ContainKey(TestItem.AddressA);
+            sink.Accounts[TestItem.AddressA]!.Balance.Should().Be(100);
+
+            sink.Accounts.Should().ContainKey(TestItem.AddressB);
+            sink.Accounts[TestItem.AddressB]!.Balance.Should().Be(200);
+
+            sink.NullAccounts.Should().Contain(TestItem.AddressC);
+
+            // Verify storage matches individual reads
+            IWorldStateScopeProvider.IStorageTree storageTreeA = scope.CreateStorageTree(TestItem.AddressA);
+            IWorldStateScopeProvider.IStorageTree storageTreeB = scope.CreateStorageTree(TestItem.AddressB);
+
+            StorageCell cellA1 = new(TestItem.AddressA, 1);
+            StorageCell cellA2 = new(TestItem.AddressA, 2);
+            StorageCell cellB5 = new(TestItem.AddressB, 5);
+
+            sink.Storage.Should().ContainKey(cellA1);
+            sink.Storage[cellA1].Should().BeEquivalentTo(storageTreeA.Get(1));
+
+            sink.Storage.Should().ContainKey(cellA2);
+            sink.Storage[cellA2].Should().BeEquivalentTo(storageTreeA.Get(2));
+
+            sink.Storage.Should().ContainKey(cellB5);
+            sink.Storage[cellB5].Should().BeEquivalentTo(storageTreeB.Get(5));
+        }
+    }
+
+    private class CollectingBalSink : IWorldStateScopeProvider.IAsyncBalReaderSink
+    {
+        public Dictionary<Address, Account> Accounts { get; } = new();
+        public HashSet<Address> NullAccounts { get; } = new();
+        public Dictionary<StorageCell, byte[]> Storage { get; } = new();
+
+        public void OnAccountRead(Address address, Account account)
+        {
+            if (account is null)
+                NullAccounts.Add(address);
+            else
+                Accounts[address] = account;
+        }
+
+        public void OnStorageRead(in StorageCell storageCell, byte[] value)
+        {
+            Storage[storageCell] = value;
         }
     }
 }

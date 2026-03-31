@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -93,36 +94,117 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
         {
-            foreach (AccountChanges accountChanges in bal.AccountChanges)
+            // Phase 1: Bulk read all accounts from the state trie
+            int accountCount = 0;
+            foreach (AccountChanges _ in bal.AccountChanges)
+                accountCount++;
+
+            if (accountCount == 0)
+                return Task.CompletedTask;
+
+            AccountChanges[] accountChangesList = new AccountChanges[accountCount];
+            ValueHash256[] accountKeys = new ValueHash256[accountCount];
+            int idx = 0;
+            foreach (AccountChanges ac in bal.AccountChanges)
+            {
+                accountChangesList[idx] = ac;
+                KeccakCache.ComputeTo(ac.Address.Bytes, out accountKeys[idx]);
+                idx++;
+            }
+
+            Account?[] accounts = new Account?[accountCount];
+            AccountBulkReadSink accountSink = new(accountChangesList, accounts, sink, this);
+            PatriciaTrieBulkReader.BulkRead(_backingStateTree.TrieStore, _backingStateTree.RootRef, accountKeys, ref accountSink);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Phase 2: Per-account bulk read of storage slots
+            for (int i = 0; i < accountCount; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                Address address = accountChanges.Address;
-                Account? account = Get(address);
-                sink.OnAccountRead(address, account);
+                AccountChanges accountChanges = accountChangesList[i];
+                Account? account = accounts[i];
 
-                IWorldStateScopeProvider.IStorageTree storageTree = CreateStorageTree(address);
+                int slotCount = accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
+                if (slotCount == 0 || account is null)
+                    continue;
+
+                Hash256 storageRoot = account.StorageRoot ?? Keccak.EmptyTreeHash;
+                if (storageRoot == Keccak.EmptyTreeHash)
+                    continue;
+
+                Address address = accountChanges.Address;
+                StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
+                _storages[address] = storageTree;
+
+                ValueHash256[] slotKeys = new ValueHash256[slotCount];
+                UInt256[] slotIndices = new UInt256[slotCount];
+                int si = 0;
 
                 foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    UInt256 slot = slotChanges.Slot;
-                    StorageCell cell = new(address, slot);
-                    byte[] value = storageTree.Get(in slot);
-                    sink.OnStorageRead(in cell, value);
+                    slotIndices[si] = slotChanges.Slot;
+                    StorageTree.ComputeKeyWithLookup(in slotIndices[si], ref slotKeys[si]);
+                    si++;
                 }
 
                 foreach (StorageRead storageRead in accountChanges.StorageReads)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    UInt256 key = storageRead.Key;
-                    StorageCell cell = new(address, key);
-                    byte[] value = storageTree.Get(in key);
-                    sink.OnStorageRead(in cell, value);
+                    slotIndices[si] = storageRead.Key;
+                    StorageTree.ComputeKeyWithLookup(in slotIndices[si], ref slotKeys[si]);
+                    si++;
                 }
+
+                StorageBulkReadSink storageSink = new(address, slotIndices, sink);
+                PatriciaTrieBulkReader.BulkRead(storageTree.TrieStore, storageTree.RootRef, slotKeys, ref storageSink);
             }
 
             return Task.CompletedTask;
+        }
+
+        private struct AccountBulkReadSink(
+            AccountChanges[] accountChangesList,
+            Account?[] accounts,
+            IWorldStateScopeProvider.IAsyncBalReaderSink outerSink,
+            TrieStoreWorldStateBackendScope scope
+        ) : IPatriciaTrieBulkReaderSink<AccountBulkReadSink>
+        {
+            private readonly AccountDecoder _decoder = new();
+
+            public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value)
+            {
+                Account? account = value.IsEmpty ? null : _decoder.Decode(value);
+                accounts[idx] = account;
+
+                Address address = accountChangesList[idx].Address;
+                scope._loadedAccounts.TryAdd(address, account);
+                outerSink.OnAccountRead(address, account);
+            }
+        }
+
+        private struct StorageBulkReadSink(
+            Address address,
+            UInt256[] slotIndices,
+            IWorldStateScopeProvider.IAsyncBalReaderSink outerSink
+        ) : IPatriciaTrieBulkReaderSink<StorageBulkReadSink>
+        {
+            public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value)
+            {
+                byte[] decodedValue;
+                if (value.IsEmpty)
+                {
+                    decodedValue = StorageTree.ZeroBytes;
+                }
+                else
+                {
+                    Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
+                    decodedValue = rlp.DecodeByteArray();
+                }
+
+                StorageCell cell = new(address, slotIndices[idx]);
+                outerSink.OnStorageRead(in cell, decodedValue);
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
