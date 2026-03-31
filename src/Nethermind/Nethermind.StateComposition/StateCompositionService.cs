@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +17,7 @@ namespace Nethermind.StateComposition;
 /// Orchestrates state composition analysis using <see cref="StateCompositionVisitor"/>
 /// and <see cref="IStateReader"/> for trie traversal.
 /// </summary>
-public sealed class StateCompositionService : IStateCompositionService
+public sealed class StateCompositionService : IStateCompositionService, IDisposable
 {
     private readonly IStateReader _stateReader;
     private readonly IStateCompositionStateHolder _stateHolder;
@@ -26,8 +25,9 @@ public sealed class StateCompositionService : IStateCompositionService
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
+    private readonly SemaphoreSlim _inspectLock = new(1, 1);
 
-    private volatile CancellationTokenSource? _currentScanCts;
+    private CancellationTokenSource? _currentScanCts;
     private long _lastScanCompletedTicks;
 
     public StateCompositionService(
@@ -61,25 +61,25 @@ public sealed class StateCompositionService : IStateCompositionService
 
     public async Task<StateCompositionStats> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
-        long now = Environment.TickCount64;
-        long last = Interlocked.Read(ref _lastScanCompletedTicks);
-        long cooldownMs = _config.ScanCooldownSeconds * 1000L;
-        if (last > 0 && now - last < cooldownMs)
-        {
-            long remainingSeconds = (cooldownMs - (now - last)) / 1000;
-            throw new InvalidOperationException(
-                $"Scan cooldown active. Try again in {remainingSeconds} seconds.");
-        }
+        // C-3: Fail-fast — if semaphore not immediately available, reject.
+        // Does not block the calling thread or thread pool.
+        bool acquired = await _scanLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
+        if (!acquired)
+            throw new StateCompositionException(
+                "Scan already in progress. Use statecomp_getCachedStats() for last results.");
 
-        bool acquired = false;
         try
         {
-            acquired = await _scanLock.WaitAsync(
-                TimeSpan.FromSeconds(_config.ScanQueueTimeoutSeconds), ct).ConfigureAwait(false);
-
-            if (!acquired)
-                throw new InvalidOperationException(
-                    "Scan already in progress. Use statecomp_getCachedStats() for last results.");
+            // H-1: Cooldown check INSIDE critical section to prevent bypass via concurrent requests.
+            long now = Environment.TickCount64;
+            long last = Interlocked.Read(ref _lastScanCompletedTicks);
+            long cooldownMs = _config.ScanCooldownSeconds * 1000L;
+            if (last > 0 && now - last < cooldownMs)
+            {
+                long remainingSeconds = (cooldownMs - (now - last)) / 1000;
+                throw new StateCompositionException(
+                    $"Scan cooldown active. Try again in {remainingSeconds} seconds.");
+            }
 
             _stateHolder.MarkScanStarted();
             using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -141,8 +141,7 @@ public sealed class StateCompositionService : IStateCompositionService
         finally
         {
             _currentScanCts = null;
-            if (acquired)
-                _scanLock.Release();
+            _scanLock.Release();
         }
     }
 
@@ -151,45 +150,62 @@ public sealed class StateCompositionService : IStateCompositionService
         if (_stateHolder.IsInitialized)
             return Task.FromResult(_stateHolder.CurrentDistribution);
 
-        throw new InvalidOperationException(
+        throw new StateCompositionException(
             "No cached distribution available. Run statecomp_getStats() first to trigger a scan.");
     }
 
     public async Task<TopContractEntry?> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
     {
-        if (!_stateReader.TryGetAccount(header, address, out AccountStruct account))
-            return null;
+        // M-3: Fail-fast semaphore to prevent concurrent heavy inspections.
+        bool acquired = await _inspectLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
+        if (!acquired)
+            throw new StateCompositionException(
+                "Contract inspection already in progress. Try again later.");
 
-        if (!account.HasStorage)
-            return null;
-
-        ValueHash256 accountHash = ValueKeccak.Compute(address.Bytes);
-        ValueHash256 targetStorageRoot = account.StorageRoot;
-
-        if (_logger.IsInfo)
-            _logger.Info($"StateComposition: inspecting contract {address}, storageRoot={targetStorageRoot}");
-
-        using SingleContractVisitor visitor = new(_logManager, ct, targetStorageRoot);
-
-        VisitingOptions options = new()
+        try
         {
-            MaxDegreeOfParallelism = 1,
-            FullScanMemoryBudget = _config.ScanMemoryBudget,
-        };
+            if (!_stateReader.TryGetAccount(header, address, out AccountStruct account))
+                return null;
 
-        await Task.Run(() =>
-            _stateReader.RunTreeVisitor(visitor, header, options), ct).ConfigureAwait(false);
+            if (!account.HasStorage)
+                return null;
 
-        return visitor.GetResult(accountHash, targetStorageRoot);
+            ValueHash256 accountHash = ValueKeccak.Compute(address.Bytes);
+            ValueHash256 targetStorageRoot = account.StorageRoot;
+
+            if (_logger.IsInfo)
+                _logger.Info($"StateComposition: inspecting contract {address}, storageRoot={targetStorageRoot}");
+
+            using SingleContractVisitor visitor = new(_logManager, ct, targetStorageRoot);
+
+            VisitingOptions options = new()
+            {
+                MaxDegreeOfParallelism = 1,
+                FullScanMemoryBudget = _config.ScanMemoryBudget,
+            };
+
+            await Task.Run(() =>
+                _stateReader.RunTreeVisitor(visitor, header, options), ct).ConfigureAwait(false);
+
+            return visitor.GetResult(accountHash, targetStorageRoot);
+        }
+        finally
+        {
+            _inspectLock.Release();
+        }
     }
 
     public void CancelScan()
     {
+        // H-2: Capture to local variable to prevent TOCTOU race.
         // The CTS may be disposed between our read and Cancel() call
         // if the scan completes concurrently — catch and ignore.
+        CancellationTokenSource? cts = _currentScanCts;
+        if (cts is null) return;
+
         try
         {
-            _currentScanCts?.Cancel();
+            cts.Cancel();
         }
         catch (ObjectDisposedException)
         {
@@ -198,147 +214,11 @@ public sealed class StateCompositionService : IStateCompositionService
     }
 
     /// <summary>
-    /// Specialized visitor that walks the full state trie but only collects storage statistics
-    /// for a single target contract identified by its storage root.
-    /// Skips all non-target storage tries for efficiency.
+    /// Releases the semaphore resources used for rate limiting.
     /// </summary>
-    private sealed class SingleContractVisitor : ITreeVisitor<StateCompositionContext>, IDisposable
+    public void Dispose()
     {
-        private readonly ILogger _logger;
-        private readonly CancellationToken _ct;
-        private readonly ValueHash256 _targetStorageRoot;
-
-        private bool _collectingTarget;
-        private bool _targetCompleted;
-
-        private int _maxDepth;
-        private long _totalNodes;
-        private long _valueNodes;
-        private long _totalSize;
-        private readonly DepthCounter[] _depths = new DepthCounter[VisitorCounters.MaxTrackedDepth];
-
-        public bool IsFullDbScan => true;
-        public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
-        public bool ExpectAccounts => true;
-
-        public SingleContractVisitor(ILogManager logManager, CancellationToken ct, ValueHash256 targetStorageRoot)
-        {
-            _logger = logManager.GetClassLogger();
-            _ct = ct;
-            _targetStorageRoot = targetStorageRoot;
-        }
-
-        public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
-        {
-            if (_ct.IsCancellationRequested) return false;
-            if (_targetCompleted) return false;
-            if (ctx.IsStorage && !_collectingTarget) return false;
-            return true;
-        }
-
-        public void VisitTree(in StateCompositionContext ctx, in ValueHash256 rootHash) { }
-
-        public void VisitMissingNode(in StateCompositionContext ctx, in ValueHash256 nodeHash)
-        {
-            if (_logger.IsWarn)
-                _logger.Warn($"InspectContract: missing node at depth {ctx.Level}");
-        }
-
-        public void VisitBranch(in StateCompositionContext ctx, TrieNode node)
-        {
-            if (!ctx.IsStorage || !_collectingTarget) return;
-            int byteSize = node.FullRlp.Length;
-            int depth = Math.Min(ctx.Level, VisitorCounters.MaxTrackedDepth - 1);
-            _totalNodes++;
-            _totalSize += byteSize;
-            if (ctx.Level > _maxDepth) _maxDepth = ctx.Level;
-            _depths[depth].AddFullNode(byteSize);
-        }
-
-        public void VisitExtension(in StateCompositionContext ctx, TrieNode node)
-        {
-            if (!ctx.IsStorage || !_collectingTarget) return;
-            int byteSize = node.FullRlp.Length;
-            int depth = Math.Min(ctx.Level, VisitorCounters.MaxTrackedDepth - 1);
-            _totalNodes++;
-            _totalSize += byteSize;
-            if (ctx.Level > _maxDepth) _maxDepth = ctx.Level;
-            _depths[depth].AddShortNode(byteSize);
-        }
-
-        public void VisitLeaf(in StateCompositionContext ctx, TrieNode node)
-        {
-            if (!ctx.IsStorage || !_collectingTarget) return;
-            int byteSize = node.FullRlp.Length;
-            int depth = Math.Min(ctx.Level, VisitorCounters.MaxTrackedDepth - 1);
-            _totalNodes++;
-            _valueNodes++;
-            _totalSize += byteSize;
-            if (ctx.Level > _maxDepth) _maxDepth = ctx.Level;
-            _depths[depth].AddValueNode(byteSize);
-        }
-
-        public void VisitAccount(in StateCompositionContext ctx, TrieNode node, in AccountStruct account)
-        {
-            if (_collectingTarget)
-            {
-                _collectingTarget = false;
-                _targetCompleted = true;
-                return;
-            }
-
-            if (!_targetCompleted && account.HasStorage && account.StorageRoot == _targetStorageRoot)
-            {
-                _collectingTarget = true;
-            }
-        }
-
-        public TopContractEntry? GetResult(ValueHash256 owner, ValueHash256 storageRoot)
-        {
-            if (!_collectingTarget && !_targetCompleted)
-                return null;
-
-            ImmutableArray<TrieLevelStat>.Builder levelsBuilder =
-                ImmutableArray.CreateBuilder<TrieLevelStat>(VisitorCounters.MaxTrackedDepth);
-            long summaryShort = 0, summaryFull = 0, summaryValue = 0, summarySize = 0;
-
-            for (int i = 0; i < VisitorCounters.MaxTrackedDepth; i++)
-            {
-                ref DepthCounter dc = ref _depths[i];
-                levelsBuilder.Add(new TrieLevelStat
-                {
-                    Depth = i,
-                    ShortNodeCount = dc.ShortNodes,
-                    FullNodeCount = dc.FullNodes,
-                    ValueNodeCount = dc.ValueNodes,
-                    TotalSize = dc.TotalSize,
-                });
-                summaryShort += dc.ShortNodes;
-                summaryFull += dc.FullNodes;
-                summaryValue += dc.ValueNodes;
-                summarySize += dc.TotalSize;
-            }
-
-            return new TopContractEntry
-            {
-                Owner = owner,
-                StorageRoot = storageRoot,
-                MaxDepth = _maxDepth,
-                TotalNodes = _totalNodes,
-                ValueNodes = _valueNodes,
-                TotalSize = _totalSize,
-                Levels = levelsBuilder.MoveToImmutable(),
-                Summary = new TrieLevelStat
-                {
-                    Depth = -1,
-                    ShortNodeCount = summaryShort,
-                    FullNodeCount = summaryFull,
-                    ValueNodeCount = summaryValue,
-                    TotalSize = summarySize,
-                },
-            };
-        }
-
-        public void Dispose() { }
+        _scanLock.Dispose();
+        _inspectLock.Dispose();
     }
 }

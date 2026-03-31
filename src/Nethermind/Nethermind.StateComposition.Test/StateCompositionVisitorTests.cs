@@ -297,6 +297,37 @@ public class StateCompositionVisitorTests
         Assert.That(dist.StorageMaxDepthHistogram[4], Is.EqualTo(2));
     }
 
+    [Test]
+    public void Visitor_ExcludeStorage_SkipsPerContractTracking()
+    {
+        using StateCompositionVisitor visitor = new(LimboLogs.Instance, excludeStorage: true);
+
+        TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
+        StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Visit account that has storage — ExcludeStorage calls Flush() instead of BeginStorageTrie()
+        AccountStruct accWithStorage = new(0, 0, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
+        visitor.VisitAccount(in accountCtx, node, in accWithStorage);
+
+        // Visit a storage leaf (tree infrastructure still descends)
+        StateCompositionContext storageCtx = new(default, level: 2, isStorage: true, branchChildIndex: null);
+        visitor.VisitLeaf(in storageCtx, node);
+
+        // Flush via a non-storage account
+        AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        visitor.VisitAccount(in accountCtx, node, in eoa);
+
+        StateCompositionStats stats = visitor.GetStats(1, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.AccountsTotal, Is.EqualTo(2));
+            Assert.That(stats.ContractsWithStorage, Is.EqualTo(0)); // Not tracked in ExcludeStorage mode
+            Assert.That(stats.TopContractsByDepth, Has.Length.EqualTo(0)); // No per-contract tracking
+            Assert.That(stats.StorageSlotsTotal, Is.EqualTo(1)); // Storage nodes still counted globally
+        });
+    }
+
     private void SimulateAccounts(int count, bool hasCode, bool hasStorage)
     {
         TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
