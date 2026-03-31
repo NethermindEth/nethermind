@@ -67,9 +67,11 @@ public abstract partial class BaseEngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
-        Action<ContainerBuilder>? configurer = null)
+        Action<ContainerBuilder>? configurer = null,
+        bool allowBeaconHeaderSync = true)
     {
         MergeTestBlockchain bc = CreateBaseBlockchain(mergeConfig);
+        bc.AllowBeaconHeaderSyncOnBuild = allowBeaconHeaderSync;
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -266,9 +268,9 @@ public abstract partial class BaseEngineModuleTests
         }
 
         // Controls whether AllowBeaconHeaderSync() is called during Build().
-        // Set to false in subclasses to simulate the race where StartingSyncPivotUpdater
+        // Set to false to simulate the race where StartingSyncPivotUpdater
         // hasn't run yet when the first FCU arrives.
-        protected virtual bool AllowBeaconHeaderSyncOnBuild => true;
+        public bool AllowBeaconHeaderSyncOnBuild { get; set; } = true;
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
