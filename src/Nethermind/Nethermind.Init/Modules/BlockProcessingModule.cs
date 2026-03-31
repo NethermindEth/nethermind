@@ -59,6 +59,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
+            .AddDecorator<IBlockProcessor, ParallelBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IProcessingStats, ProcessingStats>()

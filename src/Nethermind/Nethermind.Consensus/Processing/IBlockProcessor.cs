@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -39,14 +38,6 @@ namespace Nethermind.Consensus.Processing
         {
             TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token = default);
             void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
-            void SetBlockAccessList(Block block, IReleaseSpec spec);
-            void StoreBeaconRoot(Block block, IReleaseSpec spec);
-            BlockAccessList GeneratedBlockAccessList { get; set; }
-            void Setup(Block block, ProcessingOptions processingOptions);
-            void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
-            void SetGasUsed(long gasUsed);
-            void ProcessWithdrawals(Block block, IReleaseSpec spec);
-            void ProcessExecutionRequests(Block block, IReleaseSpec spec);
         }
     }
 }
