@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -33,12 +34,14 @@ public interface IPatriciaTrieBulkReaderSink<TSelf> where TSelf : IPatriciaTrieB
 /// <summary>
 /// Bulk reader for Patricia tries. Sorts keys by nibble path and traverses the trie once,
 /// fanning out at branch nodes to avoid redundant node resolutions.
+/// Uses 256-way byte sort at even depths (halving sort count) with 16-way fallback for small batches.
 /// Parallelizes at the top level when entry count reaches a threshold.
 /// Mirrors the algorithm from <see cref="PatriciaTree.BulkSet"/>.
 /// </summary>
 public static class PatriciaTrieBulkReader
 {
     private const int MinEntriesToParallelizeThreshold = PatriciaTree.MinEntriesToParallelizeThreshold;
+    private const int MinEntriesForBucketSort256 = 64;
     private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
 
     /// <summary>
@@ -116,7 +119,8 @@ public static class PatriciaTrieBulkReader
         ref TreePath path,
         TrieNode? node,
         int flipCount,
-        ref TReader reader)
+        ref TReader reader,
+        ReadOnlySpan<int> parentCumSlice = default)
         where TReader : struct, IPatriciaTrieBulkReaderSink<TReader>
     {
         if (entries.Length == 1)
@@ -153,49 +157,96 @@ public static class PatriciaTrieBulkReader
         }
 
         Span<int> indexes = stackalloc int[TrieNode.BranchesCount];
-        int nibMask = BucketSort16(entries, sortBuffer, path.Length, indexes);
+        int nibMask;
+        int[]? cumIndexArray = null;
 
-        // After sort, sortBuffer has the sorted entries; swap
-        flipCount++;
-        Span<BulkReadEntry> sorted = sortBuffer;
-        Span<BulkReadEntry> buffer = entries;
-
-        // Parallel path: when enough entries and all 16 nibbles present
-        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch)
+        if (!parentCumSlice.IsEmpty)
         {
-            BulkReadParallel(ctx, trieStore, sorted, buffer, ref path, node, nibMask, indexes, flipCount, reader);
-            return;
-        }
-
-        // Sequential path
-        TrieNode.ChildIterator childIterator = node.CreateChildIterator();
-        path.AppendMut(0);
-
-        while (nibMask != 0)
-        {
-            int nib = BitOperations.TrailingZeroCount(nibMask);
-            nibMask &= nibMask - 1;
-
-            int startRange = indexes[nib];
-            int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : sorted.Length;
-
-            path.SetLast(nib);
-            TrieNode? child = childIterator.GetChildWithChildPath(trieStore, ref path, nib);
-
-            Span<BulkReadEntry> slice = sorted[startRange..endRange];
-            Span<BulkReadEntry> bufSlice = buffer[startRange..endRange];
-
-            if (slice.Length == 1)
+            // Odd depth with precomputed slice from parent's 256-way sort
+            int baseOffset = parentCumSlice[0];
+            nibMask = 0;
+            for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
-                BulkReadOne(trieStore, in slice[0], ref path, child, ref reader);
-            }
-            else
-            {
-                BulkReadRecursive(in ctx, trieStore, slice, bufSlice, ref path, child, flipCount, ref reader);
+                indexes[i] = parentCumSlice[i] - baseOffset;
+                int end = (i < 15) ? parentCumSlice[i + 1] - baseOffset : entries.Length;
+                if (indexes[i] < end)
+                    nibMask |= 1 << i;
             }
         }
+        else if ((path.Length & 1) == 0 && entries.Length >= MinEntriesForBucketSort256)
+        {
+            // Even depth, large: 256-way bucket sort by full byte
+            cumIndexArray = ArrayPool<int>.Shared.Rent(256);
+            Span<int> cumIndex256 = cumIndexArray.AsSpan(0, 256);
+            nibMask = BucketSort256(entries, sortBuffer, path.Length, indexes, cumIndex256);
+            flipCount++;
 
-        path.TruncateOne();
+            Span<BulkReadEntry> newBufferSpan = entries;
+            entries = sortBuffer;
+            sortBuffer = newBufferSpan;
+        }
+        else
+        {
+            // Small or odd depth without precomputed slice: 16-way bucket sort
+            nibMask = BucketSort16(entries, sortBuffer, path.Length, indexes);
+            flipCount++;
+
+            Span<BulkReadEntry> newBufferSpan = entries;
+            entries = sortBuffer;
+            sortBuffer = newBufferSpan;
+        }
+
+        try
+        {
+            // Parallel path: when enough entries and all 16 nibbles present
+            if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch)
+            {
+                // Transfer cumIndexArray ownership to parallel method (it will return it to pool)
+                int[]? parallelCum = cumIndexArray;
+                cumIndexArray = null;
+                BulkReadParallel(ctx, trieStore, entries, sortBuffer, ref path, node, nibMask, indexes, flipCount, parallelCum, reader);
+                return;
+            }
+
+            // Sequential path
+            TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+            path.AppendMut(0);
+
+            while (nibMask != 0)
+            {
+                int nib = BitOperations.TrailingZeroCount(nibMask);
+                nibMask &= nibMask - 1;
+
+                int startRange = indexes[nib];
+                int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : entries.Length;
+
+                path.SetLast(nib);
+                TrieNode? child = childIterator.GetChildWithChildPath(trieStore, ref path, nib);
+
+                Span<BulkReadEntry> slice = entries[startRange..endRange];
+                Span<BulkReadEntry> bufSlice = sortBuffer[startRange..endRange];
+
+                ReadOnlySpan<int> childCumSlice = cumIndexArray is not null
+                    ? cumIndexArray.AsSpan(nib << 4, 16)
+                    : default;
+
+                if (slice.Length == 1)
+                {
+                    BulkReadOne(trieStore, in slice[0], ref path, child, ref reader);
+                }
+                else
+                {
+                    BulkReadRecursive(in ctx, trieStore, slice, bufSlice, ref path, child, flipCount, ref reader, childCumSlice);
+                }
+            }
+
+            path.TruncateOne();
+        }
+        finally
+        {
+            if (cumIndexArray is not null)
+                ArrayPool<int>.Shared.Return(cumIndexArray);
+        }
     }
 
     private static void BulkReadParallel<TReader>(
@@ -208,7 +259,8 @@ public static class PatriciaTrieBulkReader
         int nibMask,
         Span<int> indexes,
         int flipCount,
-        TReader reader) // by value — each parallel worker gets a copy (struct holds refs to shared data)
+        int[]? cumIndexArray,
+        TReader reader) // by value — each parallel worker gets a copy
         where TReader : struct, IPatriciaTrieBulkReaderSink<TReader>
     {
         using ArrayPoolList<(
@@ -222,6 +274,7 @@ public static class PatriciaTrieBulkReader
         BulkReadEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
         BulkReadEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
         TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+        int[]? closureCumIndex = cumIndexArray;
 
         while (nibMask != 0)
         {
@@ -248,7 +301,11 @@ public static class PatriciaTrieBulkReader
                 Span<BulkReadEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
                 Span<BulkReadEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
 
-                TReader localReader = reader; // copy of the struct
+                ReadOnlySpan<int> childCumSlice = closureCumIndex is not null
+                    ? closureCumIndex.AsSpan(nib << 4, 16)
+                    : default;
+
+                TReader localReader = reader;
 
                 if (count == 1)
                 {
@@ -264,10 +321,14 @@ public static class PatriciaTrieBulkReader
                         ref childPath,
                         child,
                         flipCount,
-                        ref localReader);
+                        ref localReader,
+                        childCumSlice);
                 }
             }
         );
+
+        if (cumIndexArray is not null)
+            ArrayPool<int>.Shared.Return(cumIndexArray);
     }
 
     private static void HandleLeafOrExtension<TReader>(
@@ -382,7 +443,6 @@ public static class PatriciaTrieBulkReader
                         return;
                     }
 
-                    // Extension — continue to child
                     path.AppendMut(node.Key);
                     TrieNode? extensionChild = node.GetChildWithChildPath(trieStore, ref path, 0);
                     remainingKey = remainingKey[node.Key.Length..];
@@ -390,13 +450,11 @@ public static class PatriciaTrieBulkReader
                     continue;
                 }
 
-                // No match
                 reader.OnRead(in entry.Path, entry.OriginalIndex, ReadOnlySpan<byte>.Empty);
                 path.TruncateMut(originalPathLength);
                 return;
             }
 
-            // Branch node
             int nib = remainingKey[0];
             path.AppendMut(nib);
             TrieNode? child = node.GetChildWithChildPath(trieStore, ref path, nib);
@@ -435,6 +493,67 @@ public static class PatriciaTrieBulkReader
         return true;
     }
 
+    /// <summary>
+    /// 256-way bucket sort by the full byte at <paramref name="pathIndex"/> / 2.
+    /// Produces a 256-entry cumulative index in <paramref name="cumIndex256"/> and derives
+    /// the 16-entry nibble <paramref name="indexes"/>. Returns a bitmask of used nibbles.
+    /// </summary>
+    internal static int BucketSort256(
+        Span<BulkReadEntry> entries,
+        Span<BulkReadEntry> sortTarget,
+        int pathIndex,
+        Span<int> indexes,
+        Span<int> cumIndex256)
+    {
+        int byteIndex = pathIndex >> 1;
+
+        // Count phase
+        Span<int> counts = stackalloc int[256];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            byte b = entries[i].Path.BytesAsSpan[byteIndex];
+            counts[b]++;
+        }
+
+        // Cumulative starts phase
+        int total = 0;
+        for (int b = 0; b < 256; b++)
+        {
+            cumIndex256[b] = total;
+            total += counts[b];
+        }
+
+        // Derive 16-nibble indexes and usedMask
+        int usedMask = 0;
+        for (int nib = 0; nib < TrieNode.BranchesCount; nib++)
+        {
+            int nibBase = nib << 4;
+            int start = cumIndex256[nibBase];
+            int end = (nib < 15) ? cumIndex256[(nib + 1) << 4] : entries.Length;
+            if (start < end)
+            {
+                usedMask |= 1 << nib;
+                indexes[nib] = cumIndex256[nibBase];
+            }
+        }
+
+        // Copy cumulative starts for scatter (preserves cumIndex256 for child slicing)
+        Span<int> starts = stackalloc int[256];
+        cumIndex256.CopyTo(starts);
+
+        // Scatter phase
+        for (int i = 0; i < entries.Length; i++)
+        {
+            byte b = entries[i].Path.BytesAsSpan[byteIndex];
+            sortTarget[starts[b]++] = entries[i];
+        }
+
+        return usedMask;
+    }
+
+    /// <summary>
+    /// 16-way bucket sort fallback for small entry counts where the 256-way overhead is not worth it.
+    /// </summary>
     internal static int BucketSort16(
         Span<BulkReadEntry> entries,
         Span<BulkReadEntry> sortTarget,
