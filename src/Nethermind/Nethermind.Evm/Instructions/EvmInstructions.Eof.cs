@@ -947,11 +947,7 @@ internal static partial class EvmInstructions
         if ((!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(codeSource))
             || (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(codeSource)))
         {
-            if (TEip8037.IsActive switch
-            {
-                true => !TGasPolicy.ConsumeNewAccountCreation(ref gas),
-                false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-            })
+            if (!TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas))
                 goto OutOfGas;
         }
 
