@@ -7,7 +7,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.State.Snap;
 
@@ -55,6 +57,28 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             GetStorageRangesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, msg);
+        }
+
+        [Test]
+        public void Deserialize_Throws_On_TooMany_Accounts()
+        {
+            GetStorageRangeMessage msg = new()
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                StorageRange = new()
+                {
+                    RootHash = TestItem.KeccakA,
+                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, null), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
+                    StartingHash = TestItem.KeccakB,
+                    LimitHash = TestItem.KeccakC
+                },
+                ResponseBytes = 1000
+            };
+
+            GetStorageRangesMessageSerializer serializer = new();
+            var serialized = serializer.Serialize(msg);
+
+            Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
     }
 }

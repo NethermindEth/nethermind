@@ -28,6 +28,7 @@ public class ParallelWorldState(IWorldState innerWorldState) : WrappedWorldState
 
     public void LoadSuggestedBlockAccessList(BlockAccessList suggested, long gasUsed)
     {
+        GeneratedBlockAccessList = new();
         _suggestedBlockAccessList = suggested;
         _gasUsed = gasUsed;
     }

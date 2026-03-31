@@ -12,10 +12,11 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
+public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null, CancellationToken cancellationToken = default) where T66Msg : IEth66Message
 {
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
@@ -32,6 +33,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
     private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
+    private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;
 
@@ -71,7 +73,8 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
     {
         while (true)
         {
-            await Task.Delay(_oldRequestThreshold);
+            if (!await TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken))
+                break;
 
             foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
             {
@@ -80,6 +83,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
                     if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
                         Interlocked.Decrement(ref _requestCount);
+                        request.Message.TryDispose();
                         // Unblock waiting thread.
                         request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }

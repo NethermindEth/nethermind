@@ -481,7 +481,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
     {
-        return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
+        return data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
+            || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
     }
 
     /// <inheritdoc />

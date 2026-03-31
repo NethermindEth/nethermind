@@ -4,7 +4,6 @@
 
 set -e
 
-# cspell:ignore disappearer's
 ## summary of how this script can be called:
 #        * <postrm> `remove'
 #        * <postrm> `purge'

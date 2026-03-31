@@ -25,7 +25,6 @@ public ref struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
-    public const int ReturnStackSize = 1025;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 

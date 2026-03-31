@@ -204,6 +204,19 @@ public class MessageQueueTests
         _recordedSends.Count.Should().Be(0);
     }
 
+    [Test]
+    public void Handle_disposes_tuple_disposable_component_when_no_current_request()
+    {
+        MessageQueue<GetBlockHeadersMessage, (IDisposable, long)> queue = new(_ => { });
+        IDisposable inner = Substitute.For<IDisposable>();
+
+        queue.Invoking(q => q.Handle((inner, 100L), 100))
+            .Should()
+            .Throw<SubprotocolException>();
+
+        inner.Received().Dispose();
+    }
+
     private static Request<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> CreateRequest()
     {
         return new(new GetBlockHeadersMessage());

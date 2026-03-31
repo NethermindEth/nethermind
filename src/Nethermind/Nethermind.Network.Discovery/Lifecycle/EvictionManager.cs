@@ -13,11 +13,13 @@ public class EvictionManager : IEvictionManager
     private readonly ConcurrentDictionary<Hash256, EvictionPair?> _evictionPairs = new();
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
+    private readonly EventHandler<NodeLifecycleState> _onStateChange;
 
     public EvictionManager(INodeTable nodeTable, ILogManager logManager)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable;
+        _onStateChange = OnStateChange;
     }
 
     public void StartEvictionProcess(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
@@ -35,7 +37,7 @@ public class EvictionManager : IEvictionManager
         }
 
         evictionCandidate.StartEvictionProcess();
-        evictionCandidate.OnStateChanged += OnStateChange;
+        evictionCandidate.OnStateChanged += _onStateChange;
     }
 
     private void OnStateChange(object? sender, NodeLifecycleState state)
@@ -73,7 +75,7 @@ public class EvictionManager : IEvictionManager
 
     private void CloseEvictionProcess(INodeLifecycleManager evictionCandidate)
     {
-        evictionCandidate.OnStateChanged -= OnStateChange;
+        evictionCandidate.OnStateChanged -= _onStateChange;
         _evictionPairs.TryRemove(evictionCandidate.ManagedNode.IdHash, out EvictionPair? _);
     }
 }

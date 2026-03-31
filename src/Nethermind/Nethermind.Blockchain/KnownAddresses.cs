@@ -10,7 +10,6 @@ namespace Nethermind.Blockchain
     {
         public static string GetDescription(Address _) => "?";
 
-        // cspell:ignore xnpool zhizhu
         public static Dictionary<Address, string> KnownMiners = new()
         {
             { new Address("0x002e08000acbbae2155fab7ac01929564949070d"), "2Miners: SOLO" },

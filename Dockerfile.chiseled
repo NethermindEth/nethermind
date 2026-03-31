@@ -12,14 +12,15 @@ ARG TARGETARCH
 WORKDIR /nethermind
 
 COPY src/Nethermind src/Nethermind
-COPY Directory.*.props .
+COPY Directory.*.props Directory.Build.targets ./
 COPY global.json .
 COPY nuget.config .
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \
   dotnet restore --locked-mode && \
-  dotnet publish -c $BUILD_CONFIG -a $arch -o /publish --no-restore --no-self-contained \
+  dotnet restore -r "linux-${arch}" -p:PublishReadyToRun=true && \
+  dotnet publish -c $BUILD_CONFIG -r "linux-${arch}" -o /publish --no-restore --no-self-contained \
     -p:SourceRevisionId=$COMMIT_HASH
 
 # Creating these directories here is needed to ensure the correct permissions
@@ -32,6 +33,8 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0.5-noble-chiseled@sha256:1191b4891ae8b1
 
 WORKDIR /nethermind
 
+# Chiseled image has no shell — large pages cannot be auto-detected.
+# To enable: docker run -e DOTNET_GCLargePages=1 -e DOTNET_GCRegionRange=0x800000000 ...
 VOLUME /nethermind/keystore
 VOLUME /nethermind/logs
 VOLUME /nethermind/nethermind_db

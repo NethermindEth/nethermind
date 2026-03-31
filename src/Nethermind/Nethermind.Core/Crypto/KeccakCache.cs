@@ -113,7 +113,7 @@ public static unsafe class KeccakCache
                 // ARM memory barrier: ensure speculative reads complete before seq2.
                 // On x86/x64 (TSO), loads are never reordered - JIT eliminates this entirely.
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 // Re-read sequence - if changed, a write occurred during our reads
                 if (seq1 == Volatile.Read(ref e.Combined) &&
@@ -132,7 +132,7 @@ public static unsafe class KeccakCache
 
                 // ARM memory barrier (see above)
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 ref byte inputRef = ref MemoryMarshal.GetReference(input);
                 // Re-read sequence and compare
@@ -152,7 +152,7 @@ public static unsafe class KeccakCache
 
                 // ARM memory barrier (see above)
                 if (!Sse.IsSupported)
-                    Thread.MemoryBarrier();
+                    Interlocked.MemoryBarrier();
 
                 if (seq1 == Volatile.Read(ref e.Combined) &&
                     MemoryMarshal.CreateReadOnlySpan(ref copy.Start, input.Length).SequenceEqual(input))

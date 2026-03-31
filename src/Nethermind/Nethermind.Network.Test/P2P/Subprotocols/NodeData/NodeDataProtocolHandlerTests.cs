@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
@@ -92,7 +91,7 @@ public class NodeDataProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
-        IByteBuffer getPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getPacket = _svc.ZeroSerialize(msg).AsDisposable();
         msg.Dispose();
         getPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getPacket) { PacketType = (byte)messageCode });

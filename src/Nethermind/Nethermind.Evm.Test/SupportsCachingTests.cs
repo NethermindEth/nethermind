@@ -12,7 +12,7 @@ public class SupportsCachingTests
 {
     public static IEnumerable<TestCaseData> PrecompilesWithCachingEnabled()
     {
-        yield return new TestCaseData(EcRecoverPrecompile.Instance).SetName(nameof(EcRecoverPrecompile));
+        yield return new TestCaseData(ECRecoverPrecompile.Instance).SetName(nameof(ECRecoverPrecompile));
         yield return new TestCaseData(Sha256Precompile.Instance).SetName(nameof(Sha256Precompile));
         yield return new TestCaseData(Ripemd160Precompile.Instance).SetName(nameof(Ripemd160Precompile));
         yield return new TestCaseData(BN254AddPrecompile.Instance).SetName(nameof(BN254AddPrecompile));
@@ -27,8 +27,8 @@ public class SupportsCachingTests
         yield return new TestCaseData(Bls12381PairingCheckPrecompile.Instance).SetName(nameof(Bls12381PairingCheckPrecompile));
         yield return new TestCaseData(Bls12381FpToG1Precompile.Instance).SetName(nameof(Bls12381FpToG1Precompile));
         yield return new TestCaseData(Bls12381Fp2ToG2Precompile.Instance).SetName(nameof(Bls12381Fp2ToG2Precompile));
-        yield return new TestCaseData(PointEvaluationPrecompile.Instance).SetName(nameof(PointEvaluationPrecompile));
-        yield return new TestCaseData(Secp256r1Precompile.Instance).SetName(nameof(Secp256r1Precompile));
+        yield return new TestCaseData(KzgPointEvaluationPrecompile.Instance).SetName(nameof(KzgPointEvaluationPrecompile));
+        yield return new TestCaseData(SecP256r1Precompile.Instance).SetName(nameof(SecP256r1Precompile));
     }
 
     [TestCaseSource(nameof(PrecompilesWithCachingEnabled))]

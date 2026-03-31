@@ -121,8 +121,6 @@ public class InitializeNetwork : IStep
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
 
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
-
         if (cancellationToken.IsCancellationRequested)
         {
             return;
@@ -140,6 +138,7 @@ public class InitializeNetwork : IStep
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -64,6 +65,16 @@ public class ZeroNettyFrameDecoderTests
     public void Check_and_decrypt(string frame, Delivery delivery, string expectedOutput)
     {
         Test(frame, delivery, expectedOutput);
+    }
+
+    [Test]
+    public void Rejects_frame_exceeding_configured_limit()
+    {
+        byte[] frameBytes = Bytes.FromHexString(BigNewBlockSingleFrame);
+        IByteBuffer input = ReferenceCountUtil.ReleaseLater(Unpooled.WrappedBuffer(frameBytes));
+        ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new(_frameCipher, _macProcessor, Frame.DefaultMaxFrameSize);
+
+        Assert.Throws<CorruptedFrameException>(() => zeroFrameDecoderTestWrapper.Decode(input));
     }
 
     private void Test(string frame, Delivery delivery, string expectedOutput)

@@ -48,7 +48,6 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         networkConfig.LocalIp = networkConfig.ExternalIp = $"192.168.2.{AssignDiscoveryIp()}";
         networkConfig.DiscoveryPort = port;
         networkConfig.P2PPort = port;
-
         IDiscoveryConfig discoveryConfig = configProvider.GetConfig<IDiscoveryConfig>();
         discoveryConfig.DiscoveryVersion = discoveryVersion;
 

@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -38,9 +39,9 @@ public partial class DebugRpcModuleTests
             Blockchain = blockchain;
         }
 
-        public static async Task<Context> Create(bool isAura = false)
+        public static async Task<Context> Create(ISpecProvider? specProvider = null, bool isAura = false)
         {
-            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build();
+            TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(isAura ? SealEngineType.AuRa : SealEngineType.NethDev).Build(specProvider);
 
             IDebugRpcModule debugRpcModule = blockchain.DebugRpcModule;
 

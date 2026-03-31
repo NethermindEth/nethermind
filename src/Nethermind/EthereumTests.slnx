@@ -51,6 +51,7 @@
   <Project Path="Ethereum.Blockchain.Block.Test/Ethereum.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Pyspec.Test/Ethereum.Blockchain.Pyspec.Test.csproj" />
   <Project Path="Ethereum.Difficulty.Test/Ethereum.Difficulty.Test.csproj" />
+  <Project Path="Ethereum.Ssz.Test/Ethereum.Ssz.Test.csproj" />
   <Project Path="Ethereum.HexPrefix.Test/Ethereum.HexPrefix.Test.csproj" />
   <Project Path="Ethereum.KeyAddress.Test/Ethereum.KeyAddress.Test.csproj" />
   <Project Path="Ethereum.KeyStore.Test/Ethereum.KeyStore.Test.csproj" />
@@ -64,7 +65,6 @@
   <Project Path="Ethereum.Transaction.Test/Ethereum.Transaction.Test.csproj" />
   <Project Path="Ethereum.Trie.Test/Ethereum.Trie.Test.csproj" />
   <Project Path="Nethermind.Blockchain.Test.Runner/Nethermind.Blockchain.Test.Runner.csproj" />
-  <Project Path="Nethermind.EofParse.Runner/Nethermind.EofParse.Runner.csproj" />
   <Project Path="Nethermind.State.Test.Runner.Test/Nethermind.State.Test.Runner.Test.csproj" />
   <Project Path="Nethermind.Test.Runner/Nethermind.Test.Runner.csproj" />
 </Solution>

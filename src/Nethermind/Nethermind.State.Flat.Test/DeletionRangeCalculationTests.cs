@@ -101,7 +101,6 @@ public class DeletionRangeCalculationTests
         // === Leaf tests ===
         // Leaf logic changed: now just deletes the whole subtree range (path.ToLowerBound to path.ToUpperBound)
 
-        // cspell:ignore abff
         // Leaf with path prefix "ab" - deletes ab00...00 to abff...ff
         yield return new TestCaseData(
             "ab",

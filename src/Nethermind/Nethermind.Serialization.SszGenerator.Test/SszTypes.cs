@@ -50,6 +50,15 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     [SszSerializable]
+    public struct BitvectorContainer
+    {
+        public ulong Value { get; set; }
+
+        [SszVector(10)]
+        public BitArray? Bits { get; set; }
+    }
+
+    [SszSerializable]
     public struct FixedC
     {
         public ulong Fixed1 { get; set; }

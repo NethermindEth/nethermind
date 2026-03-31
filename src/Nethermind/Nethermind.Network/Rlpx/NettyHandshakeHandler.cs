@@ -155,7 +155,7 @@ namespace Nethermind.Network.Rlpx
                 _service.Agree(_handshake, new Packet(ackData));
             }
 
-            _initCompletionSource?.SetResult(input);
+            _initCompletionSource?.TrySetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
@@ -201,19 +201,17 @@ namespace Nethermind.Network.Rlpx
             try
             {
                 Task<object> receivedInitMsgTask = _initCompletionSource.Task;
-                CancellationTokenSource delayCancellation = new();
+                using CancellationTokenSource delayCancellation = new();
                 Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+                await delayCancellation.CancelAsync();
 
                 if (firstTask != receivedInitMsgTask)
                 {
                     Metrics.HandshakeTimeouts++;
                     if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_session.RemoteNodeId}@{_session.RemoteHost}:{_session.RemotePort}");
                     //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                    _initCompletionSource.TrySetCanceled();
                     await _channel.DisconnectAsync();
-                }
-                else
-                {
-                    delayCancellation.Cancel();
                 }
             }
             catch (Exception ex)

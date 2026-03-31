@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Benchmarks.Core
 {
-    [EvaluateOverhead(false)]
     public class LruCacheKeccakBytesBenchmarks
     {
         [GlobalSetup]

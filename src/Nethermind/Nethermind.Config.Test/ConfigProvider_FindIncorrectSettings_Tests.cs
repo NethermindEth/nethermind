@@ -80,7 +80,6 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         });
     }
 
-    // cspell:ignore concurrenc maxcandidatepercount
     [Test]
     public void SettingWithTypos()
     {

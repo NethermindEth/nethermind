@@ -72,7 +72,7 @@ public abstract class HobbitTestsBase
                 IByteBuffer packetBuffer = embeddedChannel.Allocator.Buffer(rlpPacketType.Length + packet.Data.Length);
                 packetBuffer.WriteBytes(rlpPacketType);
                 packetBuffer.WriteBytes(packet.Data);
-                embeddedChannel.WriteOutbound(packetBuffer);
+                embeddedChannel.WriteOutbound(packetBuffer);  // packetBuffer is released here
             }
             else // allocating
             {
