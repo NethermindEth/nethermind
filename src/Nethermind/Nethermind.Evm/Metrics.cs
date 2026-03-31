@@ -21,7 +21,7 @@ public class Metrics
     private static long _mainCodeDbCache;
     private static long _otherCodeDbCache;
     [Description("Number of Code DB cache reads on main processing thread.")]
-    internal static long MainThreadCodeDbCache => _mainCodeDbCache;
+    public static long MainThreadCodeDbCache => _mainCodeDbCache;
     internal static void IncrementCodeDbCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainCodeDbCache : ref _otherCodeDbCache);
     [CounterMetric]
     [Description("Number of EVM exceptions thrown by contracts.")]
