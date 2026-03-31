@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,14 +16,12 @@ using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationExcep
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Archive;
 
 public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly EraSlimReceiptDecoder _slimReceiptDecoder = new();
-    private readonly ReceiptMessageDecoder _fullReceiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
 
@@ -101,8 +100,11 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     if (!blockValidator.ValidateOrphanedBlock(block, out error))
                         throw new EraVerificationException($"Invalid block {blockNumber}: {error}.");
 
-                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
-                        specProvider.GetReceiptSpec(block.Number), receipts, _fullReceiptDecoder);
+                    // Use ReceiptsRootCalculator (same as ReceiptsSyncFeed) so that pre-EIP-658 blocks
+                    // where PostTransactionState was not preserved in Nethermind's DB are accepted via
+                    // the skip-state-and-status fallback, consistent with how P2P receipt validation works.
+                    IReceiptSpec receiptSpec = specProvider.GetReceiptSpec(block.Number);
+                    Hash256 receiptRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, receiptSpec, block.Header.ReceiptsRoot);
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 
