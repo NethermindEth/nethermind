@@ -14,6 +14,7 @@ public readonly record struct StateCompositionStats
     public long ContractsTotal { get; init; }
     public long ContractsWithStorage { get; init; }
     public long StorageSlotsTotal { get; init; }
+    public long EmptyAccounts { get; init; }
     public long AccountTrieNodeBytes { get; init; }
     public long StorageTrieNodeBytes { get; init; }
     public long AccountTrieFullNodes { get; init; }
@@ -26,4 +27,5 @@ public readonly record struct StateCompositionStats
     public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
+    public ImmutableArray<TopContractEntry> TopContractsBySize { get; init; }
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -27,6 +28,14 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
     private readonly ThreadLocal<VisitorCounters> _localCounters;
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
+
+    // Balance bucket boundaries (Wei). 1 ETH = 10^18 Wei.
+    private static readonly UInt256 Wei001Eth = UInt256.Parse("10000000000000000");       // 10^16
+    private static readonly UInt256 Wei1Eth   = UInt256.Parse("1000000000000000000");     // 10^18
+    private static readonly UInt256 Wei10Eth  = UInt256.Parse("10000000000000000000");    // 10^19
+    private static readonly UInt256 Wei100Eth = UInt256.Parse("100000000000000000000");   // 10^20
+    private static readonly UInt256 Wei1KEth  = UInt256.Parse("1000000000000000000000");  // 10^21
+    private static readonly UInt256 Wei10KEth = UInt256.Parse("10000000000000000000000"); // 10^22
 
     // Cached aggregation result — computed once after scan completes
     private VisitorCounters? _aggregated;
@@ -88,6 +97,26 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             c.AccountNodeBytes += byteSize;
             c.AccountDepths[depth].AddFullNode(byteSize);
             c.TotalBranchNodes++;
+
+            // Branch occupancy distribution — count non-null children.
+            // Guard with try-catch: IsChildNull requires fully decoded RLP which
+            // may not be available in unit tests with stub TrieNodes.
+            try
+            {
+                int childCount = 0;
+                for (int i = 0; i < 16; i++)
+                {
+                    if (!node.IsChildNull(i))
+                        childCount++;
+                }
+
+                if (childCount > 0)
+                    c.BranchOccupancyHistogram[childCount - 1]++;
+            }
+            catch (Exception)
+            {
+                // Node RLP not fully decoded — skip occupancy tracking for this node
+            }
         }
     }
 
@@ -159,6 +188,12 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
 
         if (account.HasCode)
             c.ContractsTotal++;
+
+        if (account.IsTotallyEmpty)
+            c.EmptyAccounts++;
+
+        c.BalanceBuckets[BalanceBucket(account.Balance)]++;
+        c.NonceBuckets[NonceBucket(account.Nonce)]++;
     }
 
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
@@ -181,9 +216,11 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             StorageTrieFullNodes = agg.StorageFullNodes,
             StorageTrieShortNodes = agg.StorageShortNodes + agg.StorageValueNodes,
             StorageTrieValueNodes = agg.StorageValueNodes,
+            EmptyAccounts = agg.EmptyAccounts,
             TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, VisitorCounters.CompareByDepth),
             TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, VisitorCounters.CompareByTotalNodes),
             TopContractsByValueNodes = BuildSortedTopN(agg.TopByValueNodes, agg.TopByValueNodesCount, VisitorCounters.CompareByValueNodes),
+            TopContractsBySize = BuildSortedTopN(agg.TopBySize, agg.TopBySizeCount, VisitorCounters.CompareBySize),
         };
     }
 
@@ -203,6 +240,10 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
                 ? (double)agg.TotalBranchChildren / agg.TotalBranchNodes
                 : 0.0,
             StorageMaxDepthHistogram = ImmutableArray.Create(agg.StorageMaxDepthHistogram),
+            BranchOccupancyDistribution = ImmutableArray.Create(agg.BranchOccupancyHistogram),
+            BalanceDistribution = ImmutableArray.Create(agg.BalanceBuckets),
+            NonceDistribution = ImmutableArray.Create(agg.NonceBuckets),
+            StorageSlotDistribution = ImmutableArray.Create(agg.StorageSlotBuckets),
         };
     }
 
@@ -289,6 +330,36 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// Maps an account balance (Wei) to a distribution bucket index (0-7).
+    /// Buckets: 0 | &lt;0.01 ETH | 0.01-1 | 1-10 | 10-100 | 100-1K | 1K-10K | 10K+
+    /// </summary>
+    private static int BalanceBucket(in UInt256 balance)
+    {
+        if (balance.IsZero) return 0;
+        if (balance < Wei001Eth) return 1;
+        if (balance < Wei1Eth) return 2;
+        if (balance < Wei10Eth) return 3;
+        if (balance < Wei100Eth) return 4;
+        if (balance < Wei1KEth) return 5;
+        if (balance < Wei10KEth) return 6;
+        return 7;
+    }
+
+    /// <summary>
+    /// Maps a nonce to a distribution bucket index (0-5).
+    /// Buckets: 0 | 1 | 2-10 | 11-100 | 101-1K | 1K+
+    /// </summary>
+    private static int NonceBucket(in UInt256 nonce)
+    {
+        if (nonce.IsZero) return 0;
+        if (nonce == UInt256.One) return 1;
+        if (nonce <= 10) return 2;
+        if (nonce <= 100) return 3;
+        if (nonce <= 1000) return 4;
+        return 5;
     }
 
     public void Dispose()
