@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.AuRa
             _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public long GetGasLimit(BlockHeader parentHeader, ulong? newBlockTimestamp = null) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader, newBlockTimestamp);
+        public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 
         private long? GetGasLimitFromContract(BlockHeader parentHeader)
         {

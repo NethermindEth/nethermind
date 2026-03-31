@@ -13,22 +13,17 @@ namespace Nethermind.Consensus
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly IBlocksConfig _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
-        public long GetGasLimit(BlockHeader parentHeader, ulong? newBlockTimestamp = null)
+        public long GetGasLimit(BlockHeader parentHeader)
         {
             long parentGasLimit = parentHeader.GasLimit;
             long gasLimit = parentGasLimit;
 
             long newBlockNumber = parentHeader.Number + 1;
-            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, newBlockTimestamp ?? parentHeader.Timestamp);
+            IReleaseSpec spec = _specProvider.GetSpec(newBlockNumber, parentHeader.Timestamp);
             IReleaseSpec parentSpec = _specProvider.GetSpec(parentHeader);
 
-            if (spec.IsEip7782Enabled && !parentSpec.IsEip7782Enabled)
-            {
-                return Math.Max(parentGasLimit / 2, spec.MinGasLimit);
-            }
-
             long? targetGasLimit = _blocksConfig.TargetBlockGasLimit;
-            if (spec.IsEip7782Enabled && targetGasLimit is not null)
+            if (parentSpec.IsEip7782Enabled && targetGasLimit is not null)
             {
                 targetGasLimit /= 2;
             }
