@@ -329,6 +329,10 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
+        // Remove stale snapshots from a prior fork at or above this block number.
+        // A new block at height N invalidates any existing state at N+ from a different fork.
+        _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);
+
         if (!_snapshotRepository.TryAddSnapshot(snapshot))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
