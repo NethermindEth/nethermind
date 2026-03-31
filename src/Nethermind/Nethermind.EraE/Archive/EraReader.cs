@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -16,12 +15,18 @@ using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationExcep
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Archive;
 
 public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly EraSlimReceiptDecoder _slimReceiptDecoder = new();
+    // Pre-EIP-658 Ethereum receipt trie roots were computed WITHOUT PostTransactionState: [cumGas, bloom, logs].
+    // Post-EIP-658 roots use StatusCode: [status, cumGas, bloom, logs].
+    // Use the appropriate encoder per block to produce the correct trie root.
+    private static readonly ReceiptMessageDecoder _eip658ReceiptEncoder = new();
+    private static readonly ReceiptMessageDecoder _preEip658ReceiptEncoder = new(skipStateAndStatus: true);
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
 
@@ -100,11 +105,12 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     if (!blockValidator.ValidateOrphanedBlock(block, out error))
                         throw new EraVerificationException($"Invalid block {blockNumber}: {error}.");
 
-                    // Use ReceiptsRootCalculator (same as ReceiptsSyncFeed) so that pre-EIP-658 blocks
-                    // where PostTransactionState was not preserved in Nethermind's DB are accepted via
-                    // the skip-state-and-status fallback, consistent with how P2P receipt validation works.
+                    // Pre-EIP-658 Ethereum receipt trie roots omit PostTransactionState entirely: [cumGas, bloom, logs].
+                    // Post-EIP-658 roots include StatusCode: [status, cumGas, bloom, logs].
+                    // Choose the encoder that matches how the original network computed the receipt root.
                     IReceiptSpec receiptSpec = specProvider.GetReceiptSpec(block.Number);
-                    Hash256 receiptRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, receiptSpec, block.Header.ReceiptsRoot);
+                    ReceiptMessageDecoder receiptEncoder = receiptSpec.IsEip658Enabled ? _eip658ReceiptEncoder : _preEip658ReceiptEncoder;
+                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(receiptSpec, receipts, receiptEncoder);
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 
