@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -66,6 +67,17 @@ public class PatriciaTreeBulkReadBenchmarks
         {
             _tree.Get(_readKeys[i].Bytes);
         }
+    }
+
+    [Benchmark]
+    public void ParallelReadOneByOne()
+    {
+        ValueHash256[] keys = _readKeys;
+        PatriciaTree tree = _tree;
+        Parallel.For(0, keys.Length, (i) =>
+        {
+            tree.Get(keys[i].Bytes);
+        });
     }
 
     [Benchmark]

@@ -4,15 +4,19 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
 /// <summary>
 /// Sink that receives values read during a bulk Patricia trie read.
+/// Implementations must be thread-safe when parallelism is enabled.
 /// </summary>
 /// <typeparam name="TSelf">The implementing struct type (for devirtualization).</typeparam>
 public interface IPatriciaTrieBulkReaderSink<TSelf> where TSelf : IPatriciaTrieBulkReaderSink<TSelf>
@@ -29,10 +33,14 @@ public interface IPatriciaTrieBulkReaderSink<TSelf> where TSelf : IPatriciaTrieB
 /// <summary>
 /// Bulk reader for Patricia tries. Sorts keys by nibble path and traverses the trie once,
 /// fanning out at branch nodes to avoid redundant node resolutions.
+/// Parallelizes at the top level when entry count reaches a threshold.
 /// Mirrors the algorithm from <see cref="PatriciaTree.BulkSet"/>.
 /// </summary>
 public static class PatriciaTrieBulkReader
 {
+    private const int MinEntriesToParallelizeThreshold = PatriciaTree.MinEntriesToParallelizeThreshold;
+    private const int FullBranch = (1 << TrieNode.BranchesCount) - 1;
+
     /// <summary>
     /// Entry for bulk reading. Carries the path and the original index in the input span.
     /// </summary>
@@ -56,9 +64,12 @@ public static class PatriciaTrieBulkReader
         }
     }
 
+    private readonly record struct Context(BulkReadEntry[] OriginalEntriesArray, BulkReadEntry[] OriginalSortBufferArray);
+
     /// <summary>
     /// Read all <paramref name="keys"/> from the trie rooted at <paramref name="root"/>,
     /// reporting each result via <paramref name="reader"/>.
+    /// The reader must be thread-safe as results may be reported from multiple threads in parallel.
     /// </summary>
     public static void BulkRead<TReader>(
         IScopedTrieStore trieStore,
@@ -78,23 +89,33 @@ public static class PatriciaTrieBulkReader
             entries[i] = new BulkReadEntry(in keys[i], i);
         }
 
+        Context ctx = new()
+        {
+            OriginalEntriesArray = entries.UnsafeGetInternalArray(),
+            OriginalSortBufferArray = sortBuffer.UnsafeGetInternalArray(),
+        };
+
         TreePath path = TreePath.Empty;
 
         BulkReadRecursive(
+            ctx,
             trieStore,
             entries.AsSpan(),
             sortBuffer.AsSpan(),
             ref path,
             root,
+            0,
             ref reader);
     }
 
     private static void BulkReadRecursive<TReader>(
+        in Context ctx,
         IScopedTrieStore trieStore,
         Span<BulkReadEntry> entries,
         Span<BulkReadEntry> sortBuffer,
         ref TreePath path,
         TrieNode? node,
+        int flipCount,
         ref TReader reader)
         where TReader : struct, IPatriciaTrieBulkReaderSink<TReader>
     {
@@ -106,7 +127,6 @@ public static class PatriciaTrieBulkReader
 
         if (node is null)
         {
-            // All entries miss — report empty for each
             for (int i = 0; i < entries.Length; i++)
             {
                 reader.OnRead(in entries[i].Path, entries[i].OriginalIndex, ReadOnlySpan<byte>.Empty);
@@ -118,14 +138,13 @@ public static class PatriciaTrieBulkReader
 
         if (node.IsLeaf || node.IsExtension)
         {
-            HandleLeafOrExtension(trieStore, entries, sortBuffer, ref path, node, ref reader);
+            HandleLeafOrExtension(ctx, trieStore, entries, sortBuffer, ref path, node, flipCount, ref reader);
             return;
         }
 
         // Branch node — partition entries by nibble and recurse
         if (path.Length >= 64)
         {
-            // Should not happen with valid data
             for (int i = 0; i < entries.Length; i++)
             {
                 reader.OnRead(in entries[i].Path, entries[i].OriginalIndex, ReadOnlySpan<byte>.Empty);
@@ -137,9 +156,18 @@ public static class PatriciaTrieBulkReader
         int nibMask = BucketSort16(entries, sortBuffer, path.Length, indexes);
 
         // After sort, sortBuffer has the sorted entries; swap
+        flipCount++;
         Span<BulkReadEntry> sorted = sortBuffer;
         Span<BulkReadEntry> buffer = entries;
 
+        // Parallel path: when enough entries and all 16 nibbles present
+        if (entries.Length >= MinEntriesToParallelizeThreshold && nibMask == FullBranch)
+        {
+            BulkReadParallel(ctx, trieStore, sorted, buffer, ref path, node, nibMask, indexes, flipCount, reader);
+            return;
+        }
+
+        // Sequential path
         TrieNode.ChildIterator childIterator = node.CreateChildIterator();
         path.AppendMut(0);
 
@@ -163,19 +191,93 @@ public static class PatriciaTrieBulkReader
             }
             else
             {
-                BulkReadRecursive(trieStore, slice, bufSlice, ref path, child, ref reader);
+                BulkReadRecursive(in ctx, trieStore, slice, bufSlice, ref path, child, flipCount, ref reader);
             }
         }
 
         path.TruncateOne();
     }
 
+    private static void BulkReadParallel<TReader>(
+        in Context ctx,
+        IScopedTrieStore trieStore,
+        Span<BulkReadEntry> sorted,
+        Span<BulkReadEntry> buffer,
+        ref TreePath path,
+        TrieNode node,
+        int nibMask,
+        Span<int> indexes,
+        int flipCount,
+        TReader reader) // by value — each parallel worker gets a copy (struct holds refs to shared data)
+        where TReader : struct, IPatriciaTrieBulkReaderSink<TReader>
+    {
+        using ArrayPoolList<(
+            int startIdx,
+            int count,
+            int nibble,
+            TreePath childPath,
+            TrieNode? child
+        )> jobs = new(TrieNode.BranchesCount, TrieNode.BranchesCount);
+
+        BulkReadEntry[] originalEntriesArray = (flipCount % 2 == 0) ? ctx.OriginalEntriesArray : ctx.OriginalSortBufferArray;
+        BulkReadEntry[] originalBufferArray = (flipCount % 2 == 0) ? ctx.OriginalSortBufferArray : ctx.OriginalEntriesArray;
+        TrieNode.ChildIterator childIterator = node.CreateChildIterator();
+
+        while (nibMask != 0)
+        {
+            int nib = BitOperations.TrailingZeroCount(nibMask);
+            nibMask &= nibMask - 1;
+            int startRange = indexes[nib];
+            int endRange = nibMask != 0 ? indexes[BitOperations.TrailingZeroCount(nibMask)] : sorted.Length;
+
+            Span<BulkReadEntry> jobEntry = sorted.Slice(startRange, endRange - startRange);
+
+            TreePath childPath = path.Append(nib);
+            TrieNode? child = childIterator.GetChildWithChildPath(trieStore, ref childPath, nib);
+            jobs[nib] = (GetSpanOffset(originalEntriesArray, jobEntry), jobEntry.Length, nib, childPath, child);
+        }
+
+        Context closureCtx = ctx;
+
+        Parallel.For(0, TrieNode.BranchesCount, ParallelUnbalancedWork.DefaultOptions,
+            (i) =>
+            {
+                (int startIdx, int count, int nib, TreePath childPath, TrieNode? child) = jobs[i];
+                if (count == 0) return;
+
+                Span<BulkReadEntry> jobEntries = originalEntriesArray.AsSpan(startIdx, count);
+                Span<BulkReadEntry> bufferEntries = originalBufferArray.AsSpan(startIdx, count);
+
+                TReader localReader = reader; // copy of the struct
+
+                if (count == 1)
+                {
+                    BulkReadOne(trieStore, in jobEntries[0], ref childPath, child, ref localReader);
+                }
+                else
+                {
+                    BulkReadRecursive(
+                        in closureCtx,
+                        trieStore,
+                        jobEntries,
+                        bufferEntries,
+                        ref childPath,
+                        child,
+                        flipCount,
+                        ref localReader);
+                }
+            }
+        );
+    }
+
     private static void HandleLeafOrExtension<TReader>(
+        in Context ctx,
         IScopedTrieStore trieStore,
         Span<BulkReadEntry> entries,
         Span<BulkReadEntry> sortBuffer,
         ref TreePath path,
         TrieNode node,
+        int flipCount,
         ref TReader reader)
         where TReader : struct, IPatriciaTrieBulkReaderSink<TReader>
     {
@@ -183,7 +285,6 @@ public static class PatriciaTrieBulkReader
 
         if (node.IsLeaf)
         {
-            // Leaf: only matches if remaining nibbles == node.Key for an entry
             for (int i = 0; i < entries.Length; i++)
             {
                 if (MatchesRemainingKey(in entries[i], path.Length, nodeKey))
@@ -199,8 +300,7 @@ public static class PatriciaTrieBulkReader
         }
         else
         {
-            // Extension: check if entries share the extension prefix, then recurse into child
-            // Partition entries: those that match the extension prefix continue, others miss
+            // Extension: partition entries matching the prefix, recurse into child
             int matchCount = 0;
             for (int i = 0; i < entries.Length; i++)
             {
@@ -220,7 +320,6 @@ public static class PatriciaTrieBulkReader
                 TrieNode? child = node.GetChildWithChildPath(trieStore, ref path, 0);
 
                 Span<BulkReadEntry> matched = sortBuffer[..matchCount];
-                // Reuse entries span as scratch for the next level
                 Span<BulkReadEntry> scratch = entries[..matchCount];
 
                 if (matchCount == 1)
@@ -229,7 +328,7 @@ public static class PatriciaTrieBulkReader
                 }
                 else
                 {
-                    BulkReadRecursive(trieStore, matched, scratch, ref path, child, ref reader);
+                    BulkReadRecursive(in ctx, trieStore, matched, scratch, ref path, child, flipCount, ref reader);
                 }
 
                 path.TruncateMut(path.Length - nodeKey.Length);
@@ -306,14 +405,9 @@ public static class PatriciaTrieBulkReader
         }
     }
 
-    /// <summary>
-    /// Check if entry nibbles starting at <paramref name="pathLength"/> match <paramref name="nodeKey"/> exactly
-    /// (for leaf nodes, remaining path must equal node key).
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool MatchesRemainingKey(in BulkReadEntry entry, int pathLength, ReadOnlySpan<byte> nodeKey)
     {
-        // Remaining nibbles must be exactly nodeKey.Length, and each nibble must match
         if (64 - pathLength != nodeKey.Length)
             return false;
 
@@ -326,9 +420,6 @@ public static class PatriciaTrieBulkReader
         return true;
     }
 
-    /// <summary>
-    /// Check if entry nibbles starting at <paramref name="pathLength"/> start with <paramref name="prefix"/>.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool MatchesPrefix(in BulkReadEntry entry, int pathLength, ReadOnlySpan<byte> prefix)
     {
@@ -344,10 +435,6 @@ public static class PatriciaTrieBulkReader
         return true;
     }
 
-    /// <summary>
-    /// Bucket sort entries by nibble at <paramref name="pathIndex"/>.
-    /// Output goes to <paramref name="sortTarget"/>. Returns a bitmask of used nibbles.
-    /// </summary>
     internal static int BucketSort16(
         Span<BulkReadEntry> entries,
         Span<BulkReadEntry> sortTarget,
@@ -385,5 +472,13 @@ public static class PatriciaTrieBulkReader
         }
 
         return usedMask;
+    }
+
+    private static int GetSpanOffset(BulkReadEntry[] array, Span<BulkReadEntry> span)
+    {
+        ref BulkReadEntry spanRef = ref MemoryMarshal.GetReference(span);
+        ref BulkReadEntry arrRef = ref MemoryMarshal.GetArrayDataReference(array);
+
+        return (int)(Unsafe.ByteOffset(ref arrRef, ref spanRef) / Unsafe.SizeOf<BulkReadEntry>());
     }
 }

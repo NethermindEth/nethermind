@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -256,6 +258,90 @@ public class PatriciaTrieBulkReaderTests
             ReadOnlySpan<byte> expected = tree.Get(insertKeys[15 - i].Bytes);
             sink.Results[i].Should().BeEquivalentTo(expected.ToArray(), $"index {i} should map to key {15 - i}");
         }
+    }
+
+    [TestCase(16)]
+    [TestCase(64)]
+    [TestCase(256)]
+    [TestCase(1024)]
+    public void BulkRead_vs_OneByOne_vs_ParallelFor(int keyCount)
+    {
+        const int treeSize = 4096;
+        const int warmup = 5;
+        const int iterations = 100;
+
+        TestMemDb db = new();
+        IScopedTrieStore trieStore = new RawScopedTrieStore(db);
+        PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+
+        Random rng = new(42);
+        ValueHash256[] allKeys = new ValueHash256[treeSize];
+
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(treeSize);
+        for (int i = 0; i < treeSize; i++)
+        {
+            byte[] keyBuffer = new byte[32];
+            rng.NextBytes(keyBuffer);
+            allKeys[i] = new ValueHash256(keyBuffer);
+            byte[] valueBuffer = new byte[32];
+            rng.NextBytes(valueBuffer);
+            entries.Add(new PatriciaTree.BulkSetEntry(in allKeys[i], valueBuffer));
+        }
+        tree.BulkSet(entries);
+        tree.Commit();
+
+        ValueHash256[] readKeys = new ValueHash256[keyCount];
+        Random readRng = new(123);
+        for (int i = 0; i < keyCount; i++)
+        {
+            readKeys[i] = allKeys[readRng.Next(treeSize)];
+        }
+
+        // Warmup all paths
+        for (int w = 0; w < warmup; w++)
+        {
+            for (int i = 0; i < readKeys.Length; i++) tree.Get(readKeys[i].Bytes);
+            NoOpSink sink = default;
+            PatriciaTrieBulkReader.BulkRead(trieStore, tree.RootRef, readKeys, ref sink);
+            Parallel.For(0, readKeys.Length, (i) => tree.Get(readKeys[i].Bytes));
+        }
+
+        // Measure one-by-one
+        long sw1 = Stopwatch.GetTimestamp();
+        for (int iter = 0; iter < iterations; iter++)
+        {
+            for (int i = 0; i < readKeys.Length; i++) tree.Get(readKeys[i].Bytes);
+        }
+        TimeSpan oneByOneTime = Stopwatch.GetElapsedTime(sw1);
+
+        // Measure Parallel.For on individual reads
+        long sw2 = Stopwatch.GetTimestamp();
+        for (int iter = 0; iter < iterations; iter++)
+        {
+            Parallel.For(0, readKeys.Length, (i) => tree.Get(readKeys[i].Bytes));
+        }
+        TimeSpan parallelForTime = Stopwatch.GetElapsedTime(sw2);
+
+        // Measure BulkRead
+        long sw3 = Stopwatch.GetTimestamp();
+        for (int iter = 0; iter < iterations; iter++)
+        {
+            NoOpSink sink = default;
+            PatriciaTrieBulkReader.BulkRead(trieStore, tree.RootRef, readKeys, ref sink);
+        }
+        TimeSpan bulkTime = Stopwatch.GetElapsedTime(sw3);
+
+        double oneByOneUs = oneByOneTime.TotalMicroseconds / iterations;
+        double parallelForUs = parallelForTime.TotalMicroseconds / iterations;
+        double bulkUs = bulkTime.TotalMicroseconds / iterations;
+
+        string msg = $"Keys={keyCount} | OneByOne={oneByOneUs:F1}us | Parallel.For={parallelForUs:F1}us | BulkRead={bulkUs:F1}us | Bulk/OneByOne={oneByOneUs / bulkUs:F2}x | Bulk/Parallel={parallelForUs / bulkUs:F2}x";
+        Assert.Warn(msg);
+    }
+
+    private struct NoOpSink : IPatriciaTrieBulkReaderSink<NoOpSink>
+    {
+        public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value) { }
     }
 
     private static List<(Hash256 key, byte[] value)> GenRandomEntries(int count, Random rng)
