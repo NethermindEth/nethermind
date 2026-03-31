@@ -44,7 +44,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _maxRetryRequests = maxRetryRequests;
         _mainLoopTask = Task.Run(async () =>
         {
-            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_checkMs));
 
             while (await timer.WaitForNextTickAsync(token))
             {

@@ -385,7 +385,7 @@ public class DiscoveryApp : IDiscoveryApp
     {
         byte[] randomId = new byte[64];
         CancellationToken cancellationToken = _stopCts.Token;
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
+        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(10));
 
         long lastTickMs = Environment.TickCount64;
         long waitTimeTimeMs = 10;

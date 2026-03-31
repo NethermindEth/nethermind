@@ -207,10 +207,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _ = Task.Run(async () =>
         {
             long sw = Stopwatch.GetTimestamp();
+            using CancellationTokenSource cts = new();
             while (true)
             {
-                Task delayTask = Task.Delay(slowTime);
-                if (await Task.WhenAny(jobTask, delayTask) == jobTask) break;
+                Task delayTask = Task.Delay(slowTime, cts.Token);
+                if (await Task.WhenAny(jobTask, delayTask) == jobTask)
+                {
+                    await cts.CancelAsync();
+                    break;
+                }
                 if (_logger.IsWarn) _logger.Warn($"Slow task \"{name}\". Took {Stopwatch.GetElapsedTime(sw)}");
             }
         });

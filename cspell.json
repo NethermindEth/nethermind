@@ -6,6 +6,7 @@
   "ignoreRandomStrings": true,
   "unknownWords": "report-common-typos",
   "ignorePaths": [
+    ".gitignore",
     "**/*.json",
     "**/*.zst",
     "**/artifacts/**",

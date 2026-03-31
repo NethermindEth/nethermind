@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.Processing
 
                     if (gasRemaining is not null)
                     {
-                        gasRemaining -= currentTx.SpentGas;
+                        gasRemaining -= currentTx.BlockGasUsed;
                         _balBuilder.ValidateBlockAccessList(block.Header, (ushort)(i + 1), gasRemaining!.Value);
                     }
                 }

@@ -15,7 +15,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
     [Test]
@@ -120,4 +120,5 @@ public class TransactionJsonTest : GeneralStateTestBase
             "invalid AccessList tx on pre-Berlin fork should not mutate state");
         result.Pass.Should().BeTrue();
     }
+
 }
