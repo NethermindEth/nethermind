@@ -3,9 +3,7 @@
   "Init": {
     "ChainSpecPath": "chainspec/xdc.json",
     "BaseDbPath": "nethermind_db/xdc",
-    "LogFileName": "xdc.log",
-    "StateDbKeyScheme": "Hash",
-    "AutoDump": "All"
+    "LogFileName": "xdc.log"
   },
   "TxPool": {
     "BlobsSupport": "Disabled"
@@ -21,12 +19,6 @@
     "AncientReceiptsBarrier": 80368000
   },
   "Merge": {
-    "Enabled": false
-  },
-  "JsonRpc": {
-    "Enabled": false
-  },
-  "TraceStore": {
     "Enabled": false
   }
 }
