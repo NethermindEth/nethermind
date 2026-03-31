@@ -360,13 +360,13 @@ namespace Nethermind.Xdc
             }
 
             // Check voting rule            
-            if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string error))   
+            if (!head.IsSelfMined && !_votesManager.VerifyVotingRules(head, out string error))
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Round {votingRound}: Voting rule not satisfied for block #{head.Number}, hash={head.Hash}: {error}");
                 return;
             }
-                
+
             try
             {
                 BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
