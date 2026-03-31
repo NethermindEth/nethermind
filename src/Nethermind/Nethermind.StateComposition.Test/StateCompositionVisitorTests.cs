@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -325,6 +326,216 @@ public class StateCompositionVisitorTests
             Assert.That(stats.ContractsWithStorage, Is.EqualTo(0)); // Not tracked in ExcludeStorage mode
             Assert.That(stats.TopContractsByDepth, Has.Length.EqualTo(0)); // No per-contract tracking
             Assert.That(stats.StorageSlotsTotal, Is.EqualTo(1)); // Storage nodes still counted globally
+        });
+    }
+
+    [Test]
+    public void Visitor_CountsEmptyAccounts()
+    {
+        TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Totally empty: zero balance, zero nonce, no code, no storage
+        AccountStruct empty = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Not empty: has balance
+        AccountStruct withBalance = new(0, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+
+        _visitor.VisitAccount(in ctx, node, in empty);
+        _visitor.VisitAccount(in ctx, node, in empty);
+        _visitor.VisitAccount(in ctx, node, in withBalance);
+
+        StateCompositionStats stats = _visitor.GetStats(1, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.AccountsTotal, Is.EqualTo(3));
+            Assert.That(stats.EmptyAccounts, Is.EqualTo(2));
+        });
+    }
+
+    [Test]
+    public void Visitor_BalanceDistribution_BucketsCorrectly()
+    {
+        TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Bucket 0: zero balance
+        AccountStruct b0 = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 1: < 0.01 ETH (1 Wei)
+        AccountStruct b1 = new(0, 1, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 2: 0.01-1 ETH (0.5 ETH = 5*10^17)
+        AccountStruct b2 = new(0, UInt256.Parse("500000000000000000"), Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 3: 1-10 ETH (5 ETH = 5*10^18)
+        AccountStruct b3 = new(0, UInt256.Parse("5000000000000000000"), Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 7: 10K+ ETH (50K ETH = 5*10^22)
+        AccountStruct b7 = new(0, UInt256.Parse("50000000000000000000000"), Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+
+        _visitor.VisitAccount(in ctx, node, in b0);
+        _visitor.VisitAccount(in ctx, node, in b1);
+        _visitor.VisitAccount(in ctx, node, in b2);
+        _visitor.VisitAccount(in ctx, node, in b3);
+        _visitor.VisitAccount(in ctx, node, in b7);
+
+        TrieDepthDistribution dist = _visitor.GetTrieDistribution();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dist.BalanceDistribution, Has.Length.EqualTo(VisitorCounters.BalanceBucketCount));
+            Assert.That(dist.BalanceDistribution[0], Is.EqualTo(1), "Bucket 0: zero");
+            Assert.That(dist.BalanceDistribution[1], Is.EqualTo(1), "Bucket 1: <0.01 ETH");
+            Assert.That(dist.BalanceDistribution[2], Is.EqualTo(1), "Bucket 2: 0.01-1 ETH");
+            Assert.That(dist.BalanceDistribution[3], Is.EqualTo(1), "Bucket 3: 1-10 ETH");
+            Assert.That(dist.BalanceDistribution[7], Is.EqualTo(1), "Bucket 7: 10K+ ETH");
+        });
+    }
+
+    [Test]
+    public void Visitor_NonceDistribution_BucketsCorrectly()
+    {
+        TrieNode node = new(NodeType.Leaf, new byte[] { 0xc0 });
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Bucket 0: nonce 0
+        AccountStruct n0 = new(0, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 1: nonce 1
+        AccountStruct n1 = new(1, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 2: nonce 2-10
+        AccountStruct n5 = new(5, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 3: nonce 11-100
+        AccountStruct n50 = new(50, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 4: nonce 101-1000
+        AccountStruct n500 = new(500, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        // Bucket 5: nonce 1000+
+        AccountStruct n5000 = new(5000, 100, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+
+        _visitor.VisitAccount(in ctx, node, in n0);
+        _visitor.VisitAccount(in ctx, node, in n1);
+        _visitor.VisitAccount(in ctx, node, in n5);
+        _visitor.VisitAccount(in ctx, node, in n50);
+        _visitor.VisitAccount(in ctx, node, in n500);
+        _visitor.VisitAccount(in ctx, node, in n5000);
+
+        TrieDepthDistribution dist = _visitor.GetTrieDistribution();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dist.NonceDistribution, Has.Length.EqualTo(VisitorCounters.NonceBucketCount));
+            Assert.That(dist.NonceDistribution[0], Is.EqualTo(1), "Bucket 0: nonce=0");
+            Assert.That(dist.NonceDistribution[1], Is.EqualTo(1), "Bucket 1: nonce=1");
+            Assert.That(dist.NonceDistribution[2], Is.EqualTo(1), "Bucket 2: nonce 2-10");
+            Assert.That(dist.NonceDistribution[3], Is.EqualTo(1), "Bucket 3: nonce 11-100");
+            Assert.That(dist.NonceDistribution[4], Is.EqualTo(1), "Bucket 4: nonce 101-1K");
+            Assert.That(dist.NonceDistribution[5], Is.EqualTo(1), "Bucket 5: nonce 1K+");
+        });
+    }
+
+    [Test]
+    public void Visitor_BranchOccupancyDistribution_HasCorrectShape()
+    {
+        // Stub TrieNodes don't have fully decoded RLP, so IsChildNull will be
+        // caught by the try-catch guard. This test verifies the distribution
+        // array is correctly shaped and returned via GetTrieDistribution().
+        byte[] rlp = new byte[] { 0xc0 };
+        TrieNode branchNode = new(NodeType.Branch, rlp);
+
+        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+        _visitor.VisitBranch(in ctx, branchNode);
+
+        TrieDepthDistribution dist = _visitor.GetTrieDistribution();
+
+        Assert.That(dist.BranchOccupancyDistribution, Has.Length.EqualTo(VisitorCounters.MaxTrackedDepth));
+    }
+
+    [Test]
+    public void Visitor_StorageSlotDistribution_PopulatedCorrectly()
+    {
+        TrieNode leafNode = new(NodeType.Leaf, new byte[] { 0xc0, 0x01 });
+        StateCompositionContext storageCtx = new(default, level: 2, isStorage: true, branchChildIndex: null);
+        StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Contract 1: 1 storage slot → bucket 0
+        AccountStruct acc1 = new(0, 0, Keccak.Compute("root1").ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc1);
+        _visitor.VisitLeaf(in storageCtx, leafNode);
+
+        // Contract 2: 5 storage slots → bucket 1 (2-10)
+        AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc2);
+        for (int i = 0; i < 5; i++)
+            _visitor.VisitLeaf(in storageCtx, leafNode);
+
+        // Flush via non-storage account
+        AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in eoa);
+
+        TrieDepthDistribution dist = _visitor.GetTrieDistribution();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dist.StorageSlotDistribution, Has.Length.EqualTo(VisitorCounters.StorageSlotBucketCount));
+            Assert.That(dist.StorageSlotDistribution[0], Is.EqualTo(1), "Bucket 0: 1 slot");
+            Assert.That(dist.StorageSlotDistribution[1], Is.EqualTo(1), "Bucket 1: 2-10 slots");
+        });
+    }
+
+    [Test]
+    public void Visitor_TopContractsBySize_RankedCorrectly()
+    {
+        StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
+
+        // Contract 1: small storage (1 leaf of 2 bytes)
+        byte[] smallRlp = new byte[] { 0xc0, 0x01 };
+        TrieNode smallLeaf = new(NodeType.Leaf, smallRlp);
+        StateCompositionContext storageCtx = new(default, level: 2, isStorage: true, branchChildIndex: null);
+
+        AccountStruct acc1 = new(0, 0, Keccak.Compute("root1").ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc1);
+        _visitor.VisitLeaf(in storageCtx, smallLeaf);
+
+        // Contract 2: larger storage (3 leaves of 50 bytes each)
+        byte[] bigRlp = new byte[50];
+        bigRlp[0] = 0xc0;
+        TrieNode bigLeaf = new(NodeType.Leaf, bigRlp);
+
+        AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in acc2);
+        _visitor.VisitLeaf(in storageCtx, bigLeaf);
+        _visitor.VisitLeaf(in storageCtx, bigLeaf);
+        _visitor.VisitLeaf(in storageCtx, bigLeaf);
+
+        // Flush
+        AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+        _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, new byte[] { 0xc0 }), in eoa);
+
+        StateCompositionStats stats = _visitor.GetStats(1, null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stats.TopContractsBySize, Has.Length.EqualTo(2));
+            // Sorted descending by size — contract 2 (3×50=150) > contract 1 (1×2=2)
+            Assert.That(stats.TopContractsBySize[0].TotalSize, Is.GreaterThan(stats.TopContractsBySize[1].TotalSize));
+        });
+    }
+
+    [Test]
+    public void SlotBucket_BoundaryValues()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(VisitorCounters.SlotBucket(0), Is.EqualTo(0));
+            Assert.That(VisitorCounters.SlotBucket(1), Is.EqualTo(0));
+            Assert.That(VisitorCounters.SlotBucket(2), Is.EqualTo(1));
+            Assert.That(VisitorCounters.SlotBucket(10), Is.EqualTo(1));
+            Assert.That(VisitorCounters.SlotBucket(11), Is.EqualTo(2));
+            Assert.That(VisitorCounters.SlotBucket(100), Is.EqualTo(2));
+            Assert.That(VisitorCounters.SlotBucket(101), Is.EqualTo(3));
+            Assert.That(VisitorCounters.SlotBucket(1000), Is.EqualTo(3));
+            Assert.That(VisitorCounters.SlotBucket(1001), Is.EqualTo(4));
+            Assert.That(VisitorCounters.SlotBucket(10000), Is.EqualTo(4));
+            Assert.That(VisitorCounters.SlotBucket(10001), Is.EqualTo(5));
+            Assert.That(VisitorCounters.SlotBucket(100000), Is.EqualTo(5));
+            Assert.That(VisitorCounters.SlotBucket(100001), Is.EqualTo(6));
+            Assert.That(VisitorCounters.SlotBucket(1000000), Is.EqualTo(6));
         });
     }
 
