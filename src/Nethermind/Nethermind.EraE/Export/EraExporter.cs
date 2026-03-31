@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -22,6 +23,8 @@ public class EraExporter(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraEConfig eraConfig,
+    IHardwareInfo hardwareInfo,
+    IInitConfig initConfig,
     ILogManager logManager,
     IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
@@ -40,7 +43,10 @@ public class EraExporter(
 
     private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
-    private const int MaxDefaultConcurrency = 8;
+
+    // Each concurrent worker holds one epoch (~8192 blocks + receipts) in memory.
+    // Post-merge mainnet epochs can reach ~1 GB (full blocks, large receipt sets).
+    private const long BytesPerWorker = 1L * 1024 * 1024 * 1024;
 
     public Task Export(string destinationPath, long from, long to, CancellationToken cancellation = default)
     {
@@ -64,7 +70,8 @@ public class EraExporter(
 
     private async Task DoExport(string destinationPath, long from, long to, CancellationToken cancellation)
     {
-        if (_logger.IsInfo) _logger.Info($"Exporting EraE blocks {from}–{to} to {destinationPath}");
+        int concurrency = CalculateConcurrency(eraConfig.Concurrency);
+        if (_logger.IsInfo) _logger.Info($"Exporting EraE blocks {from}–{to} to {destinationPath} (concurrency={concurrency})");
 
         if (!fileSystem.Directory.Exists(destinationPath))
             fileSystem.Directory.CreateDirectory(destinationPath);
@@ -83,10 +90,6 @@ public class EraExporter(
         using ArrayPoolList<ValueHash256> accumulators = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<ValueHash256> checksums = new((int)epochCount, (int)epochCount);
         using ArrayPoolList<string> fileNames = new((int)epochCount, (int)epochCount);
-
-        int concurrency = eraConfig.Concurrency == 0
-            ? Math.Min(Environment.ProcessorCount, MaxDefaultConcurrency)
-            : eraConfig.Concurrency;
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
         {
@@ -184,6 +187,18 @@ public class EraExporter(
                 throw;
             }
         }
+    }
+
+    private int CalculateConcurrency(int configured)
+    {
+        if (configured > 0) return configured;
+
+        // MemoryHint is what Nethermind has allocated to its internal caches (RocksDB, trie, etc.).
+        // The remainder is genuinely free for the export workers.
+        long nodeMemory = initConfig.MemoryHint ?? hardwareInfo.AvailableMemoryBytes / 2;
+        long exportBudget = Math.Max(0, hardwareInfo.AvailableMemoryBytes - nodeMemory);
+        int memoryConcurrency = (int)Math.Max(1, exportBudget / BytesPerWorker);
+        return Math.Min(memoryConcurrency, Environment.ProcessorCount);
     }
 
     private bool TrySkipExistingEpoch(
