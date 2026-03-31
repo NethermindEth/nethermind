@@ -39,10 +39,11 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
+    [TestCase(true, Description = "Gate pre-opened by StartingSyncPivotUpdater (normal path)")]
+    [TestCase(false, Description = "Regression: gate not yet opened when first FCU arrives — FCU handler must open it")]
+    public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing(bool gatePreOpened)
     {
-        using MergeTestBlockchain chain = await CreateBlockchain();
+        using MergeTestBlockchain chain = await CreateBlockchain(allowBeaconHeaderSync: gatePreOpened);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -1095,62 +1096,4 @@ public partial class EngineModuleTests
         public BlockHeader? LowestInsertedBeaconHeader;
     }
 
-    /// <summary>
-    /// Regression test for the race between FCU handler and StartingSyncPivotUpdater.
-    /// When MaxAttemptsToUpdatePivot > 0, StartingSyncPivotUpdater sets _canInitBeaconHeaderSync
-    /// asynchronously. If the first FCU arrives before that completes, TryInitBeaconHeaderSync
-    /// would silently return false and beacon sync would never start.
-    /// ForkchoiceUpdatedHandler.StartNewBeaconHeaderSync must call AllowBeaconHeaderSync() itself
-    /// so the beacon pivot is set regardless of whether StartingSyncPivotUpdater has run.
-    /// </summary>
-    [Test]
-    public async Task forkChoiceUpdatedV1_starts_beacon_header_sync_when_pivot_updater_has_not_yet_opened_gate()
-    {
-        using MergeTestBlockchain chain = await new MergeTestBlockchainWithLockedBeaconSync()
-            .BuildMergeTestBlockchain(configurer: b =>
-                b.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(London.Instance)));
-
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-        Hash256 startingHead = chain.BlockTree.HeadHash;
-
-        BlockHeader parent = Build.A.BlockHeader
-            .WithNumber(1)
-            .WithHash(TestItem.KeccakA)
-            .WithNonce(0)
-            .WithDifficulty(0)
-            .TestObject;
-        Block unknownBlock = Build.A.Block
-            .WithNumber(2)
-            .WithParent(parent)
-            .WithNonce(0)
-            .WithDifficulty(0)
-            .WithAuthor(Address.Zero)
-            .WithPostMergeFlag(true)
-            .TestObject;
-
-        // Put the block in the cache so FCU handler can resolve its header
-        // and reach StartNewBeaconHeaderSync (as opposed to the "header unknown" early-return path)
-        await rpc.engine_newPayloadV1(ExecutionPayload.Create(unknownBlock));
-
-        // Gate is still closed: startup pivot updater hasn't run (AllowBeaconHeaderSyncOnBuild = false)
-        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
-        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
-
-        ForkchoiceStateV1 forkchoiceState = new(unknownBlock.Hash!, startingHead, startingHead);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(forkchoiceState);
-        result.Data.PayloadStatus.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
-
-        // FCU handler must have called AllowBeaconHeaderSync() before TryInitBeaconHeaderSync(),
-        // so the beacon pivot is set even though StartingSyncPivotUpdater never ran.
-        chain.BeaconPivot.BeaconPivotExists().Should().BeTrue(
-            "ForkchoiceUpdatedHandler must open the beacon-sync gate itself " +
-            "to handle the race where StartingSyncPivotUpdater has not yet run");
-        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
-        AssertBeaconPivotValues(chain.BeaconPivot, unknownBlock.Header);
-    }
-
-    private class MergeTestBlockchainWithLockedBeaconSync : MergeTestBlockchain
-    {
-        protected override bool AllowBeaconHeaderSyncOnBuild => false;
-    }
 }
