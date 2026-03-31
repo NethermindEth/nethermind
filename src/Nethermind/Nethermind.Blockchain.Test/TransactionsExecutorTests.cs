@@ -314,17 +314,15 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.CommitTree(0);
             }
 
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
-
             SetAccountStates(testCase.MissingAddresses);
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.StartNewBlockTrace(blockToProduce);
-
-            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
-            Assert.That(blockToProduce.Transactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
+            Transaction[] selectedTransactions = RunBlockProduction(
+                new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                specProvider,
+                blockToProduce,
+                spec);
+            Assert.That(selectedTransactions, Is.EquivalentTo(testCase.ExpectedSelectedTransactions));
         }
 
         [Test]
@@ -394,26 +392,12 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(GasCostOf.Transaction * 2)
                 .WithTransactions([includedTx, skippedTx])
                 .TestObject;
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
 
             ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
             transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
 
             IReleaseSpec spec = Homestead.Instance;
-            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
-                transactionProcessor,
-                stateProvider,
-                new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
-                LimboLogs.Instance);
-
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.StartNewBlockTrace(blockToProduce);
-            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-
-            txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
-
-            Transaction[] selectedTransactions = blockToProduce.Transactions.ToArray();
+            Transaction[] selectedTransactions = RunBlockProduction(transactionProcessor, stateProvider, block, spec);
             Assert.That(selectedTransactions, Has.Length.EqualTo(1));
             Assert.That(selectedTransactions[0], Is.SameAs(includedTx));
             Assert.That(stateProvider.GeneratedBlockAccessList.AccountChanges, Is.Empty);
@@ -447,7 +431,6 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(GasCostOf.Transaction * 2)
                 .WithTransactions([firstTx, secondTx])
                 .TestObject;
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
 
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IReleaseSpec spec = Homestead.Instance;
@@ -459,23 +442,45 @@ namespace Nethermind.Blockchain.Test
                     stateProvider.SubtractFromBalance(tx.SenderAddress!, tx.Value + ((UInt256)tx.GasLimit * tx.GasPrice), spec);
                 });
 
-            ISpecProvider specProvider = new TestSingleReleaseSpecProvider(spec);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+            Transaction[] selectedTransactions = RunBlockProduction(
                 new BuildUpTransactionProcessorAdapter(transactionProcessor),
+                stateProvider,
+                block,
+                spec);
+            Assert.That(selectedTransactions, Has.Length.EqualTo(2));
+            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
+            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+        }
+
+        private static Transaction[] RunBlockProduction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            ISpecProvider specProvider,
+            BlockToProduce blockToProduce,
+            IReleaseSpec spec)
+        {
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(
+                transactionProcessor,
                 stateProvider,
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes),
                 LimboLogs.Instance);
 
             BlockReceiptsTracer receiptsTracer = new();
             receiptsTracer.StartNewBlockTrace(blockToProduce);
-            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
-
+            txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
 
-            Transaction[] selectedTransactions = blockToProduce.Transactions.ToArray();
-            Assert.That(selectedTransactions, Has.Length.EqualTo(2));
-            Assert.That(selectedTransactions[0], Is.SameAs(firstTx));
-            Assert.That(selectedTransactions[1], Is.SameAs(secondTx));
+            return blockToProduce.Transactions.ToArray();
+        }
+
+        private static Transaction[] RunBlockProduction(
+            ITransactionProcessorAdapter transactionProcessor,
+            IWorldState stateProvider,
+            Block block,
+            IReleaseSpec spec)
+        {
+            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            return RunBlockProduction(transactionProcessor, stateProvider, new TestSingleReleaseSpecProvider(spec), blockToProduce, spec);
         }
     }
 
