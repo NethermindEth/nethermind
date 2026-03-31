@@ -1,26 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
+namespace Nethermind.Specs.Forks;
 
-namespace Nethermind.Specs.Forks
+public class Istanbul() : NamedReleaseSpec<Istanbul>(ConstantinopleFix.Instance)
 {
-    public class Istanbul : ConstantinopleFix
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
-
-        protected Istanbul()
-        {
-            Name = "Istanbul";
-            IsEip1344Enabled = true;
-            IsEip2028Enabled = true;
-            IsEip152Enabled = true;
-            IsEip1108Enabled = true;
-            IsEip1884Enabled = true;
-            IsEip2200Enabled = true;
-        }
-
-        public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Istanbul());
+        spec.Name = "Istanbul";
+        spec.IsEip1344Enabled = true;
+        spec.IsEip2028Enabled = true;
+        spec.IsEip152Enabled = true;
+        spec.IsEip1108Enabled = true;
+        spec.IsEip1884Enabled = true;
+        spec.IsEip2200Enabled = true;
     }
 }

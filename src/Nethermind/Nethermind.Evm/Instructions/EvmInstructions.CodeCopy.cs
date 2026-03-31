@@ -6,7 +6,6 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.GasPolicy;
 
 namespace Nethermind.Evm;
@@ -120,6 +119,53 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// Copies data from the previous call's return buffer into memory.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionReturnDataCopy<TGasPolicy, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        if (!stack.PopUInt256(out UInt256 destOffset) ||
+            !stack.PopUInt256(out UInt256 sourceOffset) ||
+            !stack.PopUInt256(out UInt256 size))
+            goto StackUnderflow;
+
+        TGasPolicy.ConsumeDataCopyGas(ref gas, isExternalCode: false, GasCostOf.VeryLow, GasCostOf.Memory * EvmCalculations.Div32Ceiling(in size, out bool outOfGas));
+        if (outOfGas) goto OutOfGas;
+
+        ReadOnlyMemory<byte> returnDataBuffer = vm.ReturnDataBuffer;
+        if (UInt256.AddOverflow(size, sourceOffset, out UInt256 result) || result > returnDataBuffer.Length)
+            goto AccessViolation;
+
+        if (!size.IsZero)
+        {
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in destOffset, size, vm.VmState))
+                goto OutOfGas;
+
+            ZeroPaddedSpan slice = returnDataBuffer.Span.SliceWithZeroPadding(sourceOffset, (int)size);
+            if (!vm.VmState.Memory.TrySave(in destOffset, in slice)) goto OutOfGas;
+
+            if (TTracingInst.IsActive)
+            {
+                vm.TxTracer.ReportMemoryChange(destOffset, in slice);
+            }
+        }
+
+        return EvmExceptionType.None;
+    OutOfGas:
+        return EvmExceptionType.OutOfGas;
+    StackUnderflow:
+        return EvmExceptionType.StackUnderflow;
+    AccessViolation:
+        return EvmExceptionType.AccessViolation;
+    }
+
+    /// <summary>
     /// Copies external code (from another account) into memory.
     /// Pops an address and three parameters (destination offset, source offset, and length) from the stack.
     /// Validates account access and memory expansion, then copies the external code into memory.
@@ -180,12 +226,6 @@ internal static partial class EvmInstructions
                 uint excessContractSize = (uint)Math.Max(0, externalCode.Length - CodeSizeConstants.MaxCodeSizeEip170);
                 if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, address, in vm.VmState.AccessTracker, ref gas))
                     goto OutOfGas;
-            }
-
-            // If EOF is enabled and the code is an EOF contract, use a predefined magic value.
-            if (spec.IsEofEnabled && EofValidator.IsEof(externalCode, out _))
-            {
-                externalCode = EofValidator.MAGIC;
             }
 
             // Slice the external code starting at the source offset with appropriate zero-padding.
@@ -306,16 +346,7 @@ internal static partial class EvmInstructions
         ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
             .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
             .CodeSpan;
-        // If EOF is enabled and the code is an EOF contract, push a fixed size (2).
-        if (spec.IsEofEnabled && EofValidator.IsEof(accountCode, out _))
-        {
-            stack.PushUInt32<TTracingInst>(2);
-        }
-        else
-        {
-            // Otherwise, push the actual code length.
-            stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
-        }
+        stack.PushUInt32<TTracingInst>((uint)accountCode.Length);
         return EvmExceptionType.None;
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:

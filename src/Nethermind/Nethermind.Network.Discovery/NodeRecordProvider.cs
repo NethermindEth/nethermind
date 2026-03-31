@@ -27,7 +27,7 @@ public class NodeRecordProvider(
         selfNodeRecord.SetEntry(new IpEntry(ipResolver.ExternalIp));
         selfNodeRecord.SetEntry(new TcpEntry(networkConfig.P2PPort));
         selfNodeRecord.SetEntry(new UdpEntry(networkConfig.DiscoveryPort));
-        selfNodeRecord.SetEntry(new Secp256K1Entry(nodeKey.CompressedPublicKey));
+        selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         selfNodeRecord.EnrSequence = 1;
         NodeRecordSigner enrSigner = new(ethereumEcdsa, nodeKey.Unprotect());
         enrSigner.Sign(selfNodeRecord);

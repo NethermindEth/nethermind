@@ -568,6 +568,5 @@ namespace Nethermind.Core.Test
             }
             return data;
         }
-
     }
 }

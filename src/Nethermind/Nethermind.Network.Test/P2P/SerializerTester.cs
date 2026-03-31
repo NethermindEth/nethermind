@@ -17,41 +17,35 @@ namespace Nethermind.Network.Test.P2P
     {
         public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null, Func<EquivalencyAssertionOptions<T>, EquivalencyAssertionOptions<T>>? additionallyExcluding = null) where T : P2PMessage
         {
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            IByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
-            try
+            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+            using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+
+            serializer.Serialize(buffer, message);
+            using T deserialized = serializer.Deserialize(buffer);
+
+            // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
+            deserialized.Should().BeEquivalentTo(message, options =>
             {
-                serializer.Serialize(buffer, message);
-                using T deserialized = serializer.Deserialize(buffer);
+                EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength" || c.Name == "EncodedSize");
+                return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
+                    .Using<ReadOnlyMemory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
+                    .WhenTypeIs<ReadOnlyMemory<byte>>();
+            });
 
-                // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
-                deserialized.Should().BeEquivalentTo(message, options =>
-                {
-                    EquivalencyAssertionOptions<T>? excluded = options.Excluding(c => c.Name == "RlpLength" || c.Name == "EncodedSize");
-                    return (additionallyExcluding is not null ? additionallyExcluding(excluded) : excluded)
-                        .Using<ReadOnlyMemory<byte>>((context => context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray())))
-                        .WhenTypeIs<ReadOnlyMemory<byte>>();
-                });
+            Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
 
-                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+            serializer.Serialize(buffer2, deserialized);
 
-                serializer.Serialize(buffer2, deserialized);
+            buffer.SetReaderIndex(0);
+            string allHex = buffer.ReadAllHex();
+            Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
 
-                buffer.SetReaderIndex(0);
-                string allHex = buffer.ReadAllHex();
-                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
-
-                if (expectedData is not null)
-                {
-                    allHex.Should().BeEquivalentTo(expectedData);
-                }
-            }
-            finally
+            if (expectedData is not null)
             {
-                buffer.Release();
-                buffer2.Release();
-                message.TryDispose();
+                allHex.Should().BeEquivalentTo(expectedData);
             }
+
+            message.TryDispose();
         }
     }
 }

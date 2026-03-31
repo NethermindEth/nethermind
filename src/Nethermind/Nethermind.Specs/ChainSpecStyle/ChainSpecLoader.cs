@@ -154,7 +154,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
-            Eip7692TransitionTimestamp = chainSpecJson.Params.Eip7692TransitionTimestamp,
             OpGraniteTransitionTimestamp = chainSpecJson.Params.OpGraniteTransitionTimestamp,
             OpHoloceneTransitionTimestamp = chainSpecJson.Params.OpHoloceneTransitionTimestamp,
             OpIsthmusTransitionTimestamp = chainSpecJson.Params.OpIsthmusTransitionTimestamp,
@@ -206,12 +205,14 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
             Eip7778TransitionTimestamp = chainSpecJson.Params.Eip7778TransitionTimestamp,
             Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
+            Eip8037TransitionTimestamp = chainSpecJson.Params.Eip8037TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,
             Eip7708TransitionTimestamp = chainSpecJson.Params.Eip7708TransitionTimestamp,
 
             Eip8024TransitionTimestamp = chainSpecJson.Params.Eip8024TransitionTimestamp,
             Eip7843TransitionTimestamp = chainSpecJson.Params.Eip7843TransitionTimestamp,
+            Eip7954TransitionTimestamp = chainSpecJson.Params.Eip7954TransitionTimestamp,
         };
 
         chainSpec.Parameters.Eip152Transition ??= GetTransitionForExpectedPricing("blake2_f", "price.blake2_f.gas_per_round", 1);

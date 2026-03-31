@@ -137,7 +137,6 @@ public class ChainParameters
     public long Eip2935RingBufferSize { get; set; } = Eip2935Constants.RingBufferSize;
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
-    public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? OpGraniteTransitionTimestamp { get; set; }
     public ulong? OpHoloceneTransitionTimestamp { get; set; }
@@ -180,9 +179,11 @@ public class ChainParameters
     #endregion
 
     public ulong? Rip7728TransitionTimestamp { get; set; }
+    public ulong? Eip8037TransitionTimestamp { get; set; }
     public ulong? Eip7928TransitionTimestamp { get; set; }
 
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
+    public ulong? Eip7954TransitionTimestamp { get; set; }
 }

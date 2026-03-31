@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.Rlpx
         public bool Throws_when_total_packet_size_exceeds_limit(int frameSize, long totalPacketSize)
         {
             FrameHeaderReader reader = new();
-            IByteBuffer buffer = Unpooled.Buffer(Frame.HeaderSize);
+            using DisposableByteBuffer buffer = Unpooled.Buffer(Frame.HeaderSize).AsDisposable();
 
             try
             {
@@ -42,10 +42,6 @@ namespace Nethermind.Network.Test.Rlpx
             catch (CorruptedFrameException)
             {
                 return false;
-            }
-            finally
-            {
-                buffer.Release();
             }
 
             return true;

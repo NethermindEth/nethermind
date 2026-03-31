@@ -1,23 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
-using Nethermind.Core.Specs;
-
 namespace Nethermind.Specs.Forks;
 
-public class BPO5 : BPO4
+public class BPO5() : NamedReleaseSpec<BPO5>(BPO4.Instance)
 {
-    private static IReleaseSpec _instance;
-
-    public BPO5()
+    public override void Apply(ReleaseSpec spec)
     {
-        Name = "bpo5";
-        MaxBlobCount = 72;
-        TargetBlobCount = 48;
-        BlobBaseFeeUpdateFraction = 40061729;
-        Released = false;
+        spec.Name = "bpo5";
+        spec.MaxBlobCount = 72;
+        spec.TargetBlobCount = 48;
+        spec.BlobBaseFeeUpdateFraction = 40061729;
     }
-
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new BPO5());
 }

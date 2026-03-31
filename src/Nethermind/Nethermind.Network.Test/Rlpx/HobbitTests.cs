@@ -16,15 +16,21 @@ namespace Nethermind.Network.Test.Rlpx
     [TestFixture]
     public class HobbitTests : HobbitTestsBase
     {
-        [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Zero, false)]
-        public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
+        private static Hash256[] Build256Hashes()
         {
-            var hashes = new Hash256[256];
+            Hash256[] hashes = new Hash256[256];
             for (int i = 0; i < hashes.Length; i++)
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
+            return hashes;
+        }
+
+        [TestCase(StackType.Zero, StackType.Zero, true)]
+        [TestCase(StackType.Zero, StackType.Zero, false)]
+        public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
+        {
+            Hash256[] hashes = Build256Hashes();
 
             using GetBlockBodiesMessage message = new(hashes);
 
@@ -32,7 +38,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] data = serializer.Serialize(message);
 
             Packet packet = new("eth", 5, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Run(packet, inbound, outbound, framingEnabled);
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
@@ -48,7 +54,7 @@ namespace Nethermind.Network.Test.Rlpx
             NewBlockMessageSerializer newBlockMessageSerializer = new();
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new("eth", 7, data);
-            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+            Run(packet, inbound, outbound, framingEnabled);
         }
 
         [TestCase(StackType.Zero, StackType.Zero, true)]
@@ -93,11 +99,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            Hash256[] hashes = new Hash256[256];
-            for (int i = 0; i < hashes.Length; i++)
-            {
-                hashes[i] = Keccak.Compute(i.ToString());
-            }
+            Hash256[] hashes = Build256Hashes();
 
             GetReceiptsMessage message = new(hashes.ToPooledList());
 

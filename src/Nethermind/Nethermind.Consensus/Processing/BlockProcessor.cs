@@ -61,11 +61,14 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        if (_balBuilder is not null)
         {
-            _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+            _balBuilder.TracingEnabled = balsEnabled;
+            if (balsEnabled)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            }
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -106,6 +109,7 @@ public partial class BlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
+        BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
         ReceiptsTracer.SetOtherTracer(blockTracer);
@@ -117,7 +121,8 @@ public partial class BlockProcessor(
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        TxReceipt[] receipts;
+        receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

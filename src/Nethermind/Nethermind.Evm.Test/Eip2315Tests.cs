@@ -15,90 +15,21 @@ namespace Nethermind.Evm.Test
         protected override long BlockNumber => MainnetSpecProvider.BerlinBlockNumber;
         protected override ISpecProvider SpecProvider => MainnetSpecProvider.Instance;
 
-        [Test]
-        public void Simple_routine()
+        [TestCase("0x60045e005c5d", Description = "Simple routine")]
+        [TestCase("0x6800000000000000000c5e005c60115e5d5c5d", Description = "Two levels of subroutines")]
+        [TestCase("0x6801000000000000000c5e005c60115e5d5c5d", Description = "Invalid jump")]
+        [TestCase("0x5d5858", Description = "Shallow return stack")]
+        [TestCase("0x6005565c5d5b60035e", Description = "Subroutine at end of code")]
+        [TestCase("0x5c5d00", Description = "Error on walk into the subroutine")]
+        public void All_subroutine_opcodes_are_bad_instructions(string codeHex)
         {
             TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
             byte[] code = Prepare.EvmCode
-                .FromCode("0x60045e005c5d")
+                .FromCode(codeHex)
                 .Done;
 
             TestAllTracerWithOutput result = Execute(code);
-            // result.StatusCode.Should().Be(1);
-            // AssertGas(result, GasCostOf.Transaction + 18);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
-        }
-
-        [Test]
-        public void Two_levels_of_subroutines()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x6800000000000000000c5e005c60115e5d5c5d")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            // result.StatusCode.Should().Be(1);
-            // AssertGas(result, GasCostOf.Transaction + 36);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
-        }
-
-        [Test]
-        public void Invalid_jump()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x6801000000000000000c5e005c60115e5d5c5d")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(0);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
-        }
-
-        [Test]
-        public void Shallow_return_stack()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x5d5858")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(0);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
-        }
-
-        [Test]
-        public void Subroutine_at_end_of_code()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x6005565c5d5b60035e")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            // result.StatusCode.Should().Be(1);
-            // AssertGas(result, GasCostOf.Transaction + 30);
-            result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
-        }
-
-        [Test]
-        public void Error_on_walk_into_the_subroutine()
-        {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
-
-            byte[] code = Prepare.EvmCode
-                .FromCode("0x5c5d00")
-                .Done;
-
-            TestAllTracerWithOutput result = Execute(code);
-            result.StatusCode.Should().Be(0);
             result.Error.Should().Be(EvmExceptionType.BadInstruction.ToString());
         }
     }

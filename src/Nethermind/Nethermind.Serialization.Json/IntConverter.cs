@@ -2,75 +2,39 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Serialization.Json
+namespace Nethermind.Serialization.Json;
+
+public class IntConverter : JsonConverter<int>
 {
-    using System.Buffers;
-    using System.Buffers.Text;
-    using System.Text.Json;
-    using System.Text.Json.Serialization;
-
-    public class IntConverter : JsonConverter<int>
+    public override int Read(
+        ref Utf8JsonReader reader,
+        Type typeToConvert,
+        JsonSerializerOptions options)
     {
-        private static int FromString(ReadOnlySpan<byte> s)
+        if (reader.TokenType == JsonTokenType.Number)
         {
-            if (s.Length == 0)
-            {
-                throw new JsonException("null cannot be assigned to int");
-            }
-
-            if (s.SequenceEqual("0x0"u8))
-            {
-                return 0;
-            }
-
-            int value;
-            if (s.StartsWith("0x"u8))
-            {
-                s = s[2..];
-                if (Utf8Parser.TryParse(s, out value, out _, 'x'))
-                {
-                    return value;
-                }
-            }
-            else if (Utf8Parser.TryParse(s, out value, out _))
-            {
-                return value;
-            }
-
-            throw new JsonException("hex to int");
+            return reader.GetInt32();
         }
 
-        public override int Read(
-            ref Utf8JsonReader reader,
-            Type typeToConvert,
-            JsonSerializerOptions options)
+        if (reader.TokenType == JsonTokenType.String)
         {
-            if (reader.TokenType == JsonTokenType.Number)
-            {
-                return reader.GetInt32();
-            }
-            else if (reader.TokenType == JsonTokenType.String)
-            {
-                if (!reader.HasValueSequence)
-                {
-                    return FromString(reader.ValueSpan);
-                }
-                else
-                {
-                    return FromString(reader.ValueSequence.ToArray());
-                }
-            }
-
-            throw new JsonException();
+            return !reader.HasValueSequence
+                ? NumericConverterHelper.Parse<int>(reader.ValueSpan)
+                : NumericConverterHelper.Parse<int>(reader.ValueSequence.ToArray());
         }
 
-        public override void Write(
-            Utf8JsonWriter writer,
-            int value,
-            JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue(value);
-        }
+        throw new JsonException();
+    }
+
+    public override void Write(
+        Utf8JsonWriter writer,
+        int value,
+        JsonSerializerOptions options)
+    {
+        writer.WriteNumberValue(value);
     }
 }

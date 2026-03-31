@@ -25,27 +25,29 @@ namespace Nethermind.Store.Test;
 
 public class WorldStateManagerTests
 {
-    [Test]
-    public void ShouldProxyGlobalWorldState()
+    private static (IWorldStateScopeProvider worldState, IPruningTrieStore trieStore, WorldStateManager manager) CreateWorldStateManager()
     {
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        return (worldState, trieStore, manager);
+    }
 
-        worldStateManager.GlobalWorldState.Should().Be(worldState);
+    [Test]
+    public void ShouldProxyGlobalWorldState()
+    {
+        (IWorldStateScopeProvider worldState, _, WorldStateManager manager) = CreateWorldStateManager();
+        manager.GlobalWorldState.Should().Be(worldState);
     }
 
     [Test]
     public void ShouldProxyReorgBoundaryEvent()
     {
-        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
-        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
 
         bool gotEvent = false;
-        worldStateManager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
+        manager.ReorgBoundaryReached += (sender, reached) => gotEvent = true;
         trieStore.ReorgBoundaryReached += Raise.EventWith<ReorgBoundaryReached>(new ReorgBoundaryReached(1));
 
         gotEvent.Should().BeTrue();
@@ -55,21 +57,18 @@ public class WorldStateManagerTests
     [TestCase(INodeStorage.KeyScheme.HalfPath, false)]
     public void ShouldNotSupportHashLookupOnHalfpath(INodeStorage.KeyScheme keyScheme, bool hashSupported)
     {
-        IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
-        IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
+        (_, IPruningTrieStore trieStore, WorldStateManager manager) = CreateWorldStateManager();
         IReadOnlyTrieStore readOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>();
         trieStore.AsReadOnly().Returns(readOnlyTrieStore);
         trieStore.Scheme.Returns(keyScheme);
-        IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager worldStateManager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
 
         if (hashSupported)
         {
-            worldStateManager.HashServer.Should().NotBeNull();
+            manager.HashServer.Should().NotBeNull();
         }
         else
         {
-            worldStateManager.HashServer.Should().BeNull();
+            manager.HashServer.Should().BeNull();
         }
     }
 

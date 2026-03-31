@@ -7,44 +7,18 @@ using Nethermind.Core.BlockAccessLists;
 
 namespace Nethermind.Serialization.Rlp.Eip7928;
 
-public class CodeChangeDecoder : IRlpValueDecoder<CodeChange>, IRlpStreamEncoder<CodeChange>
+public class CodeChangeDecoder : IndexedChangeDecoder<CodeChange>
 {
-    private static CodeChangeDecoder? _instance = null;
+    private static CodeChangeDecoder? _instance;
     public static CodeChangeDecoder Instance => _instance ??= new();
     private static readonly RlpLimit _codeLimit = new(Eip7928Constants.MaxCodeSize, "", ReadOnlyMemory<char>.Empty);
 
-    public CodeChange Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors)
-    {
-        int length = ctx.ReadSequenceLength();
-        int check = length + ctx.Position;
+    protected override CodeChange DecodeFields(ref Rlp.ValueDecoderContext ctx)
+        => new(ctx.DecodeUShort(), ctx.DecodeByteArray(_codeLimit));
 
-        ushort blockAccessIndex = ctx.DecodeUShort();
-        byte[] newCode = ctx.DecodeByteArray(_codeLimit);
+    protected override void EncodeValue(RlpStream stream, CodeChange item)
+        => stream.Encode(item.NewCode);
 
-        CodeChange codeChange = new()
-        {
-            BlockAccessIndex = blockAccessIndex,
-            NewCode = newCode
-        };
-
-        if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraBytes))
-        {
-            ctx.Check(check);
-        }
-
-        return codeChange;
-    }
-
-    public int GetLength(CodeChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-
-    public void Encode(RlpStream stream, CodeChange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        stream.StartSequence(GetContentLength(item, rlpBehaviors));
-        stream.Encode(item.BlockAccessIndex);
-        stream.Encode(item.NewCode);
-    }
-
-    public static int GetContentLength(CodeChange item, RlpBehaviors rlpBehaviors)
-        => Rlp.LengthOf(item.BlockAccessIndex) + Rlp.LengthOf(item.NewCode);
+    protected override int GetValueLength(CodeChange item)
+        => Rlp.LengthOf(item.NewCode);
 }

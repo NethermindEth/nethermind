@@ -30,6 +30,10 @@ public class TestNodeSource : INodeSource
         _channel.Writer.TryWrite(node);
     }
 
-#pragma warning disable CS0067
     public event EventHandler<NodeEventArgs>? NodeRemoved;
+
+    public void RemoveNode(Node node)
+    {
+        NodeRemoved?.Invoke(this, new NodeEventArgs(node));
+    }
 }

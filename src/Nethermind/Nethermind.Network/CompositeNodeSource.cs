@@ -14,7 +14,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
 
-public class CompositeNodeSource : INodeSource
+public class CompositeNodeSource : INodeSource, IDisposable
 {
     private readonly INodeSource[] _nodeSources;
 
@@ -57,5 +57,13 @@ public class CompositeNodeSource : INodeSource
     private void NodeSourceOnNodeRemoved(object? sender, NodeEventArgs e)
     {
         NodeRemoved?.Invoke(sender, e);
+    }
+
+    public void Dispose()
+    {
+        foreach (INodeSource nodeSource in _nodeSources)
+        {
+            nodeSource.NodeRemoved -= NodeSourceOnNodeRemoved;
+        }
     }
 }

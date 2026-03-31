@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Numerics;
-using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -32,7 +29,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
-using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -109,8 +105,8 @@ public class ProtocolsManagerTests
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _nodeStatsManager = new NodeStatsManager(timerFactory, LimboLogs.Instance);
             _blockTree = Substitute.For<IBlockTree>();
-            _blockTree.NetworkId.Returns((ulong)TestBlockchainIds.NetworkId);
-            _blockTree.ChainId.Returns((ulong)TestBlockchainIds.ChainId);
+            _blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
+            _blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
             _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
             _forkInfo = new ForkInfo(MainnetSpecProvider.Instance, _syncServer);
             _peerManager = Substitute.For<IPeerManager>();
@@ -215,7 +211,7 @@ public class ProtocolsManagerTests
         public Context ReceiveDisconnect()
         {
             using DisconnectMessage message = new(EthDisconnectReason.Other);
-            IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
+            using DisposableByteBuffer disconnectPacket = _serializer.ZeroSerialize(message).AsDisposable();
 
             // to account for AdaptivePacketType byte
             disconnectPacket.ReadByte();
@@ -262,7 +258,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveStatus(StatusMessage msg)
         {
-            IByteBuffer statusPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             statusPacket.ReadByte();
 
             _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
@@ -288,7 +284,7 @@ public class ProtocolsManagerTests
 
         private Context ReceiveHello(HelloMessage msg)
         {
-            IByteBuffer helloPacket = _serializer.ZeroSerialize(msg);
+            using DisposableByteBuffer helloPacket = _serializer.ZeroSerialize(msg).AsDisposable();
             // to account for AdaptivePacketType byte
             helloPacket.ReadByte();
 
@@ -480,7 +476,7 @@ public class ProtocolsManagerTests
 
     [TestCase(TestBlockchainIds.NetworkId + 1)]
     [TestCase(TestBlockchainIds.ChainId)]
-    public void Disconnects_on_wrong_network_id(int networkId)
+    public void Disconnects_on_wrong_network_id(ulong networkId)
     {
         When
             .CreateIncomingSession()
@@ -489,7 +485,7 @@ public class ProtocolsManagerTests
             .Init()
             .VerifyInitialized()
             .ReceiveHello()
-            .ReceiveStatusWrongChain((ulong)networkId)
+            .ReceiveStatusWrongChain(networkId)
             .VerifyCompatibilityValidationType(CompatibilityValidationType.NetworkId)
             .VerifyDisconnected();
     }

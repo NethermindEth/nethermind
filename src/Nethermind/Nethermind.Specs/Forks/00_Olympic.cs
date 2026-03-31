@@ -1,42 +1,33 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
-namespace Nethermind.Specs.Forks
+namespace Nethermind.Specs.Forks;
+
+public class Olympic() : NamedReleaseSpec<Olympic>(null)
 {
-    public class Olympic : ReleaseSpec, INamedReleaseSpec
+    public override void Apply(ReleaseSpec spec)
     {
-        private static IReleaseSpec _instance;
+        spec.Name = "Olympic";
+        spec.MaximumExtraDataSize = 32;
+        spec.MaxCodeSize = long.MaxValue;
+        spec.MinGasLimit = 5000;
+        spec.GasLimitBoundDivisor = 0x0400;
+        spec.BlockReward = new UInt256(5000000000000000000ul);
+        spec.DifficultyBoundDivisor = 0x0800;
+        spec.IsEip3607Enabled = true;
+        spec.MaximumUncleCount = 2;
+        spec.Eip1559TransitionBlock = long.MaxValue;
+        spec.ValidateChainId = true;
+        spec.ValidateReceipts = true;
+        spec.MinHistoryRetentionEpochs = 82125;
 
-        protected Olympic()
-        {
-            Name = "Olympic";
-            MaximumExtraDataSize = 32;
-            MaxCodeSize = long.MaxValue;
-            MinGasLimit = 5000;
-            GasLimitBoundDivisor = 0x0400;
-            BlockReward = new UInt256(5000000000000000000ul);
-            DifficultyBoundDivisor = 0x0800;
-            IsEip3607Enabled = true;
-            MaximumUncleCount = 2;
-            Eip1559TransitionBlock = long.MaxValue;
-            ValidateChainId = true;
-            ValidateReceipts = true;
-            MinHistoryRetentionEpochs = 82125;
-
-            // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
-            Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;
-            Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
-            DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
-            Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize;
-        }
-
-        public bool Released { get; protected set; } = true;
-
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, static () => new Olympic());
+        // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
+        spec.Eip7251ContractAddress = Eip7251Constants.ConsolidationRequestPredeployAddress;
+        spec.Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
+        spec.DepositContractAddress = Eip6110Constants.MainnetDepositContractAddress;
+        spec.Eip7934MaxRlpBlockSize = Eip7934Constants.DefaultMaxRlpBlockSize;
     }
 }

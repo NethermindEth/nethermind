@@ -203,26 +203,37 @@ public class TxBroadcasterTests
     }
 
     [Test]
-    public void should_skip_large_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
+    public void should_skip_large_or_blob_txs_when_picking_best_persistent_txs_to_broadcast(
+        [Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold,
+        [Values(true, false)] bool useBlobTxs)
     {
         _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
         _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
         _headInfo.CurrentBaseFee = 0.GWei;
 
-        // add 256 transactions, 10% of them is large
+        // add 256 transactions, 10% of them are not broadcast (large or blob)
         int addedTxsCount = TestItem.PrivateKeys.Length;
         Transaction[] transactions = new Transaction[addedTxsCount];
 
         Parallel.For(0, addedTxsCount, i =>
         {
-            bool isLarge = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithType(TxType.EIP1559)
+            bool isSpecial = i % 10 == 0;
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithGasPrice((addedTxsCount - i - 1).GWei)
-                .WithData(isLarge ? new byte[4 * 1024] : []) //some part of txs (10%) is large (>4KB)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]);
 
+            if (useBlobTxs)
+            {
+                builder.WithType(isSpecial ? TxType.Blob : TxType.Legacy)
+                    .WithShardBlobTxTypeAndFieldsIfBlobTx();
+            }
+            else
+            {
+                builder.WithType(TxType.EIP1559)
+                    .WithData(isSpecial ? new byte[4 * 1024] : []);
+            }
+
+            transactions[i] = builder.TestObject;
             _broadcaster.Broadcast(transactions[i], true);
         });
 
@@ -242,52 +253,6 @@ public class TxBroadcasterTests
         // check if numbers of full transactions and hashes are correct
         CheckCorrectness(pickedFullTxs, expectedCountOfFullTxs);
         CheckCorrectness(pickedHashes, expectedCountOfHashes);
-
-        // check if full transactions and hashes returned by broadcaster are as expected
-        expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);
-        expectedHashes.Should().BeEquivalentTo(pickedHashes.Select(static t => t.Hash).ToArray());
-    }
-
-    [Test]
-    public void should_skip_blob_txs_when_picking_best_persistent_txs_to_broadcast([Values(1, 2, 25, 50, 99, 100, 101, 1000)] int threshold)
-    {
-        _txPoolConfig = new TxPoolConfig() { PeerNotificationThreshold = threshold };
-        _broadcaster = new TxBroadcaster(_comparer, TimerFactory.Default, _txPoolConfig, _headInfo, _logManager);
-        _headInfo.CurrentBaseFee = 0.GWei;
-
-        // add 256 transactions, 10% of them is blob type
-        int addedTxsCount = TestItem.PrivateKeys.Length;
-        Transaction[] transactions = new Transaction[addedTxsCount];
-
-        Parallel.For(0, addedTxsCount, i =>
-        {
-            bool isBlob = i % 10 == 0;
-            transactions[i] = Build.A.Transaction
-                .WithGasPrice((addedTxsCount - i - 1).GWei)
-                .WithType(isBlob ? TxType.Blob : TxType.Legacy) //some part of txs (10%) is blob type
-                .WithShardBlobTxTypeAndFieldsIfBlobTx()
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i])
-                .TestObject;
-
-            _broadcaster.Broadcast(transactions[i], true);
-        });
-
-        _broadcaster.GetSnapshot().Length.Should().Be(addedTxsCount);
-
-        // count numbers of expected hashes and full transactions
-        int expectedCountTotal = Math.Min(addedTxsCount * threshold / 100 + 1, addedTxsCount);
-        int expectedCountOfBlobHashes = expectedCountTotal / 10 + 1;
-        int expectedCountOfNonBlobTxs = expectedCountTotal - expectedCountOfBlobHashes;
-
-        // prepare list of expected full transactions and hashes
-        (IList<Transaction> expectedFullTxs, IList<Hash256> expectedHashes) = GetTxsAndHashesExpectedToBroadcast(transactions, expectedCountTotal);
-
-        // get hashes and full transactions to broadcast
-        (IList<Transaction> pickedFullTxs, IList<Transaction> pickedHashes) = _broadcaster.GetPersistentTxsToSend();
-
-        // check if numbers of full transactions and hashes are correct
-        CheckCorrectness(pickedFullTxs, expectedCountOfNonBlobTxs);
-        CheckCorrectness(pickedHashes, expectedCountOfBlobHashes);
 
         // check if full transactions and hashes returned by broadcaster are as expected
         expectedFullTxs.Should().BeEquivalentTo(pickedFullTxs);

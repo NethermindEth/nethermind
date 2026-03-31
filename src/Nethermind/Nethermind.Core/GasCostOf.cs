@@ -69,28 +69,26 @@ namespace Nethermind.Core
         public const long PerAuthBaseCost = 12500; // eip-7702
         public const long TotalCostFloorPerTokenEip7623 = 10; // eip-7632
 
+        // EIP-8037: Two-dimensional gas metering constants.
+        // Devnet-3 keeps CPSB hardcoded and replaces it with dynamic CPSB in devnet-4.
+        public const long CostPerStateByte = 1174;
+        public const long SSetRegular = 2_900;
+        public const long SSetState = 32 * CostPerStateByte;
+        public const long CreateRegular = 9_000;
+        public const long CreateState = 112 * CostPerStateByte;
+        public const long NewAccountState = 112 * CostPerStateByte;
+        public const long CodeDepositRegularPerWord = 6;
+        public const long CodeDepositState = CostPerStateByte;
+        public const long PerAuthBaseRegular = 7_500;
+        public const long PerAuthBaseState = 23 * CostPerStateByte;
+        public const long PerEmptyAccountState = 112 * CostPerStateByte;
+        public const long BlockAccessListItem = 2_000; // eip-7928
+
         public const long TxDataNonZeroMultiplier = TxDataNonZero / TxDataZero;
         public const long TxDataNonZeroMultiplierEip2028 = TxDataNonZeroEip2028 / TxDataZero;
 
         public const long MinModExpEip2565 = 200; // eip-2565
         public const long MinModExpEip7883 = 500; // eip-7883
 
-        // Eof Execution EIP-7692
-        public const long DataLoad = 4;
-        public const long DataLoadN = 3;
-        public const long DataCopy = 3;
-        public const long DataSize = 2;
-        public const long ReturnCode = 0;
-        public const long EofCreate = 32000;
-        public const long ReturnDataLoad = 3;
-        public const long RJump = 2;
-        public const long RJumpi = 4;
-        public const long RJumpv = 4;
-        public const long Exchange = 3;
-        public const long Swapn = 3;
-        public const long Dupn = 3;
-        public const long Callf = 5;
-        public const long Jumpf = 5;
-        public const long Retf = 3;
     }
 }

@@ -13,7 +13,9 @@ using Nethermind.Specs.Test;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Serialization.Rlp;
@@ -86,163 +88,87 @@ public class BlockValidatorTests
         blockValidator.ValidateOrphanedBlock(block, out _).Should().Be(true);
     }
 
-    [Test]
-    public void ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue()
+    private static IEnumerable<TestCaseData> CorruptedBodyFieldCases()
+    {
+        yield return new TestCaseData(null)
+            .Returns(true).SetName("ValidateBodyAgainstHeader_BlockIsValid_ReturnsTrue");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.TxRoot = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.UnclesHash = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse");
+        yield return new TestCaseData(new Action<BlockHeader>(h => h.WithdrawalsRoot = Keccak.OfAnEmptyString))
+            .Returns(false).SetName("ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse");
+    }
+
+    [TestCaseSource(nameof(CorruptedBodyFieldCases))]
+    public bool ValidateBodyAgainstHeader_WithCorruptedField(Action<BlockHeader>? corrupt)
     {
         Block block = Build.A.Block
             .WithTransactions(1, ReleaseSpecSubstitute.Create())
             .WithWithdrawals(1)
             .TestObject;
 
+        corrupt?.Invoke(block.Header);
 
-        Assert.That(
-            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
-            Is.True);
+        return _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body);
     }
 
-    [Test]
-    public void ValidateBodyAgainstHeader_BlockHasInvalidTxRoot_ReturnsFalse()
+    [TestCase(false, ExpectedResult = true, TestName = "ValidateProcessedBlock_HashesAreTheSame_ReturnsTrue")]
+    [TestCase(true, ExpectedResult = false, TestName = "ValidateProcessedBlock_StateRootIsWrong_ReturnsFalse")]
+    public bool ValidateProcessedBlock_Returns(bool wrongStateRoot)
     {
-        Block block = Build.A.Block
-            .WithTransactions(1, ReleaseSpecSubstitute.Create())
-            .WithWithdrawals(1)
-            .TestObject;
-        block.Header.TxRoot = Keccak.OfAnEmptyString;
-
-        Assert.That(
-            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
-            Is.False);
-    }
-
-
-    [Test]
-    public void ValidateBodyAgainstHeader_BlockHasInvalidUnclesRoot_ReturnsFalse()
-    {
-        Block block = Build.A.Block
-            .WithTransactions(1, ReleaseSpecSubstitute.Create())
-            .WithWithdrawals(1)
-            .TestObject;
-        block.Header.UnclesHash = Keccak.OfAnEmptyString;
-
-        Assert.That(
-            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
-            Is.False);
-    }
-
-    [Test]
-    public void ValidateBodyAgainstHeader_BlockHasInvalidWithdrawalsRoot_ReturnsFalse()
-    {
-        Block block = Build.A.Block
-            .WithTransactions(1, ReleaseSpecSubstitute.Create())
-            .WithWithdrawals(1)
-            .TestObject;
-        block.Header.WithdrawalsRoot = Keccak.OfAnEmptyString;
-
-        Assert.That(
-            _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body),
-            Is.False);
-    }
-
-    [Test]
-    public void ValidateProcessedBlock_HashesAreTheSame_ReturnsTrue()
-    {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = CreateProcessedBlockValidator();
         Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block.TestObject;
+        Block processedBlock = wrongStateRoot
+            ? Build.A.Block.WithStateRoot(Keccak.Zero).TestObject
+            : Build.A.Block.TestObject;
 
-        Assert.That(sut.ValidateProcessedBlock(
-            suggestedBlock,
-            [],
-            processedBlock), Is.True);
+        return sut.ValidateProcessedBlock(suggestedBlock, [], processedBlock);
     }
 
-    [Test]
-    public void ValidateProcessedBlock_HashesAreTheSame_ErrorIsNull()
+    [TestCase(false, null, TestName = "ValidateProcessedBlock_HashesAreTheSame_ErrorIsNull")]
+    [TestCase(true, "InvalidStateRoot", TestName = "ValidateProcessedBlock_StateRootIsWrong_ErrorIsSet")]
+    public void ValidateProcessedBlock_ErrorMessage(bool wrongStateRoot, string? expectedErrorPrefix)
     {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = CreateProcessedBlockValidator();
         Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block.TestObject;
+        Block processedBlock = wrongStateRoot
+            ? Build.A.Block.WithStateRoot(Keccak.Zero).TestObject
+            : Build.A.Block.TestObject;
 
-        sut.ValidateProcessedBlock(
-            suggestedBlock,
-            [],
-            processedBlock, out string? error);
+        sut.ValidateProcessedBlock(suggestedBlock, [], processedBlock, out string? error);
 
-        Assert.That(error, Is.Null);
+        if (expectedErrorPrefix is null)
+            Assert.That(error, Is.Null);
+        else
+            Assert.That(error, Does.StartWith(expectedErrorPrefix));
     }
 
-    [Test]
-    public void ValidateProcessedBlock_StateRootIsWrong_ReturnsFalse()
+    [TestCase(2, 0, TestName = "ValidateProcessedBlock_ReceiptCountMismatch_DoesNotThrow")]
+    [TestCase(3, 1, TestName = "ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse")]
+    public void ValidateProcessedBlock_ReceiptCountMismatch(int txCount, int receiptCount)
     {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-
-        Assert.That(sut.ValidateProcessedBlock(
-            suggestedBlock,
-            [],
-            processedBlock), Is.False);
-    }
-
-    [Test]
-    public void ValidateProcessedBlock_StateRootIsWrong_ErrorIsSet()
-    {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-
-        sut.ValidateProcessedBlock(
-            suggestedBlock,
-            [],
-            processedBlock, out string? error);
-
-        Assert.That(error, Does.StartWith("InvalidStateRoot"));
-    }
-
-    [Test]
-    public void ValidateProcessedBlock_ReceiptCountMismatch_DoesNotThrow()
-    {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        BlockValidator sut = CreateProcessedBlockValidator();
         Block suggestedBlock = Build.A.Block.TestObject;
         Block processedBlock = Build.A.Block
             .WithStateRoot(Keccak.Zero)
-            .WithTransactions(2, specProvider)
+            .WithTransactions(txCount, specProvider)
             .TestObject;
 
-        Assert.DoesNotThrow(() => sut.ValidateProcessedBlock(
-            processedBlock,
-            [],
-            suggestedBlock));
-    }
+        TxReceipt[] receipts = Enumerable.Range(0, receiptCount)
+            .Select(_ => Build.A.Receipt.TestObject).ToArray();
 
-    [Test]
-    public void ValidateProcessedBlock_ReceiptCountMismatch_ReturnsFalse()
-    {
-        TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
-        Block suggestedBlock = Build.A.Block.TestObject;
-        Block processedBlock = Build.A.Block
-            .WithStateRoot(Keccak.Zero)
-            .WithTransactions(3, specProvider)
-            .TestObject;
-
-        bool result = sut.ValidateProcessedBlock(
-            processedBlock,
-            [Build.A.Receipt.TestObject],
-            suggestedBlock);
+        bool result = sut.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
 
         Assert.That(result, Is.False);
+    }
+
+    private static BlockValidator CreateProcessedBlockValidator()
+    {
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        return new BlockValidator(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
     }
 
     private static IEnumerable<TestCaseData> BadSuggestedBlocks()
@@ -334,5 +260,38 @@ public class BlockValidatorTests
         sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
 
         Assert.That(error, Does.StartWith(expectedError));
+    }
+
+    [TestCase(30_000, true)]
+    [TestCase(29_999, false)]
+    public void ValidateSuggestedBlock_Enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (expectedValid)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
     }
 }

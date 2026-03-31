@@ -46,30 +46,20 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [Test]
-    public async Task NewPayloadV1_should_decline_post_cancun()
+    [TestCase(1, ErrorCodes.InvalidParams)]
+    [TestCase(2, MergeErrorCodes.UnsupportedFork)]
+    public async Task NewPayload_should_decline_post_cancun(int version, int expectedErrorCode)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         ExecutionPayload executionPayload = CreateBlockRequest(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
 
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV1(executionPayload);
+        ResultWrapper<PayloadStatusV1> result = version == 1
+            ? await rpcModule.engine_newPayloadV1(executionPayload)
+            : await rpcModule.engine_newPayloadV2(executionPayload);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
-    }
-
-    [Test]
-    public async Task NewPayloadV2_should_decline_post_cancun()
-    {
-        MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
-        IEngineRpcModule rpcModule = chain.EngineRpcModule;
-        ExecutionPayload executionPayload = CreateBlockRequest(
-            chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals: []);
-
-        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
-
-        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
+        Assert.That(result.ErrorCode, Is.EqualTo(expectedErrorCode));
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
@@ -122,15 +112,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetPayloadV3_should_fail_on_unknown_payload()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        byte[] payloadId = Bytes.FromHexString("0x0");
-        ResultWrapper<GetPayloadV3Result?> responseFirst = await rpc.engine_getPayloadV3(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        await GetPayload_should_fail_on_unknown_payload(3);
     }
 
     [Test]

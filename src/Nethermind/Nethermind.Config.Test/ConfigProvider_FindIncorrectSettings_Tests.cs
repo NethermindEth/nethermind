@@ -102,9 +102,9 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         Assert.Multiple(() =>
         {
             Assert.That(Errors[0].Name, Is.EqualTo("Concurrenc"));
-            Assert.That(Errors[1].Category, Is.EqualTo("BlomConfig"));
+            Assert.That(Errors[1].Category, Is.EqualTo("BloomsConfig"));
             Assert.That(Errors[2].Name, Is.EqualTo("MAXCANDIDATEPERCOUNT"));
-            Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BlomConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
+            Assert.That(ErrorMsg, Is.EqualTo($"ConfigType:JsonConfigFile|Category:DiscoveRyConfig|Name:Concurrenc{Environment.NewLine}ConfigType:JsonConfigFile|Category:BloomsConfig|Name:IndexLevelBucketSizes{Environment.NewLine}ConfigType:EnvironmentVariable(NETHERMIND_*)|Category:NETWORKCONFIG|Name:MAXCANDIDATEPERCOUNT"));
         });
     }
 

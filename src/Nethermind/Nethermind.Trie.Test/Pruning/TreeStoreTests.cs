@@ -946,6 +946,54 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void HasRoot_with_block_number_allows_old_blocks_in_archive_mode([Values] bool trackPastKeys)
+        {
+            int pruningBoundary = 4;
+            // Archive mode: shouldPrune always true, deleteObsoleteKeys = false
+            // When TrackPastKeys is false, _deleteOldNodes is always false regardless of deleteObsoleteKeys.
+            // When TrackPastKeys is true, deleteObsoleteKeys = false still prevents node deletion.
+            TestPruningStrategy testPruningStrategy = new TestPruningStrategy(shouldPrune: true, deleteObsoleteKeys: false);
+
+            TrieStore trieStore = CreateTrieStore(
+                pruningStrategy: testPruningStrategy,
+                persistenceStrategy: Persist.EveryBlock,
+                pruningConfig: new PruningConfig()
+                {
+                    PruningBoundary = pruningBoundary,
+                    TrackPastKeys = trackPastKeys
+                });
+
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+            // Start from block 1 (not genesis) to avoid special-casing block 0
+            int startBlock = 1;
+            int blockCount = pruningBoundary * 4;
+            Hash256[] rootHashes = new Hash256[startBlock + blockCount];
+            for (int i = startBlock; i < startBlock + blockCount; i++)
+            {
+                using (trieStore.BeginBlockCommit(i))
+                {
+                    stateTree.Set(TestItem.AddressA, new Account((UInt256)(i + 1)));
+                    stateTree.Commit();
+                }
+                rootHashes[i] = stateTree.RootHash;
+            }
+
+            trieStore.WaitForPruning();
+            trieStore.LastPersistedBlockNumber.Should().BeGreaterThan(pruningBoundary + startBlock);
+
+            long lastPersisted = trieStore.LastPersistedBlockNumber;
+
+            // Block within boundary: should return true
+            trieStore.HasRoot(rootHashes[lastPersisted], lastPersisted).Should().BeTrue();
+
+            // Block 1 is well outside the pruning boundary but should still be accessible in archive mode
+            trieStore.HasRoot(rootHashes[startBlock], startBlock).Should().BeTrue();
+
+            trieStore.Dispose();
+        }
+
+        [Test]
         [Retry(3)]
         [NonParallelizable]
         public async Task Will_RemovePastKeys_OnSnapshot()

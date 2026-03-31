@@ -23,7 +23,6 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 using NUnit.Framework;
 using Module = Autofac.Module;
 
@@ -43,6 +42,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
     protected override void Load(ContainerBuilder builder)
     {
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+        initConfig.AutoDump = DumpOptions.None;
         if (TestUseFlat)
         {
             ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
@@ -71,12 +71,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Crypto
             .AddSingleton<ISignerStore>(NullSigner.Instance)
-            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
-            // Flatdb (if used) need a more complete memcolumndb implementation with snapshots and sorted view.
-            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new TestMemColumnsDb<FlatDbColumns>())
+            // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
+            .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))
             .AddDecorator<IFlatDbManager, FlatDbManagerTestCompat>()
             .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {

@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-/* cSpell:disable */
 
 using Nethermind.Serialization.Json;
 using NUnit.Framework;

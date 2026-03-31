@@ -33,21 +33,23 @@ public class DiscoveryConnectionsPool : IConnectionsPool
     {
         if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
 
-        task = NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(_ip, port), port);
+        task = BindAsync(bootstrap, port, _ip);
         _byPort.Add(port, task);
 
-        return await task.ContinueWith(t =>
-        {
-            if (t.IsFaulted)
-            {
-                _logger.Error(
-                    $"Error when establishing discovery connection on Address: {_ip}({_networkConfig.LocalIp}:{port})",
-                    t.Exception
-                );
-            }
+        return await task;
+    }
 
-            return t.Result;
-        });
+    private async Task<IChannel> BindAsync(Bootstrap bootstrap, int port, IPAddress ip)
+    {
+        try
+        {
+            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(ip, port), port);
+        }
+        catch (Exception e)
+        {
+            _logger.Error($"Error when establishing discovery connection on Address: {ip}({_networkConfig.LocalIp}:{port})", e);
+            throw;
+        }
     }
 
     public async Task StopAsync()
@@ -64,12 +66,12 @@ public class DiscoveryConnectionsPool : IConnectionsPool
             _logger.Info($"Stopping discovery udp channel on port {port}");
 
             Task closeTask = channel.CloseAsync();
-            CancellationTokenSource delayCancellation = new();
+            using CancellationTokenSource delayCancellation = new();
 
             if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
                 _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} milliseconds");
             else
-                await delayCancellation.CancelAsync();
+                delayCancellation.Cancel();
         }
         catch (Exception e)
         {

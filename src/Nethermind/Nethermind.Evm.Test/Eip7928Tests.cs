@@ -32,7 +32,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     private static readonly EthereumEcdsa _ecdsa = new(0);
     private static readonly UInt256 _accountBalance = 10.Ether;
     private static readonly UInt256 _testAccountBalance = 1.Ether;
-    private static readonly long _gasLimit = 100000;
+    private static readonly long _gasLimit = 150000;
     private static readonly Address _testAddress = ContractAddress.From(TestItem.AddressA, 0);
     private static readonly Address _callTargetAddress = TestItem.AddressC;
     private static readonly Address _delegationTargetAddress = TestItem.AddressD;
@@ -55,9 +55,16 @@ public class Eip7928Tests() : VirtualMachineTestsBase
 
         UInt256 value = _testAccountBalance;
 
+        Transaction templateTx = Build.A.Transaction
+            .WithCode(code)
+            .WithGasLimit(0)
+            .WithValue(value)
+            .TestObject;
+        long gasLimit = IntrinsicGasCalculator.Calculate(templateTx, Amsterdam.Instance).MinimalGas + _gasLimit;
+
         Transaction createTx = Build.A.Transaction
             .WithCode(code)
-            .WithGasLimit(_gasLimit)
+            .WithGasLimit(gasLimit)
             .WithValue(value)
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;

@@ -16,105 +16,18 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Test.Modules.Simulate;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
-public class TraceSimulateTestsBlocksAndTransactions
+public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<ParityLikeTxTrace>
 {
-    [Test]
-    public async Task Test_trace_simulate_serialization()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+    protected override ISimulateBlockTracerFactory<ParityLikeTxTrace> CreateTracerFactory() =>
+        new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace);
 
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateSerializationPayload(chain);
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
-        Assert.That(data, Has.Count.EqualTo(7));
-
-        SimulateBlockResult<ParityLikeTxTrace> blockResult = data.Last();
+    protected override void AssertSerializationBlockResult(SimulateBlockResult<ParityLikeTxTrace> blockResult) =>
         Assert.That(blockResult.Traces.Select(static c => c.BlockNumber), Is.Not.Null.And.Not.Empty);
-    }
-
-    [Test(Description = """
-        Verifies that a temporary forked blockchain can make transactions, blocks and report on them.
-        We test on blocks before current head and after it.
-        Note that if we get blocks before head, we set simulation start state to one of that first block.
-        """)]
-    public async Task Test_trace_simulate_eth_moved()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB = EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
-
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateEthMovedPayload(chain, nonceA);
-
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(txMainnetAtoB);
-        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        Assert.That(after, Is.LessThan(before));
-
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>> data = result.Data;
-
-        Assert.That(data, Has.Count.EqualTo(9));
-
-        SimulateBlockResult<ParityLikeTxTrace> blockResult = data[0];
-        Assert.That(blockResult.Traces.Count, Is.EqualTo(2));
-        blockResult = data.Last();
-        Assert.That(blockResult.Traces, Has.Count.EqualTo(2));
-    }
-
-    [Test(Description = "Verifies that a temporary forked blockchain can make transactions, blocks and report on them")]
-    public async Task Test_trace_simulate_transactions_forced_fail()
-    {
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-
-        UInt256 nonceA = chain.ReadOnlyState.GetNonce(TestItem.AddressA);
-
-        Transaction txMainnetAtoB =
-            EthSimulateTestsBlocksAndTransactions.GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1, type: TxType.Legacy);
-
-        SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransactionsForcedFail(chain, nonceA);
-
-        //Test that transfer tx works on mainchain
-        UInt256 before = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        await chain.AddBlock(txMainnetAtoB);
-        UInt256 after = chain.ReadOnlyState.GetBalance(TestItem.AddressA);
-        Assert.That(after, Is.LessThan(before));
-
-        chain.Bridge.GetReceipt(txMainnetAtoB.Hash!);
-
-        //Force persistence of head block in main chain
-        chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
-        chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-
-        //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<ParityLikeTxTrace> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new ParityStyleSimulateBlockTracerFactory(ParityTraceTypes.Trace));
-
-        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result =
-            executor.Execute(payload, BlockParameter.Latest);
-        Assert.That(result.Result!.Error!, Does.Contain("insufficient sender balance"));
-    }
 
     [Test]
     public async Task Test_trace_simulate_caps_gas_to_gas_cap()

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Core;
 using Nethermind.Crypto;
@@ -105,7 +106,6 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, "discoveryNodes")
                 .AddNetworkStorage(DbNames.DiscoveryV5Nodes, "discoveryV5Nodes")
-                .AddSingleton<DiscoveryV5App>()
 
                 .AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>()
                 .AddSingleton<INodeTable, NodeTable>()
@@ -114,9 +114,14 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 .AddSingleton<IDiscoveryManager, DiscoveryManager>()
                 .AddSingleton<INodesLocator, NodesLocator>()
                 .AddSingleton<DiscoveryPersistenceManager>()
-                .AddSingleton<DiscoveryApp>()
 
                 ;
+
+            // DiscoveryApp and DiscoveryV5App implement IStoppableService via IDiscoveryApp,
+            // but their lifecycle is owned by CompositeDiscoveryApp. Mark ExternallyOwned so
+            // ServiceStopperMiddleware does not double-stop them.
+            builder.RegisterType<DiscoveryV5App>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+            builder.RegisterType<DiscoveryApp>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
         }
 
 

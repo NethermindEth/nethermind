@@ -86,7 +86,7 @@ public partial class EngineModuleTests
         pointers.LowestInsertedBeaconHeader = block.Header;
         pointers.BestKnownBeaconBlock = block.Number;
         AssertBlockTreePointers(chain.BlockTree, pointers);
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test]
@@ -271,7 +271,7 @@ public partial class EngineModuleTests
 
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, block.Hash!, startingHead, startingHead);
     }
 
     [Test]
@@ -364,7 +364,7 @@ public partial class EngineModuleTests
             chain.BlockTree.FindHeader(requests[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Should().NotBeNull();
         }
 
-        AssertExecutionStatusNotChangedV1(chain.BlockFinder, pivotBlock.Hash!, startingHead, startingHead);
+        AssertExecutionStatusNotChanged(chain.BlockFinder, pivotBlock.Hash!, startingHead, startingHead);
     }
 
     [Test]

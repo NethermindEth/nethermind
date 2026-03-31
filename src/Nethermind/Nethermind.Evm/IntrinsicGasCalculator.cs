@@ -16,7 +16,7 @@ public readonly record struct EthereumIntrinsicGas(long Standard, long FloorGas)
     public long MinimalGas { get; } = Math.Max(Standard, FloorGas);
     public static explicit operator long(EthereumIntrinsicGas gas) => gas.MinimalGas;
     public static implicit operator EthereumIntrinsicGas(IntrinsicGas<EthereumGasPolicy> gas) =>
-        new(gas.Standard.Value, gas.FloorGas.Value);
+        new(gas.Standard.Value + gas.Standard.StateReservoir, gas.FloorGas.Value);
 }
 
 public static class IntrinsicGasCalculator

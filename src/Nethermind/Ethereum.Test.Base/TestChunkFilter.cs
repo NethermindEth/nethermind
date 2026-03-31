@@ -39,7 +39,7 @@ public static class TestChunkFilter
                 return null;
             }
 
-            string[] parts = chunkEnv.Split("of", StringSplitOptions.None);
+            string[] parts = chunkEnv.Split("of");
 
             if (parts.Length != 2 ||
                 !int.TryParse(parts[0], out int index) ||

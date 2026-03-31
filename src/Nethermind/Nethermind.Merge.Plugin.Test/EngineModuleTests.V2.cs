@@ -305,15 +305,7 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task getPayloadV2_should_fail_on_unknown_payload()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        byte[] payloadId = Bytes.FromHexString("0x0");
-        ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
-        responseFirst.Should().NotBeNull();
-        responseFirst.Result.ResultType.Should().Be(ResultType.Failure);
-        responseFirst.ErrorCode.Should().Be(MergeErrorCodes.UnknownPayload);
+        await GetPayload_should_fail_on_unknown_payload(2);
     }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]

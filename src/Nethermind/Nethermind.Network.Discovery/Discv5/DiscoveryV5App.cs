@@ -36,6 +36,8 @@ namespace Nethermind.Network.Discovery.Discv5;
 
 public sealed class DiscoveryV5App : IDiscoveryApp
 {
+    internal const int MaxPendingEnrsPerWalk = 4_096;
+    internal const int MaxTrackedEnrsPerWalk = MaxPendingEnrsPerWalk * 2;
     private readonly IDiscv5Protocol _discv5Protocol;
     private readonly Logging.ILogger _logger;
     private readonly IDb _discoveryDb;
@@ -46,6 +48,8 @@ public sealed class DiscoveryV5App : IDiscoveryApp
     private readonly IServiceProvider _serviceProvider;
     private readonly SessionOptions _sessionOptions;
     private readonly EnrFactory _enrFactory;
+    private readonly bool _allowNonRoutableEnrs;
+    private readonly RateLimiter _outgoingMessageRateLimiter;
 
     public DiscoveryV5App(
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
@@ -60,6 +64,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
         _logManager = logManager;
+        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(ipResolver.ExternalIp);
         IdentityVerifierV4 identityVerifier = new();
 
         PrivateKey privateKey = nodeKey.Unprotect();
@@ -110,6 +115,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         _discv5Protocol = NetworkHelper.HandlePortTakenError(discv5Builder.Build, networkConfig.DiscoveryPort);
 
         _serviceProvider = discv5Builder.GetServiceProvider();
+        _outgoingMessageRateLimiter = new RateLimiter(discoveryConfig.MaxOutgoingMessagePerSecond);
     }
     private static string[] GetDefaultDiscv5Bootnodes() =>
         JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
@@ -127,7 +133,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         .WithEntry(EnrEntryKey.Udp, new EntryUdp(node.Address.Port))
         .Build();
 
-    private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
+    internal bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
     {
         static PublicKey? GetPublicKeyFromEnr(IEnr entry)
         {
@@ -166,11 +172,59 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
         int tcpPort = enr.GetEntry<EntryTcp>(EnrEntryKey.Tcp).Value;
+        if (!IsDiscoveryAddressAcceptable(ip, _allowNonRoutableEnrs))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, non-routable IP {ip}.");
+            return false;
+        }
+
+        if ((uint)tcpPort > ushort.MaxValue || tcpPort == 0)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, invalid TCP port {tcpPort}.");
+            return false;
+        }
 
         node = new(key, ip.ToString(), tcpPort)
         {
             Enr = enr.ToString()
         };
+        return true;
+    }
+
+    internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)
+    {
+        if (IPAddress.Any.Equals(ipAddress) || IPAddress.IPv6Any.Equals(ipAddress) || IPAddress.Broadcast.Equals(ipAddress))
+        {
+            return false;
+        }
+
+        if (ipAddress.IsIPv6Multicast || IsIPv4Multicast(ipAddress))
+        {
+            return false;
+        }
+
+        return allowNonRoutable || !NodeFilter.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+    }
+
+    internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
+        => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+
+    private static bool IsIPv4Multicast(IPAddress ipAddress)
+        => NodeFilter.IsIPv4Multicast(ipAddress);
+
+    private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
+        => !IPAddress.Any.Equals(externalIp)
+            && !IPAddress.None.Equals(externalIp)
+            && NodeFilter.IsLoopbackOrPrivateOrLinkLocal(externalIp);
+
+    internal static bool TryEnqueueNewEnr(Queue<IEnr> nodesToCheck, HashSet<IEnr> seenNodes, IEnr enr)
+    {
+        if (seenNodes.Count >= MaxTrackedEnrsPerWalk || nodesToCheck.Count >= MaxPendingEnrsPerWalk || !seenNodes.Add(enr))
+        {
+            return false;
+        }
+
+        nodesToCheck.Enqueue(enr);
         return true;
     }
 
@@ -274,6 +328,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                 }
 
                 Queue<IEnr> nodesToCheck = new(startingNode);
+                HashSet<IEnr> seenNodes = [.. startingNode];
                 HashSet<IEnr> checkedNodes = [];
 
                 while (!token.IsCancellationRequested)
@@ -297,12 +352,10 @@ public sealed class DiscoveryV5App : IDiscoveryApp
                         continue;
                     }
 
+                    await _outgoingMessageRateLimiter.WaitAsync(token);
                     foreach (IEnr newEnr in await _discv5Protocol.SendFindNodeAsync(newEntry, GetDistances(newEntry.NodeId, in nodeId)) ?? [])
                     {
-                        if (!checkedNodes.Contains(newEnr))
-                        {
-                            nodesToCheck.Enqueue(newEnr);
-                        }
+                        TryEnqueueNewEnr(nodesToCheck, seenNodes, newEnr);
                     }
                 }
             }

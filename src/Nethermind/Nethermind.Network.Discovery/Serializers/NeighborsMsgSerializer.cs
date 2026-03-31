@@ -19,18 +19,19 @@ public class NeighborsMsgSerializer(
     INodeIdResolver nodeIdResolver)
     : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<NeighborsMsg>
 {
+    private static readonly RlpLimit NodesRlpLimit = RlpLimit.For<NeighborsMsg>(16, nameof(NeighborsMsg.Nodes));
     private static readonly DecodeRlpValue<Node?> _decodeItem = static (ref Rlp.ValueDecoderContext ctx) =>
     {
         int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
         int count = ctx.PeekNumberOfItemsRemaining(lastPosition);
-        ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> ip = ctx.DecodeByteArraySpan(IpAddressRlpLimit);
         IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
         if (count > 3)
         {
             ctx.DecodeInt();
         }
 
-        ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
+        ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan(NodeIdRlpLimit);
         return new Node(new PublicKey(id), address);
     };
 
@@ -68,7 +69,7 @@ public class NeighborsMsgSerializer(
 
         Rlp.ValueDecoderContext ctx = Data.AsRlpContext();
         ctx.ReadSequenceLength();
-        Node[] nodes = ctx.DecodeArray(_decodeItem)!;
+        Node[] nodes = ctx.DecodeArray(_decodeItem, limit: NodesRlpLimit)!;
 
         long expirationTime = ctx.DecodeLong();
         Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);

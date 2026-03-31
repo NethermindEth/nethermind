@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -17,13 +16,13 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
@@ -584,18 +583,36 @@ public class Eth70ProtocolHandlerTests
             !m.LastBlockIncomplete));
     }
 
+    [Test]
+    public async Task Handle_GetReceipts_disposes_request_message()
+    {
+        TrackableGetReceiptsMessage70 request = new(1111, 0, new GetReceiptsMessage(new[] { Keccak.Zero }.ToPooledList()));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        using ReceiptsMessage70 response = await _handler.Handle(request, CancellationToken.None);
+
+        Assert.That(request.IsDisposed, Is.True, "Handler must dispose the request message to release the pooled hash list");
+    }
+
+    private sealed class TrackableGetReceiptsMessage70(long requestId, long firstBlockReceiptIndex, GetReceiptsMessage ethMessage)
+        : GetReceiptsMessage70(requestId, firstBlockReceiptIndex, ethMessage)
+    {
+        public bool IsDisposed { get; private set; }
+        public override void Dispose() { IsDisposed = true; base.Dispose(); }
+    }
+
     private void HandleIncomingStatusMessage()
     {
         using var statusMsg = new StatusMessage69 { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer packet = _svc!.ZeroSerialize(msg);
+        using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
         _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
     }

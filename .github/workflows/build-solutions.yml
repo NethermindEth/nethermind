@@ -42,3 +42,36 @@ jobs:
 
       - name: Build ${{ matrix.solution }}.slnx
         run: dotnet build src/Nethermind/${{ matrix.solution }}.slnx -c ${{ matrix.config }} --no-restore
+
+  publish-runner:
+    name: Publish Nethermind.Runner [${{ matrix.target.label }}]
+    runs-on: ${{ matrix.target.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { runner: ubuntu-latest, label: linux-x64, rid: linux-x64 }
+          - { runner: ubuntu-24.04-arm, label: linux-arm64, rid: linux-arm64 }
+    steps:
+      - name: Free up disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          cache: true
+          cache-dependency-path: src/Nethermind/Nethermind.Runner/packages.lock.json
+
+      - name: Restore Nethermind.Runner
+        run: |
+          dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj --locked-mode
+          dotnet restore src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -r ${{ matrix.target.rid }} -p:PublishReadyToRun=true
+
+      - name: Publish Nethermind.Runner for ${{ matrix.target.rid }}
+        run: dotnet publish src/Nethermind/Nethermind.Runner/Nethermind.Runner.csproj -c release -r ${{ matrix.target.rid }} --no-restore --no-self-contained
