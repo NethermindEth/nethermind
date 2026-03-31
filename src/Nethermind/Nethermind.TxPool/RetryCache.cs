@@ -118,6 +118,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (!_requestingResources.Contains(resourceId))
         {
             HandlerBag<TMessage> newBag = _handlerBagsPool.Get();
+            newBag.Activate();
             HandlerBag<TMessage> bag = _retryRequests.GetOrAdd(resourceId, newBag);
 
             if (ReferenceEquals(bag, newBag))
@@ -128,6 +129,9 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                 AnnounceAddEnqueue(resourceId, handler);
                 return AnnounceResult.RequestRequired;
             }
+
+            // Lost the race — deactivate and return the unused bag
+            newBag.Deactivate();
 
             // Got existing entry — return unused bag and update
             _handlerBagsPool.Return(newBag);
@@ -154,6 +158,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_retryRequests.TryRemove(resourceId, out HandlerBag<TMessage>? bag))
         {
+            bag.Deactivate();
             _handlerBagsPool.Return(bag);
         }
 
@@ -168,6 +173,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         foreach (HandlerBag<TMessage> bag in _retryRequests.Values)
         {
+            bag.Deactivate();
             _handlerBagsPool.Return(bag);
         }
 
@@ -195,9 +201,13 @@ public enum AnnounceResult
 /// <summary>
 /// Poolable handler collection with active/inactive lifecycle guard.
 /// <para>
-/// <see cref="Drain"/> deactivates the bag so any in-flight <see cref="TryAdd"/> is
-/// silently rejected — preventing cross-resource contamination when the bag is returned
-/// to the pool and reused. <see cref="Reset"/> clears and reactivates for the next use.
+/// Bags start inactive in the pool. The owner that wins <c>GetOrAdd</c> calls
+/// <see cref="Activate"/> once. <see cref="Drain"/> and <see cref="Deactivate"/>
+/// permanently deactivate the bag for its current lifecycle — <see cref="TryAdd"/>
+/// is rejected once inactive. <see cref="Reset"/> clears the bag but does NOT
+/// reactivate — only an explicit <see cref="Activate"/> after pool <c>Get()</c> does.
+/// This ensures stale references from a previous lifecycle can never mutate a
+/// reused bag.
 /// </para>
 /// <para>
 /// Uses <see cref="HashSet{T}"/> internally to preserve set semantics (no duplicate handlers).
@@ -208,12 +218,33 @@ internal sealed class HandlerBag<TMessage>
 {
     private readonly HashSet<IMessageHandler<TMessage>> _handlers = [];
     private readonly Lock _lock = new();
-    private bool _active = true;
+    private bool _active;
 
     /// <summary>
-    /// Try to add a handler. Rejected if the bag has been drained/returned (inactive),
+    /// Called by the owner that wins GetOrAdd. Activates the bag for use.
+    /// </summary>
+    public void Activate()
+    {
+        lock (_lock)
+        {
+            _active = true;
+        }
+    }
+
+    /// <summary>
+    /// Deactivate without draining. Used by Received() before returning to pool.
+    /// </summary>
+    public void Deactivate()
+    {
+        lock (_lock)
+        {
+            _active = false;
+        }
+    }
+
+    /// <summary>
+    /// Try to add a handler. Rejected if the bag is inactive (drained/returned),
     /// the handler is already present (set semantics), or the bag is full.
-    /// Single lock acquisition — no separate Lease read needed.
     /// </summary>
     public bool TryAdd(IMessageHandler<TMessage> handler, int maxCount)
     {
@@ -249,15 +280,15 @@ internal sealed class HandlerBag<TMessage>
     }
 
     /// <summary>
-    /// Called by the pool on Return. Clears any late additions and reactivates
-    /// the bag for reuse by a new resource.
+    /// Called by the pool on Return. Clears any late additions.
+    /// Does NOT reactivate — only Activate() does.
     /// </summary>
     public void Reset()
     {
         lock (_lock)
         {
+            _active = false;
             _handlers.Clear();
-            _active = true;
         }
     }
 }
