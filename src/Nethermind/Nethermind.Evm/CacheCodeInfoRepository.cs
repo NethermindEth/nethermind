@@ -35,7 +35,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         CodeInfo? cachedCodeInfo = _codeCache.Get(in codeHash);
         if (cachedCodeInfo is null)
         {
-            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, address, in codeHash, spec);
+            cachedCodeInfo = CodeInfoRepository.GetCodeInfo(_worldState, address, in codeHash);
             _codeCache.Set(in codeHash, cachedCodeInfo);
         }
         else

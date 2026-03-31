@@ -185,7 +185,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override bool IsStorageEmpty(Address address)
     {
         AddAccountRead(address);
-        return IsStorageEmptyInternal(address);
+        return _innerWorldState.IsStorageEmpty(address);
     }
 
     public override bool IsDeadAccount(Address address)
@@ -256,36 +256,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         }
 
         return _innerWorldState.AccountExists(address);
-    }
-
-    private bool IsStorageEmptyInternal(Address address)
-    {
-        // if (ParallelExecutionEnabled)
-        // {
-        //     AccountChanges? accountChanges = GetGeneratingBlockAccessList(blockAccessIndex).GetAccountChanges(address);
-        //     HashSet<UInt256> zeroedSlots = [];
-        //     foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-        //     {
-        //         if (slotChanges.Changes.Last().Value.NewValue != 0)
-        //         {
-        //             return false;
-        //         }
-        //         zeroedSlots.Add(slotChanges.Slot);
-        //     }
-
-        //     accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        //     if (accountChanges is not null)
-        //     {
-        //         HashSet<UInt256> allSlots = accountChanges.GetAllSlots(blockAccessIndex.Value);
-        //         return allSlots.SetEquals(zeroedSlots);
-        //     }
-
-        //     throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex.Value}.");
-        // }
-        // else
-        // {
-            return _innerWorldState.IsStorageEmpty(address); //todo: fix
-        // }
     }
 
     private AccountStruct? GetAccountInternal(Address address)

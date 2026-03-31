@@ -71,7 +71,7 @@ public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
     public virtual byte[]? GetCode(Address address)
         => _innerWorldState.GetCode(address);
 
-    public byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual byte[]? GetCode(in ValueHash256 codeHash)
         => _innerWorldState.GetCode(codeHash);
 
     public virtual ValueHash256 GetCodeHash(Address address)

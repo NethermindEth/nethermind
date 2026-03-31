@@ -37,7 +37,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
         CodeInfo DefaultLoad(Address address, ValueHash256 codeHash, IReleaseSpec spec) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash, spec);
+            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, address, in codeHash);
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -68,10 +68,10 @@ public class CodeInfoRepository : ICodeInfoRepository
         return _codeInfoLoader(codeSource, codeHash, vmSpec);
     }
 
-    internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
-        IBlockAccessListBuilder? balBuilder = worldState as IBlockAccessListBuilder;
-        byte[]? code = balBuilder is not null && balBuilder.ParallelExecutionEnabled ? worldState.GetCode(address) : worldState.GetCode(in codeHash);
+        // When executing in parallel must get by address
+        byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
         if (code is null)
         {
             MissingCode(in codeHash);

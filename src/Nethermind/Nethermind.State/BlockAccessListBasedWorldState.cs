@@ -78,6 +78,9 @@ public class BlockAccessListBasedWorldState(
     public override byte[]? GetCode(Address address)
         => GetCodeInternal(address);
 
+    public override byte[]? GetCode(in ValueHash256 _)
+        => null;
+
     public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalanceInternal(address);
