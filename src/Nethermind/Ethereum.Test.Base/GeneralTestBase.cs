@@ -103,6 +103,8 @@ namespace Ethereum.Test.Base
                 stateProvider.RecalculateStateRoot();
             }
 
+            Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
+
             if (test.Transaction.ChainId is null)
             {
                 test.Transaction.ChainId = test.ChainId;
@@ -180,7 +182,8 @@ namespace Ethereum.Test.Base
                 }
                 else
                 {
-                    stateProvider.Reset();
+                    stateProvider.Restore(preExecutionSnapshot);
+                    stateProvider.RecalculateStateRoot();
                 }
             }
 

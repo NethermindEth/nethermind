@@ -32,8 +32,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
-    public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
+    public ConcurrentDictionary<HashedKey<TreePath>, TrieNode> ReadStateNodes = new();
+    public ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> ReadStorageNodes = new();
 
     public void Reset()
     {

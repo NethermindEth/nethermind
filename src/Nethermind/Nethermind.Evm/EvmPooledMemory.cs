@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -299,10 +299,11 @@ public struct EvmPooledMemory : IEvmMemory
     public void Dispose()
     {
         byte[] memory = _memory;
+
         if (memory is not null)
         {
             _memory = null;
-            ArrayPool<byte>.Shared.Return(memory);
+            SafeArrayPool<byte>.Shared.Return(memory);
         }
     }
 
@@ -321,7 +322,7 @@ public struct EvmPooledMemory : IEvmMemory
         {
             if (_memory is null)
             {
-                _memory = ArrayPool<byte>.Shared.Rent((int)Math.Max(Size, minRentSize));
+                _memory = SafeArrayPool<byte>.Shared.Rent((int)Math.Max(Size, minRentSize));
                 Array.Clear(_memory, 0, (int)Size);
             }
             else
@@ -330,10 +331,10 @@ public struct EvmPooledMemory : IEvmMemory
                 if (Size > (ulong)_memory.LongLength)
                 {
                     byte[] beforeResize = _memory;
-                    _memory = ArrayPool<byte>.Shared.Rent((int)Size);
+                    _memory = SafeArrayPool<byte>.Shared.Rent((int)Size);
                     Array.Copy(beforeResize, 0, _memory, 0, lastZeroedSize);
                     Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
-                    ArrayPool<byte>.Shared.Return(beforeResize);
+                    SafeArrayPool<byte>.Shared.Return(beforeResize);
                 }
                 else if (Size > _lastZeroedSize)
                 {

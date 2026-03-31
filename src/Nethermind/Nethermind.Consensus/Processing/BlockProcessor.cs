@@ -61,11 +61,14 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        if (_balBuilder is not null)
         {
-            _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+            _balBuilder.TracingEnabled = balsEnabled;
+            if (balsEnabled)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            }
         }
 
         ApplyDaoTransition(suggestedBlock);

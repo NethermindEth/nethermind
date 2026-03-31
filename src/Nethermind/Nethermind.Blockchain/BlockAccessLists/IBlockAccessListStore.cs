@@ -19,6 +19,11 @@ public interface IBlockAccessListStore
         {
             Insert(block.Hash, block.BlockAccessList);
         }
+
+        // Release BAL data after persistence to prevent memory accumulation in block caches.
+        // The data can be re-read from the store if needed.
+        block.GeneratedBlockAccessList = null;
+        block.EncodedBlockAccessList = null;
     }
 
     void Insert(Hash256 blockHash, byte[] bal);

@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (accepted == AcceptTxResult.Invalid)
                 {
                     if (logger.IsDebug) logger.Debug($"Disconnecting {_protocolHandler} due to invalid tx received");
-                    _protocolHandler.Disconnect(DisconnectReason.Other, $"invalid tx");
+                    _protocolHandler.Disconnect(DisconnectReason.InvalidTxReceived, $"invalid tx");
                     return;
                 }
 

@@ -14,10 +14,10 @@ namespace Nethermind.Init.Steps
     public class ResolveIps(INetworkConfig networkConfig, IIPResolver ipResolver) : IStep
     {
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
-        public virtual async Task Execute(CancellationToken _)
+        public virtual async Task Execute(CancellationToken cancellationToken)
         {
             // this should be outside of Ethereum Runner I guess
-            await ipResolver.Initialize();
+            await ipResolver.Initialize(cancellationToken);
             networkConfig.ExternalIp = ipResolver.ExternalIp.ToString();
             networkConfig.LocalIp = ipResolver.LocalIp.ToString();
         }
