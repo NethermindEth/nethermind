@@ -150,7 +150,7 @@
     "eip155Transition": 3,
     "eip158Transition": 3,
     "eip161abcTransition": 3,
-    "eisp140Transition": 4,
+    "eip140Transition": 4,
     "depositContractAddress": "0x0000000000000000000000000000000000000088",
     "eip1559ElasticityMultiplier": "0x1",
 
