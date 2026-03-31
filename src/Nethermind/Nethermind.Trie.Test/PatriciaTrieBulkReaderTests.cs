@@ -288,6 +288,8 @@ public class PatriciaTrieBulkReaderTests
             entries.Add(new PatriciaTree.BulkSetEntry(in allKeys[i], valueBuffer));
         }
         tree.BulkSet(entries);
+        tree.UpdateRootHash();
+        Hash256 rootHash = tree.RootHash;
         tree.Commit();
 
         ValueHash256[] readKeys = new ValueHash256[keyCount];
@@ -297,37 +299,43 @@ public class PatriciaTrieBulkReaderTests
             readKeys[i] = allKeys[readRng.Next(treeSize)];
         }
 
-        // Warmup all paths
+        // Warmup all paths (fresh root each time)
         for (int w = 0; w < warmup; w++)
         {
-            for (int i = 0; i < readKeys.Length; i++) tree.Get(readKeys[i].Bytes);
+            PatriciaTree t = new(trieStore, rootHash, true, LimboLogs.Instance);
+            for (int i = 0; i < readKeys.Length; i++) t.Get(readKeys[i].Bytes);
+            TrieNode root = trieStore.FindCachedOrUnknown(TreePath.Empty, rootHash);
             NoOpSink sink = default;
-            PatriciaTrieBulkReader.BulkRead(trieStore, tree.RootRef, readKeys, ref sink);
-            Parallel.For(0, readKeys.Length, (i) => tree.Get(readKeys[i].Bytes));
+            PatriciaTrieBulkReader.BulkRead(trieStore, root, readKeys, ref sink);
+            PatriciaTree t2 = new(trieStore, rootHash, true, LimboLogs.Instance);
+            Parallel.For(0, readKeys.Length, (i) => t2.Get(readKeys[i].Bytes));
         }
 
-        // Measure one-by-one
+        // Measure one-by-one (fresh root per iteration)
         long sw1 = Stopwatch.GetTimestamp();
         for (int iter = 0; iter < iterations; iter++)
         {
-            for (int i = 0; i < readKeys.Length; i++) tree.Get(readKeys[i].Bytes);
+            PatriciaTree t = new(trieStore, rootHash, true, LimboLogs.Instance);
+            for (int i = 0; i < readKeys.Length; i++) t.Get(readKeys[i].Bytes);
         }
         TimeSpan oneByOneTime = Stopwatch.GetElapsedTime(sw1);
 
-        // Measure Parallel.For on individual reads
+        // Measure Parallel.For on individual reads (fresh root per iteration)
         long sw2 = Stopwatch.GetTimestamp();
         for (int iter = 0; iter < iterations; iter++)
         {
-            Parallel.For(0, readKeys.Length, (i) => tree.Get(readKeys[i].Bytes));
+            PatriciaTree t = new(trieStore, rootHash, true, LimboLogs.Instance);
+            Parallel.For(0, readKeys.Length, (i) => t.Get(readKeys[i].Bytes));
         }
         TimeSpan parallelForTime = Stopwatch.GetElapsedTime(sw2);
 
-        // Measure BulkRead
+        // Measure BulkRead (fresh root per iteration)
         long sw3 = Stopwatch.GetTimestamp();
         for (int iter = 0; iter < iterations; iter++)
         {
+            TrieNode root = trieStore.FindCachedOrUnknown(TreePath.Empty, rootHash);
             NoOpSink sink = default;
-            PatriciaTrieBulkReader.BulkRead(trieStore, tree.RootRef, readKeys, ref sink);
+            PatriciaTrieBulkReader.BulkRead(trieStore, root, readKeys, ref sink);
         }
         TimeSpan bulkTime = Stopwatch.GetElapsedTime(sw3);
 
