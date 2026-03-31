@@ -301,7 +301,7 @@ namespace Nethermind.Xdc
                     await Task.Delay(delay, ct);
                 }
 
-                payloadAttributes.Timestamp = (ulong)new DateTimeOffset(now).ToUnixTimeSeconds();
+                payloadAttributes.Timestamp = (ulong)DateTimeOffset.ToUnixTimeSeconds();
 
                 Task<Block?> proposedBlockTask =
                     _blockBuilder.BuildBlock(parentHeader, null, payloadAttributes, IBlockProducer.Flags.None, ct);
@@ -427,7 +427,7 @@ namespace Nethermind.Xdc
             var fallbackPeriod = spec.TimeoutPeriod / 2;
             if ((long)parent.Timestamp + fallbackPeriod < now)
             {
-                // fallback to mining without accumulating enough votes
+                // If we are too far into the mining period, we will not wait for QC voting to finish and proceed with whatever is highest
                 return true;
             }
 

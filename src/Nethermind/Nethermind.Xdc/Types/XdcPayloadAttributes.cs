@@ -11,5 +11,5 @@ namespace Nethermind.Xdc.Types;
 internal class XdcPayloadAttributes : PayloadAttributes
 {
     public ulong Round { get; set; }
-    public QuorumCertificate QuorumCertificate { get; set; }
+    public QuorumCertificate? QuorumCertificate { get; set; }
 }
