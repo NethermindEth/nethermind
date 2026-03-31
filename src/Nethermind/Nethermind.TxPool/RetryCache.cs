@@ -131,7 +131,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
             // Got existing entry — return unused bag and update
             _handlerBagsPool.Return(newBag);
-            bag.TryAdd(handler, _maxRetryRequests);
+            // Capture lease from the live bag to detect recycling
+            bag.TryAdd(handler, _maxRetryRequests, bag.Lease);
             return AnnounceResult.Delayed;
         }
 
@@ -193,43 +194,59 @@ public enum AnnounceResult
 }
 
 /// <summary>
-/// Poolable handler collection with generation-guarded lifecycle.
+/// Poolable handler collection with lease-guarded lifecycle.
 /// <para>
-/// <see cref="Drain"/> snapshots the handlers under lock and bumps the generation,
-/// so any in-flight <see cref="TryAdd"/> holding a stale reference becomes a no-op
-/// (it adds to a drained list that no one will iterate).
-/// <see cref="HandlerBagPolicy{TMessage}.Return"/> calls <see cref="Reset"/> which
-/// clears the list, making the instance safe for reuse by a different resource.
+/// Each bag has a monotonically increasing <see cref="Lease"/> counter. Callers capture
+/// the lease at <c>GetOrAdd</c> time and pass it to <see cref="TryAdd"/>. If the bag has
+/// been drained/returned to the pool (bumping the lease), the stale lease won't match
+/// and the add is silently rejected — preventing cross-resource contamination.
+/// </para>
+/// <para>
+/// Uses <see cref="HashSet{T}"/> internally to preserve set semantics (no duplicate handlers).
 /// </para>
 /// </summary>
 internal sealed class HandlerBag<TMessage>
 {
-    private readonly List<IMessageHandler<TMessage>> _handlers = [];
+    private readonly HashSet<IMessageHandler<TMessage>> _handlers = [];
     private readonly Lock _lock = new();
+    private int _lease;
 
     /// <summary>
-    /// Try to add a handler. A late call after Drain is harmless — it adds to a
-    /// cleared list that will be discarded on the next Reset/Drain cycle.
+    /// Current lease. Callers capture this before <see cref="TryAdd"/> to detect stale references.
     /// </summary>
-    public void TryAdd(IMessageHandler<TMessage> handler, int maxCount)
+    public int Lease
+    {
+        get { lock (_lock) return _lease; }
+    }
+
+    /// <summary>
+    /// Try to add a handler. Rejected if the lease changed (bag was recycled),
+    /// the handler is already present (set semantics), or the bag is full.
+    /// </summary>
+    public bool TryAdd(IMessageHandler<TMessage> handler, int maxCount, int expectedLease)
     {
         lock (_lock)
         {
-            if (_handlers.Count < maxCount)
-            {
-                _handlers.Add(handler);
-            }
+            if (_lease != expectedLease)
+                return false;
+
+            if (_handlers.Count >= maxCount)
+                return false;
+
+            return _handlers.Add(handler);
         }
     }
 
     /// <summary>
-    /// Snapshot and clear the handlers. After this call, late TryAdd calls are
-    /// harmless — they add to the now-empty list which will be cleared on Reset.
+    /// Snapshot the handlers, clear the set, and bump the lease. After this call,
+    /// any in-flight TryAdd with a stale lease will be rejected.
     /// </summary>
     public IMessageHandler<TMessage>[] Drain()
     {
         lock (_lock)
         {
+            _lease++;
+
             if (_handlers.Count == 0)
                 return [];
 
@@ -240,12 +257,14 @@ internal sealed class HandlerBag<TMessage>
     }
 
     /// <summary>
-    /// Called by the pool on Return. Clears any late additions.
+    /// Called by the pool on Return. Clears handlers and bumps lease so any
+    /// stale references from previous use are invalidated.
     /// </summary>
     public void Reset()
     {
         lock (_lock)
         {
+            _lease++;
             _handlers.Clear();
         }
     }
