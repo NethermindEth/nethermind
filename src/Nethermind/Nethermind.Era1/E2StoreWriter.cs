@@ -77,36 +77,22 @@ public class E2StoreWriter : IDisposable
     }
 
     /// <summary>
-    /// The underlying stream. Exposed for callers that need to seek back and copy
-    /// temp stream content into this writer (see <see cref="CopyFrom"/>).
+    /// Compresses <paramref name="bytes"/> using Snappy framing and returns the result
+    /// in a rented <see cref="ArrayPool{T}"/> buffer. The caller must return the buffer
+    /// via <c>ArrayPool&lt;byte&gt;.Shared.Return</c> after use.
     /// </summary>
-    public Stream Stream => _stream;
-
-    /// <summary>
-    /// Copies all bytes from <paramref name="source"/> into this writer's stream,
-    /// feeding every byte through the running SHA-256 checksum.
-    /// </summary>
-    /// <returns>Total bytes copied.</returns>
-    public async Task<long> CopyFrom(Stream source, CancellationToken cancellation = default)
+    public static async Task<(byte[] Buffer, int Length)> Compress(
+        ReadOnlyMemory<byte> bytes, CancellationToken cancellation = default)
     {
-        source.Position = 0;
-        long copied = 0;
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(64 * 1024);
-        try
-        {
-            int read;
-            while ((read = await source.ReadAsync(buffer, cancellation)) > 0)
-            {
-                _checksumCalculator.AppendData(buffer.AsSpan(0, read));
-                await _stream.WriteAsync(buffer.AsMemory(0, read), cancellation);
-                copied += read;
-            }
-            return copied;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(E2StoreWriter));
+        using SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true);
+        await compressor.WriteAsync(bytes, cancellation);
+        await compressor.FlushAsync(cancellation);
+        bool ok = ms.TryGetBuffer(out ArraySegment<byte> segment);
+        Debug.Assert(ok);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(segment.Count);
+        segment.AsSpan().CopyTo(rented);
+        return (rented, segment.Count);
     }
 
     public ValueHash256 FinalizeChecksum()

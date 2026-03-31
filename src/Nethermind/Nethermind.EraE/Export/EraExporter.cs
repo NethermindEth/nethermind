@@ -126,7 +126,7 @@ public class EraExporter(
             ValueHash256 sha256;
             Hash256 lastBlockHash = Keccak.Zero;
 
-            using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, destinationPath, beaconRootsProvider))
+            using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
             {
                 for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
