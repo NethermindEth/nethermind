@@ -165,6 +165,7 @@ namespace Nethermind.Network
         {
             try
             {
+                _pingTimer.Dispose();
                 if (_logger.IsTrace) _logger.Trace("Stopping session monitor");
                 CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellationTokenSource);
             }

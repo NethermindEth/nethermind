@@ -21,6 +21,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong CancunTimestamp = 0x65ef4dbc;
     public const ulong PragueTimestamp = 0x68122dbc;
     public const ulong BalancerTimestamp = 0x69496dbc; // does not alter specs
+    public const ulong OsakaTimestamp = 0x69de2dbc;
     public static readonly Address FeeCollector = new("0x6BBe78ee9e474842Dbd4AB4987b3CeFE88426A92");
 
     private GnosisSpecProvider() { }
@@ -39,7 +40,8 @@ public class GnosisSpecProvider : ISpecProvider
                 null or < ShanghaiTimestamp => LondonGnosis.Instance,
                 < CancunTimestamp => ShanghaiGnosis.Instance,
                 < PragueTimestamp => CancunGnosis.Instance,
-                _ => PragueGnosis.Instance
+                < OsakaTimestamp => PragueGnosis.Instance,
+                _ => OsakaGnosis.Instance
             }
         };
     }

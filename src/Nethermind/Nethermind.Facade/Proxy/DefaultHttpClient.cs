@@ -67,7 +67,7 @@ namespace Nethermind.Facade.Proxy
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {endpoint} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
-                    await Task.Delay(_retryDelayMilliseconds);
+                    await Task.Delay(_retryDelayMilliseconds, cancellationToken);
                 }
             } while (currentRetry <= _retries);
 

@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -44,6 +43,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // Then eventually a compacted snapshot will be sent here where this will decide what to persist exactly
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
+
+    // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
+    private readonly Task _clearBundleCacheTask;
 
     private readonly int _compactSize;
 
@@ -86,6 +88,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _compactorTask = RunCompactor(_cancelTokenSource.Token);
         _populateTrieNodeCacheTask = RunTrieCachePopulator(_cancelTokenSource.Token);
         _persistenceTask = RunPersistence(_cancelTokenSource.Token);
+        _clearBundleCacheTask = RunClearBundleCache(_cancelTokenSource.Token);
     }
 
     private async Task RunCompactor(CancellationToken cancellationToken)
@@ -204,10 +207,15 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _ = Task.Run(async () =>
         {
             long sw = Stopwatch.GetTimestamp();
+            using CancellationTokenSource cts = new();
             while (true)
             {
-                Task delayTask = Task.Delay(slowTime);
-                if (await Task.WhenAny(jobTask, delayTask) == jobTask) break;
+                Task delayTask = Task.Delay(slowTime, cts.Token);
+                if (await Task.WhenAny(jobTask, delayTask) == jobTask)
+                {
+                    await cts.CancelAsync();
+                    break;
+                }
                 if (_logger.IsWarn) _logger.Warn($"Slow task \"{name}\". Took {Stopwatch.GetElapsedTime(sw)}");
             }
         });
@@ -351,14 +359,26 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         }
     }
 
+    private async Task RunClearBundleCache(CancellationToken cancellationToken)
+    {
+        using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                ClearReadOnlyBundleCache();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private void ClearReadOnlyBundleCache()
     {
-        using ArrayPoolListRef<StateId> statesToRemove = new();
-        statesToRemove.AddRange(_readonlySnapshotBundleCache.Keys);
-
-        foreach (StateId stateId in statesToRemove)
+        foreach (KeyValuePair<StateId, ReadOnlySnapshotBundle> entry in _readonlySnapshotBundleCache)
         {
-            if (_readonlySnapshotBundleCache.TryRemove(stateId, out ReadOnlySnapshotBundle? bundle))
+            if (_readonlySnapshotBundleCache.TryRemove(entry.Key, out ReadOnlySnapshotBundle? bundle))
             {
                 bundle.Dispose();
             }
@@ -403,6 +423,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await _compactorTask;
         await _populateTrieNodeCacheTask;
         await _persistenceTask;
+        await _clearBundleCacheTask;
 
         _cancelTokenSource.Dispose();
     }
