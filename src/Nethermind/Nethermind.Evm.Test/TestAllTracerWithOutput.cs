@@ -38,6 +38,8 @@ namespace Nethermind.Evm.Test
 
         public byte StatusCode { get; private set; }
 
+        public GasConsumed GasConsumedResult { get; private set; }
+
         public long Refund { get; private set; }
 
         public List<EvmExceptionType> ReportedActionErrors { get; set; } = new();
@@ -45,6 +47,7 @@ namespace Nethermind.Evm.Test
         public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             ReturnValue = output;
             StatusCode = Evm.StatusCode.Success;
         }
@@ -52,6 +55,7 @@ namespace Nethermind.Evm.Test
         public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
         {
             GasSpent = gasSpent.SpentGas;
+            GasConsumedResult = gasSpent;
             Error = error;
             ReturnValue = output ?? [];
             StatusCode = Evm.StatusCode.Failure;
