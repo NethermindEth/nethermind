@@ -23,7 +23,6 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 using NUnit.Framework;
 using Module = Autofac.Module;
 
@@ -72,9 +71,9 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
             // Crypto
             .AddSingleton<ISignerStore>(NullSigner.Instance)
-            .AddSingleton<IKeyStore>(Substitute.For<IKeyStore>())
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton<ITxSender>(Substitute.For<ITxSender>())
+            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // FlatDb uses SnapshotableMemColumnsDb for fast O(1) MVCC snapshots instead of slow O(n) full copies
             .AddSingleton<IColumnsDb<FlatDbColumns>>((_) => new SnapshotableMemColumnsDb<FlatDbColumns>(neverPrune: true))

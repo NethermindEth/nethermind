@@ -33,10 +33,9 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                bool shouldValidateBlockAccessList =
-                    _balBuilder is not null &&
-                    !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                bool shouldValidateBlockAccessList = _balBuilder is not null && !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
                 long? gasRemaining = shouldValidateBlockAccessList ? _balBuilder!.GasUsed() : null;
+
                 if (shouldValidateBlockAccessList)
                 {
                     _balBuilder!.ValidateBlockAccessList(block.Header, 0, gasRemaining!.Value);
