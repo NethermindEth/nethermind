@@ -101,6 +101,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return cachesCleared;
     }
 
+    public void Dispose()
+    {
+        // Disposing the pool releases all retained envs immediately, so their child
+        // ILifetimeScope instances are closed now rather than waiting for the parent
+        // Autofac scope to shut down.
+        (_envPool as IDisposable)?.Dispose();
+    }
+
     private void PreWarmCachesParallel(BlockState blockState, Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, ParallelOptions parallelOptions, AddressWarmer addressWarmer, CancellationToken cancellationToken)
     {
         try
