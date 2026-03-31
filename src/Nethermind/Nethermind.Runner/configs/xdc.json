@@ -13,12 +13,12 @@
   "Sync": {
     "FastSync": true,
     "NeedToWaitForHeader": true,
-    "PivotNumber": 99446266,
-    "PivotHash": "0x3c29f823a9b39daecbf32a717d37d7081b6801413295d4c83379a2d420ea7f3a",
-    "PivotTotalDifficulty": 7443067750,
+    "PivotNumber": 80370001,
+    "PivotHash": "0x5a701a8ba642a9b53475bb19cb9a313829f7afb4287caa76bebaea02f0219f89",
+    "PivotTotalDifficulty": 7423991485,
     "VerifyTrieOnStateSyncFinished": true,
-    "AncientBodiesBarrier": 99400000,
-    "AncientReceiptsBarrier": 99400000
+    "AncientBodiesBarrier": 80368000,
+    "AncientReceiptsBarrier": 80368000
   },
   "Merge": {
     "Enabled": false
