@@ -27,6 +27,8 @@ public class ShareableTxProcessingSource(IReadOnlyTxProcessingEnvFactory envFact
         return new ScopeWrapper(source, _envPool, scope);
     }
 
+    public void Dispose() => (_envPool as IDisposable)?.Dispose();
+
     private class EnvPoolPolicy(IReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<IReadOnlyTxProcessorSource>
     {
         public IReadOnlyTxProcessorSource Create()
