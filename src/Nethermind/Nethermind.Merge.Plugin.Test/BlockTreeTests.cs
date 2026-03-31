@@ -324,6 +324,39 @@ public partial class BlockTreeTests
                 return this;
             }
 
+            /// <summary>
+            /// Reproduces the unfixed StartingSyncPivotUpdater.UpdateConfigValues behavior:
+            /// writes SyncPivot metadata without inserting the header into the block tree.
+            /// Block <paramref name="num"/> will have no ChainLevelInfo entry.
+            /// </summary>
+            public ScenarioBuilder SetSyncPivotMetadataOnly(long num)
+            {
+                BlockHeader header = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None)!;
+                NotSyncedTree.SyncPivot = (num, header.Hash!);
+                return this;
+            }
+
+            /// <summary>
+            /// Reproduces the fixed StartingSyncPivotUpdater.UpdateConfigValues behavior:
+            /// writes SyncPivot metadata AND inserts the header with BeaconHeaderInsert flags.
+            /// Block <paramref name="num"/> will have a ChainLevelInfo entry with BeaconHeader
+            /// and BeaconMainChain metadata.
+            /// </summary>
+            public ScenarioBuilder InsertSyncPivotWithHeader(long num)
+            {
+                BlockHeader header = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None)!;
+                NotSyncedTree.SyncPivot = (num, header.Hash!);
+                NotSyncedTree.Insert(header,
+                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+                return this;
+            }
+
+            public ScenarioBuilder ClearForceNewBeaconSync()
+            {
+                _beaconPivot!.ShouldForceStartNewSync = false;
+                return this;
+            }
+
             public ScenarioBuilder ClearBeaconPivot()
             {
                 NotSyncedTreeBuilder.MetadataDb.Delete(MetadataDbKeys.BeaconSyncPivotNumber);
