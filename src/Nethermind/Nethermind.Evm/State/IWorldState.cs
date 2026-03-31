@@ -27,6 +27,14 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
     new ref readonly ValueHash256 GetCodeHash(Address address);
+
+    /// <summary>
+    /// Gets a read-only view of this world state that avoids wrapper-specific tracking side effects.
+    /// This is intended for speculative reads that must observe the current mutable state without
+    /// contributing to generated block-level access lists.
+    /// </summary>
+    IReadOnlyStateProvider GetUntrackedReader() => this;
+
     bool HasStateForBlock(BlockHeader? baseBlock);
 
     /// <summary>

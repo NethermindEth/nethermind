@@ -306,14 +306,14 @@ public class BlockProcessorTests
 
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
-        WorldStateStab stateProvider = new();
+        IWorldState stateProvider = new WorldStateStab();
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
