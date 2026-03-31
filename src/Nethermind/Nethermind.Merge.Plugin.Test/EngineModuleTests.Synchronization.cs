@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -30,20 +29,16 @@ using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
-using Nethermind.Core.Specs;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using No = Nethermind.Synchronization.No;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [TestCase(true, Description = "Gate pre-opened by StartingSyncPivotUpdater (normal path)")]
-    [TestCase(false, Description = "Regression: gate not yet opened when first FCU arrives — FCU handler must open it")]
-    public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing(bool gatePreOpened)
+    [Test]
+    public async Task forkChoiceUpdatedV1_unknown_block_initiates_syncing()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(allowBeaconHeaderSync: gatePreOpened);
+        using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256? startingHead = chain.BlockTree.HeadHash;
         BlockHeader parent = Build.A.BlockHeader
@@ -1095,5 +1090,4 @@ public partial class EngineModuleTests
         public long BestKnownBeaconBlock;
         public BlockHeader? LowestInsertedBeaconHeader;
     }
-
 }

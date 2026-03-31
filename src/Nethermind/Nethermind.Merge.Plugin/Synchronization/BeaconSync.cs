@@ -147,8 +147,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        void AllowBeaconHeaderSync();
-
         bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
