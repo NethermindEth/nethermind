@@ -18,8 +18,8 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     private StateCompositionStats _currentStats;
     private TrieDepthDistribution _currentDistribution;
     private ScanMetadata? _lastScanMetadata;
-    private volatile bool _isInitialized;
-    private volatile bool _isScanning;
+    private bool _isInitialized;
+    private bool _isScanning;
 
     public StateCompositionStats CurrentStats
     {
@@ -36,8 +36,8 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
         get { lock (_lock) return _lastScanMetadata; }
     }
 
-    public bool IsInitialized => _isInitialized;
-    public bool IsScanning => _isScanning;
+    public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
+    public bool IsScanning { get { lock (_lock) return _isScanning; } }
 
     public void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist)
     {
