@@ -9,11 +9,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-/// <summary>
-/// Represents a batch storage-read request for <c>eth_getStorageValues</c>.
-/// Implements <see cref="IJsonRpcParam"/> so that the total-slot limit is
-/// enforced during JSON deserialization, before any large allocations can occur.
-/// </summary>
 public class StorageValuesRequest : IJsonRpcParam
 {
     public const int MaxSlots = 1024;
