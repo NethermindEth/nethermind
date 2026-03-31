@@ -9,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class StorageValuesRequest : IJsonRpcParam
+public sealed class StorageValuesRequest : IJsonRpcParam
 {
     public const int MaxSlots = 1024;
 

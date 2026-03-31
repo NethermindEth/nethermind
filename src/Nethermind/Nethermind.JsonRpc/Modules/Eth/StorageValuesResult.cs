@@ -17,6 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public sealed class StorageValuesResult : IDisposable
 {
     private readonly byte[] _buffer;
+    private bool _disposed;
 
     public StorageValuesResult(byte[] buffer, Dictionary<Address, Memory<byte>[]> slots)
     {
@@ -26,7 +27,14 @@ public sealed class StorageValuesResult : IDisposable
 
     public Dictionary<Address, Memory<byte>[]> Slots { get; }
 
-    public void Dispose() => ArrayPool<byte>.Shared.Return(_buffer);
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _disposed = true;
+            ArrayPool<byte>.Shared.Return(_buffer);
+        }
+    }
 }
 
 internal sealed class StorageValuesResultConverter : JsonConverter<StorageValuesResult>
