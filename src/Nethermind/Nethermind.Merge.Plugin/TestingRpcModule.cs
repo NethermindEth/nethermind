@@ -46,43 +46,37 @@ public class TestingRpcModule(
 
             // Create a fresh processor per call with its own WorldState to avoid scope conflicts
             // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
-            IBlockProducerEnv env = blockProducerEnvFactory.Create();
-            try
+            await using IBlockProducerEnv env = blockProducerEnvFactory.Create();
+
+            Transaction[] transactions = txRlps is null
+                ? env.TxSource.GetTransactions(parentBlock.Header, header.GasLimit, payloadAttributes, filterSource: true).ToArray()
+                : DecodeTransactions(txRlps).ToArray();
+
+            header.TxRoot = TxTrie.CalculateRoot(transactions);
+            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+
+            FeesTracer feesTracer = new();
+            Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
+
+            if (processedBlock is not null)
             {
-                Transaction[] transactions = txRlps is null
-                    ? env.TxSource.GetTransactions(parentBlock.Header, header.GasLimit, payloadAttributes, filterSource: true).ToArray()
-                    : DecodeTransactions(txRlps).ToArray();
-
-                header.TxRoot = TxTrie.CalculateRoot(transactions);
-                Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
-
-                FeesTracer feesTracer = new();
-                Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
-
-                if (processedBlock is not null)
+                // When explicit transactions were provided, verify all were included.
+                // The block processor in production mode silently skips invalid transactions,
+                // but the spec requires all provided transactions to be included.
+                if (txRlps is not null && processedBlock.Transactions.Length != transactions.Length)
                 {
-                    // When explicit transactions were provided, verify all were included.
-                    // The block processor in production mode silently skips invalid transactions,
-                    // but the spec requires all provided transactions to be included.
-                    if (txRlps is not null && processedBlock.Transactions.Length != transactions.Length)
-                    {
-                        string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
-                        if (_logger.IsWarn) _logger.Warn($"testing_buildBlockV1 failed: {error}");
-                        return ResultWrapper<object?>.Fail(error, ErrorCodes.InvalidInput);
-                    }
-
-                    object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
-
-                    if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
-                    return ResultWrapper<object?>.Success(getPayloadResult);
+                    string error = $"expected {transactions.Length} transactions but only {processedBlock.Transactions.Length} were included";
+                    if (_logger.IsWarn) _logger.Warn($"testing_buildBlockV1 failed: {error}");
+                    return ResultWrapper<object?>.Fail(error, ErrorCodes.InvalidInput);
                 }
 
-                return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+                object getPayloadResult = CreateGetPayloadResult(processedBlock, feesTracer.Fees, spec);
+
+                if (_logger.IsDebug) _logger.Debug($"testing_buildBlockV1 produced payload for block {processedBlock.Header.ToString(BlockHeader.Format.Short)}.");
+                return ResultWrapper<object?>.Success(getPayloadResult);
             }
-            finally
-            {
-                await env.ChainProcessor.DisposeAsync();
-            }
+
+            return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
         }
 
         return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
