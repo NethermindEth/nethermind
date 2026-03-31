@@ -10,11 +10,10 @@ namespace Nethermind.Runner.Ethereum.Steps;
 
 [RunnerCommand("run", IsDefault = true, Description = "Run the Nethermind client")]
 [RunnerStepDependencies(
-    typeof(LogHardwareInfo),
-    typeof(StartMonitoring),
+    typeof(LogHardwareInfo),     // Standalone: logs CPU info, MustInitialize=false
+    typeof(StartMonitoring),     // Standalone: starts Prometheus/Grafana metrics, MustInitialize=false
     typeof(StartBlockProducer),
-    typeof(EvmWarmer),
-    typeof(DatabaseMigrations),
+    typeof(DatabaseMigrations),  // Background runtime migrations that wait for NotSyncing mode; needs full init
     typeof(StartLogIndex),
     typeof(StartRpc)
 )]

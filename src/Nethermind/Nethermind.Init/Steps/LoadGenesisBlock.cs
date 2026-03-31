@@ -11,7 +11,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins), typeof(EvmWarmer))]
     public class LoadGenesisBlock(IMainProcessingContext mainProcessingContext, IBlockTree blockTree, IInitConfig initConfig, ILogManager logManager) : IStep
     {
         private readonly ILogger _logger = logManager.GetClassLogger();
