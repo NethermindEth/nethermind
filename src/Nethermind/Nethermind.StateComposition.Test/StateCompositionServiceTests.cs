@@ -11,6 +11,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.State;
+using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -39,7 +41,7 @@ public class StateCompositionServiceTests
 
         Assert.Throws<ArgumentException>(() =>
             new StateCompositionService(
-                Substitute.For<State.IStateReader>(),
+                Substitute.For<IStateReader>(),
                 new StateCompositionStateHolder(),
                 config,
                 LimboLogs.Instance));
@@ -53,7 +55,7 @@ public class StateCompositionServiceTests
 
         Assert.Throws<ArgumentException>(() =>
             new StateCompositionService(
-                Substitute.For<State.IStateReader>(),
+                Substitute.For<IStateReader>(),
                 new StateCompositionStateHolder(),
                 config,
                 LimboLogs.Instance));
@@ -67,7 +69,7 @@ public class StateCompositionServiceTests
 
         Assert.Throws<ArgumentException>(() =>
             new StateCompositionService(
-                Substitute.For<State.IStateReader>(),
+                Substitute.For<IStateReader>(),
                 new StateCompositionStateHolder(),
                 config,
                 LimboLogs.Instance));
@@ -81,7 +83,7 @@ public class StateCompositionServiceTests
 
         Assert.Throws<ArgumentException>(() =>
             new StateCompositionService(
-                Substitute.For<State.IStateReader>(),
+                Substitute.For<IStateReader>(),
                 new StateCompositionStateHolder(),
                 config,
                 LimboLogs.Instance));
@@ -91,14 +93,14 @@ public class StateCompositionServiceTests
     public void GetTrieDistributionAsync_ThrowsWhenNotInitialized()
     {
         StateCompositionService service = new(
-            Substitute.For<State.IStateReader>(),
+            Substitute.For<IStateReader>(),
             new StateCompositionStateHolder(),
             CreateValidConfig(),
             LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        Assert.ThrowsAsync<StateCompositionException>(async () =>
             await service.GetTrieDistributionAsync(header, CancellationToken.None));
     }
 
@@ -106,12 +108,167 @@ public class StateCompositionServiceTests
     public void CancelScan_DoesNotThrowWhenNoScanRunning()
     {
         StateCompositionService service = new(
-            Substitute.For<State.IStateReader>(),
+            Substitute.For<IStateReader>(),
             new StateCompositionStateHolder(),
             CreateValidConfig(),
             LimboLogs.Instance);
 
         Assert.DoesNotThrow(() => service.CancelScan());
+    }
+
+    // --- C-1: AnalyzeAsync integration test ---
+
+    [Test]
+    public async Task AnalyzeAsync_ReturnsStats_AndUpdatesStateHolder()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        StateCompositionStateHolder stateHolder = new();
+
+        StateCompositionService service = new(
+            stateReader, stateHolder, CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        StateCompositionStats stats = await service.AnalyzeAsync(header, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stateHolder.IsInitialized, Is.True);
+            Assert.That(stateHolder.IsScanning, Is.False);
+            Assert.That(stateHolder.LastScanMetadata, Is.Not.Null);
+            Assert.That(stateHolder.LastScanMetadata!.Value.IsComplete, Is.True);
+        });
+    }
+
+    // --- C-2: InspectContractAsync tests ---
+
+    [Test]
+    public async Task InspectContractAsync_ReturnsNull_WhenAccountNotFound()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        // TryGetAccount returns false by default (NSubstitute default for bool)
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        TopContractEntry? result = await service.InspectContractAsync(
+            Address.Zero, header, CancellationToken.None);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task InspectContractAsync_ReturnsNull_WhenNoStorage()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        AccountStruct noStorageAccount = new(0, 0,
+            Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
+
+        AccountStruct outAccount = default;
+        stateReader.TryGetAccount(default!, default!, out outAccount)
+            .ReturnsForAnyArgs(x =>
+            {
+                x[2] = noStorageAccount;
+                return true;
+            });
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        TopContractEntry? result = await service.InspectContractAsync(
+            Address.Zero, header, CancellationToken.None);
+
+        Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task InspectContractAsync_CompletesWithoutError_WhenHasStorage()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        AccountStruct withStorageAccount = new(0, 0,
+            Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
+
+        AccountStruct outAccount = default;
+        stateReader.TryGetAccount(default!, default!, out outAccount)
+            .ReturnsForAnyArgs(x =>
+            {
+                x[2] = withStorageAccount;
+                return true;
+            });
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        // RunTreeVisitor mock is a no-op, so visitor finds nothing → returns null.
+        // The important assertion is that the flow completes without throwing.
+        TopContractEntry? result = await service.InspectContractAsync(
+            Address.Zero, header, CancellationToken.None);
+
+        Assert.That(result, Is.Null);
+    }
+
+    // --- H-6: Cooldown and semaphore rejection tests ---
+
+    [Test]
+    public async Task AnalyzeAsync_ThrowsCooldown_AfterRecentScan()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        IStateCompositionConfig config = CreateValidConfig();
+        config.ScanCooldownSeconds.Returns(60);
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), config, LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        // First scan completes immediately (mock RunTreeVisitor is a no-op)
+        await service.AnalyzeAsync(header, CancellationToken.None);
+
+        // Second scan should throw cooldown exception
+        StateCompositionException ex = Assert.ThrowsAsync<StateCompositionException>(async () =>
+            await service.AnalyzeAsync(header, CancellationToken.None))!;
+
+        Assert.That(ex.Message, Does.Contain("cooldown"));
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task AnalyzeAsync_ThrowsWhenScanAlreadyInProgress()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ManualResetEventSlim entered = new(false);
+        TaskCompletionSource blocker = new();
+
+        stateReader.WhenForAnyArgs(x =>
+                x.RunTreeVisitor<StateCompositionContext>(default!, default, default))
+            .Do(_ =>
+            {
+                entered.Set();
+                blocker.Task.GetAwaiter().GetResult();
+            });
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        // Start first scan — blocks inside RunTreeVisitor
+        Task<StateCompositionStats> firstScan = service.AnalyzeAsync(header, CancellationToken.None);
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "First scan did not enter RunTreeVisitor");
+
+        // Second scan should throw immediately (fail-fast semaphore)
+        Assert.ThrowsAsync<StateCompositionException>(async () =>
+            await service.AnalyzeAsync(header, CancellationToken.None));
+
+        // Release blocker so first scan completes
+        blocker.SetResult();
+        await firstScan;
     }
 }
 

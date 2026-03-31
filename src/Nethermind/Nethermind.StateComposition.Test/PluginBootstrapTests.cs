@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
@@ -308,8 +309,88 @@ public class PluginBootstrapTests
         Assert.Multiple(() =>
         {
             Assert.That(entry.Owner, Is.EqualTo(owner));
-            Assert.That(entry.Levels, Is.Not.Null);
+            Assert.That(entry.Levels.IsDefault, Is.False);
             Assert.That(entry.Summary.TotalSize, Is.EqualTo(2000));
         });
+    }
+
+    // --- H-4: Owner hash path tracking ---
+
+    [Test]
+    public void VisitorCounters_BeginStorageTrie_PreservesOwner()
+    {
+        VisitorCounters c = new(topN: 5);
+
+        byte[] ownerBytes = new byte[32];
+        ownerBytes[0] = 0xAB;
+        ownerBytes[31] = 0xCD;
+        ValueHash256 expectedOwner = new(ownerBytes);
+
+        c.BeginStorageTrie(default, expectedOwner);
+        c.TrackStorageNode(depth: 5, byteSize: 100, isLeaf: true, isBranch: false);
+        c.Flush();
+
+        Assert.That(c.TopByDepthCount, Is.EqualTo(1));
+        Assert.That(c.TopByDepth[0].Owner, Is.EqualTo(expectedOwner));
+    }
+
+    // --- M-4: TopN eviction tests for TopByNodes and TopByValueNodes ---
+
+    [Test]
+    public void VisitorCounters_TopN_ByNodes_InsertsAndEvictsCorrectly()
+    {
+        VisitorCounters c = new(topN: 3);
+
+        // Insert 5 contracts with increasing TotalNodes counts
+        for (int i = 1; i <= 5; i++)
+        {
+            byte[] ownerBytes = new byte[32];
+            ownerBytes[0] = (byte)i;
+            c.BeginStorageTrie(default, new ValueHash256(ownerBytes));
+            // i*3 branch nodes to vary TotalNodes
+            for (int j = 0; j < i * 3; j++)
+                c.TrackStorageNode(depth: 1, byteSize: 10, isLeaf: false, isBranch: true);
+        }
+
+        c.Flush();
+
+        // Top 3 by total nodes should be 15, 12, 9 (from i=5,4,3)
+        Assert.That(c.TopByNodesCount, Is.EqualTo(3));
+
+        long[] nodes = new long[3];
+        for (int i = 0; i < 3; i++)
+            nodes[i] = c.TopByNodes[i].TotalNodes;
+
+        Array.Sort(nodes);
+        Assert.That(nodes, Is.EqualTo(new long[] { 9, 12, 15 }));
+    }
+
+    [Test]
+    public void VisitorCounters_TopN_ByValueNodes_InsertsAndEvictsCorrectly()
+    {
+        VisitorCounters c = new(topN: 3);
+
+        // Insert 5 contracts with increasing ValueNodes counts
+        for (int i = 1; i <= 5; i++)
+        {
+            byte[] ownerBytes = new byte[32];
+            ownerBytes[0] = (byte)i;
+            c.BeginStorageTrie(default, new ValueHash256(ownerBytes));
+            // i*2 leaf nodes (value nodes)
+            for (int j = 0; j < i * 2; j++)
+                c.TrackStorageNode(depth: 1, byteSize: 10, isLeaf: true, isBranch: false);
+        }
+
+        c.Flush();
+
+        // Top 3 by value nodes should be 10, 8, 6 (from i=5,4,3)
+        Assert.That(c.TopByValueNodesCount, Is.EqualTo(3));
+
+        long[] valueNodes = new long[3];
+        for (int i = 0; i < 3; i++)
+            valueNodes[i] = c.TopByValueNodes[i].ValueNodes;
+
+        Array.Sort(valueNodes);
+        Assert.That(valueNodes, Is.EqualTo(new long[] { 6, 8, 10 }));
     }
 }

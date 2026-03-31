@@ -6,6 +6,11 @@ namespace Nethermind.StateComposition;
 /// <summary>
 /// Mutable per-depth node counters.
 /// Short=Extension, Full=Branch, Value=Leaf.
+/// <para>
+/// WARNING: This is a mutable struct. MUST be accessed via <c>ref</c> to avoid
+/// accidental copies that silently lose mutations. Always use
+/// <c>ref DepthCounter dc = ref array[i];</c> when reading from arrays.
+/// </para>
 /// </summary>
 public struct DepthCounter
 {
