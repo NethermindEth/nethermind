@@ -17,7 +17,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -103,18 +102,23 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 return Task.CompletedTask;
 
             AccountChanges[] accountChangesList = new AccountChanges[accountCount];
-            ValueHash256[] accountKeys = new ValueHash256[accountCount];
             int idx = 0;
             foreach (AccountChanges ac in bal.AccountChanges)
             {
                 accountChangesList[idx] = ac;
-                KeccakCache.ComputeTo(ac.Address.Bytes, out accountKeys[idx]);
                 idx++;
             }
 
             Account?[] accounts = new Account?[accountCount];
-            AccountBulkReadSink accountSink = new(accountChangesList, accounts, sink, this);
-            PatriciaTrieBulkReader.BulkRead(_backingStateTree.TrieStore, _backingStateTree.RootRef, accountKeys, ref accountSink);
+            Parallel.For(0, accountCount, (i) =>
+            {
+                Address address = accountChangesList[i].Address;
+                Account? account = _backingStateTree.Get(address);
+                accounts[i] = account;
+
+                _loadedAccounts.TryAdd(address, account);
+                sink.OnAccountRead(address, account);
+            });
 
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -138,74 +142,26 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 StorageTree storageTree = _scopeProvider.CreateStorageTree(address, storageRoot);
                 _storages[address] = storageTree;
 
-                ValueHash256[] slotKeys = new ValueHash256[slotCount];
                 UInt256[] slotIndices = new UInt256[slotCount];
                 int si = 0;
 
                 foreach (SlotChanges slotChanges in accountChanges.StorageChanges)
-                {
-                    slotIndices[si] = slotChanges.Slot;
-                    StorageTree.ComputeKeyWithLookup(in slotIndices[si], ref slotKeys[si]);
-                    si++;
-                }
+                    slotIndices[si++] = slotChanges.Slot;
 
                 foreach (StorageRead storageRead in accountChanges.StorageReads)
-                {
-                    slotIndices[si] = storageRead.Key;
-                    StorageTree.ComputeKeyWithLookup(in slotIndices[si], ref slotKeys[si]);
-                    si++;
-                }
+                    slotIndices[si++] = storageRead.Key;
 
-                StorageBulkReadSink storageSink = new(address, slotIndices, sink);
-                PatriciaTrieBulkReader.BulkRead(storageTree.TrieStore, storageTree.RootRef, slotKeys, ref storageSink);
+                Parallel.For(0, slotCount, (si2) =>
+                {
+                    byte[] decodedValue = storageTree.Get(in slotIndices[si2]);
+                    StorageCell cell = new(address, slotIndices[si2]);
+                    sink.OnStorageRead(in cell, decodedValue);
+                });
             }
 
             return Task.CompletedTask;
         }
 
-        private struct AccountBulkReadSink(
-            AccountChanges[] accountChangesList,
-            Account?[] accounts,
-            IWorldStateScopeProvider.IAsyncBalReaderSink outerSink,
-            TrieStoreWorldStateBackendScope scope
-        ) : IPatriciaTrieBulkReaderSink<AccountBulkReadSink>
-        {
-            private readonly AccountDecoder _decoder = new();
-
-            public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value)
-            {
-                Account? account = value.IsEmpty ? null : _decoder.Decode(value);
-                accounts[idx] = account;
-
-                Address address = accountChangesList[idx].Address;
-                scope._loadedAccounts.TryAdd(address, account);
-                outerSink.OnAccountRead(address, account);
-            }
-        }
-
-        private struct StorageBulkReadSink(
-            Address address,
-            UInt256[] slotIndices,
-            IWorldStateScopeProvider.IAsyncBalReaderSink outerSink
-        ) : IPatriciaTrieBulkReaderSink<StorageBulkReadSink>
-        {
-            public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value)
-            {
-                byte[] decodedValue;
-                if (value.IsEmpty)
-                {
-                    decodedValue = StorageTree.ZeroBytes;
-                }
-                else
-                {
-                    Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
-                    decodedValue = rlp.DecodeByteArray();
-                }
-
-                StorageCell cell = new(address, slotIndices[idx]);
-                outerSink.OnStorageRead(in cell, decodedValue);
-            }
-        }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 

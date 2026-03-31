@@ -10,7 +10,6 @@ using BenchmarkDotNet.Jobs;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -90,19 +89,6 @@ public class PatriciaTreeBulkReadBenchmarks
         {
             tree.Get(keys[i].Bytes);
         });
-    }
-
-    [Benchmark]
-    public void BulkRead()
-    {
-        TrieNode root = _trieStore.FindCachedOrUnknown(TreePath.Empty, _rootHash);
-        NoOpSink sink = default;
-        PatriciaTrieBulkReader.BulkRead(_trieStore, root, _readKeys, ref sink);
-    }
-
-    private struct NoOpSink : IPatriciaTrieBulkReaderSink<NoOpSink>
-    {
-        public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value) { }
     }
 
     /// <summary>
