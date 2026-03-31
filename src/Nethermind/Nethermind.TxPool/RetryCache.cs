@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using ConcurrentCollections;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Logging;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -23,8 +23,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly int _expiringQueueLimit;
     private readonly int _maxRetryRequests;
     private readonly Task _mainLoopTask;
-    private static readonly ObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<ConcurrentHashSet<IMessageHandler<TMessage>>>(new ConcurrentHashSetPolicy<IMessageHandler<TMessage>>());
-    private readonly ConcurrentDictionary<TResourceId, ConcurrentHashSet<IMessageHandler<TMessage>>> _retryRequests = new();
+    private static readonly ObjectPool<HashSet<IMessageHandler<TMessage>>> _handlerBagsPool = new DefaultObjectPool<HashSet<IMessageHandler<TMessage>>>(new HashSetPolicy<IMessageHandler<TMessage>>(), maximumRetained: 512);
+    private readonly ConcurrentDictionary<TResourceId, HashSet<IMessageHandler<TMessage>>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private int _expiringQueueCounter = 0;
     private readonly ClockKeyCache<TResourceId> _requestingResources;
@@ -56,29 +56,32 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                         {
                             Interlocked.Decrement(ref _expiringQueueCounter);
 
-                            if (_retryRequests.TryRemove(item.ResourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? requests))
+                            if (_retryRequests.TryRemove(item.ResourceId, out HashSet<IMessageHandler<TMessage>>? requests))
                             {
                                 try
                                 {
-                                    bool set = false;
-
-                                    foreach (IMessageHandler<TMessage> retryHandler in requests)
+                                    // Snapshot under lock to drain any in-flight AnnounceUpdate racing with TryRemove.
+                                    IMessageHandler<TMessage>[] handlers;
+                                    lock (requests)
                                     {
-                                        if (!set)
-                                        {
-                                            _requestingResources.Set(item.ResourceId);
-                                            set = true;
+                                        handlers = [.. requests];
+                                    }
 
-                                            if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
-                                        }
+                                    if (handlers.Length > 0)
+                                    {
+                                        _requestingResources.Set(item.ResourceId);
+                                        if (_logger.IsTrace) _logger.Trace($"Sending retry requests for {item.ResourceId} after timeout");
 
-                                        try
+                                        foreach (IMessageHandler<TMessage> retryHandler in handlers)
                                         {
-                                            retryHandler.HandleMessage(TMessage.New(item.ResourceId));
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                            try
+                                            {
+                                                retryHandler.HandleMessage(TMessage.New(item.ResourceId));
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                if (_logger.IsTrace) _logger.Error($"Failed to send retry request to {retryHandler} for {item.ResourceId}", ex);
+                                            }
                                         }
                                     }
                                 }
@@ -117,8 +120,8 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (!_requestingResources.Contains(resourceId))
         {
-            ConcurrentHashSet<IMessageHandler<TMessage>> newBag = _handlerBagsPool.Get();
-            ConcurrentHashSet<IMessageHandler<TMessage>> requests = _retryRequests.GetOrAdd(resourceId, newBag);
+            HashSet<IMessageHandler<TMessage>> newBag = _handlerBagsPool.Get();
+            HashSet<IMessageHandler<TMessage>> requests = _retryRequests.GetOrAdd(resourceId, newBag);
 
             if (ReferenceEquals(requests, newBag))
             {
@@ -148,13 +151,17 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         Interlocked.Increment(ref _expiringQueueCounter);
     }
 
-    private void AnnounceUpdate(TResourceId resourceId, ConcurrentHashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
+    private void AnnounceUpdate(TResourceId resourceId, HashSet<IMessageHandler<TMessage>> requests, IMessageHandler<TMessage> retryHandler)
     {
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {retryHandler}: UPDATE");
 
-        if (requests.Count < _maxRetryRequests)
+        // Multiple peers can announce the same resourceId concurrently, racing on the same HashSet.
+        lock (requests)
         {
-            requests.Add(retryHandler);
+            if (requests.Count < _maxRetryRequests)
+            {
+                requests.Add(retryHandler);
+            }
         }
     }
 
@@ -162,7 +169,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     {
         if (_logger.IsTrace) _logger.Trace($"Received {resourceId}");
 
-        if (_retryRequests.TryRemove(resourceId, out ConcurrentHashSet<IMessageHandler<TMessage>>? item))
+        if (_retryRequests.TryRemove(resourceId, out HashSet<IMessageHandler<TMessage>>? item))
         {
             _handlerBagsPool.Return(item);
         }
@@ -176,7 +183,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         _expiringQueue.Clear();
         _requestingResources.Clear();
 
-        foreach (ConcurrentHashSet<IMessageHandler<TMessage>> requests in _retryRequests.Values)
+        foreach (HashSet<IMessageHandler<TMessage>> requests in _retryRequests.Values)
         {
             _handlerBagsPool.Return(requests);
         }
@@ -202,11 +209,11 @@ public enum AnnounceResult
     Delayed
 }
 
-internal class ConcurrentHashSetPolicy<TItem> : IPooledObjectPolicy<ConcurrentHashSet<TItem>>
+internal class HashSetPolicy<TItem> : IPooledObjectPolicy<HashSet<TItem>>
 {
-    public ConcurrentHashSet<TItem> Create() => [];
+    public HashSet<TItem> Create() => [];
 
-    public bool Return(ConcurrentHashSet<TItem> obj)
+    public bool Return(HashSet<TItem> obj)
     {
         obj.Clear();
         return true;
