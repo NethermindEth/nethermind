@@ -49,6 +49,9 @@ public sealed class AssociativeKeyCache<TKey>
         _setMask = _setCount - 1;
         _hashShift = BitOperations.Log2((uint)_setCount);
         _entries = new Entry[_setCount * Ways];
+        // Gate integers are packed (16 per cache line). Writers to different sets on the same
+        // cache line cause false sharing, but writes are infrequent relative to lock-free reads,
+        // so the memory cost of 64-byte padding per gate is not justified for current usage.
         _setGates = new int[_setCount];
     }
 
@@ -92,6 +95,9 @@ public sealed class AssociativeKeyCache<TKey>
             if (h1 == h2 && storedKey.Equals(in key))
             {
                 // JIT eliminates this branch entirely per TRefreshTicker instantiation.
+                // Ticker store without the set gate is safe: 8-byte aligned long is atomic on
+                // x64/ARM64 hardware. A race with a concurrent Set only affects eviction ranking,
+                // not key/value correctness — the "losing" ticker value is simply slightly stale.
                 if (TRefreshTicker.IsActive)
                     e.Ticker = Interlocked.Increment(ref _ticker);
                 return true;

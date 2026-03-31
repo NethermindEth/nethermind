@@ -68,7 +68,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
         if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 
