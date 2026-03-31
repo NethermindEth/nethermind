@@ -6,7 +6,6 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 
 namespace Nethermind.State;
 
@@ -35,13 +34,7 @@ public class WorldStateMetricsScopeProvider : IWorldStateScopeProvider
 
         public Hash256 RootHash => baseScope.RootHash;
 
-        public void UpdateRootHash()
-        {
-            long start = Stopwatch.GetTimestamp();
-            baseScope.UpdateRootHash();
-            parent._stateMerkleizationTime += Stopwatch.GetElapsedTime(start).TotalMilliseconds;
-            parent._updateMetrics(parent._stateMerkleizationTime);
-        }
+        public void UpdateRootHash() => baseScope.UpdateRootHash();
 
         public Account? Get(Address address) => baseScope.Get(address);
 
