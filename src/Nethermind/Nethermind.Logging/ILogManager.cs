@@ -10,6 +10,10 @@ namespace Nethermind.Logging
         ILogger GetClassLogger<T>();
         ILogger GetLogger(string loggerName);
 
+        // Preserved for binary compatibility (NativeAOT/bflat RISC-V vtable layout)
+        [Obsolete("Use GetClassLogger<T>() or GetClassLogger(typeof(T)) extension method")]
+        ILogger GetClassLogger(string filePath) => GetLogger(filePath);
+
         void SetGlobalVariable(string name, object value) { }
     }
 
