@@ -16,7 +16,7 @@ public class GethGenesisJson
 {
     public GethGenesisConfigJson Config { get; set; }
 
-    public Dictionary<Address, GethGenesisAllocJson> Alloc { get; set; }
+    public Dictionary<Address, GethGenesisAllocJson>? Alloc { get; set; }
 
     public ulong Nonce { get; set; }
 
