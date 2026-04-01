@@ -189,8 +189,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     private static void ActivateAllEthashTransitionsFromGenesis(ChainSpec spec)
     {
-        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider
-            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider.GetChainSpecParameters<EthashChainSpecEngineParameters>();
         ethashParams.HomesteadTransition = 0;
         ethashParams.DaoHardforkTransition = null; // Disable DAO fork — it requires specific extra data in headers
         ethashParams.Eip100bTransition = 0;
@@ -616,14 +615,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }
         }
 
-        readonly Dictionary<Address, UInt256> nonces = [];
+        private readonly Dictionary<Address, UInt256> _nonces = [];
 
         public async Task BuildBlockWithCode(byte[][] codes, CancellationToken cancellation)
         {
             // 1 000 000 000
             long gasLimit = 1_000_000;
 
-            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number) + 1 ?? 0, null);
             Transaction[] txs = codes.Select((byteCode) => Build.A.Transaction
                     .WithCode(byteCode)
@@ -632,7 +631,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .WithGasPrice(10.GWei)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject)
                 .ToArray();
-            nonces[nodeKey.Address] = currentNonce;
+            _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs(txs, cancellation);
         }
 
@@ -640,7 +639,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             long gasLimit = 200_000;
 
-            nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
+            _nonces.TryGetValue(nodeKey.Address, out UInt256 currentNonce);
             IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0) + 1, null);
 
             Transaction tx;
@@ -672,7 +671,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                     .SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
             }
 
-            nonces[nodeKey.Address] = currentNonce;
+            _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs([tx], cancellation);
         }
 

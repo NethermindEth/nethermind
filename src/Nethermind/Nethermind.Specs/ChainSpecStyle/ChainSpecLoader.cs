@@ -323,11 +323,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
-        if (chainSpecJson.Params.Eip1559Transition is not null)
-            baseFee = chainSpecJson.Params.Eip1559Transition == 0
-                ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
-                : UInt256.Zero;
+        UInt256 baseFee = chainSpecJson.Params.Eip1559Transition switch
+        {
+            null => chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero,
+            0 => chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
+            _ => UInt256.Zero,
+        };
+
 
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
@@ -443,7 +445,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out var codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
