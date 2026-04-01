@@ -179,8 +179,11 @@ public class FlatDbManagerTests
         _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
         _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
 
-        // Simulate: a snapshot with a different root already exists at block 11
+        // Simulate: a snapshot with a different root already exists at block 11.
+        // The latest snapshot is from the OLD fork (not the parent of the new block).
         StateId snapshotTo = CreateStateId(11, rootByte: 0xAA);
+        StateId oldForkTip = CreateStateId(11, rootByte: 0xBB);
+        _snapshotRepository.GetLastSnapshotId().Returns(oldForkTip); // old fork tip != new parent
         _snapshotRepository.HasState(snapshotTo).Returns(false); // different root
         _snapshotRepository.HasStatesAtBlockNumber(11).Returns(true); // but same height exists
 
@@ -204,6 +207,8 @@ public class FlatDbManagerTests
 
         // Fork change detected, but compacted snapshots exist at this height
         StateId snapshotTo = CreateStateId(11, rootByte: 0xAA);
+        StateId oldForkTip = CreateStateId(11, rootByte: 0xBB);
+        _snapshotRepository.GetLastSnapshotId().Returns(oldForkTip);
         _snapshotRepository.HasState(snapshotTo).Returns(false);
         _snapshotRepository.HasStatesAtBlockNumber(11).Returns(true);
         _snapshotRepository.HasCompactedStateAtOrAbove(11).Returns(true);

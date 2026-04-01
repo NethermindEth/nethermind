@@ -329,16 +329,20 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        // If a different state root already exists at this block number, we are switching forks.
-        // Remove the old fork's non-compacted snapshots at this height and above.
-        // Guard order: HasState is O(1), HasStatesAtBlockNumber scans _snapshots (bounded by
-        // MaxReorgDepth), HasCompactedStateAtOrAbove scans _compactedSnapshots (rare).
-        // Skip if compacted snapshots exist at or above this height — removing sorted-set IDs
-        // without the compacted entries would orphan them.
-        if (!_snapshotRepository.HasState(endBlock)
+        // Fast path: if the latest snapshot is the parent block, this is sequential — no fork.
+        // GetLastSnapshotId is O(log n) read-lock on the sorted set.
+        StateId? lastSnapshotId = _snapshotRepository.GetLastSnapshotId();
+        if (lastSnapshotId is null || lastSnapshotId.Value == startingBlock)
+        {
+            // Sequential chain or first snapshot — skip fork detection.
+        }
+        else if (!_snapshotRepository.HasState(endBlock)
             && _snapshotRepository.HasStatesAtBlockNumber(endBlock.BlockNumber)
             && !_snapshotRepository.HasCompactedStateAtOrAbove(endBlock.BlockNumber))
         {
+            // Fork change: a different state root exists at this height. Remove old fork's
+            // non-compacted snapshots. Skip if compacted snapshots exist at or above this
+            // height — removing sorted-set IDs without compacted entries would orphan them.
             _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);
         }
 
