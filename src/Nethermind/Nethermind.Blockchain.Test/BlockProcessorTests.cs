@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -137,7 +136,7 @@ public class BlockProcessorTests
 
         int branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
         ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
-        (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
+        Assert.That(await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10), Is.True);
         Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
     }
 
@@ -157,7 +156,7 @@ public class BlockProcessorTests
 
         processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        eventFired.Should().BeTrue("TransactionsExecuted should fire after ProcessTransactions completes");
+        Assert.That(eventFired, Is.True, "TransactionsExecuted should fire after ProcessTransactions completes");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -175,7 +174,7 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        preWarmer.CapturedToken.IsCancellationRequested.Should().BeTrue(
+        Assert.That(preWarmer.CapturedToken.IsCancellationRequested, Is.True,
             "prewarmer CancellationToken should be cancelled via TransactionsExecuted event after tx processing");
     }
 
@@ -205,11 +204,15 @@ public class BlockProcessorTests
         IReleaseSpec spec = HoodiSpecProvider.Instance.GetSpec(block2.Header);
         processor.ProcessOne(block2, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
 
-        externalHandlerCallCount.Should().Be(1, "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
+        Assert.That(externalHandlerCallCount, Is.EqualTo(1),
+            "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget()
+    [TestCaseSource(nameof(BlockValidationTransactionsExecutor_bal_validation_cases))]
+    public void BlockValidationTransactionsExecutor_validates_bal_only_when_validation_enabled(
+        ProcessingOptions processingOptions,
+        bool shouldValidateBlockAccessList)
     {
         TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
         stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
@@ -228,9 +231,38 @@ public class BlockProcessorTests
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
 
-        txExecutor.ProcessTransactions(block, ProcessingOptions.NoValidation, receiptsTracer, CancellationToken.None);
+        txExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, CancellationToken.None);
 
-        stateProvider.ValidatedGasRemaining.Should().Equal([37_568L, 0L]);
+        if (shouldValidateBlockAccessList)
+        {
+            Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { 37_568L, 0L }));
+        }
+        else
+        {
+            Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
+        }
+    }
+
+    [TestCase(2_000, false)]
+    [TestCase(1_999, true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_read_budget_uses_eip_7928_item_cost(long gasRemaining, bool shouldThrow)
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, gasRemaining);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, gasRemaining);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+        }
+        else
+        {
+            Assert.That(act, Throws.Nothing);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -247,7 +279,7 @@ public class BlockProcessorTests
             ProcessingOptions.NoValidation,
             NullBlockTracer.Instance);
 
-        processedBlocks.Should().HaveCount(1, "block should process successfully without a prewarmer");
+        Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
     }
 
     [Test]
@@ -274,14 +306,14 @@ public class BlockProcessorTests
 
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
-        WorldStateStab stateProvider = new();
+        IWorldState stateProvider = new WorldStateStab();
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
@@ -326,5 +358,13 @@ public class BlockProcessorTests
             => ValidatedGasRemaining.Add(gasRemaining);
 
         public void SetBlockAccessList(Block block, IReleaseSpec spec) { }
+    }
+
+    public static IEnumerable<TestCaseData> BlockValidationTransactionsExecutor_bal_validation_cases()
+    {
+        yield return new TestCaseData(ProcessingOptions.None, true)
+            .SetName("BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget");
+        yield return new TestCaseData(ProcessingOptions.NoValidation, false)
+            .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
     }
 }
