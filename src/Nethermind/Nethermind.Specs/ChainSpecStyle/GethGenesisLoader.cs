@@ -348,17 +348,15 @@ internal sealed class GethGenesisEngineParametersProvider(GethGenesisConfigJson 
             return typedParameters;
         }
 
-        Type requestedType = typeof(T);
-        if (requestedType.Name != "EthashChainSpecEngineParameters")
+        T target = Activator.CreateInstance<T>();
+
+        if (target.EngineName != Core.SealEngineType.Ethash)
         {
-            throw new NotSupportedException($"Geth genesis files do not support engine-specific parameters of type {requestedType.Name}");
+            throw new NotSupportedException($"Geth genesis files do not support engine-specific parameters of type {typeof(T).Name}");
         }
 
-        object target = Activator.CreateInstance(requestedType)
-            ?? throw new NotSupportedException($"Could not create engine-specific parameters of type {requestedType.Name}");
-
         CopyPublicWritableProperties(_engineParameters, target);
-        return (T)target;
+        return target;
     }
 
     private static void CopyPublicWritableProperties(object source, object target)
