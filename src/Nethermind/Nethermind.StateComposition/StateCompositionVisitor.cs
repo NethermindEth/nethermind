@@ -217,10 +217,10 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             StorageTrieShortNodes = agg.StorageShortNodes + agg.StorageValueNodes,
             StorageTrieValueNodes = agg.StorageValueNodes,
             EmptyAccounts = agg.EmptyAccounts,
-            TopContractsByDepth = BuildSortedTopN(agg.TopByDepth, agg.TopByDepthCount, VisitorCounters.CompareByDepth),
-            TopContractsByNodes = BuildSortedTopN(agg.TopByNodes, agg.TopByNodesCount, VisitorCounters.CompareByTotalNodes),
-            TopContractsByValueNodes = BuildSortedTopN(agg.TopByValueNodes, agg.TopByValueNodesCount, VisitorCounters.CompareByValueNodes),
-            TopContractsBySize = BuildSortedTopN(agg.TopBySize, agg.TopBySizeCount, VisitorCounters.CompareBySize),
+            TopContractsByDepth = BuildSortedTopN(agg.TopN.TopByDepth, agg.TopN.TopByDepthCount, TopNTracker.CompareByDepth),
+            TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
+            TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
+            TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
         };
     }
 
@@ -267,10 +267,8 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
         return agg;
     }
 
-    private delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
-
     private static ImmutableArray<TopContractEntry> BuildSortedTopN(
-        TopContractEntry[] entries, int count, EntryComparer comparer)
+        TopContractEntry[] entries, int count, TopNTracker.EntryComparer comparer)
     {
         if (count == 0)
             return ImmutableArray<TopContractEntry>.Empty;
