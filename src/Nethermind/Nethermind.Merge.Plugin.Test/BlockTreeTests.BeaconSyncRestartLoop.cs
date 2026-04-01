@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -32,7 +32,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 /// <summary>
 /// Regression tests for the infinite beacon sync restart loop (NethermindEth/nethermind#6304, #6611).
-/// Exercises the full production sync path end-to-end using a mock peer — no internal methods called directly.
+/// Exercises the production sync path using a DI container with the full merge sync stack.
 /// </summary>
 public partial class BlockTreeTests
 {
@@ -154,17 +154,11 @@ public partial class BlockTreeTests
     /// <summary>
     /// Regression test for NethermindEth/nethermind#6304, #6611.
     ///
-    /// Exercises the full production path:
-    /// 1. StartingSyncPivotUpdater resolves pivot N=4 from mock peer, calls UpdateConfigValues
-    ///    - Unfixed: only writes metadata → FindLevel(4) returns null
-    ///    - Fixed: writes metadata AND inserts header → FindLevel(4) returns ChainLevelInfo
-    /// 2. Beacon headers [5, 11] inserted (BeaconHeadersSyncFeed output)
-    /// 3. BeaconPivot set to 12 (ForkchoiceUpdatedHandler.EnsurePivot)
-    /// 4. FastSyncFeed dispatcher runs → BlockDownloader → PosForwardHeaderProvider →
-    ///    ChainLevelHelper.GetNextHeaders → walks to block 4 → OnMissingBeaconHeader
-    ///
-    /// On unfixed code: ShouldForceStartNewSync = true → test FAILS
-    /// On fixed code: ShouldForceStartNewSync = false → test PASSES
+    /// Setup: pivot N=4, beacon headers [5,11], beacon pivot 12.
+    /// ChainLevelHelper walks to block 4 which may be missing (no ChainLevelInfo from
+    /// UpdateConfigValues). The feed-aware OnMissingBeaconHeader guard with safety timer
+    /// should prevent an immediate forced restart — block 4 is in the FastHeaders range
+    /// and the timer hasn't expired yet.
     /// </summary>
     [Test]
     public async Task Pivot_header_inserted_by_UpdateConfigValues_prevents_beacon_sync_restart_loop()
@@ -180,10 +174,8 @@ public partial class BlockTreeTests
             await RunFastSyncFeedBriefly(ctx.FastSyncComponent);
 
             ctx.BeaconPivot.ShouldForceStartNewSync.Should().BeFalse(
-                "With the fix: StartingSyncPivotUpdater.UpdateConfigValues inserts the pivot header " +
-                "with BeaconHeaderInsert flags. ChainLevelHelper finds it and does not fire " +
-                "OnMissingBeaconHeader. Without the fix, the pivot is metadata-only, FindLevel " +
-                "returns null, and the infinite restart loop fires.");
+                "The feed-aware OnMissingBeaconHeader guard should not force restart — " +
+                "block 4 is in the FastHeaders range and the safety timer hasn't expired.");
         }
     }
 
@@ -204,7 +196,7 @@ public partial class BlockTreeTests
             await RunFastSyncFeedBriefly(ctx.FastSyncComponent);
 
             ctx.BeaconPivot.ShouldForceStartNewSync.Should().BeFalse(
-                "Same fix verification at genesis boundary — pivot at block 1");
+                "Same guard verification at genesis boundary — pivot at block 1");
         }
     }
 

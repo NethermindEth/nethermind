@@ -322,6 +322,19 @@ public partial class BlockTreeTests
                 return this;
             }
 
+            /// <summary>
+            /// Sets the beacon pivot on the BeaconPivot object via EnsurePivot, so that
+            /// CurrentBeaconPivot, PivotNumber, and PivotDestinationNumber are properly initialized.
+            /// Unlike InsertBeaconPivot which only writes to the block tree and metadata DB,
+            /// this method wires up the BeaconPivot object used by ChainLevelHelper.
+            /// </summary>
+            public ScenarioBuilder EnsureBeaconPivot(long num)
+            {
+                BlockHeader header = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None)!;
+                _beaconPivot!.EnsurePivot(header);
+                return this;
+            }
+
             public ScenarioBuilder SetProcessDestination(long num)
             {
                 _beaconPivot!.ProcessDestination = SyncedTree.FindHeader(num, BlockTreeLookupOptions.None);
@@ -341,10 +354,10 @@ public partial class BlockTreeTests
             }
 
             /// <summary>
-            /// Reproduces the fixed StartingSyncPivotUpdater.UpdateConfigValues behavior:
-            /// writes SyncPivot metadata AND inserts the header with BeaconHeaderInsert flags.
-            /// Block <paramref name="num"/> will have a ChainLevelInfo entry with BeaconHeader
-            /// and BeaconMainChain metadata.
+            /// Sets SyncPivot metadata AND inserts the header with BeaconHeaderInsert flags,
+            /// giving block <paramref name="num"/> a ChainLevelInfo entry.
+            /// Note: production UpdateConfigValues does NOT insert the header — this helper
+            /// creates an ideal scenario where the pivot block is fully present in the tree.
             /// </summary>
             public ScenarioBuilder InsertSyncPivotWithHeader(long num)
             {

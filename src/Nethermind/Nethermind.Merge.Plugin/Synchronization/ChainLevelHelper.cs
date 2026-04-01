@@ -22,14 +22,16 @@ public interface IChainLevelHelper
 /// Navigates chain levels during forward beacon header processing.
 /// Called by <see cref="PosForwardHeaderProvider"/> when SyncMode.Full or SyncMode.FastSync is active.
 ///
-/// Key assumptions:
-/// - LowestInsertedBeaconHeader is monotonically decreasing — only lowered by backward beacon
-///   header insertion, never raised by NewPayload or other operations.
-/// - Both FastHeadersSyncFeed and BeaconHeadersSyncFeed insert headers contiguously via a
-///   dependency queue. Once LowestInsertedBeaconHeader = K, all headers in [K, BeaconPivot]
-///   are guaranteed present.
+/// Key design notes:
 /// - On PoS chains, NeedToWaitForHeaders = false, so SyncMode.Full can run simultaneously
-///   with SyncMode.FastHeaders.
+///   with SyncMode.FastHeaders. Missing blocks in the FastHeaders range [0, SyncPivot] are
+///   expected while the feed is active.
+/// - LowestInsertedBeaconHeader exhibits a sawtooth pattern: EnsurePivot raises it to the
+///   latest FCU head every slot (~12s), then BeaconHeadersSyncFeed drives it back down as it
+///   downloads. This makes it unreliable as a contiguity marker. The beacon range guard uses
+///   [PivotDestinationNumber, PivotNumber] instead.
+/// - BeaconHeadersSyncFeed completes its range (typically &lt;64 blocks) in a single batch,
+///   well before the next FCU. The sawtooth does not cause gaps in practice.
 /// </summary>
 public class ChainLevelHelper : IChainLevelHelper
 {
@@ -61,32 +63,25 @@ public class ChainLevelHelper : IChainLevelHelper
 
     /// <summary>
     /// Called when a block level is missing during forward header processing.
-    /// Determines whether the gap is transient (responsible feed still running) or
-    /// genuine (feed completed the range but block is absent).
-    ///
-    /// Feed ranges and contiguity guarantees:
-    ///   [0, N] (SyncPivot) — filled by FastHeadersSyncFeed, downloads backward in batches.
-    ///     Headers are applied contiguously via a dependency queue, but gaps can exist while
-    ///     the feed is still active (SyncMode.FastHeaders set). On PoS, SyncMode.Full can run
-    ///     simultaneously with SyncMode.FastHeaders (NeedToWaitForHeaders = false).
-    ///   [N+1, M] (ProcessDestination) — filled by BeaconHeadersSyncFeed, downloads backward.
-    ///     LowestInsertedBeaconHeader is monotonically decreasing and marks the contiguous
-    ///     frontier: all headers in [LowestInsertedBeaconHeader, M] are guaranteed present.
-    ///
-    /// Safety timer: if a "wait" decision persists longer than MissingBeaconHeaderSafetyTimeoutSec,
-    /// a forced restart is triggered as defense-in-depth.
-    ///
+    /// Routes to the appropriate range handler based on the block's position relative
+    /// to the global sync pivot. A safety timer forces restart if waiting too long.
     /// See NethermindEth/nethermind#6304, #6611.
     /// </summary>
     private void OnMissingBeaconHeader(long blockNumber)
     {
-        // Only act if ProcessDestination is set and the missing block is below it.
-        // When ProcessDestination is null, there's no target to sync toward yet — not an error.
         if (_beaconPivot.ProcessDestination is null || _beaconPivot.ProcessDestination.Number <= blockNumber)
+        {
+            if (_logger.IsTrace) _logger.Trace(
+                $"OnMissingBeaconHeader({blockNumber}) skipped: ProcessDestination={_beaconPivot.ProcessDestination?.Number.ToString() ?? "null"}");
             return;
+        }
 
         if (_beaconPivot.ShouldForceStartNewSync)
+        {
+            if (_logger.IsTrace) _logger.Trace(
+                $"OnMissingBeaconHeader({blockNumber}) skipped: ShouldForceStartNewSync already set");
             return;
+        }
 
         long syncPivotNumber = _blockTree.SyncPivot.BlockNumber;
 
@@ -102,8 +97,7 @@ public class ChainLevelHelper : IChainLevelHelper
 
     /// <summary>
     /// Block is in the FastHeaders range [0, SyncPivot]. If FastHeaders is actively running,
-    /// the gap is likely a transient batch hole — wait. Otherwise, the feed finished and this
-    /// is a genuine gap — use the safety timer before forcing restart.
+    /// the gap is a transient batch hole — wait. Otherwise use the safety timer before restart.
     /// </summary>
     private void HandleMissingInFastHeadersRange(long blockNumber)
     {
@@ -112,47 +106,45 @@ public class ChainLevelHelper : IChainLevelHelper
 
         if (fastHeadersActive)
         {
-            WaitWithSafetyTimer(blockNumber, "FastHeaders active, transient batch gap expected");
+            WaitWithSafetyTimer(blockNumber, $"FastHeaders active (mode={currentMode}), transient batch gap");
             return;
         }
 
-        // FastHeaders not active — feed may have finished, leaving a genuine gap.
-        // Use the safety timer to allow for brief SyncMode tick lag before forcing restart.
         if (HasSafetyTimerExpired())
         {
-            ForceRestart(blockNumber, "block in FastHeaders range missing after feed inactive and safety timer expired");
+            ForceRestart(blockNumber, $"block in FastHeaders range missing after feed inactive (mode={currentMode}) and safety timer expired");
             return;
         }
 
-        WaitWithSafetyTimer(blockNumber, "FastHeaders not active, monitoring via safety timer");
+        WaitWithSafetyTimer(blockNumber, $"FastHeaders not active (mode={currentMode}), monitoring via safety timer");
     }
 
     /// <summary>
-    /// Block is in the BeaconHeaders range (N+1, M]. LowestInsertedBeaconHeader marks the
-    /// contiguous frontier — all headers at or above it are present.
-    ///   blockNumber &lt; lowestBeacon → feed hasn't descended here yet → wait
-    ///   blockNumber &gt;= lowestBeacon → feed already passed, block should exist → genuine gap
+    /// Block is above the global sync pivot — in the beacon range.
+    /// Uses [PivotDestinationNumber, PivotNumber] to determine if the block is
+    /// BeaconHeadersSyncFeed's responsibility. Does NOT use LowestInsertedBeaconHeader
+    /// because EnsurePivot raises it to the latest FCU head every slot (sawtooth pattern),
+    /// making it unreliable as a contiguity marker.
     /// </summary>
     private void HandleMissingInBeaconRange(long blockNumber)
     {
-        long? lowestBeacon = _blockTree.LowestInsertedBeaconHeader?.Number;
+        long destinationNumber = _beaconPivot.PivotDestinationNumber;
+        long pivotNumber = _beaconPivot.PivotNumber;
 
-        // Feed hasn't started (null) or hasn't descended to this block yet.
-        if (lowestBeacon is null || blockNumber < lowestBeacon.Value)
+        if (blockNumber >= destinationNumber && blockNumber <= pivotNumber)
         {
             WaitWithSafetyTimer(blockNumber,
-                $"beacon feed hasn't reached block yet (lowest beacon header: {lowestBeacon?.ToString() ?? "none"})");
+                $"block in beacon range [{destinationNumber}, {pivotNumber}]");
             return;
         }
 
-        // blockNumber >= lowestBeacon: feed already passed this level. All headers
-        // in [lowestBeacon, M] should be contiguously present. A missing block is a genuine gap.
         ForceRestart(blockNumber,
-            $"genuine gap in beacon range (block {blockNumber} >= lowest beacon header {lowestBeacon.Value})");
+            $"block {blockNumber} outside beacon range [{destinationNumber}, {pivotNumber}]");
     }
 
     private void WaitWithSafetyTimer(long blockNumber, string reason)
     {
+        bool timerJustStarted = _waitStartedAt is null;
         _waitStartedAt ??= _timestamper.UtcNow;
 
         if (HasSafetyTimerExpired())
@@ -161,8 +153,16 @@ public class ChainLevelHelper : IChainLevelHelper
             return;
         }
 
-        if (_logger.IsDebug) _logger.Debug(
-            $"Beacon header at height {blockNumber} missing. Waiting: {reason}.");
+        if (timerJustStarted)
+        {
+            if (_logger.IsDebug) _logger.Debug(
+                $"Beacon header at height {blockNumber} missing. Started safety timer. Waiting: {reason}. SyncPivot: {_blockTree.SyncPivot.BlockNumber}");
+        }
+        else
+        {
+            if (_logger.IsTrace) _logger.Trace(
+                $"Beacon header at height {blockNumber} still missing. Waiting: {reason}.");
+        }
     }
 
     private bool HasSafetyTimerExpired()

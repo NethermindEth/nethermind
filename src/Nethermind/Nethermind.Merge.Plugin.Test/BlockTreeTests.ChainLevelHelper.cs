@@ -99,6 +99,10 @@ public partial class BlockTreeTests
             .AssertChainLevel(0, 9);
     }
 
+    // Gap at block 7 — InsertBeaconHeaders creates a non-contiguous range that the real
+    // BeaconHeadersSyncFeed cannot produce (it uses a dependency queue for contiguous insertion).
+    // This tests ChainLevelHelper's defensive behavior against gaps from any cause
+    // (node restart, DB corruption, etc).
     [Test]
     public void Correct_levels_after_chain_level_sync_with_disconnected_beacon_chain()
     {
@@ -117,10 +121,6 @@ public partial class BlockTreeTests
     // Feed-aware OnMissingBeaconHeader guard tests
     // =====================================================================
 
-    /// <summary>
-    /// When a block in the FastHeaders range is missing and FastHeaders is not active,
-    /// the safety timer eventually forces a restart.
-    /// </summary>
     [Test]
     public void Safety_timer_forces_restart_when_expired_in_fast_headers_range()
     {
@@ -133,56 +133,27 @@ public partial class BlockTreeTests
             // Gap: blocks 4-5 missing in FastHeaders range [0, 6], feed not active
             .WithSyncMode(SyncMode.None)
             .SuggestBlocksUsingChainLevels(20)
-            .AssertNotForceNewBeaconSync()           // timer just started, not expired yet
+            .AssertNotForceNewBeaconSync()           // timer just started
             .AdvanceTime(TimeSpan.FromSeconds(31))
             .SuggestBlocksUsingChainLevels(20)
-            .AssertForceNewBeaconSync();             // timer expired → restart
+            .AssertForceNewBeaconSync();             // timer expired
     }
 
-    /// <summary>
-    /// After a forced restart (ShouldForceStartNewSync set then cleared), the safety timer
-    /// resets. A subsequent missing-header encounter starts a fresh timer.
-    /// </summary>
     [Test]
-    public void Safety_timer_resets_after_forced_restart()
+    public void Waits_when_block_is_in_beacon_range()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 15)
             .InsertBeaconPivot(11)
-            .SetProcessDestination(11)
-            .InsertBeaconHeaders(4, 6)
-            .InsertBeaconHeaders(8, 10)
-            // Gap at 7: genuine gap in beacon range (7 >= LowestInsertedBeaconHeader=4) → immediate restart
-            .WithSyncMode(SyncMode.None)
-            .SuggestBlocksUsingChainLevels(20)
-            .AssertForceNewBeaconSync()
-            .ClearForceNewBeaconSync()
-            .SuggestBlocksUsingChainLevels(20)
-            .AssertForceNewBeaconSync();             // same genuine gap → restarts again immediately
-    }
-
-    /// <summary>
-    /// When LowestInsertedBeaconHeader is above the missing block (beacon feed hasn't
-    /// descended to that level yet), OnMissingBeaconHeader waits instead of restarting.
-    /// </summary>
-    [Test]
-    public void Waits_when_beacon_headers_have_not_reached_block_yet()
-    {
-        BlockTreeTestScenario.GoesLikeThis()
-            .WithBlockTrees(4, 15)
-            .InsertBeaconPivot(11)
+            .EnsureBeaconPivot(11)
             .SetProcessDestination(11)
             .InsertBeaconHeaders(8, 10)
-            // LowestInsertedBeaconHeader = 8. Missing blocks 4-7 are below 8 → feed hasn't reached them.
+            // Missing blocks 4-7 are in [PivotDestinationNumber, PivotNumber] → wait
             .WithSyncMode(SyncMode.None)
             .SuggestBlocksUsingChainLevels(20)
             .AssertNotForceNewBeaconSync();
     }
 
-    /// <summary>
-    /// When FastHeaders is actively running (SyncMode.FastHeaders set), gaps in the
-    /// [0, SyncPivot] range are expected batch holes. Should wait, not restart.
-    /// </summary>
     [Test]
     public void Waits_when_fast_headers_active_and_block_missing_in_range()
     {
@@ -198,45 +169,97 @@ public partial class BlockTreeTests
             .AssertNotForceNewBeaconSync();
     }
 
-    /// <summary>
-    /// When both feeds are inactive and a block is missing in the beacon range
-    /// (at or above LowestInsertedBeaconHeader), it's a genuine gap → immediate restart.
-    /// </summary>
     [Test]
-    public void Genuine_gap_below_beacon_frontier_forces_immediate_restart()
+    public void Genuine_gap_in_beacon_range_forces_restart_after_timer()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 15)
             .InsertBeaconPivot(11)
+            .EnsureBeaconPivot(11)
             .SetProcessDestination(11)
             .InsertBeaconHeaders(4, 6)
             .InsertBeaconHeaders(8, 10)
-            // LowestInsertedBeaconHeader = 4. Block 7 is >= 4 → genuine gap.
+            // Block 7 missing in beacon range — guard waits, safety timer catches it
             .WithSyncMode(SyncMode.None)
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertNotForceNewBeaconSync()
+            .AdvanceTime(TimeSpan.FromSeconds(31))
             .SuggestBlocksUsingChainLevels(20)
             .AssertForceNewBeaconSync();
     }
 
-    /// <summary>
-    /// Verifies the contiguous-range property: once LowestInsertedBeaconHeader = K,
-    /// all blocks [K, BeaconPivot] must have ChainLevelInfo entries. If the full range
-    /// is present, no restart is triggered.
-    ///
-    /// Documents the assumption that BeaconHeadersSyncFeed inserts contiguously
-    /// via a dependency queue — no gaps between LowestInsertedBeaconHeader and
-    /// the beacon pivot once the feed makes progress.
-    /// </summary>
+    // =====================================================================
+    // Additional behavioral tests
+    // =====================================================================
+
     [Test]
-    public void No_restart_when_beacon_range_is_contiguous()
+    public void No_restart_when_process_destination_is_null()
     {
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 15)
             .InsertBeaconPivot(11)
-            .SetProcessDestination(11)
-            .InsertBeaconHeaders(4, 10)
-            // Full contiguous range [4, 11] — no gaps
+            // ProcessDestination not set — guard returns immediately
+            .InsertBeaconHeaders(8, 10)
             .WithSyncMode(SyncMode.None)
-            .SuggestBlocksUsingChainLevels()
+            .SuggestBlocksUsingChainLevels(20)
             .AssertNotForceNewBeaconSync();
+    }
+
+    [Test]
+    public void Missing_block_at_sync_pivot_boundary_goes_to_fast_headers_handler()
+    {
+        // Block exactly at SyncPivot.BlockNumber (N) goes to HandleMissingInFastHeadersRange (<=)
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 15)
+            .InsertBeaconPivot(11)
+            .SetProcessDestination(11)
+            .SetSyncPivotMetadataOnly(6)
+            .InsertBeaconHeaders(7, 10)
+            // Block 6 = SyncPivot, missing — handled by FastHeaders range.
+            // FastHeaders active → wait
+            .WithSyncMode(SyncMode.FastHeaders)
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertNotForceNewBeaconSync();
+    }
+
+    [Test]
+    public void Safety_timer_does_not_reset_on_repeated_wait_calls()
+    {
+        // Verifies that _waitStartedAt ??= doesn't restart the timer on each call.
+        // Advance to just under the timeout, call twice more — should NOT expire.
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 15)
+            .InsertBeaconPivot(11)
+            .SetProcessDestination(11)
+            .InsertSyncPivotWithHeader(6)
+            .InsertBeaconHeaders(7, 10)
+            // Gap at blocks 4-5, FastHeaders not active
+            .WithSyncMode(SyncMode.None)
+            .SuggestBlocksUsingChainLevels(20)       // starts timer at T=0
+            .AssertNotForceNewBeaconSync()
+            .AdvanceTime(TimeSpan.FromSeconds(25))   // T=25
+            .SuggestBlocksUsingChainLevels(20)       // if timer reset, new T=0
+            .AssertNotForceNewBeaconSync()
+            .AdvanceTime(TimeSpan.FromSeconds(6))    // T=31 from original start (but T=6 if reset)
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertForceNewBeaconSync();             // expires at 31s from ORIGINAL start, not from reset
+    }
+
+    [Test]
+    public void Beacon_range_safety_timer_forces_restart_when_expired()
+    {
+        BlockTreeTestScenario.GoesLikeThis()
+            .WithBlockTrees(4, 15)
+            .InsertBeaconPivot(11)
+            .EnsureBeaconPivot(11)
+            .SetProcessDestination(11)
+            .InsertBeaconHeaders(8, 10)
+            // Missing blocks 4-7 in beacon range [PivotDestinationNumber, 11]
+            .WithSyncMode(SyncMode.None)
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertNotForceNewBeaconSync()           // timer started
+            .AdvanceTime(TimeSpan.FromSeconds(31))
+            .SuggestBlocksUsingChainLevels(20)
+            .AssertForceNewBeaconSync();             // timer expired
     }
 }
