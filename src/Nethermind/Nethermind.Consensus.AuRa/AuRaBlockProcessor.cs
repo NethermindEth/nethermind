@@ -29,7 +29,6 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaBlockProcessor : BlockProcessor
     {
-        private readonly ISpecProvider _specProvider;
         private readonly IBlockFinder _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
         private readonly ContractRewriter? _contractRewriter;
@@ -66,7 +65,6 @@ namespace Nethermind.Consensus.AuRa
                 withdrawalProcessor,
                 executionRequestsProcessor)
         {
-            _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
             _txFilter = txFilter ?? NullTxFilter.Instance;

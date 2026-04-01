@@ -61,7 +61,7 @@ public class BlockAccessListManager(
 
     public void SetGasUsed(long gasUsed)
         => _gasRemaining = gasUsed;
-    
+
     public void SpendGas(long gas)
         => _gasRemaining -= gas;
 
@@ -70,7 +70,7 @@ public class BlockAccessListManager(
 
     public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
         => _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
-    
+
     public void NextTransaction()
     {
         _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
@@ -376,10 +376,10 @@ public class BlockAccessListManager(
 
         public TxProcessorWithWorldState Get(int? balIndex)
             => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _txProcessorsWithWorldStates.Length - 1)];
-        
-        public void NextTransaction() {}
 
-        public void Rollback() {}
+        public void NextTransaction() { }
+
+        public void Rollback() { }
     }
 
     private class SequentialTxProcessorWithWorldStateManager(

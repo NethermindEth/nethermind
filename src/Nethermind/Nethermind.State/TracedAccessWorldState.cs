@@ -156,16 +156,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public void AddAccountRead(Address address)
         => _generatingBlockAccessList.AddAccountRead(address);
-    
+
     public void SetIndex(int index)
         => _generatingBlockAccessList.Index = index;
-    
+
     public void IncrementIndex()
         => _generatingBlockAccessList.Index++;
-    
+
     public void Clear()
         => _generatingBlockAccessList.Clear();
-    
+
     public void MergeGeneratingBal(BlockAccessList other)
         => other.Merge(_generatingBlockAccessList);
 

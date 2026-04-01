@@ -315,8 +315,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             BlockProcessor.BlockProductionTransactionsExecutor txExecutor =
-                // new BlockProcessor.BlockProductionTransactionsExecutor(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance, new BlocksConfig());
-                new(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, BlobBaseFeeCalculator.Instance, specProvider, Substitute.For<IBlockhashProvider>(), Substitute.For<ICodeInfoRepository>(), new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
+                new(new BuildUpTransactionProcessorAdapter(transactionProcessor), stateProvider, new BlockProcessor.BlockProductionTransactionPicker(specProvider, BlocksConfig.DefaultMaxTxKilobytes), LimboLogs.Instance);
 
             SetAccountStates(testCase.MissingAddresses);
 
@@ -357,7 +356,7 @@ namespace Nethermind.Blockchain.Test
 
 
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, mempoolLength / 1.KiB - 1);
-            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, BlobBaseFeeCalculator.Instance, specProvider, Substitute.For<IBlockhashProvider>(), Substitute.For<ICodeInfoRepository>(), txPicker, LimboLogs.Instance);
+            BlockProcessor.BlockProductionTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider, txPicker, LimboLogs.Instance);
 
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());

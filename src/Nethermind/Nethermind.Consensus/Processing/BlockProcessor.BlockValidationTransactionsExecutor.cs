@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Processing
                 transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
             }
 
-            public virtual void SetBlockAccessListManager(in BlockAccessListManager balManager) {}
+            public virtual void SetBlockAccessListManager(in BlockAccessListManager balManager) { }
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {

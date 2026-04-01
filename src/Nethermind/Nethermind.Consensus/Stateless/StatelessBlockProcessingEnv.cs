@@ -49,14 +49,7 @@ public class StatelessBlockProcessingEnv(
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, WorldState, logManager);
         ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(WorldState);
-        IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(
-            WorldState,
-            new ExecuteTransactionProcessorAdapter(txProcessor),
-            BlobBaseFeeCalculator.Instance,
-            specProvider,
-            blockhashProvider,
-            logManager,
-            new BlocksConfig());
+        IBlockProcessor.IBlockTransactionsExecutor txExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(txProcessor), WorldState);
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,

@@ -164,10 +164,6 @@ public class StartBlockProducerAuRa(
         var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
-            BlobBaseFeeCalculator.Instance,
-            specProvider,
-            blockhashProvider,
-            codeInfoRepository,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
             logManager);
 

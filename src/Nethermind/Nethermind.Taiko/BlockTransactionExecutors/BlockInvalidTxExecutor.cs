@@ -78,37 +78,7 @@ public class BlockInvalidTxExecutor(ITransactionProcessorAdapter txProcessor, IW
         return [.. receiptsTracer.TxReceipts];
     }
 
-    public void SetBlockAccessList(Block block, IReleaseSpec spec)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void Setup(Block block, ProcessingOptions processingOptions)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void SetGasUsed(long gasUsed)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+    public void SetBlockAccessListManager(in BlockAccessListManager balManager)
     {
         throw new NotImplementedException();
     }

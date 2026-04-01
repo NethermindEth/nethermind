@@ -6,7 +6,6 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.Proofs;
 
@@ -61,37 +60,7 @@ public class SimulateBlockValidationTransactionsExecutor(
         return result;
     }
 
-    public void SetBlockAccessList(Block block, IReleaseSpec spec)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void StoreBeaconRoot(Block block, IReleaseSpec spec)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void Setup(Block block, ProcessingOptions processingOptions)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void SetGasUsed(long gasUsed)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
-    {
-        throw new System.NotImplementedException();
-    }
-
-    public void ProcessExecutionRequests(Block block, IReleaseSpec spec)
+    public void SetBlockAccessListManager(in BlockAccessListManager balManager)
     {
         throw new System.NotImplementedException();
     }

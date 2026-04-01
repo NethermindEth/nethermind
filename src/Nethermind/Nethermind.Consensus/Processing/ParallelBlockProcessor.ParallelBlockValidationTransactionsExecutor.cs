@@ -44,7 +44,7 @@ public partial class ParallelBlockProcessor
             _txReceipts = blocksConfig.ParallelExecution && !block.IsGenesis ?
                 ProcessTransactionsParallel(block, processingOptions, token) :
                 ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
-            
+
             return _txReceipts;
         }
 
