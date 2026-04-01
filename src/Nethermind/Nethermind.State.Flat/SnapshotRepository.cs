@@ -214,11 +214,31 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public void RemoveStatesUntil(in StateId currentPersistedStateId)
     {
+        // Primary path: use sorted state IDs index
         using ArrayPoolList<StateId> statesBeforeStateId = GetSnapshotBeforeStateId(currentPersistedStateId);
         foreach (StateId stateToRemove in statesBeforeStateId)
         {
             RemoveAndReleaseCompactedKnownState(stateToRemove);
             RemoveAndReleaseKnownState(stateToRemove);
+        }
+
+        // Fallback: scan dictionaries directly for any missed snapshots
+        foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots)
+        {
+            if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Fallback removal: compacted snapshot {entry.Key} was not tracked in sorted state IDs");
+                RemoveAndReleaseCompactedKnownState(entry.Key);
+            }
+        }
+
+        foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots)
+        {
+            if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Fallback removal: snapshot {entry.Key} was not tracked in sorted state IDs");
+                RemoveAndReleaseKnownState(entry.Key);
+            }
         }
     }
 }
