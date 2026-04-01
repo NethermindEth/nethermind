@@ -10,7 +10,7 @@ namespace Nethermind.StateComposition;
 /// <summary>
 /// Orchestrates state composition analysis: full trie scans, cached lookups,
 /// single-contract inspection, and trie distribution queries. Owns the scan lifecycle.
-/// Returns <see cref="Result{T}"/> for business logic outcomes (cooldown, scan in progress);
+/// Returns <see cref="Result{T}"/> for business logic outcomes (scan in progress, etc.);
 /// only throws for infrastructure failures.
 /// </summary>
 public interface IStateCompositionService
@@ -25,7 +25,7 @@ public interface IStateCompositionService
     /// Get trie depth distribution. Returns cached data if available,
     /// or <see cref="Result{T}.Fail"/> if no scan has been completed yet.
     /// </summary>
-    Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct);
+    Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync();
 
     /// <summary>
     /// Inspect a single contract's storage trie structure.

@@ -19,7 +19,6 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     private TrieDepthDistribution _currentDistribution;
     private ScanMetadata? _lastScanMetadata;
     private bool _isInitialized;
-    private bool _isScanning;
 
     public StateCompositionStats CurrentStats
     {
@@ -37,7 +36,6 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     }
 
     public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
-    public bool IsScanning { get { lock (_lock) return _isScanning; } }
 
     public void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist)
     {
@@ -49,19 +47,10 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
         }
     }
 
-    public void MarkScanStarted()
-    {
-        lock (_lock)
-        {
-            _isScanning = true;
-        }
-    }
-
     public void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration)
     {
         lock (_lock)
         {
-            _isScanning = false;
             _lastScanMetadata = new ScanMetadata
             {
                 BlockNumber = blockNumber,

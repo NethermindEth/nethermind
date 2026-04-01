@@ -7,7 +7,6 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
 
@@ -18,24 +17,18 @@ namespace Nethermind.StateComposition;
 /// Uses ThreadLocal&lt;VisitorCounters&gt; for lock-free scaling to 64+ cores.
 /// Uses StateCompositionContext for path tracking to reconstruct account hashes (Owner).
 /// </summary>
-public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionContext>, IDisposable
+public sealed class StateCompositionVisitor(
+    ILogManager logManager,
+    int topN = 20,
+    bool excludeStorage = false,
+    CancellationToken ct = default)
+    : ITreeVisitor<StateCompositionContext>, IDisposable
 {
-    private readonly ILogger _logger;
-    private readonly CancellationToken _ct;
-    private readonly int _topN;
-    private readonly bool _excludeStorage;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
-    private readonly ThreadLocal<VisitorCounters> _localCounters;
+    private readonly ThreadLocal<VisitorCounters> _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
-
-    // Balance bucket boundaries (Wei). 1 ETH = 10^18 Wei.
-    private static readonly UInt256 Wei001Eth = UInt256.Parse("10000000000000000");       // 10^16
-    private static readonly UInt256 Wei1Eth   = UInt256.Parse("1000000000000000000");     // 10^18
-    private static readonly UInt256 Wei10Eth  = UInt256.Parse("10000000000000000000");    // 10^19
-    private static readonly UInt256 Wei100Eth = UInt256.Parse("100000000000000000000");   // 10^20
-    private static readonly UInt256 Wei1KEth  = UInt256.Parse("1000000000000000000000");  // 10^21
-    private static readonly UInt256 Wei10KEth = UInt256.Parse("10000000000000000000000"); // 10^22
 
     // Cached aggregation result — computed once after scan completes
     private VisitorCounters? _aggregated;
@@ -44,19 +37,9 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
 
-    public StateCompositionVisitor(ILogManager logManager, CancellationToken ct = default,
-        int topN = 20, bool excludeStorage = false)
-    {
-        _logger = logManager.GetClassLogger();
-        _ct = ct;
-        _topN = topN;
-        _excludeStorage = excludeStorage;
-        _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
-    }
-
     public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
     {
-        if (_ct.IsCancellationRequested)
+        if (ct.IsCancellationRequested)
             return false;
 
         // Track branch occupancy: ShouldVisit is called for each non-null child
@@ -167,7 +150,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
     {
         VisitorCounters c = _localCounters.Value!;
 
-        if (_excludeStorage)
+        if (excludeStorage)
         {
             // ExcludeStorage mode: flush any pending and skip storage traversal
             c.Flush();
@@ -180,9 +163,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             c.BeginStorageTrie(account.StorageRoot, ctx.Path.Path);
         }
         else
-        {
             c.Flush();
-        }
 
         c.AccountsTotal++;
 
@@ -191,9 +172,6 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
 
         if (account.IsTotallyEmpty)
             c.EmptyAccounts++;
-
-        c.BalanceBuckets[BalanceBucket(account.Balance)]++;
-        c.NonceBuckets[NonceBucket(account.Nonce)]++;
     }
 
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
@@ -239,11 +217,8 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
             AvgBranchOccupancy = agg.TotalBranchNodes > 0
                 ? (double)agg.TotalBranchChildren / agg.TotalBranchNodes
                 : 0.0,
-            StorageMaxDepthHistogram = ImmutableArray.Create(agg.StorageMaxDepthHistogram),
-            BranchOccupancyDistribution = ImmutableArray.Create(agg.BranchOccupancyHistogram),
-            BalanceDistribution = ImmutableArray.Create(agg.BalanceBuckets),
-            NonceDistribution = ImmutableArray.Create(agg.NonceBuckets),
-            StorageSlotDistribution = ImmutableArray.Create(agg.StorageSlotBuckets),
+            StorageMaxDepthHistogram = [..agg.StorageMaxDepthHistogram],
+            BranchOccupancyDistribution = [..agg.BranchOccupancyHistogram],
         };
     }
 
@@ -256,7 +231,7 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
         if (_aggregated is not null)
             return _aggregated;
 
-        VisitorCounters agg = new(_topN);
+        VisitorCounters agg = new(topN);
         foreach (VisitorCounters local in _localCounters.Values)
         {
             local.Flush(); // Finalize last contract's storage trie per thread
@@ -328,36 +303,6 @@ public sealed class StateCompositionVisitor : ITreeVisitor<StateCompositionConte
         }
 
         return 0;
-    }
-
-    /// <summary>
-    /// Maps an account balance (Wei) to a distribution bucket index (0-7).
-    /// Buckets: 0 | &lt;0.01 ETH | 0.01-1 | 1-10 | 10-100 | 100-1K | 1K-10K | 10K+
-    /// </summary>
-    private static int BalanceBucket(in UInt256 balance)
-    {
-        if (balance.IsZero) return 0;
-        if (balance < Wei001Eth) return 1;
-        if (balance < Wei1Eth) return 2;
-        if (balance < Wei10Eth) return 3;
-        if (balance < Wei100Eth) return 4;
-        if (balance < Wei1KEth) return 5;
-        if (balance < Wei10KEth) return 6;
-        return 7;
-    }
-
-    /// <summary>
-    /// Maps a nonce to a distribution bucket index (0-5).
-    /// Buckets: 0 | 1 | 2-10 | 11-100 | 101-1K | 1K+
-    /// </summary>
-    private static int NonceBucket(in UInt256 nonce)
-    {
-        if (nonce.IsZero) return 0;
-        if (nonce == UInt256.One) return 1;
-        if (nonce <= 10) return 2;
-        if (nonce <= 100) return 3;
-        if (nonce <= 1000) return 4;
-        return 5;
     }
 
     public void Dispose()

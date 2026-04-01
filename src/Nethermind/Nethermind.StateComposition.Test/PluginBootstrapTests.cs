@@ -16,9 +16,12 @@ public class PluginBootstrapTests
     {
         StateCompositionPlugin plugin = new();
 
-        Assert.That(plugin.Name, Is.EqualTo("StateComposition"));
-        Assert.That(plugin.Description, Is.EqualTo("State composition metrics for bloatnet benchmarking"));
-        Assert.That(plugin.Author, Is.EqualTo("Nethermind"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(plugin.Name, Is.EqualTo("StateComposition"));
+            Assert.That(plugin.Description, Is.EqualTo("State composition metrics"));
+            Assert.That(plugin.Author, Is.EqualTo("Nethermind"));
+        }
     }
 
     [Test]
@@ -47,11 +50,11 @@ public class PluginBootstrapTests
             StorageTrieNodeBytes = 400,
         };
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(stats.AccountTrieNodeBytes, Is.EqualTo(300));
             Assert.That(stats.StorageTrieNodeBytes, Is.EqualTo(400));
-        });
+        }
     }
 
     [Test]
@@ -106,7 +109,7 @@ public class PluginBootstrapTests
 
         a.MergeFrom(b);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(a.AccountsTotal, Is.EqualTo(25));
             Assert.That(a.ContractsTotal, Is.EqualTo(10));
@@ -117,7 +120,7 @@ public class PluginBootstrapTests
             Assert.That(a.TotalBranchNodes, Is.EqualTo(13));
             Assert.That(a.AccountDepths[2].FullNodes, Is.EqualTo(2));
             Assert.That(a.AccountDepths[2].TotalSize, Is.EqualTo(125));
-        });
+        }
     }
 
     [Test]
@@ -128,13 +131,13 @@ public class PluginBootstrapTests
         counter.AddFullNode(100);
         counter.AddFullNode(200);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(counter.FullNodes, Is.EqualTo(2));
             Assert.That(counter.TotalSize, Is.EqualTo(300));
-            Assert.That(counter.ShortNodes, Is.EqualTo(0));
-            Assert.That(counter.ValueNodes, Is.EqualTo(0));
-        });
+            Assert.That(counter.ShortNodes, Is.Zero);
+            Assert.That(counter.ValueNodes, Is.Zero);
+        }
     }
 
     [Test]
@@ -145,12 +148,12 @@ public class PluginBootstrapTests
         counter.AddShortNode(50);
         counter.AddValueNode(75);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(counter.ShortNodes, Is.EqualTo(1));
             Assert.That(counter.ValueNodes, Is.EqualTo(1));
             Assert.That(counter.TotalSize, Is.EqualTo(125));
-        });
+        }
     }
 
     [Test]
@@ -187,7 +190,7 @@ public class PluginBootstrapTests
         // Insert 5 contracts — only top 3 by depth should survive
         for (int i = 1; i <= 5; i++)
         {
-            c.BeginStorageTrie(new Core.Crypto.ValueHash256(new byte[32]), default);
+            c.BeginStorageTrie(new ValueHash256(new byte[32]), default);
             c.TrackStorageNode(depth: i * 2, byteSize: 100, isLeaf: true, isBranch: false);
         }
 
@@ -201,7 +204,7 @@ public class PluginBootstrapTests
             depths[i] = c.TopN.TopByDepth[i].MaxDepth;
 
         Array.Sort(depths);
-        Assert.That(depths, Is.EqualTo(new[] { 7, 9, 11 })); // +1 Geth convention per depth
+        Assert.That(depths, Is.EqualTo([7, 9, 11])); // +1 Geth convention per depth
     }
 
     [Test]
@@ -221,11 +224,11 @@ public class PluginBootstrapTests
 
         c.Flush();
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(c.StorageMaxDepthHistogram[3], Is.EqualTo(1)); // raw depth 2 + 1
             Assert.That(c.StorageMaxDepthHistogram[6], Is.EqualTo(2)); // raw depth 5 + 1
-        });
+        }
     }
 
     [Test]
@@ -234,7 +237,7 @@ public class PluginBootstrapTests
         VisitorCounters c = new();
         c.Flush(); // Should not throw
 
-        Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(0));
+        Assert.That(c.TopN.TopByDepthCount, Is.Zero);
     }
 
     [Test]
@@ -254,8 +257,6 @@ public class PluginBootstrapTests
 
         Assert.That(a.TopN.TopByDepthCount, Is.EqualTo(2));
     }
-
-    // --- Deterministic comparator tests ---
 
     [Test]
     public void Comparator_TopByDepth_DeterministicTiebreaking()
@@ -293,7 +294,7 @@ public class PluginBootstrapTests
     [Test]
     public void TopContractEntry_HasOwnerAndLevels()
     {
-        Core.Crypto.ValueHash256 owner = new(new byte[32]);
+        ValueHash256 owner = new(new byte[32]);
         TopContractEntry entry = new()
         {
             Owner = owner,
@@ -302,19 +303,17 @@ public class PluginBootstrapTests
             TotalNodes = 100,
             ValueNodes = 50,
             TotalSize = 2000,
-            Levels = System.Collections.Immutable.ImmutableArray<TrieLevelStat>.Empty,
+            Levels = [],
             Summary = new TrieLevelStat { Depth = -1, FullNodeCount = 30, ShortNodeCount = 20, ValueNodeCount = 50, TotalSize = 2000 },
         };
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(entry.Owner, Is.EqualTo(owner));
             Assert.That(entry.Levels.IsDefault, Is.False);
             Assert.That(entry.Summary.TotalSize, Is.EqualTo(2000));
-        });
+        }
     }
-
-    // --- H-4: Owner hash path tracking ---
 
     [Test]
     public void VisitorCounters_BeginStorageTrie_PreservesOwner()
@@ -330,11 +329,12 @@ public class PluginBootstrapTests
         c.TrackStorageNode(depth: 5, byteSize: 100, isLeaf: true, isBranch: false);
         c.Flush();
 
-        Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(1));
-        Assert.That(c.TopN.TopByDepth[0].Owner, Is.EqualTo(expectedOwner));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(1));
+            Assert.That(c.TopN.TopByDepth[0].Owner, Is.EqualTo(expectedOwner));
+        }
     }
-
-    // --- M-4: TopN eviction tests for TopByNodes and TopByValueNodes ---
 
     [Test]
     public void VisitorCounters_TopN_ByNodes_InsertsAndEvictsCorrectly()

@@ -5,7 +5,7 @@ using Nethermind.Config;
 
 namespace Nethermind.StateComposition;
 
-[ConfigCategory(Description = "State composition metrics for bloatnet benchmarking")]
+[ConfigCategory(Description = "State composition metrics")]
 public interface IStateCompositionConfig : IConfig
 {
     [ConfigItem(Description = "Enable state composition plugin", DefaultValue = "true")]
@@ -29,8 +29,4 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Skip storage trie traversal during scans",
         DefaultValue = "false")]
     bool ExcludeStorage { get; set; }
-
-    [ConfigItem(Description = "Minimum seconds between consecutive scans to prevent DoS",
-        DefaultValue = "60")]
-    int ScanCooldownSeconds { get; set; }
 }

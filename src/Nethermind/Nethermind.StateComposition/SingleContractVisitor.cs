@@ -16,11 +16,13 @@ namespace Nethermind.StateComposition;
 /// for a single target contract identified by its storage root.
 /// Skips all non-target storage tries for efficiency.
 /// </summary>
-internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionContext>, IDisposable
+internal sealed class SingleContractVisitor(
+    ILogManager logManager,
+    ValueHash256 targetStorageRoot,
+    CancellationToken ct)
+    : ITreeVisitor<StateCompositionContext>, IDisposable
 {
-    private readonly ILogger _logger;
-    private readonly CancellationToken _ct;
-    private readonly ValueHash256 _targetStorageRoot;
+    private readonly ILogger _logger = logManager.GetClassLogger();
 
     private bool _collectingTarget;
     private bool _targetCompleted;
@@ -35,19 +37,11 @@ internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionConte
     public ReadFlags ExtraReadFlag => ReadFlags.HintCacheMiss;
     public bool ExpectAccounts => true;
 
-    public SingleContractVisitor(ILogManager logManager, CancellationToken ct, ValueHash256 targetStorageRoot)
-    {
-        _logger = logManager.GetClassLogger();
-        _ct = ct;
-        _targetStorageRoot = targetStorageRoot;
-    }
-
     public bool ShouldVisit(in StateCompositionContext ctx, in ValueHash256 nextNode)
     {
-        if (_ct.IsCancellationRequested) return false;
+        if (ct.IsCancellationRequested) return false;
         if (_targetCompleted) return false;
-        if (ctx.IsStorage && !_collectingTarget) return false;
-        return true;
+        return !ctx.IsStorage || _collectingTarget;
     }
 
     public void VisitTree(in StateCompositionContext ctx, in ValueHash256 rootHash) { }
@@ -101,10 +95,8 @@ internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionConte
             return;
         }
 
-        if (!_targetCompleted && account.HasStorage && account.StorageRoot == _targetStorageRoot)
-        {
+        if (!_targetCompleted && account.HasStorage && account.StorageRoot == targetStorageRoot)
             _collectingTarget = true;
-        }
     }
 
     public TopContractEntry? GetResult(ValueHash256 owner, ValueHash256 storageRoot)
@@ -119,7 +111,6 @@ internal sealed class SingleContractVisitor : ITreeVisitor<StateCompositionConte
         for (int i = 0; i < VisitorCounters.MaxTrackedDepth; i++)
         {
             ref DepthCounter dc = ref _depths[i];
-            // Geth counts valueNode at depth+1 from its leaf shortNode
             long shiftedValue = i > 0 ? _depths[i - 1].ValueNodes : 0;
             levelsBuilder.Add(new TrieLevelStat
             {

@@ -39,6 +39,8 @@
 /src/Nethermind/Nethermind.Sockets @LukaszRozmej @benaadams
 /src/Nethermind/Nethermind.Specs @smartprogrammer93
 /src/Nethermind/Nethermind.State @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski
+/src/Nethermind/Nethermind.StateComposition @daniilankusin
+/src/Nethermind/Nethermind.StateComposition.Test @daniilankusin
 /src/Nethermind/Nethermind.Synchronization @LukaszRozmej @benaadams @asdacap @flcl42 @marcindsobczak
 /src/Nethermind/Nethermind.Taiko @smartprogrammer93 @dipkakwani
 /src/Nethermind/Nethermind.Trie @LukaszRozmej @benaadams @asdacap @flcl42 @damian-orzechowski
