@@ -75,6 +75,7 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
             logManager.GetClassLogger(Arg.Any<Type>()).Returns(logger);
+            logManager.GetClassLogger<SyncReport>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);
