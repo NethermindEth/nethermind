@@ -612,23 +612,29 @@ public class GethGenesisLoaderTests
 
         foreach (PropertyInfo property in properties)
         {
-            if (property.PropertyType == typeof(bool))
+            // Skip collection types (reference equality would always differ)
+            bool propertyTypeIsValueType = property.PropertyType.IsValueType || property.PropertyType == typeof(Address);
+
+            // These are mainnet-specific constants baked into fork classes (e.g. Shanghai sets
+            // WithdrawalTimestamp = MainnetSpecProvider.ShanghaiBlockTimestamp) that the
+            // chainspec-based provider doesn't replicate — expected divergence, not a bug.
+            bool skippedProperties = property.Name is nameof(IReleaseSpec.DifficultyBombDelay) or nameof(IReleaseSpec.WithdrawalTimestamp) or nameof(IReleaseSpec.Eip4844TransitionTimestamp);
+
+            if (propertyTypeIsValueType && !skippedProperties)
             {
-                bool expectedValue = (bool)property.GetValue(expectedSpec)!;
-                bool actualValue = (bool)property.GetValue(actualSpec)!;
-                if (expectedValue != actualValue)
+                object? expectedValue = property.GetValue(expectedSpec);
+                object? actualValue = property.GetValue(actualSpec);
+                if (!Equals(expectedValue, actualValue))
                 {
                     differences.Add($"{property.Name}: expected {expectedValue}, actual {actualValue}");
                 }
             }
         }
 
-        differences.Should().BeEmpty($"at activation {forkActivation}, the following EIPs differ:\n{string.Join("\n", differences)}");
+        differences.Should().BeEmpty($"at activation {forkActivation}, the following properties differ:\n{string.Join("\n", differences)}");
 
         provider.ChainId.Should().Be(hardCodedSpec.ChainId);
         provider.NetworkId.Should().Be(hardCodedSpec.NetworkId);
         provider.TerminalTotalDifficulty.Should().Be(hardCodedSpec.TerminalTotalDifficulty);
-        actualSpec.DifficultyBoundDivisor.Should().Be(expectedSpec.DifficultyBoundDivisor);
-        actualSpec.BlockReward.Should().Be(expectedSpec.BlockReward);
     }
 }
