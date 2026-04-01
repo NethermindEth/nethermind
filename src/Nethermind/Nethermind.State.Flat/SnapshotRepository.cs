@@ -200,6 +200,17 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public bool HasState(in StateId stateId) => _snapshots.ContainsKey(stateId);
 
+    public bool HasStatesAtBlockNumber(long blockNumber)
+    {
+        foreach (StateId key in _snapshots.Keys)
+        {
+            if (key.BlockNumber == blockNumber)
+                return true;
+        }
+
+        return false;
+    }
+
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
         if (stateId.BlockNumber < 0)
