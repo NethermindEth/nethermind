@@ -118,22 +118,32 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
         if (!_requestingResources.Contains(resourceId))
         {
             HandlerBag<TMessage> newBag = _handlerBagsPool.Get();
-            newBag.Activate();
-            HandlerBag<TMessage> bag = _retryRequests.GetOrAdd(resourceId, newBag);
-
-            if (ReferenceEquals(bag, newBag))
+            bool published = false;
+            try
             {
-                // First announcer: not added to the retry bag because the caller receives
-                // RequestRequired and will immediately request the resource itself.
-                // Only subsequent announcers (via TryAdd) are registered for retry.
-                AnnounceAddEnqueue(resourceId, handler);
-                return AnnounceResult.RequestRequired;
-            }
+                newBag.Activate();
+                HandlerBag<TMessage> bag = _retryRequests.GetOrAdd(resourceId, newBag);
+                published = ReferenceEquals(bag, newBag);
 
-            // Lost the race — bag was never published, Return/Reset handles cleanup
-            _handlerBagsPool.Return(newBag);
-            bag.TryAdd(handler, _maxRetryRequests);
-            return AnnounceResult.Delayed;
+                if (published)
+                {
+                    // First announcer: not added to the retry bag because the caller receives
+                    // RequestRequired and will immediately request the resource itself.
+                    // Only subsequent announcers (via TryAdd) are registered for retry.
+                    AnnounceAddEnqueue(resourceId, handler);
+                    return AnnounceResult.RequestRequired;
+                }
+
+                bag.TryAdd(handler, _maxRetryRequests);
+                return AnnounceResult.Delayed;
+            }
+            finally
+            {
+                if (!published)
+                {
+                    _handlerBagsPool.Return(newBag);
+                }
+            }
         }
 
         if (_logger.IsTrace) _logger.Trace($"Announced {resourceId} by {handler}, but a retry is in progress already, immediately firing");
