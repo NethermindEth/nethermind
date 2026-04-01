@@ -6,8 +6,9 @@ using System;
 namespace Nethermind.StateComposition;
 
 /// <summary>
-/// Thrown when a state composition operation cannot be completed due to
-/// business logic constraints (cooldown active, scan already running, etc.).
+/// Thrown for truly exceptional infrastructure failures in state composition
+/// (e.g., config validation). Business logic errors (cooldown, scan in progress)
+/// use <see cref="Nethermind.Core.Result{T}"/> instead.
 /// </summary>
 public class StateCompositionException : InvalidOperationException
 {

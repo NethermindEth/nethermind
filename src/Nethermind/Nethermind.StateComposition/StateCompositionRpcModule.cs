@@ -23,13 +23,11 @@ public class StateCompositionRpcModule(
 
         try
         {
-            StateCompositionStats stats = await service.AnalyzeAsync(head.Header, CancellationToken.None)
+            var result = await service.AnalyzeAsync(head.Header, CancellationToken.None)
                 .ConfigureAwait(false);
+            if (!result.Success(out var stats, out var error))
+                return ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded);
             return ResultWrapper<StateCompositionStats>.Success(stats);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ResultWrapper<StateCompositionStats>.Fail(ex.Message);
         }
         catch (OperationCanceledException)
         {
@@ -59,16 +57,11 @@ public class StateCompositionRpcModule(
         if (head is null)
             return ResultWrapper<TrieDepthDistribution>.Fail("No head block available");
 
-        try
-        {
-            TrieDepthDistribution dist = await service.GetTrieDistributionAsync(
-                head.Header, CancellationToken.None).ConfigureAwait(false);
-            return ResultWrapper<TrieDepthDistribution>.Success(dist);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return ResultWrapper<TrieDepthDistribution>.Fail(ex.Message);
-        }
+        var result = await service.GetTrieDistributionAsync(
+            head.Header, CancellationToken.None).ConfigureAwait(false);
+        if (!result.Success(out var dist, out var error))
+            return ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable);
+        return ResultWrapper<TrieDepthDistribution>.Success(dist);
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()
@@ -79,15 +72,21 @@ public class StateCompositionRpcModule(
 
     public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Core.Address address)
     {
+        // H2: Validate address parameter before processing.
+        if (address is null)
+            return ResultWrapper<TopContractEntry?>.Fail("Address parameter is required", ErrorCodes.InvalidInput);
+
         Core.Block? head = blockTree.Head;
         if (head is null)
             return ResultWrapper<TopContractEntry?>.Fail("No head block available");
 
         try
         {
-            TopContractEntry? result = await service.InspectContractAsync(
+            var result = await service.InspectContractAsync(
                 address, head.Header, CancellationToken.None).ConfigureAwait(false);
-            return ResultWrapper<TopContractEntry?>.Success(result);
+            if (!result.Success(out var entry, out var error))
+                return ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.LimitExceeded);
+            return ResultWrapper<TopContractEntry?>.Success(entry);
         }
         catch (OperationCanceledException)
         {

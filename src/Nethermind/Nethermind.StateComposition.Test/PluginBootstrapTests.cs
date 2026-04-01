@@ -194,11 +194,11 @@ public class PluginBootstrapTests
         c.Flush();
 
         // Top 3 by depth should be depths 10, 8, 6 (the three largest)
-        Assert.That(c.TopByDepthCount, Is.EqualTo(3));
+        Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(3));
 
-        int[] depths = new int[c.TopByDepthCount];
-        for (int i = 0; i < c.TopByDepthCount; i++)
-            depths[i] = c.TopByDepth[i].MaxDepth;
+        int[] depths = new int[c.TopN.TopByDepthCount];
+        for (int i = 0; i < c.TopN.TopByDepthCount; i++)
+            depths[i] = c.TopN.TopByDepth[i].MaxDepth;
 
         Array.Sort(depths);
         Assert.That(depths, Is.EqualTo(new[] { 7, 9, 11 })); // +1 Geth convention per depth
@@ -234,7 +234,7 @@ public class PluginBootstrapTests
         VisitorCounters c = new();
         c.Flush(); // Should not throw
 
-        Assert.That(c.TopByDepthCount, Is.EqualTo(0));
+        Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(0));
     }
 
     [Test]
@@ -252,7 +252,7 @@ public class PluginBootstrapTests
 
         a.MergeFrom(b);
 
-        Assert.That(a.TopByDepthCount, Is.EqualTo(2));
+        Assert.That(a.TopN.TopByDepthCount, Is.EqualTo(2));
     }
 
     // --- Deterministic comparator tests ---
@@ -264,7 +264,7 @@ public class PluginBootstrapTests
         TopContractEntry a = new() { MaxDepth = 10, TotalNodes = 100, ValueNodes = 50 };
         TopContractEntry b = new() { MaxDepth = 10, TotalNodes = 200, ValueNodes = 50 };
 
-        int result = VisitorCounters.CompareByDepth(in a, in b);
+        int result = TopNTracker.CompareByDepth(in a, in b);
         Assert.That(result, Is.LessThan(0)); // b has more TotalNodes → a < b
     }
 
@@ -275,7 +275,7 @@ public class PluginBootstrapTests
         TopContractEntry a = new() { TotalNodes = 200, MaxDepth = 5, ValueNodes = 50 };
         TopContractEntry b = new() { TotalNodes = 200, MaxDepth = 10, ValueNodes = 50 };
 
-        int result = VisitorCounters.CompareByTotalNodes(in a, in b);
+        int result = TopNTracker.CompareByTotalNodes(in a, in b);
         Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
     }
 
@@ -286,7 +286,7 @@ public class PluginBootstrapTests
         TopContractEntry a = new() { ValueNodes = 100, MaxDepth = 5, TotalNodes = 50 };
         TopContractEntry b = new() { ValueNodes = 100, MaxDepth = 10, TotalNodes = 50 };
 
-        int result = VisitorCounters.CompareByValueNodes(in a, in b);
+        int result = TopNTracker.CompareByValueNodes(in a, in b);
         Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
     }
 
@@ -330,8 +330,8 @@ public class PluginBootstrapTests
         c.TrackStorageNode(depth: 5, byteSize: 100, isLeaf: true, isBranch: false);
         c.Flush();
 
-        Assert.That(c.TopByDepthCount, Is.EqualTo(1));
-        Assert.That(c.TopByDepth[0].Owner, Is.EqualTo(expectedOwner));
+        Assert.That(c.TopN.TopByDepthCount, Is.EqualTo(1));
+        Assert.That(c.TopN.TopByDepth[0].Owner, Is.EqualTo(expectedOwner));
     }
 
     // --- M-4: TopN eviction tests for TopByNodes and TopByValueNodes ---
@@ -355,11 +355,11 @@ public class PluginBootstrapTests
         c.Flush();
 
         // Top 3 by total nodes should be 15, 12, 9 (from i=5,4,3)
-        Assert.That(c.TopByNodesCount, Is.EqualTo(3));
+        Assert.That(c.TopN.TopByNodesCount, Is.EqualTo(3));
 
         long[] nodes = new long[3];
         for (int i = 0; i < 3; i++)
-            nodes[i] = c.TopByNodes[i].TotalNodes;
+            nodes[i] = c.TopN.TopByNodes[i].TotalNodes;
 
         Array.Sort(nodes);
         Assert.That(nodes, Is.EqualTo(new long[] { 9, 12, 15 }));
@@ -384,11 +384,11 @@ public class PluginBootstrapTests
         c.Flush();
 
         // Top 3 by value nodes should be 10, 8, 6 (from i=5,4,3)
-        Assert.That(c.TopByValueNodesCount, Is.EqualTo(3));
+        Assert.That(c.TopN.TopByValueNodesCount, Is.EqualTo(3));
 
         long[] valueNodes = new long[3];
         for (int i = 0; i < 3; i++)
-            valueNodes[i] = c.TopByValueNodes[i].ValueNodes;
+            valueNodes[i] = c.TopN.TopByValueNodes[i].ValueNodes;
 
         Array.Sort(valueNodes);
         Assert.That(valueNodes, Is.EqualTo(new long[] { 6, 8, 10 }));

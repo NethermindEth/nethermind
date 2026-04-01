@@ -27,5 +27,9 @@ public readonly record struct StateCompositionStats
     public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
+    /// <summary>
+    /// Top contracts ranked by total storage trie byte size.
+    /// Nethermind extension — not present in Geth's inspect-trie output.
+    /// </summary>
     public ImmutableArray<TopContractEntry> TopContractsBySize { get; init; }
 }
