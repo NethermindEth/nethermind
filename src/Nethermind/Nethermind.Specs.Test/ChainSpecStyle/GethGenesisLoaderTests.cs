@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using FluentAssertions;
@@ -15,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -22,6 +25,34 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [Parallelizable(ParallelScope.All)]
 public class GethGenesisLoaderTests
 {
+    /// <param name="TransitionSuffix">"TransitionTimestamp" for timestamp forks, "Transition" for block forks.</param>
+    private readonly record struct ForkActivationInfo(NamedReleaseSpec Fork, NamedReleaseSpec Parent, string GethConfigName, long ActivationValue, string TransitionSuffix);
+
+    // EIPs handled by Ethash engine params, precompiles, or non-standard property names
+    private static readonly HashSet<string> EipsWithNonStandardMapping =
+    [
+        "2",    // Homestead — Ethash engine params
+        "100",  // Byzantium — Ethash Eip100bTransition
+        "158",  // SpuriousDragon — mapped via Eip161abcTransition/Eip161dTransition
+        "170",  // SpuriousDragon — mapped via MaxCodeSizeTransition
+        "196",  // Byzantium — precompile, no separate transition
+        "197",  // Byzantium — precompile, no separate transition
+        "198",  // Byzantium — precompile, no separate transition
+        "649",  // Byzantium — difficulty bomb, Ethash engine
+        "1234", // Constantinople — difficulty bomb, Ethash engine
+    ];
+
+    // Config properties whose name doesn't match any fork class (legacy aliases or special transitions)
+    private static readonly HashSet<string> ConfigPropsWithoutForkClass =
+    [
+        "DaoForkBlock",       // fork class is "Dao", not "DaoFork"
+        "Eip150Block",        // alias for TangerineWhistleBlock
+        "Eip155Block",        // alias for SpuriousDragonBlock
+        "Eip158Block",        // alias for SpuriousDragonBlock
+        "PetersburgBlock",    // fork class is "ConstantinopleFix"
+        "MergeNetsplitBlock", // fork ID transition, not a fork class
+    ];
+
     private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
 
     private static ChainSpec LoadChainSpec(string path) =>
@@ -345,23 +376,224 @@ public class GethGenesisLoaderTests
         chainSpec.Parameters.Eip6110TransitionTimestamp.Should().Be(1800000000);
     }
 
+    /// <summary>
+    /// Returns EIP numbers newly enabled by <paramref name="fork"/> compared to its <paramref name="parent"/>.
+    /// </summary>
+    private static IEnumerable<string> GetNewlyEnabledEips(NamedReleaseSpec fork, NamedReleaseSpec parent)
+    {
+        foreach (PropertyInfo prop in fork.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            bool isEipActivation = prop.PropertyType == typeof(bool) && prop.Name.StartsWith("IsEip") && prop.Name.EndsWith("Enabled");
+            if (isEipActivation)
+            {
+                bool value = (bool)prop.GetValue(fork)!;
+                bool parentValue = (bool)prop.GetValue(parent)!;
+                if (value && !parentValue)
+                {
+                    yield return prop.Name["IsEip".Length..^"Enabled".Length];
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns all concrete <see cref="NamedReleaseSpec"/> instances with their parents.
+    /// </summary>
+    private static IEnumerable<(Type type, NamedReleaseSpec instance)> GetAllForkInstances()
+    {
+        IEnumerable<Type> GetNameReleaseSpecs() => typeof(NamedReleaseSpec).Assembly.GetTypes()
+            .Where(t => t.IsSubclassOf(typeof(NamedReleaseSpec))
+                        && t is { IsAbstract: false, IsGenericType: false }
+                        && t.Namespace == typeof(NamedReleaseSpec).Namespace);
+
+        // Only mainnet forks — exclude network-specific variants (e.g. GnosisForks)
+        foreach (Type type in GetNameReleaseSpecs())
+        {
+            PropertyInfo? instanceProp = type.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy);
+            if (instanceProp is not null)
+            {
+                NamedReleaseSpec instance = (NamedReleaseSpec)instanceProp.GetValue(null)!;
+                yield return (type, instance);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Discovers all forks with matching activation properties on <see cref="GethGenesisConfigJson"/>:
+    /// <c>{Name}Time</c> (ulong?) for timestamp forks, <c>{Name}Block</c> (long?) for block forks.
+    /// </summary>
+    private static List<ForkActivationInfo> DiscoverGethForks()
+    {
+        static (Type type, NamedReleaseSpec instance) FindFork((Type type, NamedReleaseSpec instance)[] forks, string name) =>
+            forks.FirstOrDefault(f => f.type.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+        Type configType = typeof(GethGenesisConfigJson);
+        (Type type, NamedReleaseSpec instance)[] allForks = GetAllForkInstances().ToArray();
+        List<ForkActivationInfo> result = [];
+        long value = 1;
+
+        foreach (PropertyInfo prop in configType.GetProperties())
+        {
+            bool isTime = prop.PropertyType == typeof(ulong?) && prop.Name.EndsWith("Time");
+            bool isBlock = prop.PropertyType == typeof(long?) && prop.Name.EndsWith("Block");
+
+            if (isTime || isBlock)
+            {
+                (string suffix, string transitionSuffix) = isTime ? ("Time", "TransitionTimestamp") : ("Block", "Transition");
+                string forkName = prop.Name[..^suffix.Length];
+                (Type type, NamedReleaseSpec instance) match = FindFork(allForks, forkName);
+                if (match.instance?.Parent is not null)
+                {
+                    string gethConfigName = char.ToLowerInvariant(prop.Name[0]) + prop.Name[1..];
+                    result.Add(new(match.instance, match.instance.Parent, gethConfigName, value, transitionSuffix));
+                    value++;
+                }
+            }
+        }
+
+        return result;
+    }
+
+    [Test]
+    public void GethGenesisConfigJson_and_fork_classes_are_in_sync()
+    {
+        Type configType = typeof(GethGenesisConfigJson);
+        (Type type, NamedReleaseSpec instance)[] allForks = GetAllForkInstances().ToArray();
+        List<string> mismatches = [];
+        int configPropsChecked = 0;
+        int forkClassesChecked = 0;
+
+        // Every *Time and *Block property must have a matching fork class
+        foreach (PropertyInfo prop in configType.GetProperties())
+        {
+            bool isTime = prop.PropertyType == typeof(ulong?) && prop.Name.EndsWith("Time");
+            bool isBlock = prop.PropertyType == typeof(long?) && prop.Name.EndsWith("Block");
+
+            if (isTime || isBlock)
+            {
+                configPropsChecked++;
+                string suffix = isTime ? "Time" : "Block";
+                if (!ConfigPropsWithoutForkClass.Contains(prop.Name))
+                {
+                    string forkName = prop.Name[..^suffix.Length];
+                    if (!allForks.Any(f => f.type.Name.Equals(forkName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        mismatches.Add($"GethGenesisConfigJson.{prop.Name} has no matching fork class");
+                    }
+                }
+            }
+        }
+
+        // Every fork class that introduces EIPs must have a *Time or *Block property
+        foreach ((Type type, NamedReleaseSpec instance) in allForks)
+        {
+            if (instance.Parent is not null && GetNewlyEnabledEips(instance, instance.Parent).Any())
+            {
+                forkClassesChecked++;
+                bool hasBlockProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Block", StringComparison.OrdinalIgnoreCase));
+                bool hasTimeProp = configType.GetProperties().Any(p => p.Name.Equals($"{type.Name}Time", StringComparison.OrdinalIgnoreCase));
+
+                if (!hasBlockProp && !hasTimeProp)
+                {
+                    mismatches.Add($"Fork class {type.Name} introduces EIPs but has no {type.Name}Block or {type.Name}Time in GethGenesisConfigJson");
+                }
+            }
+        }
+
+        TestContext.Out.WriteLine($"Checked {configPropsChecked} config properties and {forkClassesChecked} fork classes with EIPs");
+        mismatches.Should().BeEmpty(string.Join("\n", mismatches));
+    }
+
+    [Test]
+    public void LoadParameters_maps_all_fork_eips()
+    {
+        List<ForkActivationInfo> forks = DiscoverGethForks();
+        forks.Should().NotBeEmpty();
+
+        // Build genesis with distinct activation values — bypass LoadStandardGethGenesis
+        // to avoid hardcoded eip150Block/eip155Block/eip158Block that would shadow fork-named properties
+        string configEntries = string.Join(", ", forks.Select(f => $"\"{f.GethConfigName}\": {f.ActivationValue}"));
+        ChainSpec chainSpec = LoadFromString($$"""
+            {
+              "config": {
+                "chainId": 1,
+                {{configEntries}},
+                "terminalTotalDifficulty": "0x0"
+              },
+              "difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {}
+            }
+            """);
+
+        List<string> mismatches = [];
+        Type paramsType = chainSpec.Parameters.GetType();
+        int eipCount = 0;
+
+        foreach (ForkActivationInfo forkInfo in forks)
+        {
+            int forkEipCount = 0;
+            foreach (string eipNumber in GetNewlyEnabledEips(forkInfo.Fork, forkInfo.Parent))
+            {
+                if (!EipsWithNonStandardMapping.Contains(eipNumber))
+                {
+                    forkEipCount++;
+                    string transitionProp = $"Eip{eipNumber}{forkInfo.TransitionSuffix}";
+                    PropertyInfo? paramProp = paramsType.GetProperty(transitionProp);
+
+                    if (paramProp is not null)
+                    {
+                        object? actual = paramProp.GetValue(chainSpec.Parameters);
+                        long? actualValue = actual is ulong u ? (long)u : (long?)actual;
+                        if (actualValue != forkInfo.ActivationValue)
+                        {
+                            mismatches.Add($"{forkInfo.GethConfigName}: {transitionProp} expected {forkInfo.ActivationValue}, got {actualValue}");
+                        }
+                    }
+                    else
+                    {
+                        mismatches.Add($"{forkInfo.GethConfigName}: IsEip{eipNumber}Enabled has no matching {transitionProp} in ChainParameters");
+                    }
+                }
+            }
+
+            eipCount += forkEipCount;
+            TestContext.Out.WriteLine($"{forkInfo.GethConfigName}: {forkEipCount} EIPs verified");
+        }
+
+        TestContext.Out.WriteLine($"Total: {forks.Count} forks, {eipCount} EIP mappings verified");
+
+        mismatches.Should().BeEmpty(
+            "GethGenesisLoader.LoadParameters must map every EIP from Fork classes.\n" +
+            "If a new EIP was added to a Fork class, update LoadParameters to set its transition timestamp.\n" +
+            string.Join("\n", mismatches));
+    }
+
     public static IEnumerable<TestCaseData> HoodiEip7949Activations
     {
         get
         {
+            // Genesis
             yield return new TestCaseData(new ForkActivation(0, HoodiSpecProvider.GenesisTimestamp)) { TestName = "EIP7949_Genesis" };
-            yield return new TestCaseData(new ForkActivation(1, HoodiSpecProvider.ShanghaiTimestamp)) { TestName = "EIP7949_Shanghai" };
-            yield return new TestCaseData(new ForkActivation(3, HoodiSpecProvider.ShanghaiTimestamp)) { TestName = "EIP7949_Post_Shanghai" };
-            yield return new TestCaseData(new ForkActivation(5, HoodiSpecProvider.CancunTimestamp)) { TestName = "EIP7949_Cancun" };
-            yield return new TestCaseData(new ForkActivation(7, HoodiSpecProvider.PragueTimestamp - 1)) { TestName = "EIP7949_Before_Prague" };
-            yield return new TestCaseData(new ForkActivation(8, HoodiSpecProvider.PragueTimestamp)) { TestName = "EIP7949_Prague" };
-            yield return new TestCaseData(new ForkActivation(9, HoodiSpecProvider.OsakaTimestamp - 1)) { TestName = "EIP7949_Before_Osaka" };
-            yield return new TestCaseData(new ForkActivation(10, HoodiSpecProvider.OsakaTimestamp)) { TestName = "EIP7949_Osaka" };
-            yield return new TestCaseData(new ForkActivation(11, HoodiSpecProvider.BPO1Timestamp - 1)) { TestName = "EIP7949_Before_BPO1" };
-            yield return new TestCaseData(new ForkActivation(12, HoodiSpecProvider.BPO1Timestamp)) { TestName = "EIP7949_BPO1" };
-            yield return new TestCaseData(new ForkActivation(13, HoodiSpecProvider.BPO2Timestamp - 1)) { TestName = "EIP7949_Before_BPO2" };
-            yield return new TestCaseData(new ForkActivation(14, HoodiSpecProvider.BPO2Timestamp)) { TestName = "EIP7949_BPO2" };
-            yield return new TestCaseData(new ForkActivation(15, HoodiSpecProvider.BPO2Timestamp + 100000000)) { TestName = "EIP7949_Future_BPO2" };
+
+            // Each transition + a "before" case for transitions with distinct timestamps
+            ForkActivation[] transitions = HoodiSpecProvider.Instance.TransitionActivations;
+            for (int i = 0; i < transitions.Length; i++)
+            {
+                ForkActivation activation = transitions[i];
+                ulong? prevTimestamp = i > 0 ? transitions[i - 1].Timestamp : HoodiSpecProvider.GenesisTimestamp;
+
+                if (activation.Timestamp > prevTimestamp)
+                {
+                    yield return new TestCaseData(new ForkActivation(activation.BlockNumber, activation.Timestamp!.Value - 1)) { TestName = $"EIP7949_Before_{activation.BlockNumber}" };
+                }
+
+                yield return new TestCaseData(activation) { TestName = $"EIP7949_At_{activation.BlockNumber}" };
+            }
+
+            // Future — well past the last transition
+            ForkActivation last = transitions[^1];
+            yield return new TestCaseData(new ForkActivation(last.BlockNumber + 1, last.Timestamp!.Value + 100_000_000)) { TestName = "EIP7949_Future" };
         }
     }
 

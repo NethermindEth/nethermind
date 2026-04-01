@@ -196,6 +196,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
     private readonly Dictionary<string, Func<GethGenesisConfigJson, ulong?>> _hardforkTimestampGetters =
         new(StringComparer.OrdinalIgnoreCase)
         {
+            [nameof(Amsterdam)] = static c => c.AmsterdamTime,
             [nameof(Cancun)] = static c => c.CancunTime,
             [nameof(Prague)] = static c => c.PragueTime,
             [nameof(Osaka)] = static c => c.OsakaTime,
