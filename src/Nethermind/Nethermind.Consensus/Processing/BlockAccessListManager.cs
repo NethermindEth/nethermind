@@ -25,7 +25,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
@@ -52,11 +51,11 @@ public class BlockAccessListManager(
     {
         if (processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
-            _txProcessorWithWorldStateManager = new DynamicSizeTxProcessorWithWorldStateManager(block, _blockExecutionContext, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
         else
         {
-            _txProcessorWithWorldStateManager = new FixedSizeTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
     }
 
@@ -69,8 +68,17 @@ public class BlockAccessListManager(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         => _blockExecutionContext = blockExecutionContext;
 
-    public ITransactionProcessorAdapter GetTxProcessorAtIndex(int balIndex)
-        => _txProcessorWithWorldStateManager.GetAtBalIndex(balIndex).TxProcessorAdapter;
+    public ITransactionProcessorAdapter GetTxProcessor(int? balIndex = null)
+        => _txProcessorWithWorldStateManager.Get(balIndex).TxProcessorAdapter;
+    
+    public void NextTransaction()
+    {
+        _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+        _txProcessorWithWorldStateManager.NextTransaction();
+    }
+
+    public void Rollback()
+        => _txProcessorWithWorldStateManager.Rollback();
 
     public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
     {
@@ -94,7 +102,7 @@ public class BlockAccessListManager(
                 SpendGas(blockGasUsed.Value);
 
                 bool validateStorageReads = j == chunkEnd - 1;
-                _txProcessorWithWorldStateManager.GetAtBalIndex(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+                _txProcessorWithWorldStateManager.Get(j + 1).WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
                 ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
             }
 
@@ -277,9 +285,14 @@ public class BlockAccessListManager(
         new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec, bool parallel)
     {
-        new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager).ProcessWithdrawals(block, spec);
+        IWithdrawalProcessor withdrawalProcessor = new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager);
+        if (!parallel)
+        {
+            withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
+        }
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
     }
 
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
@@ -327,18 +340,23 @@ public class BlockAccessListManager(
 
     private interface TxProcessorWithWorldStateManager
     {
-        TxProcessorWithWorldState GetPreExecution();
-        TxProcessorWithWorldState GetPostExecution();
-        TxProcessorWithWorldState GetAtBalIndex(int txIndex);
-        void AddTransaction();
-        void Complete();
+        TxProcessorWithWorldState Get(int? txIndex = null);
+
+        TxProcessorWithWorldState GetPreExecution()
+            => Get(0);
+
+        TxProcessorWithWorldState GetPostExecution()
+            => Get(int.MaxValue);
+
+        void NextTransaction();
+        void Rollback();
     }
 
-    private class FixedSizeTxProcessorWithWorldStateManager : TxProcessorWithWorldStateManager
+    private class ParallelTxProcessorWithWorldStateManager : TxProcessorWithWorldStateManager
     {
         private readonly TxProcessorWithWorldState[] _txProcessorsWithWorldStates;
 
-        public FixedSizeTxProcessorWithWorldStateManager(
+        public ParallelTxProcessorWithWorldStateManager(
             Block block,
             BlockExecutionContext blockExecutionContext,
             bool parallel,
@@ -356,21 +374,15 @@ public class BlockAccessListManager(
             }
         }
 
-        public TxProcessorWithWorldState GetPostExecution()
-            => _txProcessorsWithWorldStates[^1];
-
-        public TxProcessorWithWorldState GetPreExecution()
-            => _txProcessorsWithWorldStates[0];
-
-        public TxProcessorWithWorldState GetAtBalIndex(int balIndex)
-            => _txProcessorsWithWorldStates[balIndex];
+        public TxProcessorWithWorldState Get(int? balIndex)
+            => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _txProcessorsWithWorldStates.Length - 1)];
         
-        public void AddTransaction() {}
+        public void NextTransaction() {}
 
-        public void Complete() {}
+        public void Rollback() {}
     }
 
-    private class DynamicSizeTxProcessorWithWorldStateManager(
+    private class SequentialTxProcessorWithWorldStateManager(
         Block block,
         BlockExecutionContext blockExecutionContext,
         IBlockhashProvider blockHashProvider,
@@ -379,25 +391,20 @@ public class BlockAccessListManager(
         ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ILogManager logManager) : TxProcessorWithWorldStateManager
     {
-        private readonly List<TxProcessorWithWorldState> _txProcessorsWithWorldStates;
-        private readonly TxProcessorWithWorldState _preExecTxProcessorsWithWorldStates = new(block, blockExecutionContext, 0, false, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
-        private readonly TxProcessorWithWorldState _postExecTxProcessorsWithWorldStates = new(block, blockExecutionContext, -1, false, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+        private readonly TxProcessorWithWorldState _txProcessorWithWorldState = new(block, blockExecutionContext, 0, false, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
 
-        public TxProcessorWithWorldState GetPostExecution()
-            => _postExecTxProcessorsWithWorldStates;
+        public TxProcessorWithWorldState Get(int? _)
+            => _txProcessorWithWorldState;
 
-        public TxProcessorWithWorldState GetPreExecution()
-            => _preExecTxProcessorsWithWorldStates;
-
-        public TxProcessorWithWorldState GetAtBalIndex(int balIndex)
-            => _txProcessorsWithWorldStates[balIndex];
-
-        public void AddTransaction()
-            => _txProcessorsWithWorldStates.Add(new(block, blockExecutionContext, _txProcessorsWithWorldStates.Count + 1, false, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager));
-
-        public void Complete()
+        public void NextTransaction()
         {
-            _postExecTxProcessorsWithWorldStates.WorldState.SetIndex(_txProcessorsWithWorldStates.Count + 1);
+            _txProcessorWithWorldState.WorldState.Clear();
+            _txProcessorWithWorldState.WorldState.IncrementIndex();
+        }
+
+        public void Rollback()
+        {
+            _txProcessorWithWorldState.WorldState.Clear();
         }
     }
 

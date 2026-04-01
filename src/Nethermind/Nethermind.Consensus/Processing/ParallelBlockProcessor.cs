@@ -44,6 +44,7 @@ public partial class ParallelBlockProcessor(
         if (spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis)
         {
             _balManager = new(_stateProvider, blobBaseFeeCalculator, _specProvider, blockHashProvider, _logManager, blocksConfig);
+            _blockTransactionsExecutor.SetBlockAccessListManager(_balManager);
             _balManager.SetGasUsed(suggestedBlock.GasUsed);
 
             if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))

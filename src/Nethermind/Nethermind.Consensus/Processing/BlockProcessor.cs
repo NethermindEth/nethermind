@@ -48,6 +48,7 @@ public partial class BlockProcessor(
     protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
+    protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -105,14 +106,14 @@ public partial class BlockProcessor(
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
+        _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts;
-        receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

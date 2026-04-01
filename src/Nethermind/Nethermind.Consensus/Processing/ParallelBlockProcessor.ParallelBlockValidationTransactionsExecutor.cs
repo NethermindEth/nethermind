@@ -55,7 +55,7 @@ public partial class ParallelBlockProcessor
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(_balManager.GetTxProcessorAtIndex(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(_balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
                 _balManager.SpendGas(currentTx.BlockGasUsed);
                 _balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
@@ -104,7 +104,7 @@ public partial class ParallelBlockProcessor
                     {
                         Transaction tx = state.txs[txIndex];
                         ProcessTransaction(
-                            state.balManager.GetTxProcessorAtIndex(i),
+                            state.balManager.GetTxProcessor(i),
                             state.stateProvider,
                             state.block,
                             tx,
