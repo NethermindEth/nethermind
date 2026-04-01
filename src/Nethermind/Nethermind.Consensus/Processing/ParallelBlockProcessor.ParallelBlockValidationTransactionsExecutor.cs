@@ -28,17 +28,31 @@ public partial class ParallelBlockProcessor
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
     {
-        private BlockAccessListManager _balManager;
+        private BlockAccessListManager? _balManager;
         private TxReceipt[] _txReceipts;
 
         public override void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            => _balManager.SetBlockExecutionContext(blockExecutionContext);
+        {
+            if (_balManager is null)
+            {
+                base.SetBlockExecutionContext(blockExecutionContext);
+            }
+            else
+            {
+                _balManager.SetBlockExecutionContext(blockExecutionContext);
+            }
+        }
 
         public override void SetBlockAccessListManager(in BlockAccessListManager balManager)
             => _balManager = balManager;
 
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
+            if (_balManager is null)
+            {
+                return base.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+            }
+
             Metrics.ResetBlockStats();
 
             _txReceipts = blocksConfig.ParallelExecution && !block.IsGenesis ?

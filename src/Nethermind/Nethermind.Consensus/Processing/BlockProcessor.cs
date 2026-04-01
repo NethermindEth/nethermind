@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -151,6 +152,11 @@ public partial class BlockProcessor(
         {
             _stateProvider.RecalculateStateRoot();
             header.StateRoot = _stateProvider.StateRoot;
+        }
+
+        if (spec.BlockLevelAccessListsEnabled)
+        {
+            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
         }
 
         header.Hash = header.CalculateHash();

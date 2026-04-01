@@ -47,15 +47,15 @@ public class BlockAccessListManager(
     private const int GasValidationChunkSize = 8;
     private long _gasRemaining;
 
-    public void Setup(Block block, ProcessingOptions processingOptions)
+    public void Setup(Block block, bool parallel)
     {
-        if (processingOptions.ContainsFlag(ProcessingOptions.ProducingBlock))
+        if (parallel)
         {
-            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
         else
         {
-            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
     }
 
@@ -163,22 +163,10 @@ public class BlockAccessListManager(
 
     public void SetBlockAccessList(Block block, IReleaseSpec spec)
     {
-        if (!spec.BlockLevelAccessListsEnabled)
-        {
-            return;
-        }
-
-        if (block.IsGenesis)
-        {
-            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-        }
-        else
-        {
-            _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
-            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
-        }
+        _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+        block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+        block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
     }
 
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
@@ -340,7 +328,7 @@ public class BlockAccessListManager(
 
     private interface TxProcessorWithWorldStateManager
     {
-        TxProcessorWithWorldState Get(int? txIndex = null);
+        TxProcessorWithWorldState Get(int? balIndex = null);
 
         TxProcessorWithWorldState GetPreExecution()
             => Get(0);
