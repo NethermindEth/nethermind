@@ -21,60 +21,55 @@ public class AutoDetectingChainSpecLoader(IJsonSerializer serializer, ILogManage
 
     public ChainSpec Load(Stream streamData)
     {
-        using MemoryStream memoryStream = new();
-        streamData.CopyTo(memoryStream);
-        memoryStream.Position = 0;
+        if (!streamData.CanSeek)
+        {
+            using MemoryStream buffer = new();
+            streamData.CopyTo(buffer);
+            buffer.Position = 0;
+            return Load(buffer);
+        }
 
-        GenesisFormat format = DetectFormat(memoryStream);
-        memoryStream.Position = 0;
+        long startPosition = streamData.Position;
+        GenesisFormat format = DetectFormat(streamData);
+        streamData.Position = startPosition;
 
         return format switch
         {
-            GenesisFormat.Geth => _gethLoader.Load(memoryStream),
-            _ => _parityLoader.Load(memoryStream),
+            GenesisFormat.Geth => _gethLoader.Load(streamData),
+            _ => _parityLoader.Load(streamData),
         };
     }
 
+    /// <summary>
+    /// Geth genesis always starts with <c>"config"</c> as the first property; parity chainspecs never do.
+    /// Reading just the first property name is enough to distinguish the two formats.
+    /// </summary>
     private GenesisFormat DetectFormat(Stream stream)
     {
-        GenesisFormat result = GenesisFormat.Unknown;
-
         try
         {
-            using JsonDocument document = JsonDocument.Parse(stream, new JsonDocumentOptions { AllowTrailingCommas = true });
-            JsonElement root = document.RootElement;
+            Span<byte> buf = stackalloc byte[256];
+            int bytesRead = stream.Read(buf);
 
-            bool looksLikeGeth = root.TryGetProperty("config", out _) ||
-                root.TryGetProperty("alloc", out _);
-            if (looksLikeGeth)
-            {
-                result = GenesisFormat.Geth;
-            }
+            Utf8JsonReader reader = new(buf[..bytesRead], new JsonReaderOptions { AllowTrailingCommas = true });
 
-            bool looksLikeParity = root.TryGetProperty("engine", out _) ||
-                root.TryGetProperty("params", out _) ||
-                root.TryGetProperty("accounts", out _);
-            if (looksLikeParity)
+            // Find the first non-metadata property name (skip $schema etc.)
+            while (reader.Read())
             {
-                result = GenesisFormat.Parity;
-            }
-
-            if (looksLikeGeth && looksLikeParity && _logger.IsWarn)
-            {
-                _logger.Warn("Genesis file contains both Geth-like and Parity-like markers. Defaulting to Parity-like style.");
+                if (reader.TokenType is JsonTokenType.PropertyName && !reader.ValueTextEquals("$schema"u8))
+                {
+                    return reader.ValueTextEquals("config"u8) ? GenesisFormat.Geth : GenesisFormat.Parity;
+                }
             }
         }
-        catch (Exception e)
+        catch (JsonException e)
         {
             if (_logger.IsError) _logger.Error("Error parsing specification", e);
         }
 
-        if (result is GenesisFormat.Unknown && _logger.IsWarn)
-        {
-            _logger.Warn("Failed to parse genesis file for format detection, assuming Parity-like style.");
-        }
+        if (_logger.IsWarn) _logger.Warn("Failed to detect genesis file format, assuming Parity-like style.");
 
-        return result;
+        return GenesisFormat.Unknown;
     }
 
     private enum GenesisFormat

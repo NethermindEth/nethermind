@@ -42,12 +42,15 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
-        ChainSpec chainSpec = new();
+        ulong networkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+        ChainSpec chainSpec = new()
+        {
+            NetworkId = networkId,
+            ChainId = chainSpecJson.Params.ChainId ?? networkId,
+            Name = chainSpecJson.Name,
+            DataDir = chainSpecJson.DataDir
+        };
 
-        chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-        chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
-        chainSpec.Name = chainSpecJson.Name;
-        chainSpec.DataDir = chainSpecJson.DataDir;
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
@@ -62,10 +65,10 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
+            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
-            if (pricing.Length > 0)
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn?.Pricing.Where(o => predicate(o)).ToArray();
+            if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
                 return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);

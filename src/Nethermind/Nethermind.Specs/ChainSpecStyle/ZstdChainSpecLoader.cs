@@ -21,7 +21,7 @@ public class ZstdChainSpecLoader(IChainSpecLoader decompressedLoader, string? di
         byte[] buffer = new byte[stream.Length];
         stream.ReadExactly(buffer);
 
-        using var decompressedStream = new DecompressionStream(streamData);
+        using DecompressionStream decompressedStream = new(streamData);
         decompressedStream.LoadDictionary(buffer);
 
         return decompressedLoader.Load(decompressedStream);
