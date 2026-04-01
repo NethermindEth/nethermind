@@ -231,19 +231,13 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
                 return;
         }
 
+        // Only remove non-compacted snapshots. Compacted snapshots span block ranges and are
+        // cleaned up by RemoveStatesUntil when persistence advances.
         foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
             if (kvp.Key.BlockNumber >= blockNumber)
             {
                 RemoveAndReleaseKnownState(kvp.Key);
-            }
-        }
-
-        foreach (KeyValuePair<StateId, Snapshot> kvp in _compactedSnapshots)
-        {
-            if (kvp.Key.BlockNumber >= blockNumber)
-            {
-                RemoveAndReleaseCompactedKnownState(kvp.Key);
             }
         }
 

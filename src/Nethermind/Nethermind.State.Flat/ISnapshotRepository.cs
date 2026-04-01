@@ -27,9 +27,11 @@ public interface ISnapshotRepository
     void RemoveStatesUntil(in StateId currentPersistedStateId);
 
     /// <summary>
-    /// Remove all snapshots (and compacted snapshots) at or above the given block number.
+    /// Remove all non-compacted snapshots at or above the given block number.
     /// Used when a new block replaces existing state at the same height (e.g. different payload
-    /// at the same block number), invalidating all snapshots from that point onward.
+    /// at the same block number), invalidating snapshots from that point onward.
+    /// Compacted snapshots are left intact as they span block ranges and are cleaned up
+    /// by <see cref="RemoveStatesUntil"/> when persistence advances.
     /// </summary>
     void RemoveStatesFrom(long blockNumber);
 }
