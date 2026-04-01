@@ -217,8 +217,8 @@ public sealed class StateCompositionVisitor(
             AvgBranchOccupancy = agg.TotalBranchNodes > 0
                 ? (double)agg.TotalBranchChildren / agg.TotalBranchNodes
                 : 0.0,
-            StorageMaxDepthHistogram = [..agg.StorageMaxDepthHistogram],
-            BranchOccupancyDistribution = [..agg.BranchOccupancyHistogram],
+            StorageMaxDepthHistogram = [.. agg.StorageMaxDepthHistogram],
+            BranchOccupancyDistribution = [.. agg.BranchOccupancyHistogram],
         };
     }
 
