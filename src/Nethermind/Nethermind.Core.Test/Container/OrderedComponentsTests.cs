@@ -49,6 +49,36 @@ public class OrderedComponentsTests
         act.Should().Throw<InvalidOperationException>();
     }
 
+    [Test]
+    public void TestCompositeResolved_EvenWhenNotLastRegistration()
+    {
+        // AddComposite is called before the last AddLast — composite should still be resolved as IItem
+        using IContainer ctx = new ContainerBuilder()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddCompositeOrderedComponents<IItem, CompositeItem>()
+            .AddLast<IItem>(_ => new Item("2"))
+            .Build();
+
+        IItem resolved = ctx.Resolve<IItem>();
+        resolved.Should().BeOfType<CompositeItem>();
+        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["1", "2"]);
+    }
+
+    [Test]
+    public void TestCompositeResolved_WhenCalledBeforeAnyAddLast()
+    {
+        // AddComposite is called before any AddLast — should still work
+        using IContainer ctx = new ContainerBuilder()
+            .AddCompositeOrderedComponents<IItem, CompositeItem>()
+            .AddLast<IItem>(_ => new Item("1"))
+            .AddLast<IItem>(_ => new Item("2"))
+            .Build();
+
+        IItem resolved = ctx.Resolve<IItem>();
+        resolved.Should().BeOfType<CompositeItem>();
+        ((CompositeItem)resolved).Items.Select(i => i.Name).Should().BeEquivalentTo(["1", "2"]);
+    }
+
     private class ModuleA : Module
     {
         protected override void Load(ContainerBuilder builder) =>
@@ -72,5 +102,11 @@ public class OrderedComponentsTests
             builder
                 .AddLast(_ => new Item("1"));
     }
-    private record Item(string Name);
+    private interface IItem { string Name { get; } }
+    private record Item(string Name) : IItem;
+    private class CompositeItem(IItem[] items) : IItem
+    {
+        public IItem[] Items { get; } = items;
+        public string Name => string.Join(",", Items.Select(i => i.Name));
+    }
 }

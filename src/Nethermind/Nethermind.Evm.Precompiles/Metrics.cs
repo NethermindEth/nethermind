@@ -49,8 +49,8 @@ public class Metrics
     public static long Bls12381Fp2ToG2Precompile { get; set; }
 
     [CounterMetric]
-    [Description("Number of EC_RECOVERY precompile calls.")]
-    public static long EcRecoverPrecompile { get; set; }
+    [Description("Number of ECREC precompile calls.")]
+    public static long ECRecoverPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of MODEXP precompile calls.")]
@@ -65,12 +65,12 @@ public class Metrics
     public static long Sha256Precompile { get; set; }
 
     [CounterMetric]
-    [Description("Number of Secp256r1 precompile calls.")]
-    public static long Secp256r1Precompile { get; set; }
+    [Description("Number of P256VERIFY precompile calls.")]
+    public static long SecP256r1Precompile { get; set; }
 
     [CounterMetric]
-    [Description("Number of Point Evaluation precompile calls.")]
-    public static long PointEvaluationPrecompile { get; set; }
+    [Description("Number of KZG_POINT_EVALUATION precompile calls.")]
+    public static long KzgPointEvaluationPrecompile { get; set; }
 
     [CounterMetric]
     [Description("Number of L1SLOAD precompile calls.")]

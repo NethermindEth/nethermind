@@ -23,7 +23,7 @@ public class CodeInfoRepository : ICodeInfoRepository
 {
     private readonly FrozenDictionary<AddressAsKey, CodeInfo> _localPrecompiles;
     private readonly IWorldState _worldState;
-    private readonly Func<ValueHash256, IReleaseSpec, CodeInfo> _codeInfoLoader;
+    private readonly Func<ValueHash256, CodeInfo> _codeInfoLoader;
     private readonly IBlockAccessListBuilder? _balBuilder;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
@@ -31,15 +31,15 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
     }
 
-    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, IReleaseSpec, CodeInfo>? codeInfoLoader)
+    internal CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, Func<ValueHash256, CodeInfo>? codeInfoLoader)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
         _worldState = worldState;
         _balBuilder = _worldState as IBlockAccessListBuilder;
         _codeInfoLoader = codeInfoLoader ?? DefaultLoad;
 
-        CodeInfo DefaultLoad(ValueHash256 codeHash, IReleaseSpec spec) =>
-            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash, spec);
+        CodeInfo DefaultLoad(ValueHash256 codeHash) =>
+            codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(worldState, in codeHash);
     }
 
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
@@ -54,26 +54,26 @@ public class CodeInfoRepository : ICodeInfoRepository
             return _localPrecompiles[codeSource];
         }
 
-        CodeInfo codeInfo = InternalGetCodeInfo(codeSource, vmSpec);
+        CodeInfo codeInfo = InternalGetCodeInfo(codeSource);
 
         if (!codeInfo.IsEmpty && ICodeInfoRepository.TryGetDelegatedAddress(codeInfo.CodeSpan, out delegationAddress))
         {
             if (followDelegation)
             {
-                codeInfo = InternalGetCodeInfo(delegationAddress, vmSpec);
+                codeInfo = InternalGetCodeInfo(delegationAddress);
             }
         }
 
         return codeInfo;
     }
 
-    private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
+    private CodeInfo InternalGetCodeInfo(Address codeSource)
     {
         ref readonly ValueHash256 codeHash = ref _worldState.GetCodeHash(codeSource);
-        return _codeInfoLoader(codeHash, vmSpec);
+        return _codeInfoLoader(codeHash);
     }
 
-    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash, IReleaseSpec vmSpec)
+    internal static CodeInfo GetCodeInfo(IWorldState worldState, in ValueHash256 codeHash)
     {
         byte[]? code = worldState.GetCode(in codeHash);
         if (code is null)
@@ -81,7 +81,7 @@ public class CodeInfoRepository : ICodeInfoRepository
             MissingCode(in codeHash);
         }
 
-        return CodeInfoFactory.CreateCodeInfo(code, vmSpec);
+        return CodeInfoFactory.CreateCodeInfo(code);
 
         [DoesNotReturn, StackTraceHidden]
         static void MissingCode(in ValueHash256 codeHash) => throw new DataException($"Code {codeHash} missing in the state");
@@ -137,12 +137,12 @@ public class CodeInfoRepository : ICodeInfoRepository
             return Keccak.OfAnEmptyString.ValueHash256;
         }
 
-        CodeInfo codeInfo = _codeInfoLoader(codeHash, spec);
+        CodeInfo codeInfo = _codeInfoLoader(codeHash);
         return codeInfo.IsEmpty
             ? Keccak.OfAnEmptyString.ValueHash256
             : codeHash;
     }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
-        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
+        ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address).CodeSpan, out delegatedAddress);
 }

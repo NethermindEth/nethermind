@@ -111,7 +111,6 @@ public class ReleaseSpec : IReleaseSpec
     public Address? Eip7002ContractAddress { get => IsEip7002Enabled ? field : null; set; }
     [MemberNotNullWhen(true, nameof(IsEip4788Enabled))]
     public Address? Eip4788ContractAddress { get => IsEip4788Enabled ? field : null; set; }
-    public bool IsEofEnabled { get; set; }
     public bool IsEip8024Enabled { get; set; }
     public bool IsEip6110Enabled { get; set; }
     [MemberNotNullWhen(true, nameof(IsEip6110Enabled))]
@@ -135,7 +134,7 @@ public class ReleaseSpec : IReleaseSpec
     {
         HashSet<AddressAsKey> cache = new();
 
-        cache.Add(PrecompiledAddresses.EcRecover);
+        cache.Add(PrecompiledAddresses.ECRecover);
         cache.Add(PrecompiledAddresses.Sha256);
         cache.Add(PrecompiledAddresses.Ripemd160);
         cache.Add(PrecompiledAddresses.Identity);
@@ -143,9 +142,9 @@ public class ReleaseSpec : IReleaseSpec
         if (IsEip198Enabled) cache.Add(PrecompiledAddresses.ModExp);
         if (IsEip196Enabled && IsEip197Enabled)
         {
-            cache.Add(PrecompiledAddresses.Bn128Add);
-            cache.Add(PrecompiledAddresses.Bn128Mul);
-            cache.Add(PrecompiledAddresses.Bn128Pairing);
+            cache.Add(PrecompiledAddresses.BN254Add);
+            cache.Add(PrecompiledAddresses.BN254Mul);
+            cache.Add(PrecompiledAddresses.BN254PairingCheck);
         }
 
         if (IsEip152Enabled) cache.Add(PrecompiledAddresses.Blake2F);

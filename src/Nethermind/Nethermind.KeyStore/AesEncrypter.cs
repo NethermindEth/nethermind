@@ -38,7 +38,7 @@ namespace Nethermind.KeyStore
                             aes.Key = key;
                             aes.IV = iv;
 
-                            var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+                            using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
                             return Execute(encryptor, content);
                         }
                     case "aes-128-ctr":
@@ -74,7 +74,7 @@ namespace Nethermind.KeyStore
                             aes.Padding = PaddingMode.PKCS7;
                             aes.Key = key;
                             aes.IV = iv;
-                            var decryptor = aes.CreateDecryptor(key, aes.IV);
+                            using var decryptor = aes.CreateDecryptor(key, aes.IV);
                             return Execute(decryptor, cipher);
                         }
                     case "aes-128-ctr":
@@ -119,7 +119,7 @@ namespace Nethermind.KeyStore
             var counter = (byte[])salt.Clone();
             var xorMask = new Queue<byte>();
             var zeroIv = new byte[blockSize];
-            var encryptor = aes.CreateEncryptor(key, zeroIv);
+            using var encryptor = aes.CreateEncryptor(key, zeroIv);
 
             int @byte;
             while ((@byte = inputStream.ReadByte()) != -1)

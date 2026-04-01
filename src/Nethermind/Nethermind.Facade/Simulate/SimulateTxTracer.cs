@@ -85,6 +85,7 @@ public sealed class SimulateTxTracer : TxTracer
         TraceResult = new SimulateCallResult
         {
             GasUsed = (ulong)gasSpent.SpentGas,
+            MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
             ReturnData = output,
             Status = StatusCode.Success,
             Logs = _logs.Select((entry, i) => new Log
@@ -107,6 +108,7 @@ public sealed class SimulateTxTracer : TxTracer
         TraceResult = new SimulateCallResult
         {
             GasUsed = (ulong)gasSpent.SpentGas,
+            MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
             Error = new Error
             {
                 Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,

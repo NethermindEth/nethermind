@@ -179,10 +179,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="opcode"></param>
     /// <param name="gas"></param>
     /// <param name="env"></param>
-    /// <param name="codeSection"></param>
-    /// <param name="functionDepth"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
 
     /// <summary>
     ///

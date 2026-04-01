@@ -130,7 +130,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             try
             {
                 Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
-                CancellationTokenSource delayCancellation = new();
+                using CancellationTokenSource delayCancellation = new();
                 Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
 
                 if (firstTask != receivedInitMsgTask)
@@ -140,6 +140,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                     }
 
+                    _initCompletionSource.TrySetCanceled();
                     Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
                 }
                 else
@@ -158,7 +159,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void ReceivedProtocolInitMsg(MessageBase msg)
         {
-            _initCompletionSource?.SetResult(msg);
+            _initCompletionSource?.TrySetResult(msg);
         }
 
         protected void ReportIn(MessageBase msg, int size)
@@ -178,12 +179,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 NetworkDiagTracer.ReportIncomingMessage(Session?.Node?.Address, Name, messageInfo, size);
         }
 
+        /// <summary>
+        /// Deserializes <paramref name="message"/> into <typeparamref name="TReq"/> and schedules
+        /// <paramref name="handle"/> on the background task scheduler.
+        /// Ownership: the deserialized request is owned by <paramref name="handle"/>.
+        /// The handler must dispose the request (typically via <c>using var msg = request;</c>)
+        /// on all paths including exceptions. If scheduling fails, the infrastructure disposes
+        /// the request automatically.
+        /// </summary>
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, Task<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
+        /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq, TRes>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask<TRes>> handle) where TReq : P2PMessage where TRes : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleSyncServe(DeserializeAndReport<TReq>(message), handle);
 
+        /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle, typeof(TReq).Name);
 
