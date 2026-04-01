@@ -402,14 +402,14 @@ public class MergePluginTests
         BlockHeader parentHeader,
         Withdrawal[]? withdrawals = null,
         ulong? slotNumber = null) => new()
-    {
-        Timestamp = parentHeader.Timestamp + 12,
-        PrevRandao = Keccak.Compute("randao"),
-        SuggestedFeeRecipient = Address.Zero,
-        Withdrawals = withdrawals ?? [],
-        ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot"),
-        SlotNumber = slotNumber
-    };
+        {
+            Timestamp = parentHeader.Timestamp + 12,
+            PrevRandao = Keccak.Compute("randao"),
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = withdrawals ?? [],
+            ParentBeaconBlockRoot = Keccak.Compute("parentBeaconBlockRoot"),
+            SlotNumber = slotNumber
+        };
 
     private static (Hash256 parentHash, Block parentBlock, BlockHeader parentHeader) CreateDefaultParentBlock(ulong? slotNumber = null)
     {
