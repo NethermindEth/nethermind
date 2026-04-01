@@ -13,6 +13,10 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => NullLogger.Instance;
 
+#pragma warning disable CS0618 // Obsolete - kept for NativeAOT compatibility
+        public ILogger GetClassLogger(string filePath) => NullLogger.Instance;
+#pragma warning restore CS0618
+
         public ILogger GetLogger(string loggerName) => NullLogger.Instance;
     }
 }
