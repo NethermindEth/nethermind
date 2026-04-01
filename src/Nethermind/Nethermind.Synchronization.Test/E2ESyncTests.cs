@@ -539,7 +539,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             blockCacheService.FinalizedHash = finalizedBlock.Hash!;
 
             await preMergeTestEnv.WaitForSyncMode(mode => mode != SyncMode.UpdatingPivot, cancellationToken);
-            mergeSyncController.TryInitBeaconHeaderSync(headBlock.Header);
+            mergeSyncController.InitBeaconHeaderSync(headBlock.Header);
 
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
         }
