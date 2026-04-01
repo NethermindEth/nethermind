@@ -329,8 +329,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
+        // Remove stale non-compacted snapshots from a prior fork at or above this block number.
+        // Fast-path: skips entirely for sequential blocks (the common case).
+        _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);
+
         // Reject if rewinding into a compacted range. Compacted snapshots span multiple blocks
-        // and cannot be partially invalidated.
+        // and cannot be partially invalidated. Checked after RemoveStatesFrom since the fast
+        // path there is cheaper (read-lock + Max check) and covers the sequential-block case.
         if (_snapshotRepository.HasCompactedStateAtOrAbove(endBlock.BlockNumber))
         {
             if (_logger.IsWarn) _logger.Warn($"Cannot rewind into compacted state. Block {endBlock.BlockNumber} falls within a compacted snapshot range.");
@@ -338,10 +343,6 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             snapshot.Dispose();
             return;
         }
-
-        // Remove stale snapshots from a prior fork at or above this block number.
-        // A new block at height N invalidates any existing state at N+ from a different fork.
-        _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);
 
         if (!_snapshotRepository.TryAddSnapshot(snapshot))
         {
