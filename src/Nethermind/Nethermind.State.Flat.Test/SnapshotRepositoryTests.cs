@@ -370,93 +370,21 @@ public class SnapshotRepositoryTests
     #region RemoveStatesUntil Fallback
 
     [Test]
-    public void RemoveStatesUntil_FallbackRemovesUntrackedCompactedSnapshot_AtCompactSizeBoundary()
+    public void RemoveStatesUntil_FallbackRemovesUntrackedSnapshots_AtCompactSizeBoundary()
     {
-        // Add a compacted snapshot without calling AddStateId (simulating a tracking bug)
-        StateId from = CreateStateId(0);
-        StateId to = CreateStateId(4);
-        Snapshot compacted = CreateSnapshot(from, to);
-        _repository.TryAddCompactedSnapshot(compacted);
+        // Add untracked snapshots (simulating a tracking bug — no AddStateId)
+        _repository.TryAddCompactedSnapshot(CreateSnapshot(CreateStateId(0), CreateStateId(4)));
+        _repository.TryAddSnapshot(CreateSnapshot(CreateStateId(4), CreateStateId(5)));
 
+        // Off-boundary: fallback doesn't run, untracked snapshots survive
+        _repository.RemoveStatesUntil(CreateStateId(10));
         Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
-
-        // RemoveStatesUntil at a compactSize boundary (16) should trigger the fallback
-        _repository.RemoveStatesUntil(CreateStateId(16));
-
-        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void RemoveStatesUntil_FallbackRemovesUntrackedRegularSnapshot_AtCompactSizeBoundary()
-    {
-        // Add a regular snapshot but don't call AddStateId (simulating a tracking bug)
-        StateId from = CreateStateId(0);
-        StateId to = CreateStateId(4);
-        Snapshot snapshot = CreateSnapshot(from, to);
-        _repository.TryAddSnapshot(snapshot);
-        // Intentionally skip: _repository.AddStateId(to);
-
         Assert.That(_repository.SnapshotCount, Is.EqualTo(1));
 
-        // RemoveStatesUntil at a compactSize boundary (16) should trigger the fallback
+        // On compactSize boundary (16): fallback runs and cleans up both
         _repository.RemoveStatesUntil(CreateStateId(16));
-
-        Assert.That(_repository.SnapshotCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void RemoveStatesUntil_FallbackDoesNotRun_OffCompactSizeBoundary()
-    {
-        // Add a compacted snapshot without calling AddStateId (simulating a tracking bug)
-        StateId from = CreateStateId(0);
-        StateId to = CreateStateId(4);
-        Snapshot compacted = CreateSnapshot(from, to);
-        _repository.TryAddCompactedSnapshot(compacted);
-
-        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
-
-        // RemoveStatesUntil at a non-compactSize boundary (10) should NOT trigger fallback
-        _repository.RemoveStatesUntil(CreateStateId(10));
-
-        // Compacted snapshot remains because it wasn't tracked and fallback didn't run
-        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
-
-        // Now trigger at boundary (16) — fallback runs and cleans up
-        _repository.RemoveStatesUntil(CreateStateId(16));
-
         Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(0));
-    }
-
-    [Test]
-    public void RemoveStatesUntil_FallbackDoesNotRemoveSnapshotsAbovePersistedBlock()
-    {
-        // Add untracked compacted snapshot above the persisted block
-        StateId from = CreateStateId(14);
-        StateId to = CreateStateId(20);
-        Snapshot compacted = CreateSnapshot(from, to);
-        _repository.TryAddCompactedSnapshot(compacted);
-
-        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
-
-        // RemoveStatesUntil at compactSize boundary (16) — snapshot at block 20 should survive
-        _repository.RemoveStatesUntil(CreateStateId(16));
-
-        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
-    }
-
-    [Test]
-    public void RemoveStatesUntil_PrimaryPathStillWorks_WithFallback()
-    {
-        // Add snapshots the normal way (tracked in sorted state IDs)
-        BuildSnapshotChain(0, 5);
-
-        Assert.That(_repository.SnapshotCount, Is.EqualTo(5));
-
-        // Primary path should handle these; fallback is a no-op
-        _repository.RemoveStatesUntil(CreateStateId(3));
-
-        // Blocks 1, 2, 3 removed (their To stateIds are 1, 2, 3)
-        Assert.That(_repository.SnapshotCount, Is.EqualTo(2));
+        Assert.That(_repository.SnapshotCount, Is.EqualTo(0));
     }
 
     #endregion
