@@ -3,15 +3,20 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO.Compression;
+using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
 using Nethermind.Era1;
 using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Snappier;
 using Timestamper = Nethermind.Core.Timestamper;
 
 namespace Nethermind.EraE.Archive;
@@ -19,10 +24,10 @@ namespace Nethermind.EraE.Archive;
 /// <summary>
 /// Writes an EraE archive file.
 /// Each call to <see cref="Add"/> immediately compresses the block's header, body, and receipts
-/// via Snappy and buffers the compressed bytes. This keeps peak memory per epoch proportional
-/// to compressed data size (~10–50 MB for pre-merge, ~150–400 MB for post-merge mainnet),
-/// rather than the uncompressed RLP size. <see cref="Finalize"/> writes the buffered
-/// compressed entries to the output stream in a single sequential pass.
+/// via Snappy and writes them directly to the output stream. This keeps peak memory per epoch
+/// proportional to a single block's data rather than the full epoch, enabling high export
+/// concurrency without OOM risk. <see cref="Finalize"/> writes the TotalDifficulty entries,
+/// AccumulatorRoot, and ComponentIndex using byte offsets recorded during <see cref="Add"/>.
 /// </summary>
 public sealed class EraWriter : IDisposable
 {
@@ -40,11 +45,11 @@ public sealed class EraWriter : IDisposable
     private readonly IBeaconRootsProvider? _beaconRootsProvider;
     private readonly SlotTime? _slotTime;
 
-    // Compressed-and-rented buffers. Entries are Snappy-compressed in Add() so that
-    // the in-memory footprint reflects compressed sizes, not raw RLP sizes.
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _compressedHeaders = new(MaxEraSize);
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _compressedBodies = new(MaxEraSize);
-    private readonly ArrayPoolList<(byte[] Buffer, int Length)> _compressedReceipts = new(MaxEraSize);
+    // Per-block byte offsets recorded in Add() and consumed in Finalize() for the ComponentIndex.
+    // Each stores the absolute file position of the entry's TLV header.
+    private readonly ArrayPoolList<long> _headerOffsets = new(MaxEraSize);
+    private readonly ArrayPoolList<long> _bodyOffsets = new(MaxEraSize);
+    private readonly ArrayPoolList<long> _receiptsOffsets = new(MaxEraSize);
 
     private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
 
@@ -92,7 +97,7 @@ public sealed class EraWriter : IDisposable
             throw new ArgumentException("Block must have a header.", nameof(block));
         if (block.Hash is null)
             throw new ArgumentException("Block must have a hash.", nameof(block));
-        if (_compressedHeaders.Count >= MaxEraSize)
+        if (_headerOffsets.Count >= MaxEraSize)
             throw new ArgumentException($"Era file cannot contain more than {MaxEraSize} blocks.");
 
         if (_firstBlock)
@@ -100,11 +105,12 @@ public sealed class EraWriter : IDisposable
             _startNumber = block.Number;
             _blocksRootContext = new BlocksRootContext(block.Number, block.Header.Timestamp, _specProvider);
             _firstBlock = false;
+            await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
         }
-        else if (block.Number != _startNumber + _compressedHeaders.Count)
+        else if (block.Number != _startNumber + _headerOffsets.Count)
         {
             throw new ArgumentException(
-                $"Blocks must be added in sequential order. Expected block {_startNumber + _compressedHeaders.Count}, got {block.Number}.",
+                $"Blocks must be added in sequential order. Expected block {_startNumber + _headerOffsets.Count}, got {block.Number}.",
                 nameof(block));
         }
 
@@ -121,15 +127,23 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        // Compress immediately so buffered memory reflects compressed sizes (~10x smaller than raw RLP).
         using (NettyRlpStream headerRlp = _headerDecoder.EncodeToNewNettyStream(block.Header, rlpBehaviors))
-            _compressedHeaders.Add(await E2StoreWriter.Compress(headerRlp.AsMemory(), cancellation));
+        {
+            _headerOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedHeader, headerRlp.AsMemory(), cancellation);
+        }
 
         using (NettyRlpStream bodyRlp = _blockBodyDecoder.EncodeToNewNettyStream(block.Body, rlpBehaviors))
-            _compressedBodies.Add(await E2StoreWriter.Compress(bodyRlp.AsMemory(), cancellation));
+        {
+            _bodyOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedBody, bodyRlp.AsMemory(), cancellation);
+        }
 
         using (NettyRlpStream receiptsRlp = _slimReceiptDecoder.EncodeToNewNettyStream(receipts, rlpBehaviors))
-            _compressedReceipts.Add(await E2StoreWriter.Compress(receiptsRlp.AsMemory(), cancellation));
+        {
+            _receiptsOffsets.Add(_e2StoreWriter.Position);
+            await WriteCompressed(EntryTypes.CompressedSlimReceipts, receiptsRlp.AsMemory(), cancellation);
+        }
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
@@ -168,7 +182,7 @@ public sealed class EraWriter : IDisposable
         bool isTransitionEpoch = _preMergeBlockCount > 0 && _hasPostMergeBlocks;
         bool needsTd = _preMergeBlockCount > 0;
         int componentCount = needsTd ? 4 : 3;
-        int blockCount = _compressedHeaders.Count;
+        int blockCount = _headerOffsets.Count;
 
         if (isTransitionEpoch)
         {
@@ -176,42 +190,15 @@ public sealed class EraWriter : IDisposable
                 _totalDifficulties[i] = _lastPreMergeTD;
         }
 
-        long totalWritten = 0;
-        long[] headerOffsets = ArrayPool<long>.Shared.Rent(blockCount);
-        long[] bodyOffsets = ArrayPool<long>.Shared.Rent(blockCount);
-        long[] receiptsOffsets = ArrayPool<long>.Shared.Rent(blockCount);
         long[] tdOffsets = needsTd ? ArrayPool<long>.Shared.Rent(blockCount) : [];
         try
         {
-            totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.Version, Array.Empty<byte>(), cancellation);
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                headerOffsets[i] = totalWritten;
-                (byte[] buf, int len) = _compressedHeaders[i];
-                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.CompressedHeader, buf.AsMemory(0, len), cancellation);
-            }
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                bodyOffsets[i] = totalWritten;
-                (byte[] buf, int len) = _compressedBodies[i];
-                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.CompressedBody, buf.AsMemory(0, len), cancellation);
-            }
-
-            for (int i = 0; i < blockCount; i++)
-            {
-                receiptsOffsets[i] = totalWritten;
-                (byte[] buf, int len) = _compressedReceipts[i];
-                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.CompressedSlimReceipts, buf.AsMemory(0, len), cancellation);
-            }
-
             if (needsTd)
             {
                 for (int i = 0; i < blockCount; i++)
                 {
-                    tdOffsets[i] = totalWritten;
-                    totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, _totalDifficulties[i].ToLittleEndian(), cancellation);
+                    tdOffsets[i] = _e2StoreWriter.Position;
+                    await _e2StoreWriter.WriteEntry(EntryTypes.TotalDifficulty, _totalDifficulties[i].ToLittleEndian(), cancellation);
                 }
             }
 
@@ -219,13 +206,13 @@ public sealed class EraWriter : IDisposable
             if (needsTd)
             {
                 accumulatorRoot = _blocksRootContext!.AccumulatorRoot;
-                totalWritten += await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
+                await _e2StoreWriter.WriteEntry(EntryTypes.AccumulatorRoot, accumulatorRoot.ToByteArray(), cancellation);
             }
 
             // ComponentIndex
             // Layout: starting_number | [header_off, body_off, receipts_off, [td_off]] * N | component_count | block_count
             // Offsets are negative int64 LE, relative to start of the ComponentIndex TLV (including 8-byte header).
-            long componentIndexStart = totalWritten;
+            long componentIndexStart = _e2StoreWriter.Position;
             int indexDataLength = IndexFieldSize + blockCount * componentCount * IndexFieldSize + IndexFieldSize + IndexFieldSize;
 
             using ArrayPoolList<byte> indexBytes = new(indexDataLength, indexDataLength);
@@ -236,9 +223,9 @@ public sealed class EraWriter : IDisposable
             for (int i = 0; i < blockCount; i++)
             {
                 int baseOff = IndexFieldSize + i * componentCount * IndexFieldSize;
-                WriteInt64(span, baseOff + IndexFieldSize * 0, headerOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + IndexFieldSize * 1, bodyOffsets[i] - componentIndexStart);
-                WriteInt64(span, baseOff + IndexFieldSize * 2, receiptsOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + IndexFieldSize * 0, _headerOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + IndexFieldSize * 1, _bodyOffsets[i] - componentIndexStart);
+                WriteInt64(span, baseOff + IndexFieldSize * 2, _receiptsOffsets[i] - componentIndexStart);
                 if (needsTd)
                     WriteInt64(span, baseOff + IndexFieldSize * 3, tdOffsets[i] - componentIndexStart);
             }
@@ -255,30 +242,33 @@ public sealed class EraWriter : IDisposable
         }
         finally
         {
-            ArrayPool<long>.Shared.Return(headerOffsets);
-            ArrayPool<long>.Shared.Return(bodyOffsets);
-            ArrayPool<long>.Shared.Return(receiptsOffsets);
             if (needsTd) ArrayPool<long>.Shared.Return(tdOffsets);
         }
-    }
-
-    private static void WriteInt64(Span<byte> destination, int off, long value) =>
-        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
-
-    private static void ReturnBuffers(ArrayPoolList<(byte[] Buffer, int Length)> list)
-    {
-        foreach ((byte[] buf, _) in list.AsSpan())
-            ArrayPool<byte>.Shared.Return(buf);
-        list.Dispose();
     }
 
     public void Dispose()
     {
         _blocksRootContext?.Dispose();
         _e2StoreWriter?.Dispose();
-        ReturnBuffers(_compressedHeaders);
-        ReturnBuffers(_compressedBodies);
-        ReturnBuffers(_compressedReceipts);
+        _headerOffsets.Dispose();
+        _bodyOffsets.Dispose();
+        _receiptsOffsets.Dispose();
         _totalDifficulties.Dispose();
     }
+
+    private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)
+    {
+        using RecyclableMemoryStream ms = RecyclableStream.GetStream(nameof(EraWriter));
+        using (SnappyStream compressor = new(ms, CompressionMode.Compress, leaveOpen: true))
+        {
+            compressor.Write(data.Span);
+            compressor.Flush();
+        }
+        bool ok = ms.TryGetBuffer(out ArraySegment<byte> segment);
+        Debug.Assert(ok);
+        await _e2StoreWriter.WriteEntry(entryType, segment.AsMemory(), cancellation);
+    }
+
+    private static void WriteInt64(Span<byte> destination, int off, long value) =>
+        BinaryPrimitives.WriteInt64LittleEndian(destination.Slice(off, IndexFieldSize), value);
 }
