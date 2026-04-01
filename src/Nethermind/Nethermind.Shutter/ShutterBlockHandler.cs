@@ -59,7 +59,7 @@ public class ShutterBlockHandler : IShutterBlockHandler
     {
         _chainId = chainId;
         _cfg = cfg;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterBlockHandler>();
         _time = time;
         _validatorsInfo = validatorsInfo;
         _eon = eon;

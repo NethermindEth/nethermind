@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using NLog;
 using NLog.Config;
@@ -66,21 +65,16 @@ namespace Nethermind.Logging.NLog
 
         private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
         private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
-        private static readonly Func<string, ILogger> s_classLoggerBuilder = BuildClassLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
         private static ILogger BuildLogger(Type type)
             => new(new NLogLogger(type));
         private static ILogger BuildNamedLogger(string loggerName)
             => new(new NLogLogger(loggerName));
-        private static ILogger BuildClassLogger(string filePath)
-            => new(new NLogLogger());
 
         public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
 
-        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => !string.IsNullOrEmpty(filePath) ?
-            s_namedLoggers.GetOrAdd(filePath, s_classLoggerBuilder) :
-            new(new NLogLogger());
+        public ILogger GetClassLogger(Type type) => BuildLogger(type);
 
         public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 

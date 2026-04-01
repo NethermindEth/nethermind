@@ -39,7 +39,7 @@ public class NodeLifecycleManagerFactory : INodeLifecycleManagerFactory
         ITimestamper timestamper,
         ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodeLifecycleManagerFactory>() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));

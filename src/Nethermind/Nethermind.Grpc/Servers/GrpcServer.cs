@@ -24,7 +24,7 @@ namespace Nethermind.Grpc.Servers
         public GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager)
         {
             _jsonSerializer = jsonSerializer;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<GrpcServer>();
         }
 
         public override Task<QueryResponse> Query(QueryRequest request, ServerCallContext context)

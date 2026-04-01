@@ -46,7 +46,7 @@ public class ShutterP2P : IShutterP2P
 
     public ShutterP2P(IShutterConfig shutterConfig, ILogManager logManager, IFileSystem fileSystem, IKeyStoreConfig keyStoreConfig, IPAddress ip)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterP2PException>();
         _cfg = shutterConfig;
         _address = $"/ip4/{ip}/tcp/{_cfg.P2PPort}";
         DisconnectionLogTimeout = TimeSpan.FromMilliseconds(_cfg.DisconnectionLogTimeout);

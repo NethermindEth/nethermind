@@ -16,7 +16,7 @@ public static class IProcessExitSourceExtensions
         ILogManager logManager,
         TimeSpan? exitConditionDuration = null)
     {
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger(typeof(IProcessExitSourceExtensions));
 
         // Usually there are time where the mode changed to WaitingForBlock temporarily. So there need to be a small
         // wait to make sure the sync really is completed.

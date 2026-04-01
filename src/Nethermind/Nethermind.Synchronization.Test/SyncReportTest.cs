@@ -74,7 +74,7 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            logManager.GetClassLogger(Arg.Any<Type>()).Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);
@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger().Returns(logger);
+            logManager.GetClassLogger<SyncReportTest>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);

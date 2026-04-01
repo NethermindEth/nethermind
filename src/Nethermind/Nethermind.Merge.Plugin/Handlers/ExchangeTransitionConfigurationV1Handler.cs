@@ -24,7 +24,7 @@ public class ExchangeTransitionConfigurationV1Handler : IHandler<TransitionConfi
         ILogManager logManager)
     {
         _poSSwitcher = poSSwitcher;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ExchangeTransitionConfigurationV1Handler>();
     }
 
     public ResultWrapper<TransitionConfigurationV1> Handle(TransitionConfigurationV1 beaconTransitionConfiguration)

@@ -22,9 +22,8 @@ namespace Nethermind.Logging.NLog
         {
         }
 
-        public NLogLogger(string loggerName = null)
+        public NLogLogger(string loggerName)
         {
-            loggerName = string.IsNullOrEmpty(loggerName) ? GetTypeName(StackTraceUsageUtils.GetClassFullName()) : loggerName;
             _logger = LogManager.GetLogger(loggerName);
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */

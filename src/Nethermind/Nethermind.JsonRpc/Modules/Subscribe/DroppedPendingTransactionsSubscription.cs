@@ -18,7 +18,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             : base(jsonRpcDuplexClient)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DroppedPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _txPool.EvictedPending += OnEvicted;
             if (_logger.IsTrace) _logger.Trace($"DroppedPendingTransactions subscription {Id} will track DroppedPendingTransactions");

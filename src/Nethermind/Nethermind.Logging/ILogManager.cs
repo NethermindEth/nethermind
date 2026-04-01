@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Runtime.CompilerServices;
+using System;
 
 namespace Nethermind.Logging
 {
     public interface ILogManager
     {
         ILogger GetClassLogger<T>();
-        ILogger GetClassLogger([CallerFilePath] string filePath = "");
+        ILogger GetClassLogger(Type type);
         ILogger GetLogger(string loggerName);
 
         void SetGlobalVariable(string name, object value) { }

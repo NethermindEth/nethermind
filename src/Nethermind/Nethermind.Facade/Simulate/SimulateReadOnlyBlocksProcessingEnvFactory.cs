@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain;
@@ -110,9 +111,9 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
-        public ILogger GetClassLogger(string filePath = "")
+        public ILogger GetClassLogger(Type type)
         {
-            return baseLogManager.GetClassLogger(filePath);
+            return baseLogManager.GetClassLogger(type);
         }
 
         public ILogger GetLogger(string loggerName)

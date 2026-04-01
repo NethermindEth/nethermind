@@ -77,7 +77,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<HistoryPrunerException>();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;

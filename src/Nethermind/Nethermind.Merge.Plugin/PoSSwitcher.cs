@@ -67,7 +67,7 @@ namespace Nethermind.Merge.Plugin
             _blockTree = blockTree;
             _specProvider = specProvider;
             _chainSpec = chainSpec;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<PoSSwitcher>();
 
             Initialize();
         }

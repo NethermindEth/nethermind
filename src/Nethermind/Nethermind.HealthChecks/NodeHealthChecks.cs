@@ -21,7 +21,7 @@ namespace Nethermind.HealthChecks
             ILogManager logManager)
         {
             _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<NodeHealthCheck>();
         }
 
         public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)

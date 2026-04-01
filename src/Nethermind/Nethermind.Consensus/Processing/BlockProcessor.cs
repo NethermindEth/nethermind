@@ -45,7 +45,7 @@ public partial class BlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
 
     /// <summary>
