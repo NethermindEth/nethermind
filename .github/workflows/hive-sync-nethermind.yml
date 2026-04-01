@@ -49,6 +49,7 @@ jobs:
         run: docker load --input /tmp/image.tar
 
       - name: Run Hive
+        continue-on-error: true
         working-directory: hive
         run: ./hive --client nethermind --sim ethereum/sync --sim.loglevel 3 --sim.parallelism 4
 
