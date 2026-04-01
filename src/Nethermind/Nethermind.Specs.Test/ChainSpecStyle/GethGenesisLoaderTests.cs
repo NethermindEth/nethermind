@@ -22,25 +22,83 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [Parallelizable(ParallelScope.All)]
 public class GethGenesisLoaderTests
 {
-    private static ChainSpec LoadChainSpec(string path)
-    {
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
-        return chainSpec;
-    }
+    private static readonly string[] AmsterdamEipNumbers = ["7708", "7778", "7843", "7928", "7954", "8024", "8037"];
+
+    private static ChainSpec LoadChainSpec(string path) =>
+        new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(path);
 
     private static ChainSpec LoadFromString(string json)
     {
-        GethGenesisLoader loader = new(new EthereumJsonSerializer());
         using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
-        return loader.Load(stream);
+        return new GethGenesisLoader(new EthereumJsonSerializer()).Load(stream);
+    }
+
+    private static ChainSpec LoadAutoDetecting(string json)
+    {
+        using MemoryStream stream = new(Encoding.UTF8.GetBytes(json));
+        return new AutoDetectingChainSpecLoader(new EthereumJsonSerializer(), LimboLogs.Instance).Load(stream);
+    }
+
+    private static ChainSpec LoadHoodiChainSpec() => LoadChainSpec(
+        Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json"));
+
+    /// <summary>
+    /// Builds a standard geth genesis JSON with homesteadBlock/eip150Block/eip155Block/eip158Block all set to 0.
+    /// </summary>
+    private static string BuildStandardGethGenesisJson(
+        int chainId = 1,
+        string configExtra = "",
+        string allocJson = "{}",
+        ulong? timestamp = null)
+    {
+        string configSuffix = configExtra.Length > 0 ? ", " + configExtra : "";
+        string timestampField = timestamp.HasValue ? $"\"timestamp\": {timestamp.Value}, " : "";
+        return $$"""
+            {
+              "config": {
+                "chainId": {{chainId}},
+                "homesteadBlock": 0,
+                "eip150Block": 0,
+                "eip155Block": 0,
+                "eip158Block": 0{{configSuffix}}
+              },
+              {{timestampField}}"difficulty": "0x1",
+              "gasLimit": "0x8000000",
+              "alloc": {{allocJson}}
+            }
+            """;
+    }
+
+    private static ChainSpec LoadStandardGethGenesis(
+        int chainId = 1,
+        string configExtra = "",
+        string allocJson = "{}",
+        ulong? timestamp = null) =>
+        LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp));
+
+    private static void AssertAmsterdamEipsEnabled(IReleaseSpec spec, bool expected)
+    {
+        foreach (string eip in AmsterdamEipNumbers)
+        {
+            bool value = (bool)spec.GetType().GetProperty($"IsEip{eip}Enabled")!.GetValue(spec)!;
+            value.Should().Be(expected, $"IsEip{eip}Enabled");
+        }
+    }
+
+    private static void AssertAmsterdamTransitionTimestamps(ChainSpec chainSpec, ulong expectedTimestamp)
+    {
+        foreach (string eip in AmsterdamEipNumbers)
+        {
+            PropertyInfo property = chainSpec.Parameters.GetType().GetProperty($"Eip{eip}TransitionTimestamp")!;
+            ulong? value = (ulong?)property.GetValue(chainSpec.Parameters);
+            value.Should().Be(expectedTimestamp, $"Eip{eip}TransitionTimestamp");
+        }
     }
 
     [Test]
     public void Can_load_hoodi_eip7949()
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        ChainSpec chainSpec = LoadHoodiChainSpec();
 
         chainSpec.ChainId.Should().Be(560048);
         chainSpec.NetworkId.Should().Be(560048);
@@ -58,43 +116,24 @@ public class GethGenesisLoaderTests
         chainSpec.PragueTimestamp.Should().Be(1742999832);
         chainSpec.OsakaTimestamp.Should().Be(1761677592);
 
-        // Check genesis block
         chainSpec.Genesis.Should().NotBeNull();
         chainSpec.Genesis.Header.GasLimit.Should().Be(0x2255100);
 
-        // Check allocations
         chainSpec.Allocations.Should().NotBeEmpty();
         chainSpec.Allocations[Address.Zero].Balance.Should().Be(1);
 
-        // Check blob schedule
         chainSpec.Parameters.BlobSchedule.Should().NotBeEmpty();
         chainSpec.Parameters.BlobSchedule.Should().HaveCount(3);
 
-        // Check deposit contract address
         chainSpec.Parameters.DepositContractAddress.Should().Be(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa"));
     }
 
     [Test]
     public void Can_load_minimal_geth_genesis()
     {
-        const string minimalGenesis = """
-        {
-          "config": {
-            "chainId": 12345,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {
-            "0x0000000000000000000000000000000000000001": { "balance": "0x1" }
-          }
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(minimalGenesis);
+        ChainSpec chainSpec = LoadStandardGethGenesis(
+            chainId: 12345,
+            allocJson: """{ "0x0000000000000000000000000000000000000001": { "balance": "0x1" } }""");
 
         chainSpec.ChainId.Should().Be(12345);
         chainSpec.NetworkId.Should().Be(12345);
@@ -117,14 +156,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_timestamp_forks()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0,
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
             "byzantiumBlock": 0,
             "constantinopleBlock": 0,
             "petersburgBlock": 0,
@@ -135,14 +167,7 @@ public class GethGenesisLoaderTests
             "shanghaiTime": 1681338455,
             "cancunTime": 1710338135,
             "pragueTime": 1800000000
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+            """);
 
         chainSpec.ChainId.Should().Be(1);
         chainSpec.ShanghaiTimestamp.Should().Be(1681338455);
@@ -154,85 +179,26 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0,
-            "amsterdamTime": 15
-          },
-          "timestamp": 0,
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15");
 
         chainSpec.AmsterdamTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip7708TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip7778TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip7843TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip7928TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip7954TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip8024TransitionTimestamp.Should().Be(15);
-        chainSpec.Parameters.Eip8037TransitionTimestamp.Should().Be(15);
+        AssertAmsterdamTransitionTimestamps(chainSpec, 15);
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        IReleaseSpec preAmsterdam = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        AssertAmsterdamEipsEnabled(provider.GetSpec(ForkActivation.TimestampOnly(14)), false);
+
         IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(15));
-
-        preAmsterdam.IsEip7708Enabled.Should().BeFalse();
-        preAmsterdam.IsEip7778Enabled.Should().BeFalse();
-        preAmsterdam.IsEip7843Enabled.Should().BeFalse();
-        preAmsterdam.IsEip7928Enabled.Should().BeFalse();
-        preAmsterdam.IsEip7954Enabled.Should().BeFalse();
-        preAmsterdam.IsEip8024Enabled.Should().BeFalse();
-        preAmsterdam.IsEip8037Enabled.Should().BeFalse();
-
-        amsterdam.IsEip7708Enabled.Should().BeTrue();
-        amsterdam.IsEip7778Enabled.Should().BeTrue();
-        amsterdam.IsEip7843Enabled.Should().BeTrue();
-        amsterdam.IsEip7928Enabled.Should().BeTrue();
-        amsterdam.IsEip7954Enabled.Should().BeTrue();
-        amsterdam.IsEip8024Enabled.Should().BeTrue();
-        amsterdam.IsEip8037Enabled.Should().BeTrue();
+        AssertAmsterdamEipsEnabled(amsterdam, true);
         amsterdam.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
-    }
 
-    [Test]
-    public void Amsterdam_time_at_genesis_sets_genesis_header_fields()
-    {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0,
-            "amsterdamTime": 15
-          },
-          "timestamp": 15,
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
+        // When genesis timestamp matches amsterdamTime, genesis header fields are set
+        ChainSpec genesisAtAmsterdam = LoadStandardGethGenesis(configExtra: "\"amsterdamTime\": 15", timestamp: 15);
+        ChainSpecBasedSpecProvider genesisProvider = new(genesisAtAmsterdam);
 
-        ChainSpec chainSpec = LoadFromString(genesis);
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-
-        chainSpec.Genesis.BlockAccessListHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
-        chainSpec.Genesis.SlotNumber.Should().Be(0);
-        provider.GenesisSpec.IsEip7928Enabled.Should().BeTrue();
-        provider.GenesisSpec.IsEip7843Enabled.Should().BeTrue();
-        provider.GenesisSpec.IsEip7954Enabled.Should().BeTrue();
-        provider.GenesisSpec.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
+        genesisAtAmsterdam.Genesis.BlockAccessListHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
+        genesisAtAmsterdam.Genesis.SlotNumber.Should().Be(0);
+        AssertAmsterdamEipsEnabled(genesisProvider.GenesisSpec, true);
+        genesisProvider.GenesisSpec.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
     }
 
     [Test]
@@ -274,41 +240,18 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_blob_schedule()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0,
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
             "cancunTime": 1710338135,
             "pragueTime": 1800000000,
             "blobSchedule": {
-              "cancun": {
-                "target": 3,
-                "max": 6,
-                "baseFeeUpdateFraction": 3338477
-              },
-              "prague": {
-                "target": 6,
-                "max": 9,
-                "baseFeeUpdateFraction": 5007716
-              }
+                "cancun": { "target": 3, "max": 6, "baseFeeUpdateFraction": 3338477 },
+                "prague": { "target": 6, "max": 9, "baseFeeUpdateFraction": 5007716 }
             }
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+            """);
 
         chainSpec.Parameters.BlobSchedule.Should().HaveCount(2);
 
         List<BlobScheduleSettings> blobScheduleList = [.. chainSpec.Parameters.BlobSchedule];
-        // Sorted by timestamp
         blobScheduleList[0].Timestamp.Should().Be(1710338135);
         blobScheduleList[0].Target.Should().Be(3);
         blobScheduleList[0].Max.Should().Be(6);
@@ -321,31 +264,18 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_account_storage_and_code()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {
-            "0x0000000000000000000000000000000000000100": {
-              "balance": "0xde0b6b3a7640000",
-              "nonce": "0x1",
-              "code": "0x6080604052",
-              "storage": {
-                "0x0000000000000000000000000000000000000000000000000000000000000001": "0x00000000000000000000000000000000000000000000000000000000000000ff"
-              }
+        ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: """
+            {
+                "0x0000000000000000000000000000000000000100": {
+                    "balance": "0xde0b6b3a7640000",
+                    "nonce": "0x1",
+                    "code": "0x6080604052",
+                    "storage": {
+                        "0x0000000000000000000000000000000000000000000000000000000000000001": "0x00000000000000000000000000000000000000000000000000000000000000ff"
+                    }
+                }
             }
-          }
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+            """);
 
         Address address = new("0x0000000000000000000000000000000000000100");
         chainSpec.Allocations.Should().ContainKey(address);
@@ -353,34 +283,19 @@ public class GethGenesisLoaderTests
         ChainSpecAllocation allocation = chainSpec.Allocations[address];
         allocation.Balance.Should().Be(UInt256.Parse("1000000000000000000")); // 1 ETH in wei
         allocation.Nonce.Should().Be(1);
-        allocation.Code.Should().NotBeNull();
         allocation.Code.Should().BeEquivalentTo(new byte[] { 0x60, 0x80, 0x60, 0x40, 0x52 });
-        allocation.Storage.Should().NotBeNull();
         allocation.Storage.Should().HaveCount(1);
     }
 
     [Test]
     public void Can_load_genesis_without_0x_prefix_in_addresses()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {
-            "0000000000000000000000000000000000000001": { "balance": "0x1" },
-            "0x0000000000000000000000000000000000000002": { "balance": "0x2" }
-          }
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+        ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: """
+            {
+                "0000000000000000000000000000000000000001": { "balance": "0x1" },
+                "0x0000000000000000000000000000000000000002": { "balance": "0x2" }
+            }
+            """);
 
         chainSpec.Allocations.Should().HaveCount(2);
         chainSpec.Allocations[new Address("0x0000000000000000000000000000000000000001")].Balance.Should().Be(1);
@@ -390,22 +305,7 @@ public class GethGenesisLoaderTests
     [Test]
     public void AutoDetectingLoader_detects_geth_format()
     {
-        const string gethGenesis = """
-        {
-          "config": {
-            "chainId": 12345,
-            "homesteadBlock": 0
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        using MemoryStream stream = new(Encoding.UTF8.GetBytes(gethGenesis));
-        ChainSpec chainSpec = loader.Load(stream);
-
+        ChainSpec chainSpec = LoadAutoDetecting(BuildStandardGethGenesisJson(chainId: 12345));
         chainSpec.ChainId.Should().Be(12345);
     }
 
@@ -428,9 +328,7 @@ public class GethGenesisLoaderTests
         }
         """;
 
-        AutoDetectingChainSpecLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
-        using MemoryStream stream = new(Encoding.UTF8.GetBytes(parityChainspec));
-        ChainSpec chainSpec = loader.Load(stream);
+        ChainSpec chainSpec = LoadAutoDetecting(parityChainspec);
 
         chainSpec.Name.Should().Be("TestNet");
         chainSpec.ChainId.Should().Be(1);
@@ -439,24 +337,9 @@ public class GethGenesisLoaderTests
     [Test]
     public void Can_load_genesis_with_deposit_contract()
     {
-        const string genesis = """
-        {
-          "config": {
-            "chainId": 1,
-            "homesteadBlock": 0,
-            "eip150Block": 0,
-            "eip155Block": 0,
-            "eip158Block": 0,
-            "pragueTime": 1800000000,
-            "depositContractAddress": "0x00000000219ab540356cBB839Cbe05303d7705Fa"
-          },
-          "difficulty": "0x1",
-          "gasLimit": "0x8000000",
-          "alloc": {}
-        }
-        """;
-
-        ChainSpec chainSpec = LoadFromString(genesis);
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra:
+            "\"pragueTime\": 1800000000, " +
+            "\"depositContractAddress\": \"0x00000000219ab540356cBB839Cbe05303d7705Fa\"");
 
         chainSpec.Parameters.DepositContractAddress.Should().Be(new Address("0x00000000219ab540356cBB839Cbe05303d7705Fa"));
         chainSpec.Parameters.Eip6110TransitionTimestamp.Should().Be(1800000000);
@@ -485,15 +368,13 @@ public class GethGenesisLoaderTests
     [TestCaseSource(nameof(HoodiEip7949Activations))]
     public void Hoodi_eip7949_matches_HoodiSpecProvider(ForkActivation forkActivation)
     {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/hoodi.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        ChainSpec chainSpec = LoadHoodiChainSpec();
         ChainSpecBasedSpecProvider provider = new(chainSpec);
         ISpecProvider hardCodedSpec = HoodiSpecProvider.Instance;
 
         IReleaseSpec expectedSpec = hardCodedSpec.GetSpec(forkActivation);
         IReleaseSpec actualSpec = provider.GetSpec(forkActivation);
 
-        // Compare all boolean properties on IReleaseSpec
         PropertyInfo[] properties = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
         List<string> differences = [];
 
