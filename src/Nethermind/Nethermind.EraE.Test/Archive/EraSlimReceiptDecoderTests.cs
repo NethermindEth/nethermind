@@ -32,11 +32,11 @@ internal class EraSlimReceiptDecoderTests
         expectedStateRoot.Bytes.CopyTo(stateRootEncoded.AsSpan(1));
 
         // Receipt content: tx_type(0x80) + state_root(33) + gas(0x80) + logs(0xc0) = 36 bytes
-        byte[] receiptContent = [0x80, ..stateRootEncoded, 0x80, 0xc0];
+        byte[] receiptContent = [0x80, .. stateRootEncoded, 0x80, 0xc0];
         // Receipt list: list-prefix(1) + content(36) = 37 bytes
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), ..receiptContent];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
         // Outer list: list-prefix(1) + receipt(37) = 38 bytes
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), ..receipt];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
 
         // Act
         EraSlimReceiptDecoder sut = new();
@@ -56,8 +56,8 @@ internal class EraSlimReceiptDecoderTests
     {
         // Receipt content: tx_type(0x80) + status(0x01) + gas(0x80) + logs(0xc0) = 4 bytes
         byte[] receiptContent = [0x80, 0x01, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), ..receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), ..receipt];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
@@ -72,8 +72,8 @@ internal class EraSlimReceiptDecoderTests
     {
         // status = 0x80 (empty bytes = 0/failure in go-ethereum encoding)
         byte[] receiptContent = [0x80, 0x80, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), ..receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), ..receipt];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
