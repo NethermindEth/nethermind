@@ -144,16 +144,6 @@ public class PatriciaTreeBulkReadBenchmarks
     public void ParallelRadix_0_4() => SortAndParallelRead(0, 4, nameof(ParallelRadix_0_4));
 
     [Benchmark]
-    public void BulkRead()
-    {
-        _blockCacheStore.ResetBlockCache();
-        TrieNode root = _blockCacheStore.FindCachedOrUnknown(TreePath.Empty, _rootHash);
-        NoOpSink sink = default;
-        PatriciaTrieBulkReader.BulkRead(_blockCacheStore, root, _readKeys, ref sink);
-        RecordHitRate(nameof(BulkRead));
-    }
-
-    [Benchmark]
     public void ParallelStdSort()
     {
         _blockCacheStore.ResetBlockCache();
@@ -198,11 +188,6 @@ public class PatriciaTreeBulkReadBenchmarks
         for (int i = 0; i < len; i++)
             tree.Get(keys[i].Bytes);
         RecordHitRate(nameof(SequentialRadix_0_8));
-    }
-
-    private struct NoOpSink : IPatriciaTrieBulkReaderSink<NoOpSink>
-    {
-        public void OnRead(in ValueHash256 key, int idx, ReadOnlySpan<byte> value) { }
     }
 
     private void SortAndParallelRead(int startByte, int endByte, string method)
