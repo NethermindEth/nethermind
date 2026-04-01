@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.EraE.Archive;
@@ -54,7 +55,12 @@ internal sealed class EraSlimReceiptDecoder
         receipt.TxType = txTypeBytes.Length == 0 ? TxType.Legacy : (TxType)txTypeBytes[0];
 
         byte[] statusBytes = ctx.DecodeByteArray();
-        receipt.StatusCode = statusBytes.Length == 0 ? (byte)0 : statusBytes[0];
+        // In go-ethereum ERA format, pre-EIP-658 receipts encode the post-transaction state
+        // root (32 bytes) in the status field rather than a 1-byte status code.
+        if (statusBytes.Length == Keccak.Size)
+            receipt.PostTransactionState = new Hash256(statusBytes);
+        else
+            receipt.StatusCode = statusBytes.Length == 0 ? (byte)0 : statusBytes[0];
 
         receipt.GasUsedTotal = ctx.DecodePositiveLong();
 
