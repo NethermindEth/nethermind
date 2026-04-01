@@ -12,18 +12,24 @@ Building these projects requires Docker and a Linux environment with .NET instal
 To build an ELF binary for Zisk, run the following:
 
 ```bash
-make build-zisk
+make build
 ```
 
 The resulting binary can be found at `Nethermind.Stateless.ZiskGuest/bin/nethermind`.
 
-To execute the Nethermind guest on Zisk, run the following (invokes the previous step automatically):
+To execute the Nethermind guest on Zisk, run the following:
 
 ```bash
-make run-zisk
+make run INPUT=input.bin
 ```
 
-For details, see the [Makefile](./Makefile).
+There's also a combined command:
+
+```bash
+make build-run INPUT=input.bin
+```
+
+The `INPUT` variable must point to a file in the `Nethermind.Stateless.ZiskGuest/bin` directory. For details, see the [Makefile](./Makefile).
 
 ### Input serialization
 

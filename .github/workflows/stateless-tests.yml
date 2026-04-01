@@ -8,23 +8,14 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
-    inputs:
-      upload:
-        description: Upload binaries
-        type: boolean
-        required: false
-        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  EXPECTED_BLOCK_HASH: "0x2528a96c6c16ff80a8c92b84d7202f8250d74c0dd9e520a536179467f7e284b8"
-
 jobs:
-  test-zisk:
-    name: Run on Zisk
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -36,71 +27,51 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Prepare input
-        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: dotnet run -c release -- bin/input.bin
-
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: make build-zisk
+        run: make build
 
-      - name: Test Nethermind
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        input:
+          - 150026.bin
+          - 24721542.bin
+          - 24723632.bin
+          - 24723668.bin
+          - 24772857.bin
+          - 24777027.bin
+          - 24777988.bin
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+
+      - name: Download input
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+        run: |
+          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/${{ matrix.input }}" \
+            -o "${{ matrix.input }}"
+
+      - name: Test Nethermind guest
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: |
-          block_hash=$(docker run --rm \
-            --mount type=bind,source=./bin,target=/n \
-            nethermindeth/zisk@sha256:1b38e92264c30a4109fdb47f3b175324544085e36b9dde0abf7570c2b1e3312b \
-            ziskemu -e /n/nethermind -i /n/input.bin \
-            | tail -n 1
-          )
-          if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
-            echo "::error::Unexpected block hash: $block_hash"
-            exit 1
-          fi
-
-      - name: Upload guest binary
-        if: github.event.inputs.upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: nethermind-zisk
-          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
-          if-no-files-found: error
-
-  # test-qemu:
-  #   name: Run on QEMU
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Check out repository
-  #       uses: actions/checkout@v6
-
-  #     - name: Set up .NET
-  #       uses: actions/setup-dotnet@v5
-
-  #     - name: Set up Docker Buildx
-  #       uses: docker/setup-buildx-action@v3
-
-  #     - name: Set up QEMU
-  #       uses: docker/setup-qemu-action@v3
-
-  #     - name: Build Nethermind
-  #       working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-  #       run: make build-qemu
-
-  #     - name: Test Nethermind
-  #       working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-  #       run: |
-  #         docker build -f Dockerfile.qemu -t zkevm .
-  #         block_hash=$(docker run --rm zkevm)
-  #         if [[ "$block_hash" != "$EXPECTED_BLOCK_HASH" ]]; then
-  #           echo "::error::Unexpected block hash: $block_hash"
-  #           exit 1
-  #         fi
-
-  #     - name: Upload guest binary
-  #       if: github.event.inputs.upload
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: nethermind-zkevm
-  #         path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
-  #         if-no-files-found: error
+          set -o pipefail
+          make run INPUT="${{ matrix.input }}"

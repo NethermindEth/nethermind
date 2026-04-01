@@ -6,15 +6,6 @@ ARTIFACTS_DIR := $(abspath $(MAKEFILE_DIR)/../artifacts/bin)
 GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
-
-BFLAT_BUILD := bflat build --arch riscv64 --os linux --stdlib dotnet \
-  --no-pie \
-  --no-pthread \
-  --no-stacktrace-data \
-  --no-globalization \
-  --nostdlibrefs \
-  --verbose \
-  -x
 BFLAT_REFS := \
   -r {std}/Microsoft.Win32.Primitives.dll \
   -r {std}/netstandard.dll \
@@ -64,28 +55,24 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/NonBlocking.dll \
   -r $(BIN_DIR)/FastEnum.Core.dll
 
-DOCKER_RUN := docker run --platform linux/amd64 --rm \
-  -e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
-  -e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
-  -w $(SRC_DIR) \
-  --mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
-  --mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
-  nethermindeth/bflat-riscv64:latest \
-  $(BFLAT_BUILD) \
-  $(BFLAT_REFS)
-
-build-dotnet:
+dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
 
-build-qemu: build-dotnet
-	$(DOCKER_RUN) --libc zisk_sim -d ZK_EVM \
-	$(SRC_DIR)/TestProgram.cs
-	mkdir -p $(GUEST_DIR)/bin && \
-		mv -f $(GUEST_DIR)/TestProgram $(GUEST_DIR)/bin/nethermind
-
-build-zisk: build-dotnet
-	$(DOCKER_RUN) \
-		--libc zisk \
+build: dotnet-build
+	docker run --platform linux/amd64 --rm \
+		-e DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+		-e DOTNET_TYPELOADER_TRACE_INTERFACE_RESOLUTION=0 \
+		-w $(SRC_DIR) \
+		--mount type=bind,source="$(ARTIFACTS_DIR)/Nethermind.Stateless.ZiskGuest/release",target=$(BIN_DIR) \
+		--mount type=bind,source="$(GUEST_DIR)",target=$(SRC_DIR) \
+		nethermindeth/bflat-riscv64:latest \
+		bflat build --arch riscv64 --os linux --stdlib dotnet --libc zisk \
+		--no-pie \
+		--no-pthread \
+		--no-stacktrace-data \
+		--no-globalization \
+		--nostdlibrefs \
+		$(BFLAT_REFS) \
 		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
 		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
 		--extlib $(BIN_DIR)/libziskos.bflat.manifest \
@@ -94,31 +81,25 @@ build-zisk: build-dotnet
 		mv -f $(GUEST_DIR)/Program.patched $(GUEST_DIR)/bin/nethermind && \
 		rm -f $(GUEST_DIR)/Program
 
-run-qemu: build-qemu
-	docker build --platform linux/amd64 -f $(GUEST_DIR)/Dockerfile.qemu -t nethermind-zkevm $(GUEST_DIR)
-	docker run --rm -it nethermind-zkevm
-
-run-zisk: build-zisk
-	[ -f "$(GUEST_DIR)/bin/input.bin" ] || \
-		dotnet run -c release --no-restore --project $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj -- $(GUEST_DIR)/bin/input.bin
-	docker run --rm -it -e RUST_BACKTRACE=full \
+run:
+	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		nethermindeth/zisk:0.16.1 \
-		ziskemu -e /n/nethermind -i /n/input.bin
+		ziskemu -e /n/nethermind -i /n/$(INPUT)
+
+build-run: build run
 
 clean:
 	rm -rf \
 		$(GUEST_DIR)/bin/** \
-		$(GUEST_DIR)/*.o \
 		$(GUEST_DIR)/Program \
-		$(GUEST_DIR)/Program.patched \
-		$(GUEST_DIR)/TestProgram
+		$(GUEST_DIR)/Program.o \
+		$(GUEST_DIR)/Program.patched
 	dotnet clean -c release $(MAKEFILE_DIR)/../Stateless.slnx
 
 .PHONY: \
-	build-dotnet \
-	build-qemu \
-	build-zisk \
-	run-qemu \
-	run-zisk \
+	build \
+	build-run \
+	dotnet-build \
+	run \
 	clean
