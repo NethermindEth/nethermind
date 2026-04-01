@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -259,7 +260,10 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
 
         Block? head = chain.BlockTree.Head;
-        head!.ExecutionRequests!.Length.Should().Be(ExecutionRequestsProcessorMock.Requests.Length);
+        // ExecutionRequests is a transient property (not in RLP), so it may not survive
+        // cache round-trips. Verify via RequestsHash on the header instead, which IS persisted.
+        head!.Header.RequestsHash.Should().Be(
+            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(ExecutionRequestsProcessorMock.Requests));
     }
 
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
