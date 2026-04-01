@@ -16,6 +16,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -98,6 +99,108 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     /// <summary>
+    /// Replace all entries in a block-keyed dictionary with a single entry at block 0
+    /// whose value is the sum of all original values. This preserves the cumulative effect
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyDictionaryToGenesis(IDictionary<long, long>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        long total = dict.Values.Sum();
+        dict.Clear();
+        dict[0] = total;
+    }
+
+    /// <summary>
+    /// Replace all entries in a block reward dictionary with a single entry at block 0
+    /// using the last (highest-block) reward value. This preserves the final block reward
+    /// while ensuring the dictionary keys don't inflate biggestBlockTransition.
+    /// </summary>
+    private static void RekeyBlockRewardToGenesis(SortedDictionary<long, UInt256>? dict)
+    {
+        if (dict is null or { Count: 0 }) return;
+        UInt256 lastReward = dict.Values.Last();
+        dict.Clear();
+        dict[0] = lastReward;
+    }
+
+    /// <summary>
+    /// Activate all block-number-based forks from genesis so that biggestBlockTransition stays at 0,
+    /// preventing the "Chainspec file is misconfigured" warning in short test chains.
+    /// </summary>
+    private static void ActivateAllBlockTransitionsFromGenesis(ChainSpec spec)
+    {
+        // ChainSpec block-number properties (collected by BuildTransitions via EndsWith("BlockNumber"))
+        spec.HomesteadBlockNumber = 0;
+        spec.DaoForkBlockNumber = null; // Disable DAO fork — it requires specific extra data in headers
+        spec.TangerineWhistleBlockNumber = 0;
+        spec.SpuriousDragonBlockNumber = 0;
+        spec.ByzantiumBlockNumber = 0;
+        // ConstantinopleBlockNumber is null on mainnet (eip1283DisableTransition not set) - keep null
+        spec.ConstantinopleFixBlockNumber = 0;
+        spec.IstanbulBlockNumber = 0;
+        spec.BerlinBlockNumber = 0;
+        spec.LondonBlockNumber = 0;
+        spec.ArrowGlacierBlockNumber = 0;
+        spec.GrayGlacierBlockNumber = 0;
+
+        // ChainParameters block transitions (collected by BuildTransitions via EndsWith("Transition"))
+        ActivateAllParameterTransitionsFromGenesis(spec.Parameters);
+
+        // Ethash engine transitions and block-keyed dictionaries
+        ActivateAllEthashTransitionsFromGenesis(spec);
+    }
+
+    private static void ActivateAllParameterTransitionsFromGenesis(ChainParameters parameters)
+    {
+        parameters.MaxCodeSizeTransition = 0;
+        parameters.Eip150Transition = 0;
+        parameters.Eip152Transition = 0;
+        parameters.Eip160Transition = 0;
+        parameters.Eip161abcTransition = 0;
+        parameters.Eip161dTransition = 0;
+        parameters.Eip155Transition = 0;
+        parameters.Eip140Transition = 0;
+        parameters.Eip211Transition = 0;
+        parameters.Eip214Transition = 0;
+        // Always on, as the timestamp based fork activation always override block number based
+        // activation. However, the receipt message serializer does not check the block header of
+        // the receipt for timestamp, only block number therefore it will always not encode with
+        // Eip658, but the block builder always build with Eip658 as the latest fork activation
+        // uses timestamp which is < than now.
+        // TODO: Need to double check which code part does not pass in timestamp from header.
+        parameters.Eip658Transition = 0;
+        parameters.Eip145Transition = 0;
+        parameters.Eip1014Transition = 0;
+        parameters.Eip1052Transition = 0;
+        parameters.Eip1108Transition = 0;
+        parameters.Eip1344Transition = 0;
+        parameters.Eip1884Transition = 0;
+        parameters.Eip2028Transition = 0;
+        parameters.Eip2200Transition = 0;
+        parameters.Eip2565Transition = 0;
+        parameters.Eip2929Transition = 0;
+        parameters.Eip2930Transition = 0;
+        parameters.Eip1559Transition = 0;
+        parameters.Eip3198Transition = 0;
+        parameters.Eip3529Transition = 0;
+        parameters.Eip3541Transition = 0;
+    }
+
+    private static void ActivateAllEthashTransitionsFromGenesis(ChainSpec spec)
+    {
+        EthashChainSpecEngineParameters ethashParams = spec.EngineChainSpecParametersProvider
+            .GetChainSpecParameters<EthashChainSpecEngineParameters>();
+        ethashParams.HomesteadTransition = 0;
+        ethashParams.DaoHardforkTransition = null; // Disable DAO fork — it requires specific extra data in headers
+        ethashParams.Eip100bTransition = 0;
+        // Re-key block-number-keyed dictionaries to block 0 so they don't inflate
+        // biggestBlockTransition. Keep the values — clearing them breaks block rewards.
+        RekeyDictionaryToGenesis(ethashParams.DifficultyBombDelays);
+        RekeyBlockRewardToGenesis(ethashParams.BlockReward);
+    }
+
+    /// <summary>
     /// Common code for all node
     /// </summary>
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
@@ -125,12 +228,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             Nonce = Eip7251TestConstants.Nonce
         };
 
-        // Always on, as the timestamp based fork activation always override block number based activation. However, the receipt
-        // message serializer does not check the block header of the receipt for timestamp, only block number therefore it will
-        // always not encode with Eip658, but the block builder always build with Eip658 as the latest fork activation
-        // uses timestamp which is < than now.
-        // TODO: Need to double check which code part does not pass in timestamp from header.
-        spec.Parameters.Eip658Transition = 0;
+        // Activate all block-number-based forks from genesis. The test builds a short chain
+        // (1000 blocks) with post-merge timestamps. Without this, the chainspec has block
+        // transitions at high mainnet block numbers (e.g. London at 12,965,000), causing a
+        // legitimate "Chainspec file is misconfigured" warning when GetSpec is called with
+        // low block numbers but high timestamps.
+        ActivateAllBlockTransitionsFromGenesis(spec);
 
         if (isPostMerge)
         {

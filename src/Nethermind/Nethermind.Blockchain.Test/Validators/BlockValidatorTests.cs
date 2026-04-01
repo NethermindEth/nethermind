@@ -261,4 +261,37 @@ public class BlockValidatorTests
 
         Assert.That(error, Does.StartWith(expectedError));
     }
+
+    [TestCase(30_000, true)]
+    [TestCase(29_999, false)]
+    public void ValidateSuggestedBlock_Enforces_bal_item_gas_limit_boundary(long gasLimit, bool expectedValid)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
+        Block suggestedBlock = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(gasLimit)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithBlockAccessList(bal)
+            .WithEncodedBlockAccessList(encodedBal)
+            .WithBlockAccessListHash(balHash)
+            .TestObject;
+        TxValidator txValidator = new(TestBlockchainIds.ChainId);
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)), LimboLogs.Instance);
+
+        bool isValid = sut.ValidateSuggestedBlock(suggestedBlock, parent, out string? error);
+
+        Assert.That(isValid, Is.EqualTo(expectedValid));
+        if (expectedValid)
+        {
+            Assert.That(error, Is.Null);
+        }
+        else
+        {
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
 }

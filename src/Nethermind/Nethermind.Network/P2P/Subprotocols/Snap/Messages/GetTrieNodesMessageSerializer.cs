@@ -111,22 +111,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public GetTrieNodesMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startingPosition = ctx.Position;
+            GetTrieNodesMessage message = new();
+            IRlpItemList? rawPaths = null;
 
-            ctx.ReadSequenceLength();
-            long requestId = ctx.DecodeLong();
-            Hash256? rootHash = ctx.DecodeKeccak();
+            try
+            {
+                ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
+                Hash256? rootHash = ctx.DecodeKeccak();
+                message.RootHash = rootHash;
 
-            IRlpItemList rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
-            ValidatePathGroups(rawPaths);
-            RlpPathGroupList paths = new(rawPaths);
+                rawPaths = RlpItemList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                ValidatePathGroups(rawPaths);
+                message.Paths = new RlpPathGroupList(rawPaths);
+                rawPaths = null;
 
-            long bytes = ctx.DecodeLong();
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                message.Bytes = ctx.DecodeLong();
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
 
-            return new GetTrieNodesMessage { RequestId = requestId, RootHash = rootHash, Paths = paths, Bytes = bytes };
+                return message;
+            }
+            catch
+            {
+                rawPaths?.Dispose();
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
 
         private static void ValidatePathGroups(IRlpItemList paths)

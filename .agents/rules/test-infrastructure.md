@@ -71,3 +71,8 @@ The rule: **if production modules already wire a component, use them — don't c
 - Add tests to existing test files rather than creating new ones
 - **Do not duplicate test methods that differ only in parameters** — use `[TestCase(...)]` or `[TestCaseSource(...)]` to parameterize a single method
 - Before writing a new test, check if an existing test can be extended with another `[TestCase]` or use `[TestCaseSource]`
+
+## DotNetty `IByteBuffer` in tests
+
+- Prefer `using DisposableByteBuffer` via `.AsDisposable()` for releasing `IByteBuffer` in tests
+- For leak-detection tests, use `PooledBufferLeakDetector` from `Nethermind.Network.Test`

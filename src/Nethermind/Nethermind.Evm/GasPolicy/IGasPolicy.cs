@@ -215,9 +215,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="stateGasCost">State gas component.</param>
     /// <param name="regularGasCost">Regular gas component.</param>
     /// <returns><c>true</c> if both deductions succeeded; otherwise, <c>false</c>.</returns>
-    static virtual bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost) =>
-        (regularGasCost <= 0 || TSelf.UpdateGas(ref gas, regularGasCost)) &&
-        (stateGasCost <= 0 || TSelf.ConsumeStateGas(ref gas, stateGasCost));
+    static abstract bool TryConsumeStateAndRegularGas(ref TSelf gas, long stateGasCost, long regularGasCost);
 
     /// <summary>
     /// Refunds gas by adding the specified amount back to the available gas.
@@ -225,6 +223,18 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// <param name="gas">The gas state to update.</param>
     /// <param name="refund">The gas amount to refund.</param>
     static abstract void UpdateGasUp(ref TSelf gas, long refund);
+
+    /// <summary>
+    /// Charges gas for SSTORE write operation (after cold/warm access cost).
+    /// Cost is calculated internally based on whether it's a slot creation or update.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="isSlotCreation">True if creating a new slot (original was zero).</param>
+    /// <param name="spec">The release specification for determining reset cost.</param>
+    /// <returns>True if sufficient gas available</returns>
+    static abstract bool ConsumeStorageWrite<TEip8037, TIsSlotCreation>(ref TSelf gas, IReleaseSpec spec)
+        where TEip8037 : struct, IFlag
+        where TIsSlotCreation : struct, IFlag;
 
     /// <summary>
     /// Refunds state gas back to the state reservoir.
@@ -262,7 +272,7 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     /// </summary>
     /// <param name="gas">The gas state to update.</param>
     /// <returns>True if sufficient gas available</returns>
-    static abstract bool ConsumeNewAccountCreation(ref TSelf gas);
+    static abstract bool ConsumeNewAccountCreation<TEip8037>(ref TSelf gas) where TEip8037 : struct, IFlag;
 
     /// <summary>
     /// Charges gas for LOG emission with topic and data costs.
