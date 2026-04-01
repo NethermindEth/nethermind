@@ -22,11 +22,7 @@ namespace Nethermind.EraE.Archive;
 public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly EraSlimReceiptDecoder _slimReceiptDecoder = new();
-    // Pre-EIP-658 Ethereum receipt trie roots were computed WITHOUT PostTransactionState: [cumGas, bloom, logs].
-    // Post-EIP-658 roots use StatusCode: [status, cumGas, bloom, logs].
-    // Use the appropriate encoder per block to produce the correct trie root.
-    private static readonly ReceiptMessageDecoder _eip658ReceiptEncoder = new();
-    private static readonly ReceiptMessageDecoder _preEip658ReceiptEncoder = new(skipStateAndStatus: true);
+    private readonly ReceiptMessageDecoder _fullReceiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
 
@@ -105,12 +101,8 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     if (!blockValidator.ValidateOrphanedBlock(block, out error))
                         throw new EraVerificationException($"Invalid block {blockNumber}: {error}.");
 
-                    // Pre-EIP-658 Ethereum receipt trie roots omit PostTransactionState entirely: [cumGas, bloom, logs].
-                    // Post-EIP-658 roots include StatusCode: [status, cumGas, bloom, logs].
-                    // Choose the encoder that matches how the original network computed the receipt root.
-                    IReceiptSpec receiptSpec = specProvider.GetReceiptSpec(block.Number);
-                    ReceiptMessageDecoder receiptEncoder = receiptSpec.IsEip658Enabled ? _eip658ReceiptEncoder : _preEip658ReceiptEncoder;
-                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(receiptSpec, receipts, receiptEncoder);
+                    Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
+                        specProvider.GetReceiptSpec(block.Number), receipts, _fullReceiptDecoder);
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 
