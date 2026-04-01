@@ -180,7 +180,6 @@ namespace Nethermind.Xdc
                 throw new InvalidBlockException(_blockTree.Head, "Head is not XdcBlockHeader.");
 
             _quorumCertificateManager.Initialize(xdcHead);
-            _highestVotedRound = xdcHead.ExtraConsensusData?.BlockRound ?? 0;
             _logger.Info($"Initialized round {_xdcContext.CurrentRound} from head.");
         }
 
