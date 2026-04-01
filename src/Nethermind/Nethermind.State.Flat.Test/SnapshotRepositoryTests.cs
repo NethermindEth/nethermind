@@ -452,6 +452,22 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
+    public void HasCompactedStateAtOrAbove_ReturnsTrueWhenCompactedExists()
+    {
+        AddSnapshotToRepository(0, 4, compacted: true);
+
+        Assert.That(_repository.HasCompactedStateAtOrAbove(4), Is.True);
+        Assert.That(_repository.HasCompactedStateAtOrAbove(3), Is.True);
+        Assert.That(_repository.HasCompactedStateAtOrAbove(5), Is.False);
+    }
+
+    [Test]
+    public void HasCompactedStateAtOrAbove_EmptyRepository_ReturnsFalse()
+    {
+        Assert.That(_repository.HasCompactedStateAtOrAbove(0), Is.False);
+    }
+
+    [Test]
     public void RemoveStatesFrom_CleansSortedStateIds()
     {
         BuildSnapshotChain(0, 5);

@@ -222,6 +222,17 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
         }
     }
 
+    public bool HasCompactedStateAtOrAbove(long blockNumber)
+    {
+        foreach (StateId key in _compactedSnapshots.Keys)
+        {
+            if (key.BlockNumber >= blockNumber)
+                return true;
+        }
+
+        return false;
+    }
+
     public void RemoveStatesFrom(long blockNumber)
     {
         // Fast check: if no snapshots exist at or above this block number, skip the full scan.

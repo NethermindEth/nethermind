@@ -329,6 +329,16 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
+        // Reject if rewinding into a compacted range. Compacted snapshots span multiple blocks
+        // and cannot be partially invalidated.
+        if (_snapshotRepository.HasCompactedStateAtOrAbove(endBlock.BlockNumber))
+        {
+            if (_logger.IsWarn) _logger.Warn($"Cannot rewind into compacted state. Block {endBlock.BlockNumber} falls within a compacted snapshot range.");
+            _resourcePool.ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+            snapshot.Dispose();
+            return;
+        }
+
         // Remove stale snapshots from a prior fork at or above this block number.
         // A new block at height N invalidates any existing state at N+ from a different fork.
         _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);

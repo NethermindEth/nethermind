@@ -27,6 +27,14 @@ public interface ISnapshotRepository
     void RemoveStatesUntil(in StateId currentPersistedStateId);
 
     /// <summary>
+    /// Returns true if any compacted snapshot covers the given block number
+    /// (i.e. a compacted snapshot exists whose <c>To.BlockNumber &gt;= blockNumber</c>).
+    /// A rewind into a compacted range is not supported because compacted snapshots
+    /// span multiple blocks and cannot be partially invalidated.
+    /// </summary>
+    bool HasCompactedStateAtOrAbove(long blockNumber);
+
+    /// <summary>
     /// Remove all non-compacted snapshots at or above the given block number.
     /// Used when a new block replaces existing state at the same height (e.g. different payload
     /// at the same block number), invalidating snapshots from that point onward.
