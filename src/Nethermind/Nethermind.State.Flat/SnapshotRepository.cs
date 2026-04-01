@@ -7,13 +7,15 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat;
 
-public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
+public class SnapshotRepository(IFlatDbConfig config, ILogManager logManager) : ISnapshotRepository
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotRepository>();
+    private readonly int _compactSize = config.CompactSize;
 
     private readonly ConcurrentDictionary<StateId, Snapshot> _compactedSnapshots = new();
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
@@ -222,22 +224,25 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             RemoveAndReleaseKnownState(stateToRemove);
         }
 
-        // Fallback: scan dictionaries directly for any missed snapshots
-        foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots)
+        // Fallback: scan dictionaries directly every compactSize block for any missed snapshots
+        if (_compactSize > 0 && currentPersistedStateId.BlockNumber % _compactSize == 0)
         {
-            if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+            foreach (KeyValuePair<StateId, Snapshot> entry in _compactedSnapshots)
             {
-                if (_logger.IsWarn) _logger.Warn($"Fallback removal: compacted snapshot {entry.Key} was not tracked in sorted state IDs");
-                RemoveAndReleaseCompactedKnownState(entry.Key);
+                if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Fallback removal: compacted snapshot {entry.Key} was not tracked in sorted state IDs");
+                    RemoveAndReleaseCompactedKnownState(entry.Key);
+                }
             }
-        }
 
-        foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots)
-        {
-            if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+            foreach (KeyValuePair<StateId, Snapshot> entry in _snapshots)
             {
-                if (_logger.IsWarn) _logger.Warn($"Fallback removal: snapshot {entry.Key} was not tracked in sorted state IDs");
-                RemoveAndReleaseKnownState(entry.Key);
+                if (entry.Key.BlockNumber <= currentPersistedStateId.BlockNumber)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Fallback removal: snapshot {entry.Key} was not tracked in sorted state IDs");
+                    RemoveAndReleaseKnownState(entry.Key);
+                }
             }
         }
     }

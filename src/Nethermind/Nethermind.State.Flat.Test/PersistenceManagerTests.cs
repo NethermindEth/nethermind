@@ -41,7 +41,7 @@ public class PersistenceManagerTests
 
         _resourcePool = new ResourcePool(_config);
         _finalizedStateProvider = new TestFinalizedStateProvider();
-        _snapshotRepository = new SnapshotRepository(LimboLogs.Instance);
+        _snapshotRepository = new SnapshotRepository(_config, LimboLogs.Instance);
         _persistence = Substitute.For<IPersistence>();
 
         IPersistence.IPersistenceReader persistenceReader = Substitute.For<IPersistence.IPersistenceReader>();
