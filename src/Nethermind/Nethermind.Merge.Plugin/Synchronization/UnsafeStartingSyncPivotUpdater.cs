@@ -28,7 +28,7 @@ public class UnsafeStartingSyncPivotUpdater(
     : StartingSyncPivotUpdater(blockTree, syncModeSelector, syncPeerPool, syncConfig,
         blockCacheService, beaconSyncStrategy, logManager)
 {
-    protected override async Task<BlockHeader?> TryGetPivotData(CancellationToken cancellationToken)
+    protected override async Task<(Hash256 Hash, long Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
         // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
         Hash256? headBlockHash = _beaconSyncStrategy.GetHeadBlockHash();
@@ -44,14 +44,14 @@ public class UnsafeStartingSyncPivotUpdater(
             {
                 long potentialPivotBlockNumber = headBlockNumber.Value - Reorganization.MaxDepth;
 
-                BlockHeader? pivotHeader =
-                    TryGetPotentialPivotHeaderFromBlockCache(potentialPivotBlockNumber)
-                    ?? await TryGetFromPeers(potentialPivotBlockNumber, cancellationToken);
+                Hash256? potentialPivotBlockHash =
+                    TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber)
+                    ?? (await TryGetFromPeers(potentialPivotBlockNumber, cancellationToken))?.Hash;
 
-                if (pivotHeader is { Hash: not null } && pivotHeader.Hash != Keccak.Zero)
+                if (potentialPivotBlockHash is not null && potentialPivotBlockHash != Keccak.Zero)
                 {
-                    UpdateAndPrintPotentialNewPivot(pivotHeader.Hash);
-                    return pivotHeader;
+                    UpdateAndPrintPotentialNewPivot(potentialPivotBlockHash);
+                    return (potentialPivotBlockHash, potentialPivotBlockNumber);
                 }
             }
         }
@@ -66,7 +66,7 @@ public class UnsafeStartingSyncPivotUpdater(
             return x?.Count == 1 ? x[0] : null;
         });
 
-    private BlockHeader? TryGetPotentialPivotHeaderFromBlockCache(long potentialPivotBlockNumber)
+    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(long potentialPivotBlockNumber)
     {
         if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
 
@@ -75,7 +75,7 @@ public class UnsafeStartingSyncPivotUpdater(
             if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");
-                return block.Header;
+                return block.Hash;
             }
         }
 
