@@ -13,7 +13,7 @@ public class StateCompositionPlugin : INethermindPlugin
     private INethermindApi? _api;
 
     public string Name => "StateComposition";
-    public string Description => "State composition metrics for bloatnet benchmarking";
+    public string Description => "State composition metrics";
     public string Author => "Nethermind";
     public bool MustInitialize => false;
     public bool Enabled => _api?.Config<IStateCompositionConfig>().Enabled ?? true;

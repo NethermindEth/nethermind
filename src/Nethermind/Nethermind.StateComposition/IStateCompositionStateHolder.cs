@@ -15,8 +15,6 @@ public interface IStateCompositionStateHolder
     TrieDepthDistribution CurrentDistribution { get; }
     ScanMetadata? LastScanMetadata { get; }
     bool IsInitialized { get; }
-    bool IsScanning { get; }
     void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist);
-    void MarkScanStarted();
     void MarkScanCompleted(long blockNumber, Hash256 stateRoot, TimeSpan duration);
 }

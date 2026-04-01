@@ -26,12 +26,12 @@ public readonly struct StateCompositionContext(TreePath path, int level, bool is
 
     public StateCompositionContext Add(ReadOnlySpan<byte> nibblePath)
     {
-        return new(Path.Append(nibblePath), Level + 1, IsStorage, null);
+        return new StateCompositionContext(Path.Append(nibblePath), Level + 1, IsStorage, null);
     }
 
     public StateCompositionContext Add(byte nibble)
     {
-        return new(Path.Append(nibble), Level + 1, IsStorage, nibble);
+        return new StateCompositionContext(Path.Append(nibble), Level + 1, IsStorage, nibble);
     }
 
     public StateCompositionContext AddStorage(in ValueHash256 storage)
@@ -39,6 +39,6 @@ public readonly struct StateCompositionContext(TreePath path, int level, bool is
         // Reset path and level for storage trie traversal.
         // Level resets to 0 so per-contract Levels[16] indexes from depth 0 (matching Geth).
         // Path resets to Empty since storage trie has its own independent path space.
-        return new(TreePath.Empty, 0, true, null);
+        return new StateCompositionContext(TreePath.Empty, 0, true, null);
     }
 }

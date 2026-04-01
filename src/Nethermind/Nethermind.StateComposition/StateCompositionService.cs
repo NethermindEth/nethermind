@@ -28,7 +28,6 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
     private readonly SemaphoreSlim _inspectLock = new(1, 1);
 
     private CancellationTokenSource? _currentScanCts;
-    private long _lastScanCompletedTicks;
 
     public StateCompositionService(
         IStateReader stateReader,
@@ -55,13 +54,11 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             throw new ArgumentException("ScanQueueTimeoutSeconds must be positive", nameof(config));
         if (config.TopNContracts <= 0)
             throw new ArgumentException("TopNContracts must be positive", nameof(config));
-        if (config.ScanCooldownSeconds < 0)
-            throw new ArgumentException("ScanCooldownSeconds must be non-negative", nameof(config));
     }
 
     public async Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
-        // C-3: Fail-fast — if semaphore not immediately available, reject.
+        // Fail-fast — if semaphore not immediately available, reject.
         // Does not block the calling thread or thread pool.
         bool acquired = await _scanLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
         if (!acquired)
@@ -69,16 +66,6 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
         try
         {
-            // H-1: Cooldown check INSIDE critical section to prevent bypass via concurrent requests.
-            long now = Environment.TickCount64;
-            long last = Interlocked.Read(ref _lastScanCompletedTicks);
-            long cooldownMs = _config.ScanCooldownSeconds * 1000L;
-            if (last > 0 && now - last < cooldownMs)
-            {
-                return Result<StateCompositionStats>.Fail("Scan cooldown active");
-            }
-
-            _stateHolder.MarkScanStarted();
             using CancellationTokenSource linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _currentScanCts = linkedCts;
 
@@ -88,7 +75,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                 _logger.Info($"StateComposition: starting full scan at block {header.Number}, root {header.StateRoot}");
 
             using StateCompositionVisitor visitor = new(
-                _logManager, linkedCts.Token, _config.TopNContracts, _config.ExcludeStorage);
+                _logManager, _config.TopNContracts, _config.ExcludeStorage, linkedCts.Token);
 
             VisitingOptions options = new()
             {
@@ -127,8 +114,6 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             _stateHolder.SetBaseline(stats, dist);
             _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
 
-            Interlocked.Exchange(ref _lastScanCompletedTicks, Environment.TickCount64);
-
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
                              $"Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
@@ -143,7 +128,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct)
+    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync()
     {
         if (_stateHolder.IsInitialized)
             return Task.FromResult(Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution));
@@ -154,17 +139,14 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
     {
-        // M-3: Fail-fast semaphore to prevent concurrent heavy inspections.
+        // Fail-fast semaphore to prevent concurrent heavy inspections.
         bool acquired = await _inspectLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
         if (!acquired)
             return Result<TopContractEntry?>.Fail("Contract inspection already in progress");
 
         try
         {
-            if (!_stateReader.TryGetAccount(header, address, out AccountStruct account))
-                return Result<TopContractEntry?>.Success(null);
-
-            if (!account.HasStorage)
+            if (!_stateReader.TryGetAccount(header, address, out AccountStruct account) || !account.HasStorage)
                 return Result<TopContractEntry?>.Success(null);
 
             ValueHash256 accountHash = ValueKeccak.Compute(address.Bytes);
@@ -173,7 +155,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: inspecting contract {address}, storageRoot={targetStorageRoot}");
 
-            using SingleContractVisitor visitor = new(_logManager, ct, targetStorageRoot);
+            using SingleContractVisitor visitor = new(_logManager, targetStorageRoot, ct);
 
             VisitingOptions options = new()
             {
@@ -194,7 +176,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
     public void CancelScan()
     {
-        // H-2: Capture to local variable to prevent TOCTOU race.
+        // Capture to local variable to prevent TOCTOU race.
         // The CTS may be disposed between our read and Cancel() call
         // if the scan completes concurrently — catch and ignore.
         CancellationTokenSource? cts = _currentScanCts;

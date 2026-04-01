@@ -9,27 +9,16 @@ namespace Nethermind.StateComposition;
 /// deterministic multi-field comparators matching Geth's sort order + Owner hash tiebreaker.
 /// Extracted from VisitorCounters to satisfy SRP (H3).
 /// </summary>
-internal sealed class TopNTracker
+internal sealed class TopNTracker(int topN)
 {
-    private readonly int _topN;
-
-    public TopContractEntry[] TopByDepth;
-    public TopContractEntry[] TopByNodes;
-    public TopContractEntry[] TopByValueNodes;
-    public TopContractEntry[] TopBySize;
+    public readonly TopContractEntry[] TopByDepth = new TopContractEntry[topN];
+    public readonly TopContractEntry[] TopByNodes = new TopContractEntry[topN];
+    public readonly TopContractEntry[] TopByValueNodes = new TopContractEntry[topN];
+    public readonly TopContractEntry[] TopBySize = new TopContractEntry[topN];
     public int TopByDepthCount;
     public int TopByNodesCount;
     public int TopByValueNodesCount;
     public int TopBySizeCount;
-
-    public TopNTracker(int topN)
-    {
-        _topN = topN;
-        TopByDepth = new TopContractEntry[topN];
-        TopByNodes = new TopContractEntry[topN];
-        TopByValueNodes = new TopContractEntry[topN];
-        TopBySize = new TopContractEntry[topN];
-    }
 
     internal delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
 
@@ -109,7 +98,7 @@ internal sealed class TopNTracker
 
     private void TryInsert(TopContractEntry[] heap, ref int count, TopContractEntry entry, EntryComparer comparer)
     {
-        if (count < _topN)
+        if (count < topN)
         {
             heap[count++] = entry;
             return;
@@ -117,7 +106,7 @@ internal sealed class TopNTracker
 
         // Find the minimum entry in the heap
         int minIdx = 0;
-        for (int i = 1; i < _topN; i++)
+        for (int i = 1; i < topN; i++)
         {
             if (comparer(heap[i], heap[minIdx]) < 0)
                 minIdx = i;
