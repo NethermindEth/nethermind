@@ -276,7 +276,10 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             }
         }
 
+        // Also defensively drop any sorted-set entry whose snapshot no longer exists in _snapshots.
+        // The compactor calls AddStateId asynchronously, so stale IDs can be re-introduced after
+        // removal if the compactor job was already queued for a removed snapshot.
         using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
-        sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber);
+        sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber || !_snapshots.ContainsKey(id));
     }
 }

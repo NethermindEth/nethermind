@@ -329,14 +329,13 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
-        // If a snapshot with a different state root already exists at this block number, it means
-        // newPayload is switching to a different fork. Remove the old fork's non-compacted
-        // snapshots at this height and above since they are no longer reachable from the new
-        // canonical chain.
-        // Skip if compacted snapshots exist at or above this height — they span multi-block
-        // ranges and removing the sorted set IDs without removing the compacted entries would
-        // orphan them (RemoveStatesUntil discovers compacted snapshots via the sorted index).
-        if (_snapshotRepository.HasState(endBlock) is false
+        // If a different state root already exists at this block number, we are switching forks.
+        // Remove the old fork's non-compacted snapshots at this height and above.
+        // Guard order: HasState is O(1), HasStatesAtBlockNumber scans _snapshots (bounded by
+        // MaxReorgDepth), HasCompactedStateAtOrAbove scans _compactedSnapshots (rare).
+        // Skip if compacted snapshots exist at or above this height — removing sorted-set IDs
+        // without the compacted entries would orphan them.
+        if (!_snapshotRepository.HasState(endBlock)
             && _snapshotRepository.HasStatesAtBlockNumber(endBlock.BlockNumber)
             && !_snapshotRepository.HasCompactedStateAtOrAbove(endBlock.BlockNumber))
         {

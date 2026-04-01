@@ -35,10 +35,10 @@ public interface ISnapshotRepository
     void RemoveStatesUntil(in StateId currentPersistedStateId);
 
     /// <summary>
-    /// Returns true if any compacted snapshot covers the given block number
-    /// (i.e. a compacted snapshot exists whose <c>To.BlockNumber &gt;= blockNumber</c>).
-    /// A rewind into a compacted range is not supported because compacted snapshots
-    /// span multiple blocks and cannot be partially invalidated.
+    /// Returns true if any compacted snapshot exists at or above the given block number
+    /// (i.e. <c>To.BlockNumber &gt;= blockNumber</c>). Used to guard fork-pruning:
+    /// removing sorted-set entries without the corresponding compacted snapshots would
+    /// orphan them, so fork-pruning is skipped when compacted snapshots exist in this range.
     /// </summary>
     bool HasCompactedStateAtOrAbove(long blockNumber);
 
