@@ -90,7 +90,7 @@ public class StateCompositionServiceTests
     }
 
     [Test]
-    public void GetTrieDistributionAsync_ThrowsWhenNotInitialized()
+    public async Task GetTrieDistributionAsync_FailsWhenNotInitialized()
     {
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
@@ -100,8 +100,14 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        Assert.ThrowsAsync<StateCompositionException>(async () =>
-            await service.GetTrieDistributionAsync(header, CancellationToken.None));
+        Result<TrieDepthDistribution> result =
+            await service.GetTrieDistributionAsync(header, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain("No cached data"));
+        });
     }
 
     [Test]
@@ -129,10 +135,11 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        StateCompositionStats stats = await service.AnalyzeAsync(header, CancellationToken.None);
+        Result<StateCompositionStats> result = await service.AnalyzeAsync(header, CancellationToken.None);
 
         Assert.Multiple(() =>
         {
+            Assert.That(result.IsSuccess, Is.True);
             Assert.That(stateHolder.IsInitialized, Is.True);
             Assert.That(stateHolder.IsScanning, Is.False);
             Assert.That(stateHolder.LastScanMetadata, Is.Not.Null);
@@ -153,10 +160,14 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        TopContractEntry? result = await service.InspectContractAsync(
+        Result<TopContractEntry?> result = await service.InspectContractAsync(
             Address.Zero, header, CancellationToken.None);
 
-        Assert.That(result, Is.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data, Is.Null);
+        });
     }
 
     [Test]
@@ -179,10 +190,14 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        TopContractEntry? result = await service.InspectContractAsync(
+        Result<TopContractEntry?> result = await service.InspectContractAsync(
             Address.Zero, header, CancellationToken.None);
 
-        Assert.That(result, Is.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data, Is.Null);
+        });
     }
 
     [Test]
@@ -206,17 +221,21 @@ public class StateCompositionServiceTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         // RunTreeVisitor mock is a no-op, so visitor finds nothing → returns null.
-        // The important assertion is that the flow completes without throwing.
-        TopContractEntry? result = await service.InspectContractAsync(
+        // The important assertion is that the flow completes without error.
+        Result<TopContractEntry?> result = await service.InspectContractAsync(
             Address.Zero, header, CancellationToken.None);
 
-        Assert.That(result, Is.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data, Is.Null);
+        });
     }
 
     // --- H-6: Cooldown and semaphore rejection tests ---
 
     [Test]
-    public async Task AnalyzeAsync_ThrowsCooldown_AfterRecentScan()
+    public async Task AnalyzeAsync_ReturnsCooldownError_AfterRecentScan()
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         IStateCompositionConfig config = CreateValidConfig();
@@ -228,18 +247,22 @@ public class StateCompositionServiceTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         // First scan completes immediately (mock RunTreeVisitor is a no-op)
-        await service.AnalyzeAsync(header, CancellationToken.None);
+        Result<StateCompositionStats> first = await service.AnalyzeAsync(header, CancellationToken.None);
+        Assert.That(first.IsSuccess, Is.True);
 
-        // Second scan should throw cooldown exception
-        StateCompositionException ex = Assert.ThrowsAsync<StateCompositionException>(async () =>
-            await service.AnalyzeAsync(header, CancellationToken.None))!;
+        // Second scan should return cooldown error
+        Result<StateCompositionStats> second = await service.AnalyzeAsync(header, CancellationToken.None);
 
-        Assert.That(ex.Message, Does.Contain("cooldown"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.IsError, Is.True);
+            Assert.That(second.Error, Does.Contain("cooldown"));
+        });
     }
 
     [Test]
     [CancelAfter(10_000)]
-    public async Task AnalyzeAsync_ThrowsWhenScanAlreadyInProgress()
+    public async Task AnalyzeAsync_ReturnsScanInProgressError_WhenAlreadyRunning()
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualResetEventSlim entered = new(false);
@@ -259,16 +282,70 @@ public class StateCompositionServiceTests
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         // Start first scan — blocks inside RunTreeVisitor
-        Task<StateCompositionStats> firstScan = service.AnalyzeAsync(header, CancellationToken.None);
+        Task<Result<StateCompositionStats>> firstScan = service.AnalyzeAsync(header, CancellationToken.None);
         Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "First scan did not enter RunTreeVisitor");
 
-        // Second scan should throw immediately (fail-fast semaphore)
-        Assert.ThrowsAsync<StateCompositionException>(async () =>
-            await service.AnalyzeAsync(header, CancellationToken.None));
+        // Second scan should return error immediately (fail-fast semaphore)
+        Result<StateCompositionStats> second = await service.AnalyzeAsync(header, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.IsError, Is.True);
+            Assert.That(second.Error, Does.Contain("already in progress"));
+        });
 
         // Release blocker so first scan completes
         blocker.SetResult();
         await firstScan;
+    }
+
+    // --- InspectContractAsync concurrency test ---
+
+    [Test]
+    public async Task InspectContractAsync_ReturnsFail_WhenInspectionAlreadyRunning()
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ManualResetEventSlim entered = new(false);
+        TaskCompletionSource blocker = new();
+
+        AccountStruct withStorageAccount = new(0, 0,
+            Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
+
+        stateReader.TryGetAccount(default!, default!, out Arg.Any<AccountStruct>())
+            .ReturnsForAnyArgs(x =>
+            {
+                x[2] = withStorageAccount;
+                return true;
+            });
+
+        stateReader.WhenForAnyArgs(x =>
+                x.RunTreeVisitor<StateCompositionContext>(default!, default, default))
+            .Do(_ =>
+            {
+                entered.Set();
+                blocker.Task.GetAwaiter().GetResult();
+            });
+
+        StateCompositionService service = new(
+            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Task<Result<TopContractEntry?>> firstInspect =
+            service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
+        Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        Result<TopContractEntry?> second =
+            await service.InspectContractAsync(Address.Zero, header, CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.IsError, Is.True);
+            Assert.That(second.Error, Does.Contain("inspection already in progress"));
+        });
+
+        blocker.SetResult();
+        await firstInspect;
     }
 }
 
@@ -353,5 +430,25 @@ public class StateCompositionRpcModuleTests
         JsonRpc.ResultWrapper<TrieDepthDistribution> result = await rpc.statecomp_getTrieDistribution();
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    [Test]
+    public async Task InspectContract_Fails_WhenAddressNull()
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(Build.A.Block.TestObject);
+
+        StateCompositionRpcModule rpc = new(
+            Substitute.For<IStateCompositionService>(),
+            Substitute.For<IStateCompositionStateHolder>(),
+            blockTree);
+
+        JsonRpc.ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null!);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Result.Error, Does.Contain("Address parameter is required"));
+        });
     }
 }

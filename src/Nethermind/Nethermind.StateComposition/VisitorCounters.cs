@@ -13,7 +13,7 @@ namespace Nethermind.StateComposition;
 /// Aggregate via MergeFrom() after traversal completes.
 /// Short=Extension+Leaf (matches Geth shortNode), Full=Branch, Value=Leaf.
 /// </summary>
-public sealed class VisitorCounters
+internal sealed class VisitorCounters
 {
     /// <summary>
     /// Maximum trie depth tracked per-level. Depths beyond this are clamped.
@@ -30,8 +30,6 @@ public sealed class VisitorCounters
 
     /// <summary>Slots per contract: 1 | 2-10 | 11-100 | 101-1K | 1K-10K | 10K-100K | 100K+</summary>
     public const int StorageSlotBucketCount = 7;
-
-    private readonly int _topN;
 
     // --- Global counters ---
     public long AccountsTotal;
@@ -86,23 +84,12 @@ public sealed class VisitorCounters
     // Per-depth counters for current storage trie
     private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
 
-    // Top-N contract rankings
-    public TopContractEntry[] TopByDepth;
-    public TopContractEntry[] TopByNodes;
-    public TopContractEntry[] TopByValueNodes;
-    public TopContractEntry[] TopBySize;
-    public int TopByDepthCount;
-    public int TopByNodesCount;
-    public int TopByValueNodesCount;
-    public int TopBySizeCount;
+    // Top-N contract rankings (extracted to TopNTracker for SRP)
+    internal TopNTracker TopN { get; }
 
     public VisitorCounters(int topN = 20)
     {
-        _topN = topN;
-        TopByDepth = new TopContractEntry[topN];
-        TopByNodes = new TopContractEntry[topN];
-        TopByValueNodes = new TopContractEntry[topN];
-        TopBySize = new TopContractEntry[topN];
+        TopN = new TopNTracker(topN);
     }
 
     /// <summary>
@@ -227,89 +214,10 @@ public sealed class VisitorCounters
             },
         };
 
-        TryInsert(TopByDepth, ref TopByDepthCount, entry, CompareByDepth);
-        TryInsert(TopByNodes, ref TopByNodesCount, entry, CompareByTotalNodes);
-        TryInsert(TopByValueNodes, ref TopByValueNodesCount, entry, CompareByValueNodes);
-        TryInsert(TopBySize, ref TopBySizeCount, entry, CompareBySize);
+        TopN.Insert(entry);
 
         // Storage slot distribution bucket
         StorageSlotBuckets[SlotBucket(_currentStorageValueNodes)]++;
-    }
-
-    // --- Deterministic multi-field comparators ---
-
-    /// <summary>MaxDepth DESC → TotalNodes DESC → ValueNodes DESC → Owner bytes ASC</summary>
-    internal static int CompareByDepth(in TopContractEntry a, in TopContractEntry b)
-    {
-        int c = a.MaxDepth.CompareTo(b.MaxDepth);
-        if (c != 0) return c;
-        c = a.TotalNodes.CompareTo(b.TotalNodes);
-        if (c != 0) return c;
-        c = a.ValueNodes.CompareTo(b.ValueNodes);
-        if (c != 0) return c;
-        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
-        return a.Owner.CompareTo(b.Owner);
-    }
-
-    /// <summary>TotalNodes DESC → MaxDepth DESC → ValueNodes DESC → Owner bytes ASC</summary>
-    internal static int CompareByTotalNodes(in TopContractEntry a, in TopContractEntry b)
-    {
-        int c = a.TotalNodes.CompareTo(b.TotalNodes);
-        if (c != 0) return c;
-        c = a.MaxDepth.CompareTo(b.MaxDepth);
-        if (c != 0) return c;
-        c = a.ValueNodes.CompareTo(b.ValueNodes);
-        if (c != 0) return c;
-        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
-        return a.Owner.CompareTo(b.Owner);
-    }
-
-    /// <summary>ValueNodes DESC → MaxDepth DESC → TotalNodes DESC → Owner bytes ASC</summary>
-    internal static int CompareByValueNodes(in TopContractEntry a, in TopContractEntry b)
-    {
-        int c = a.ValueNodes.CompareTo(b.ValueNodes);
-        if (c != 0) return c;
-        c = a.MaxDepth.CompareTo(b.MaxDepth);
-        if (c != 0) return c;
-        c = a.TotalNodes.CompareTo(b.TotalNodes);
-        if (c != 0) return c;
-        // Owner: lexicographic ascending — matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
-        return a.Owner.CompareTo(b.Owner);
-    }
-
-    /// <summary>TotalSize DESC → TotalNodes DESC → MaxDepth DESC → Owner bytes ASC</summary>
-    internal static int CompareBySize(in TopContractEntry a, in TopContractEntry b)
-    {
-        int c = a.TotalSize.CompareTo(b.TotalSize);
-        if (c != 0) return c;
-        c = a.TotalNodes.CompareTo(b.TotalNodes);
-        if (c != 0) return c;
-        c = a.MaxDepth.CompareTo(b.MaxDepth);
-        if (c != 0) return c;
-        return a.Owner.CompareTo(b.Owner);
-    }
-
-    private delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
-
-    private void TryInsert(TopContractEntry[] heap, ref int count, TopContractEntry entry, EntryComparer comparer)
-    {
-        if (count < _topN)
-        {
-            heap[count++] = entry;
-            return;
-        }
-
-        // Find the minimum entry in the heap
-        int minIdx = 0;
-        for (int i = 1; i < _topN; i++)
-        {
-            if (comparer(heap[i], heap[minIdx]) < 0)
-                minIdx = i;
-        }
-
-        // Replace if new entry is greater than current minimum
-        if (comparer(entry, heap[minIdx]) > 0)
-            heap[minIdx] = entry;
     }
 
     public void MergeFrom(VisitorCounters other)
@@ -359,16 +267,6 @@ public sealed class VisitorCounters
         for (int i = 0; i < StorageSlotBucketCount; i++)
             StorageSlotBuckets[i] += other.StorageSlotBuckets[i];
 
-        MergeTopN(TopByDepth, ref TopByDepthCount, other.TopByDepth, other.TopByDepthCount, CompareByDepth);
-        MergeTopN(TopByNodes, ref TopByNodesCount, other.TopByNodes, other.TopByNodesCount, CompareByTotalNodes);
-        MergeTopN(TopByValueNodes, ref TopByValueNodesCount, other.TopByValueNodes, other.TopByValueNodesCount, CompareByValueNodes);
-        MergeTopN(TopBySize, ref TopBySizeCount, other.TopBySize, other.TopBySizeCount, CompareBySize);
-    }
-
-    private void MergeTopN(TopContractEntry[] target, ref int targetCount,
-        TopContractEntry[] source, int sourceCount, EntryComparer comparer)
-    {
-        for (int i = 0; i < sourceCount; i++)
-            TryInsert(target, ref targetCount, source[i], comparer);
+        TopN.MergeFrom(other.TopN);
     }
 }

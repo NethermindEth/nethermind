@@ -59,14 +59,13 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             throw new ArgumentException("ScanCooldownSeconds must be non-negative", nameof(config));
     }
 
-    public async Task<StateCompositionStats> AnalyzeAsync(BlockHeader header, CancellationToken ct)
+    public async Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
         // C-3: Fail-fast — if semaphore not immediately available, reject.
         // Does not block the calling thread or thread pool.
         bool acquired = await _scanLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
         if (!acquired)
-            throw new StateCompositionException(
-                "Scan already in progress. Use statecomp_getCachedStats() for last results.");
+            return Result<StateCompositionStats>.Fail("Scan already in progress");
 
         try
         {
@@ -76,9 +75,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             long cooldownMs = _config.ScanCooldownSeconds * 1000L;
             if (last > 0 && now - last < cooldownMs)
             {
-                long remainingSeconds = (cooldownMs - (now - last)) / 1000;
-                throw new StateCompositionException(
-                    $"Scan cooldown active. Try again in {remainingSeconds} seconds.");
+                return Result<StateCompositionStats>.Fail("Scan cooldown active");
             }
 
             _stateHolder.MarkScanStarted();
@@ -111,6 +108,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                     }
                 }
                 catch (OperationCanceledException) { }
+                catch (ObjectDisposedException) { }
             }, CancellationToken.None);
 
             try
@@ -136,7 +134,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                              $"Accounts={stats.AccountsTotal}, Contracts={stats.ContractsTotal}, " +
                              $"StorageSlots={stats.StorageSlotsTotal}");
 
-            return stats;
+            return Result<StateCompositionStats>.Success(stats);
         }
         finally
         {
@@ -145,30 +143,29 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    public Task<TrieDepthDistribution> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct)
+    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync(BlockHeader header, CancellationToken ct)
     {
         if (_stateHolder.IsInitialized)
-            return Task.FromResult(_stateHolder.CurrentDistribution);
+            return Task.FromResult(Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution));
 
-        throw new StateCompositionException(
-            "No cached distribution available. Run statecomp_getStats() first to trigger a scan.");
+        return Task.FromResult(Result<TrieDepthDistribution>.Fail(
+            "No cached data available. Run statecomp_getStats() first to trigger a scan."));
     }
 
-    public async Task<TopContractEntry?> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
+    public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
     {
         // M-3: Fail-fast semaphore to prevent concurrent heavy inspections.
         bool acquired = await _inspectLock.WaitAsync(TimeSpan.Zero, ct).ConfigureAwait(false);
         if (!acquired)
-            throw new StateCompositionException(
-                "Contract inspection already in progress. Try again later.");
+            return Result<TopContractEntry?>.Fail("Contract inspection already in progress");
 
         try
         {
             if (!_stateReader.TryGetAccount(header, address, out AccountStruct account))
-                return null;
+                return Result<TopContractEntry?>.Success(null);
 
             if (!account.HasStorage)
-                return null;
+                return Result<TopContractEntry?>.Success(null);
 
             ValueHash256 accountHash = ValueKeccak.Compute(address.Bytes);
             ValueHash256 targetStorageRoot = account.StorageRoot;
@@ -187,7 +184,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             await Task.Run(() =>
                 _stateReader.RunTreeVisitor(visitor, header, options), ct).ConfigureAwait(false);
 
-            return visitor.GetResult(accountHash, targetStorageRoot);
+            return Result<TopContractEntry?>.Success(visitor.GetResult(accountHash, targetStorageRoot));
         }
         finally
         {

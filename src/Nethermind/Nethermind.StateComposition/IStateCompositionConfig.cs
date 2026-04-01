@@ -14,7 +14,8 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Timeout in seconds for queued scan requests", DefaultValue = "5")]
     int ScanQueueTimeoutSeconds { get; set; }
 
-    [ConfigItem(Description = "Max parallel threads for baseline trie scan", DefaultValue = "4")]
+    [ConfigItem(Description = "Max parallel threads for baseline trie scan. Defaults to ProcessorCount/2 clamped to [1,16].",
+        DefaultValue = "ProcessorCount/2")]
     int ScanParallelism { get; set; }
 
     [ConfigItem(Description = "Memory budget for baseline scan in bytes (1GB default)",
