@@ -67,11 +67,9 @@ public abstract partial class BaseEngineModuleTests
         IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null,
         IExecutionRequestsProcessor? mockedExecutionRequestsProcessor = null,
-        Action<ContainerBuilder>? configurer = null,
-        bool allowBeaconHeaderSync = true)
+        Action<ContainerBuilder>? configurer = null)
     {
         MergeTestBlockchain bc = CreateBaseBlockchain(mergeConfig);
-        bc.AllowBeaconHeaderSyncOnBuild = allowBeaconHeaderSync;
         return await bc
             .BuildMergeTestBlockchain(configurer: (builder) =>
             {
@@ -267,16 +265,9 @@ public abstract partial class BaseEngineModuleTests
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 
-        // Controls whether AllowBeaconHeaderSync() is called during Build().
-        // Set to false to simulate the race where StartingSyncPivotUpdater
-        // hasn't run yet when the first FCU arrives.
-        public bool AllowBeaconHeaderSyncOnBuild { get; set; } = true;
-
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            if (AllowBeaconHeaderSyncOnBuild)
-                BeaconSync.AllowBeaconHeaderSync();
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
         }
