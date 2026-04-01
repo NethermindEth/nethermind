@@ -128,22 +128,19 @@ public class EraExporter(
 
             using (EraWriter eraWriter = new(fileSystem.File.Create(placeholderPath), specProvider, beaconRootsProvider))
             {
-                Task<(Block? Block, TxReceipt[]? Receipts)> prefetch = Task.Run(() => FetchBlockAndReceipts(writeFrom), cancel);
-
                 for (long blockNumber = writeFrom; blockNumber <= writeTo; blockNumber++)
                 {
-                    (Block? block, TxReceipt[]? receipts) = await prefetch;
-
+                    Block? block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
                     if (block is null)
                         throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
+
+                    // IsPostMerge is not part of the RLP encoding and defaults to false when read from
+                    // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
+                    block.Header.IsPostMerge = block.Header.Difficulty == 0;
+
+                    TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
-
-                    if (blockNumber < writeTo)
-                    {
-                        long nextBlock = blockNumber + 1;
-                        prefetch = Task.Run(() => FetchBlockAndReceipts(nextBlock), cancel);
-                    }
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
@@ -156,17 +153,6 @@ public class EraExporter(
                 }
 
                 (accumulator, sha256) = await eraWriter.Finalize(cancel);
-            }
-
-            (Block? Block, TxReceipt[]? Receipts) FetchBlockAndReceipts(long number)
-            {
-                Block? block = blockTree.FindBlock(number, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-                if (block is null) return (null, null);
-                // IsPostMerge is not part of the RLP encoding and defaults to false when read from
-                // the block store. Restore it from Difficulty (EIP-3675: post-merge Difficulty == 0).
-                block.Header.IsPostMerge = block.Header.Difficulty == 0;
-                TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
-                return (block, receipts);
             }
 
             // Safe concurrent indexed writes: each epoch has a unique idx slot;
