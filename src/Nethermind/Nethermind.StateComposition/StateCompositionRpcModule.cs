@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.StateComposition;
@@ -17,17 +18,17 @@ public class StateCompositionRpcModule(
 {
     public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats()
     {
-        Core.Block? head = blockTree.Head;
+        Block? head = blockTree.Head;
         if (head is null)
             return ResultWrapper<StateCompositionStats>.Fail("No head block available");
 
         try
         {
-            var result = await service.AnalyzeAsync(head.Header, CancellationToken.None)
+            Result<StateCompositionStats> result = await service.AnalyzeAsync(head.Header, CancellationToken.None)
                 .ConfigureAwait(false);
-            if (!result.Success(out var stats, out var error))
-                return ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded);
-            return ResultWrapper<StateCompositionStats>.Success(stats);
+            return !result.Success(out StateCompositionStats stats, out var error) ?
+                ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded) :
+                ResultWrapper<StateCompositionStats>.Success(stats);
         }
         catch (OperationCanceledException)
         {
@@ -53,15 +54,11 @@ public class StateCompositionRpcModule(
 
     public async Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
     {
-        Core.Block? head = blockTree.Head;
-        if (head is null)
-            return ResultWrapper<TrieDepthDistribution>.Fail("No head block available");
-
-        var result = await service.GetTrieDistributionAsync(
-            head.Header, CancellationToken.None).ConfigureAwait(false);
-        if (!result.Success(out var dist, out var error))
-            return ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable);
-        return ResultWrapper<TrieDepthDistribution>.Success(dist);
+        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync()
+            .ConfigureAwait(false);
+        return !result.Success(out TrieDepthDistribution dist, out var error) ?
+            ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable) :
+            ResultWrapper<TrieDepthDistribution>.Success(dist);
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()
@@ -70,23 +67,20 @@ public class StateCompositionRpcModule(
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
-    public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Core.Address address)
+    public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address? address)
     {
-        // H2: Validate address parameter before processing.
         if (address is null)
             return ResultWrapper<TopContractEntry?>.Fail("Address parameter is required", ErrorCodes.InvalidInput);
 
-        Core.Block? head = blockTree.Head;
+        Block? head = blockTree.Head;
         if (head is null)
             return ResultWrapper<TopContractEntry?>.Fail("No head block available");
 
         try
         {
-            var result = await service.InspectContractAsync(
+            Result<TopContractEntry?> result = await service.InspectContractAsync(
                 address, head.Header, CancellationToken.None).ConfigureAwait(false);
-            if (!result.Success(out var entry, out var error))
-                return ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.LimitExceeded);
-            return ResultWrapper<TopContractEntry?>.Success(entry);
+            return !result.Success(out TopContractEntry? entry, out var error) ? ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.LimitExceeded) : ResultWrapper<TopContractEntry?>.Success(entry);
         }
         catch (OperationCanceledException)
         {

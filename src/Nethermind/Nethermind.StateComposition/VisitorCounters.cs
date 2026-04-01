@@ -13,25 +13,13 @@ namespace Nethermind.StateComposition;
 /// Aggregate via MergeFrom() after traversal completes.
 /// Short=Extension+Leaf (matches Geth shortNode), Full=Branch, Value=Leaf.
 /// </summary>
-internal sealed class VisitorCounters
+internal sealed class VisitorCounters(int topN = 20)
 {
     /// <summary>
     /// Maximum trie depth tracked per-level. Depths beyond this are clamped.
     /// </summary>
     public const int MaxTrackedDepth = 16;
 
-    // --- Distribution bucket counts ---
-
-    /// <summary>Balance: 0 | &lt;0.01 ETH | 0.01-1 | 1-10 | 10-100 | 100-1K | 1K-10K | 10K+</summary>
-    public const int BalanceBucketCount = 8;
-
-    /// <summary>Nonce: 0 | 1 | 2-10 | 11-100 | 101-1K | 1K+</summary>
-    public const int NonceBucketCount = 6;
-
-    /// <summary>Slots per contract: 1 | 2-10 | 11-100 | 101-1K | 1K-10K | 10K-100K | 100K+</summary>
-    public const int StorageSlotBucketCount = 7;
-
-    // --- Global counters ---
     public long AccountsTotal;
     public long ContractsTotal;
     public long ContractsWithStorage;
@@ -55,21 +43,9 @@ internal sealed class VisitorCounters
     public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
     public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
 
-    // --- Distribution histograms ---
-
-    /// <summary>Balance distribution across 8 buckets (see BalanceBucketCount).</summary>
-    public readonly long[] BalanceBuckets = new long[BalanceBucketCount];
-
-    /// <summary>Nonce distribution across 6 buckets (see NonceBucketCount).</summary>
-    public readonly long[] NonceBuckets = new long[NonceBucketCount];
-
-    /// <summary>Storage slot count distribution across 7 buckets (see StorageSlotBucketCount).</summary>
-    public readonly long[] StorageSlotBuckets = new long[StorageSlotBucketCount];
-
     /// <summary>Branch occupancy histogram: index i = count of account-trie branches with (i+1) children.</summary>
     public readonly long[] BranchOccupancyHistogram = new long[MaxTrackedDepth];
 
-    // --- Per-contract storage trie tracking ---
     public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
 
     // Current storage trie accumulator (reset per contract)
@@ -85,27 +61,7 @@ internal sealed class VisitorCounters
     private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
 
     // Top-N contract rankings (extracted to TopNTracker for SRP)
-    internal TopNTracker TopN { get; }
-
-    public VisitorCounters(int topN = 20)
-    {
-        TopN = new TopNTracker(topN);
-    }
-
-    /// <summary>
-    /// Maps a storage slot count to a distribution bucket index.
-    /// Buckets: 1 | 2-10 | 11-100 | 101-1K | 1K-10K | 10K-100K | 100K+
-    /// </summary>
-    public static int SlotBucket(long slotCount) => slotCount switch
-    {
-        <= 1 => 0,
-        <= 10 => 1,
-        <= 100 => 2,
-        <= 1_000 => 3,
-        <= 10_000 => 4,
-        <= 100_000 => 5,
-        _ => 6,
-    };
+    internal TopNTracker TopN { get; } = new(topN);
 
     /// <summary>
     /// Begin tracking a new storage trie. Finalizes the previous one if active.
@@ -215,9 +171,6 @@ internal sealed class VisitorCounters
         };
 
         TopN.Insert(entry);
-
-        // Storage slot distribution bucket
-        StorageSlotBuckets[SlotBucket(_currentStorageValueNodes)]++;
     }
 
     public void MergeFrom(VisitorCounters other)
@@ -257,15 +210,6 @@ internal sealed class VisitorCounters
             StorageMaxDepthHistogram[i] += other.StorageMaxDepthHistogram[i];
             BranchOccupancyHistogram[i] += other.BranchOccupancyHistogram[i];
         }
-
-        for (int i = 0; i < BalanceBucketCount; i++)
-            BalanceBuckets[i] += other.BalanceBuckets[i];
-
-        for (int i = 0; i < NonceBucketCount; i++)
-            NonceBuckets[i] += other.NonceBuckets[i];
-
-        for (int i = 0; i < StorageSlotBucketCount; i++)
-            StorageSlotBuckets[i] += other.StorageSlotBuckets[i];
 
         TopN.MergeFrom(other.TopN);
     }
