@@ -72,7 +72,11 @@ namespace Nethermind.Logging.NLog
         private static ILogger BuildNamedLogger(string loggerName)
             => new(new NLogLogger(loggerName));
 
+#if !ZK_EVM
         public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
+#endif
+
+        public ILogger GetClassLogger(string filePath) => s_namedLoggers.GetOrAdd(Path.GetFileNameWithoutExtension(filePath), s_namedLoggerBuilder);
 
         public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
@@ -169,9 +173,11 @@ namespace Nethermind.Logging.NLog
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
         }
 
+#if !ZK_EVM
         private static class TypedLogger<T>
         {
             public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }
+#endif
     }
 }

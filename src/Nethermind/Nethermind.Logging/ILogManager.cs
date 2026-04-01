@@ -7,12 +7,11 @@ namespace Nethermind.Logging
 {
     public interface ILogManager
     {
+#if !ZK_EVM
         ILogger GetClassLogger<T>();
+#endif
+        ILogger GetClassLogger(string filePath);
         ILogger GetLogger(string loggerName);
-
-        // Preserved for binary compatibility (NativeAOT/bflat RISC-V vtable layout)
-        [Obsolete("Use GetClassLogger<T>() or GetClassLogger(typeof(T)) extension method")]
-        ILogger GetClassLogger(string filePath) => GetLogger(filePath);
 
         void SetGlobalVariable(string name, object value) { }
     }
@@ -20,6 +19,11 @@ namespace Nethermind.Logging
     public static class LogManagerExtensions
     {
         private static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
+
+#if ZK_EVM
+        public static ILogger GetClassLogger<T>(this ILogManager logManager)
+            => logManager.GetLogger(GetLoggerName(typeof(T)));
+#endif
 
         public static ILogger GetClassLogger(this ILogManager logManager, Type type)
             => logManager.GetLogger(GetLoggerName(type));

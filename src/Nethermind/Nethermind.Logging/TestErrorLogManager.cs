@@ -15,6 +15,8 @@ public class TestErrorLogManager : ILogManager
 
     public ILogger GetClassLogger<T>() => new(new TestErrorLogger(_errors));
 
+    public ILogger GetClassLogger(string filePath) => new(new TestErrorLogger(_errors));
+
     public ILogger GetLogger(string loggerName) => new(new TestErrorLogger(_errors));
 
     public class TestErrorLogger : InterfaceLogger
