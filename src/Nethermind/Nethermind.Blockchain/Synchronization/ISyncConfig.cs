@@ -144,6 +144,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ SyncDispatcher allocation timeout. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int SyncDispatcherAllocateTimeoutMs { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Safety timeout in seconds for missing beacon header detection before forcing a sync restart. 0 to disable.", DefaultValue = "30", HiddenFromDocs = true)]
+    int MissingBeaconHeaderSafetyTimeoutSec { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
     bool NeedToWaitForHeader { get; set; }
 

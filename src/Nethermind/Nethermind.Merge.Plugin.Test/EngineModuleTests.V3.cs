@@ -35,6 +35,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.TxPool;
@@ -754,7 +755,7 @@ public partial class EngineModuleTests
         AddBlockResult res = chainC.BlockTree.Insert(chainB.BlockTree.FindBlock(2)!.Header, BlockTreeInsertHeaderOptions.BeaconHeaderInsert);
         await rpcModuleC.engine_forkchoiceUpdatedV3(new(payloadResultB3.BlockHash, chainC.BlockTree.GenesisHash, chainC.BlockTree.GenesisHash), null);
 
-        BlockHeader[]? heads = new ChainLevelHelper(chainC.BlockTree, chainC.BeaconPivot!, new SyncConfig(), chainC.LogManager)
+        BlockHeader[]? heads = new ChainLevelHelper(chainC.BlockTree, chainC.BeaconPivot!, new SyncConfig(), Substitute.For<ISyncModeSelector>(), new Timestamper(), chainC.LogManager)
             .GetNextHeaders(10, 3);
 
         Assert.That(heads?[2].Hash, Is.EqualTo(payloadResultB2.BlockHash));

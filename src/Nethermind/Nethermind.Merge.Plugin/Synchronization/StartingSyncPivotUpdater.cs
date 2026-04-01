@@ -230,7 +230,7 @@ public class StartingSyncPivotUpdater : IDisposable
 
         if (isCloseToHead && newPivotHigherThanOld)
         {
-            UpdateConfigValues(pivotHeader);
+            UpdateConfigValues(potentialPivotBlockHash, potentialPivotBlockNumber);
 
             if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {potentialPivotBlockNumber}, hash: {potentialPivotBlockHash}");
             return true;
@@ -241,39 +241,9 @@ public class StartingSyncPivotUpdater : IDisposable
         return false;
     }
 
-    /// <summary>
-    /// Sets the global sync pivot and inserts the pivot header into the block tree.
-    /// The header insert is critical: without it, the pivot block has no ChainLevelInfo entry,
-    /// creating a structural gap between BeaconHeadersSyncFeed (which stops at pivot+1) and
-    /// FastHeadersSyncFeed (which starts at pivot going backward). ChainLevelHelper.GetNextHeaders
-    /// hits this gap and fires OnMissingBeaconHeader, triggering an infinite beacon sync restart loop.
-    /// See NethermindEth/nethermind#6304, #6611.
-    ///
-    /// If a beacon pivot above this sync pivot was already set (e.g. by a prior ForkchoiceUpdated
-    /// with a higher head), preserve LowestInsertedBeaconHeader so that BeaconHeadersSyncFeed
-    /// still downloads the chain from the beacon pivot down to here.
-    /// </summary>
-    private void UpdateConfigValues(BlockHeader pivotHeader)
+    private void UpdateConfigValues(Hash256 finalizedBlockHash, long finalizedBlockNumber)
     {
-        long pivotNumber = pivotHeader.Number;
-        Hash256 pivotHash = pivotHeader.Hash!;
-        _blockTree.SyncPivot = (pivotNumber, pivotHash);
-
-        // Remember whether a higher beacon pivot is already tracking a beacon download above this sync pivot.
-        // The BeaconHeaderInsert below would lower LowestInsertedBeaconHeader to pivotNumber,
-        // which would make IsBeaconSyncHeadersFinished() return true prematurely, preventing
-        // BeaconHeadersSyncFeed from ever activating to download the headers above the sync pivot.
-        BlockHeader? existingLowest = _blockTree.LowestInsertedBeaconHeader;
-
-        _blockTree.Insert(pivotHeader, BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
-
-        // Restore if the prior lowest was higher (meaning there are beacon headers above this
-        // sync pivot that still need to be downloaded).
-        if (existingLowest is not null && existingLowest.Number > pivotNumber)
-        {
-            _blockTree.LowestInsertedBeaconHeader = existingLowest;
-        }
-
+        _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
     }
 

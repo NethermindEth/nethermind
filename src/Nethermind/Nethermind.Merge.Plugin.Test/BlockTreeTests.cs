@@ -17,6 +17,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -253,6 +255,8 @@ public partial class BlockTreeTests
             private BlockTreeBuilder? _syncedTreeBuilder;
             private IChainLevelHelper? _chainLevelHelper;
             private IBeaconPivot? _beaconPivot;
+            private ISyncModeSelector _syncModeSelector = Substitute.For<ISyncModeSelector>();
+            private ManualTimestamper _timestamper = new ManualTimestamper();
 
             public ScenarioBuilder WithBlockTrees(
                 int notSyncedTreeSize,
@@ -296,7 +300,7 @@ public partial class BlockTreeTests
 
                 _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), _syncModeSelector, _timestamper, LimboLogs.Instance);
                 if (moveBlocksToMainChain)
                     NotSyncedTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
                 return this;
@@ -354,6 +358,18 @@ public partial class BlockTreeTests
             public ScenarioBuilder ClearForceNewBeaconSync()
             {
                 _beaconPivot!.ShouldForceStartNewSync = false;
+                return this;
+            }
+
+            public ScenarioBuilder WithSyncMode(SyncMode mode)
+            {
+                _syncModeSelector.Current.Returns(mode);
+                return this;
+            }
+
+            public ScenarioBuilder AdvanceTime(TimeSpan duration)
+            {
+                _timestamper.Add(duration);
                 return this;
             }
 
@@ -497,7 +513,7 @@ public partial class BlockTreeTests
                     .WithoutSettingHead
                     .WithDatabaseFrom(NotSyncedTreeBuilder)
                     .TestObject;
-                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot!, new SyncConfig(), LimboLogs.Instance);
+                _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot!, new SyncConfig(), _syncModeSelector, _timestamper, LimboLogs.Instance);
                 return this;
             }
 

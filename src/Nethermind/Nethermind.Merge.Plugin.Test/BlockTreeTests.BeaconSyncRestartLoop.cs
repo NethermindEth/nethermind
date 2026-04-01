@@ -73,13 +73,14 @@ public partial class BlockTreeTests
         long pivotNumber,
         long beaconPivotNumber,
         int localChainLength,
-        bool driveStartingSyncPivotUpdater = true)
+        bool driveStartingSyncPivotUpdater = true,
+        int missingBeaconHeaderSafetyTimeoutSec = 30)
     {
         BlockHeader pivotHeader = remoteChain.FindHeader(pivotNumber, BlockTreeLookupOptions.None)!;
 
         TestSpecProvider specProvider = new(London.Instance);
         specProvider.TerminalTotalDifficulty = 0;
-        ISyncConfig syncConfig = new SyncConfig { FastSync = true, MaxAttemptsToUpdatePivot = 1 };
+        ISyncConfig syncConfig = new SyncConfig { FastSync = true, MaxAttemptsToUpdatePivot = 1, MissingBeaconHeaderSafetyTimeoutSec = missingBeaconHeaderSafetyTimeoutSec };
 
         BlockTreeBuilder localTreeBuilder = Build.A.BlockTree(Build.A.Block.Genesis.TestObject, specProvider)
             .WithSyncConfig(syncConfig)
@@ -226,7 +227,7 @@ public partial class BlockTreeTests
         // to isolate the test from the updater. Blocks 4-5 are intentionally missing.
         (IContainer container, BlockTree localTree) = await SetupSyncScenario(
             remoteChain, pivotNumber, beaconPivotNumber, localChainLength: 4,
-            driveStartingSyncPivotUpdater: false);
+            driveStartingSyncPivotUpdater: false, missingBeaconHeaderSafetyTimeoutSec: 0);
 
         // Manually set pivot with header (simulating fixed UpdateConfigValues)
         BlockHeader pivotHeader = remoteChain.FindHeader(pivotNumber, BlockTreeLookupOptions.None)!;
