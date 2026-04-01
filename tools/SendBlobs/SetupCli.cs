@@ -244,7 +244,7 @@ internal static class SetupCli
             {
                 IJsonRpcClient rpcClient = InitRpcClient(
                     parseResult.GetRequiredValue(rpcUrlOption),
-                    SimpleConsoleLogManager.Instance.GetClassLogger());
+                    SimpleConsoleLogManager.Instance.GetClassLogger<SetupCli>());
 
                 ulong chainId = await rpcClient.GetChainIdAsync();
 
@@ -317,7 +317,7 @@ internal static class SetupCli
 
                 IJsonRpcClient rpcClient = InitRpcClient(
                     parseResult.GetRequiredValue(rpcUrlOption),
-                    SimpleConsoleLogManager.Instance.GetClassLogger());
+                    SimpleConsoleLogManager.Instance.GetClassLogger<SetupCli>());
 
                 ulong chainId = await rpcClient.GetChainIdAsync();
 
