@@ -134,7 +134,7 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
+        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);

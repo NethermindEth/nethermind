@@ -51,7 +51,7 @@ jobs:
       - name: Run Hive
         continue-on-error: true
         working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/sync --sim.loglevel 3 --sim.parallelism 4
+        run: ./hive --client nethermind --sim ethereum/sync --sim.loglevel 4 --sim.parallelism 4
 
       - name: Upload results
         if: always()
