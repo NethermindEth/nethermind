@@ -180,7 +180,13 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip7939TransitionTimestamp = config.OsakaTime,
             Eip7951TransitionTimestamp = config.OsakaTime,
 
-            //EipXXXXTransitionTimestamp = config.AmsterdamTime,
+            Eip7708TransitionTimestamp = config.AmsterdamTime,
+            Eip7778TransitionTimestamp = config.AmsterdamTime,
+            Eip7843TransitionTimestamp = config.AmsterdamTime,
+            Eip7928TransitionTimestamp = config.AmsterdamTime,
+            Eip7954TransitionTimestamp = config.AmsterdamTime,
+            Eip8024TransitionTimestamp = config.AmsterdamTime,
+            Eip8037TransitionTimestamp = config.AmsterdamTime,
 
             BlobSchedule = blobSchedule
         };
@@ -241,6 +247,8 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         bool isEip4844Enabled = gethGenesisJson.Config.CancunTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.CancunTime;
         bool withdrawalsEnabled = gethGenesisJson.Config.ShanghaiTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.ShanghaiTime;
         bool executionRequestsEnabled = gethGenesisJson.Config.PragueTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.PragueTime;
+        bool blockAccessListsEnabled = gethGenesisJson.Config.AmsterdamTime is not null && genesisHeader.Timestamp >= gethGenesisJson.Config.AmsterdamTime;
+        bool slotNumberEnabled = blockAccessListsEnabled;
 
         if (withdrawalsEnabled)
         {
@@ -264,15 +272,22 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = gethGenesisJson.ParentBeaconBlockRoot ?? Keccak.Zero;
         }
 
-        chainSpec.Bootnodes = [];
+        if (blockAccessListsEnabled)
+        {
+            genesisHeader.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
 
-        chainSpec.Genesis = !withdrawalsEnabled
-            ? new Block(genesisHeader)
-            : new Block(
-                genesisHeader,
-                Array.Empty<Transaction>(),
-                Array.Empty<BlockHeader>(),
-                Array.Empty<Withdrawal>());
+        if (slotNumberEnabled)
+        {
+            genesisHeader.SlotNumber = 0;
+        }
+
+        chainSpec.Bootnodes = [];
+        chainSpec.Genesis = !blockAccessListsEnabled
+            ? (!withdrawalsEnabled
+                ? new Block(genesisHeader)
+                : new Block(genesisHeader, [], [], []))
+            : new Block(genesisHeader, [], [], [], new());
     }
 
     private static void LoadAllocations(GethGenesisJson gethGenesis, ChainSpec chainSpec)
@@ -306,6 +321,7 @@ public class GethGenesisLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
         chainSpec.PragueTimestamp = chainSpec.Parameters.Eip7002TransitionTimestamp;
         chainSpec.OsakaTimestamp = chainSpec.Parameters.Eip7594TransitionTimestamp;
+        chainSpec.AmsterdamTimestamp = chainSpec.Parameters.Eip7928TransitionTimestamp;
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;
         chainSpec.TerminalTotalDifficulty = chainSpec.Parameters.TerminalTotalDifficulty;
 

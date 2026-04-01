@@ -8,6 +8,7 @@ using System.Text;
 using FluentAssertions;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -148,6 +149,90 @@ public class GethGenesisLoaderTests
         chainSpec.CancunTimestamp.Should().Be(1710338135);
         chainSpec.PragueTimestamp.Should().Be(1800000000);
         chainSpec.TerminalTotalDifficulty.Should().Be(UInt256.Zero);
+    }
+
+    [Test]
+    public void Can_load_genesis_with_amsterdam_time()
+    {
+        const string genesis = """
+        {
+          "config": {
+            "chainId": 1,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "amsterdamTime": 15
+          },
+          "timestamp": 0,
+          "difficulty": "0x1",
+          "gasLimit": "0x8000000",
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadFromString(genesis);
+
+        chainSpec.AmsterdamTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip7708TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip7778TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip7843TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip7928TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip7954TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip8024TransitionTimestamp.Should().Be(15);
+        chainSpec.Parameters.Eip8037TransitionTimestamp.Should().Be(15);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec preAmsterdam = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec amsterdam = provider.GetSpec(ForkActivation.TimestampOnly(15));
+
+        preAmsterdam.IsEip7708Enabled.Should().BeFalse();
+        preAmsterdam.IsEip7778Enabled.Should().BeFalse();
+        preAmsterdam.IsEip7843Enabled.Should().BeFalse();
+        preAmsterdam.IsEip7928Enabled.Should().BeFalse();
+        preAmsterdam.IsEip7954Enabled.Should().BeFalse();
+        preAmsterdam.IsEip8024Enabled.Should().BeFalse();
+        preAmsterdam.IsEip8037Enabled.Should().BeFalse();
+
+        amsterdam.IsEip7708Enabled.Should().BeTrue();
+        amsterdam.IsEip7778Enabled.Should().BeTrue();
+        amsterdam.IsEip7843Enabled.Should().BeTrue();
+        amsterdam.IsEip7928Enabled.Should().BeTrue();
+        amsterdam.IsEip7954Enabled.Should().BeTrue();
+        amsterdam.IsEip8024Enabled.Should().BeTrue();
+        amsterdam.IsEip8037Enabled.Should().BeTrue();
+        amsterdam.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
+    }
+
+    [Test]
+    public void Amsterdam_time_at_genesis_sets_genesis_header_fields()
+    {
+        const string genesis = """
+        {
+          "config": {
+            "chainId": 1,
+            "homesteadBlock": 0,
+            "eip150Block": 0,
+            "eip155Block": 0,
+            "eip158Block": 0,
+            "amsterdamTime": 15
+          },
+          "timestamp": 15,
+          "difficulty": "0x1",
+          "gasLimit": "0x8000000",
+          "alloc": {}
+        }
+        """;
+
+        ChainSpec chainSpec = LoadFromString(genesis);
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        chainSpec.Genesis.BlockAccessListHash.Should().Be(Keccak.OfAnEmptySequenceRlp);
+        chainSpec.Genesis.SlotNumber.Should().Be(0);
+        provider.GenesisSpec.IsEip7928Enabled.Should().BeTrue();
+        provider.GenesisSpec.IsEip7843Enabled.Should().BeTrue();
+        provider.GenesisSpec.IsEip7954Enabled.Should().BeTrue();
+        provider.GenesisSpec.MaxCodeSize.Should().Be(CodeSizeConstants.MaxCodeSizeEip7954);
     }
 
     [Test]
