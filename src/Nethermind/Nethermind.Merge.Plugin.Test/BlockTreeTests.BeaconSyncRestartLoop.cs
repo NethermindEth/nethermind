@@ -32,20 +32,7 @@ namespace Nethermind.Merge.Plugin.Test;
 
 /// <summary>
 /// Regression tests for the infinite beacon sync restart loop (NethermindEth/nethermind#6304, #6611).
-///
-/// These tests exercise the real production code path end-to-end:
-///   StartingSyncPivotUpdater.OnSyncModeChanged → TrySetFreshPivot → UpdateConfigValues
-///   (resolves pivot from mock peer, writes to BlockTree via production code)
-///   then:
-///   FastSyncFeed dispatcher → BlockDownloader → PosForwardHeaderProvider → ChainLevelHelper
-///   → OnMissingBeaconHeader
-///
-/// No internal methods are called manually. The only substitution is ISyncPeerPool
-/// (mock peer returns headers from a pre-built chain, no real network needed).
-///
-/// Key property: the regression test FAILS on unfixed code and PASSES on fixed code,
-/// because it exercises StartingSyncPivotUpdater.UpdateConfigValues — which either
-/// inserts the pivot header (fixed) or only writes metadata (unfixed).
+/// Exercises the full production sync path end-to-end using a mock peer — no internal methods called directly.
 /// </summary>
 public partial class BlockTreeTests
 {
@@ -63,9 +50,7 @@ public partial class BlockTreeTests
     }
 
     /// <summary>
-    /// Drives the FastSyncFeed dispatcher for a short time, then stops it.
-    /// This is what Synchronizer.Start() does in production — we just do it
-    /// in a controlled way for testing.
+    /// Drives the FastSyncFeed dispatcher briefly, then cancels it.
     /// </summary>
     private static async Task RunFastSyncFeedBriefly(SyncFeedComponent<BlocksRequest> component, int durationMs = 500)
     {
@@ -81,9 +66,7 @@ public partial class BlockTreeTests
     }
 
     /// <summary>
-    /// Sets up the local block tree, drives StartingSyncPivotUpdater through its real
-    /// production code path (OnSyncModeChanged → TrySetFreshPivot → UpdateConfigValues),
-    /// inserts beacon headers, then returns a DI container with the full sync stack wired.
+    /// Sets up the local block tree and beacon headers, then returns a DI container with the full sync stack wired.
     /// </summary>
     private static async Task<(IContainer container, BlockTree localTree)> SetupSyncScenario(
         BlockTree remoteChain,

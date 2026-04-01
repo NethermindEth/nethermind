@@ -46,10 +46,7 @@ public class ChainLevelHelper : IChainLevelHelper
     ///    is above the global sync pivot, in the range BeaconHeaders will download once it starts.
     /// 2. BeaconHeaders has started but hasn't reached this block yet (blockNumber is at or above
     ///    LowestInsertedBeaconHeader).
-    ///
-    /// Firing ShouldForceStartNewSync in either case causes an infinite restart loop because the
-    /// restart resets BeaconHeaders, which then has to re-download the same range, and the missing
-    /// block reappears before it can commit. See NethermindEth/nethermind#6304, #6611.
+    /// See NethermindEth/nethermind#6304, #6611.
     /// </summary>
     private void OnMissingBeaconHeader(long blockNumber)
     {

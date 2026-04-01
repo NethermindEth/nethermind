@@ -107,8 +107,6 @@ public class StartingSyncPivotUpdater : IDisposable
     /// <summary>
     /// Resolves the finalized block header to use as the global sync pivot.
     /// Checks the block cache, block tree, and peers in that order.
-    /// Returns the full BlockHeader (not just hash+number) because the caller needs to insert it
-    /// into the block tree to close the structural gap at PivotDestinationNumber.
     /// </summary>
     protected virtual async Task<BlockHeader?> TryGetPivotData(CancellationToken cancellationToken)
     {
