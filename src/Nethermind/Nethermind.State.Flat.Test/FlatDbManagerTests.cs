@@ -196,6 +196,31 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task AddSnapshot_ForkChangeWithCompactedSnapshots_SkipsRemoveStatesFrom()
+    {
+        StateId persistedStateId = CreateStateId(5);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
+        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+
+        // Fork change detected, but compacted snapshots exist at this height
+        StateId snapshotTo = CreateStateId(11, rootByte: 0xAA);
+        _snapshotRepository.HasState(snapshotTo).Returns(false);
+        _snapshotRepository.HasStatesAtBlockNumber(11).Returns(true);
+        _snapshotRepository.HasCompactedStateAtOrAbove(11).Returns(true);
+
+        ResourcePool realResourcePool = new(_config);
+        StateId snapshotFrom = CreateStateId(10);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+
+        _snapshotRepository.DidNotReceive().RemoveStatesFrom(Arg.Any<long>());
+        _snapshotRepository.Received(1).TryAddSnapshot(snapshot);
+    }
+
+    [Test]
     public async Task AddSnapshot_SequentialBlock_DoesNotCallRemoveStatesFrom()
     {
         StateId persistedStateId = CreateStateId(5);

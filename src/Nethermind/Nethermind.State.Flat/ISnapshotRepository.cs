@@ -20,6 +20,13 @@ public interface ISnapshotRepository
     bool TryLeaseCompactedState(in StateId stateId, [NotNullWhen(true)] out Snapshot? entry);
     bool RemoveAndReleaseCompactedKnownState(in StateId stateId);
     bool HasState(in StateId stateId);
+
+    /// <summary>
+    /// Returns true if any non-compacted snapshot exists with <c>To.BlockNumber == blockNumber</c>.
+    /// Used to detect fork changes: if a snapshot exists at this height but with a different
+    /// state root than the one being added, it indicates a fork switch.
+    /// Does not check compacted snapshots.
+    /// </summary>
     bool HasStatesAtBlockNumber(long blockNumber);
     SnapshotPooledList AssembleSnapshots(in StateId stateId, in StateId targetStateId, int estimatedSize);
     SnapshotPooledList AssembleSnapshotsUntil(in StateId stateId, long minBlockNumber, int estimatedSize);
