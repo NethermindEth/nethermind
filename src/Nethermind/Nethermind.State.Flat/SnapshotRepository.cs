@@ -224,6 +224,13 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public void RemoveStatesFrom(long blockNumber)
     {
+        // Fast check: if no snapshots exist at or above this block number, skip the full scan.
+        using (ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
+        {
+            if (sortedSnapshots.Count == 0 || sortedSnapshots.Max.BlockNumber < blockNumber)
+                return;
+        }
+
         foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
             if (kvp.Key.BlockNumber >= blockNumber)
@@ -240,9 +247,9 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             }
         }
 
-        // Clean up any orphaned entries in the sorted set (e.g. from compacted snapshots
-        // or entries added by the async compactor before removal).
-        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
-        sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber);
+        using (ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+        {
+            sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber);
+        }
     }
 }
