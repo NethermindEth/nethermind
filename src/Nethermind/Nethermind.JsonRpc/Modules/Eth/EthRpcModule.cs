@@ -35,6 +35,7 @@ using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
@@ -71,6 +72,7 @@ public partial class EthRpcModule(
     ulong? secondsPerSlot) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1000;
+    public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -199,6 +201,51 @@ public partial class EthRpcModule(
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
     }
+
+    public ResultWrapper<StorageValuesResult> eth_getStorageValues(
+        StorageValuesRequest requests,
+        BlockParameter blockParameter)
+    {
+        if (requests.TooManySlots)
+            return TooManySlotsError();
+
+        if (requests.Entries.Count == 0 || requests.TotalSlots == 0)
+            return ResultWrapper<StorageValuesResult>.Fail("empty request", ErrorCodes.InvalidParams);
+
+        SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
+        if (searchResult.IsError)
+            return GetFailureResult<StorageValuesResult, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+
+        BlockHeader header = searchResult.Object!;
+        if (!_blockchainBridge.HasStateForBlock(header))
+            return GetStateFailureResult<StorageValuesResult>(header);
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(requests.TotalSlots * 32);
+        buffer.AsSpan(0, requests.TotalSlots * 32).Clear();
+        int bufferOffset = 0;
+
+        Dictionary<Address, Memory<byte>[]> slots = new(requests.Entries.Count);
+        foreach (KeyValuePair<Address, UInt256[]> entry in requests.Entries)
+        {
+            UInt256[] slotKeys = entry.Value;
+            Memory<byte>[] values = new Memory<byte>[slotKeys.Length];
+            for (int i = 0; i < slotKeys.Length; i++)
+            {
+                ReadOnlySpan<byte> storage = _stateReader.GetStorage(header, entry.Key, slotKeys[i]);
+                Memory<byte> slot = buffer.AsMemory(bufferOffset, 32);
+                if (!storage.IsEmpty)
+                    storage.CopyTo(slot.Span[(32 - storage.Length)..]);
+                values[i] = slot;
+                bufferOffset += 32;
+            }
+            slots[entry.Key] = values;
+        }
+
+        return ResultWrapper<StorageValuesResult>.Success(new StorageValuesResult(buffer, slots));
+    }
+
+    private static ResultWrapper<StorageValuesResult> TooManySlotsError() =>
+        ResultWrapper<StorageValuesResult>.Fail($"too many slots (max {MaxGetStorageSlots})", ErrorCodes.InvalidParams);
 
     public virtual Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter? blockParameter)
     {

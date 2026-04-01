@@ -1025,8 +1025,11 @@ namespace Nethermind.Blockchain
             }
 
             // Clear stale canonical markers above the new head left by beacon sync.
-            // Covers both same-height FCU (previousHeadNumber <= lastNumber) and ePBS FCU to ancestor.
-            ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
+            // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
+            // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
+            // are either not yet set or belong to the same chain and must not be cleared.
+            if (forceUpdateHeadBlock)
+                ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
             for (int i = 0; i < blocks.Count; i++)
             {

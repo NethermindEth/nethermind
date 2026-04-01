@@ -19,12 +19,31 @@ public static class ContainerBuilderExtensions
             .AddSingleton((ctx) => new SerializerInfo(typeof(TMessage), ctx.Resolve<TSerializer>()));
     }
 
+    /// <summary>
+    /// Registers a protocol handler type and its corresponding <see cref="IProtocolHandlerFactory"/>.
+    /// Handler lifetime is owned by <see cref="ISession"/>: the session disposes its handlers
+    /// on disconnect, so the DI container must not track them.
+    /// </summary>
     public static ContainerBuilder AddProtocolHandler<THandler>(
         this ContainerBuilder builder) where THandler : class, IProtocolHandler, IStaticProtocolInfo
     {
-        builder.Add<THandler>();
+        return builder
+            .Add<THandler>(externallyOwned: true)
+            .AddLast<IProtocolHandlerFactory>(ctx =>
+                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), THandler.Code, THandler.Version));
+    }
 
-        return builder.AddLast<IProtocolHandlerFactory>(ctx =>
-            new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), THandler.Code, THandler.Version));
+    /// <summary>
+    /// Registers a protocol handler that accepts any version (version validation happens
+    /// after the Hello handshake, not at factory level). Same ownership semantics
+    /// as <see cref="AddProtocolHandler{THandler}(ContainerBuilder)"/>.
+    /// </summary>
+    public static ContainerBuilder AddProtocolHandler<THandler>(
+        this ContainerBuilder builder, string protocolCode) where THandler : class, IProtocolHandler
+    {
+        return builder
+            .Add<THandler>(externallyOwned: true)
+            .AddLast<IProtocolHandlerFactory>(ctx =>
+                new ReusableProtocolHandlerFactory<THandler>(ctx.Resolve<Func<ISession, THandler>>(), protocolCode));
     }
 }

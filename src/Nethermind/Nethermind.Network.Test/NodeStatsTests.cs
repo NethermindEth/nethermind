@@ -31,7 +31,7 @@ public class NodeStatsTests
     [TestCase(TransferSpeedType.NodeData)]
     public void TransferSpeedCaptureTest(TransferSpeedType speedType)
     {
-        _nodeStats = new NodeStatsLight(_node, 0.5m);
+        _nodeStats = new NodeStatsLight(_node, 0.5f);
 
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 30);
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
