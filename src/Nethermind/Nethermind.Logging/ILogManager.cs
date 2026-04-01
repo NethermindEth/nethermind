@@ -8,9 +8,16 @@ namespace Nethermind.Logging
     public interface ILogManager
     {
         ILogger GetClassLogger<T>();
-        ILogger GetClassLogger(Type type) => GetLogger(type.FullName?.Replace("Nethermind.", string.Empty) ?? type.Name);
         ILogger GetLogger(string loggerName);
 
         void SetGlobalVariable(string name, object value) { }
+    }
+
+    public static class LogManagerExtensions
+    {
+        private static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
+
+        public static ILogger GetClassLogger(this ILogManager logManager, Type type)
+            => logManager.GetLogger(GetLoggerName(type));
     }
 }

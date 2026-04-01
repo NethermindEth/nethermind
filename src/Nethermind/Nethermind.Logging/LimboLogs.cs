@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 
 namespace Nethermind.Logging
@@ -26,8 +25,6 @@ namespace Nethermind.Logging
         public static LimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, static () => new LimboLogs());
 
         public ILogger GetClassLogger<T>() => LimboTraceLogger.Instance;
-
-        public ILogger GetClassLogger(Type type) => LimboTraceLogger.Instance;
 
         public ILogger GetLogger(string loggerName) => LimboTraceLogger.Instance;
     }
