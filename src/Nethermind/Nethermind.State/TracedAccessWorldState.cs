@@ -23,7 +23,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
+        UInt256? currentBalance = GetBalanceCurrent(address);
         _innerWorldState.AddToBalance(address, balanceChange, spec, out oldBalance);
+        oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance + balanceChange;
         _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
@@ -31,7 +33,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
+        bool? currentlyExists = AccountExistsCurrent(address);
+        UInt256? currentBalance = GetBalanceCurrent(address);
         bool res = _innerWorldState.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
+        oldBalance = currentBalance ?? oldBalance;
+        res = currentlyExists ?? res;
+
         UInt256 newBalance = oldBalance + balanceChange;
         _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
 
@@ -55,7 +62,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
+        UInt256? currentNonce = GetNonceCurrent(address);
         _innerWorldState.IncrementNonce(address, delta, out oldNonce);
+        oldNonce = currentNonce ?? oldNonce;
         _generatingBlockAccessList.AddNonceChange(address, (ulong)(oldNonce + delta));
     }
 
@@ -112,12 +121,12 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             return;
         }
 
-        oldBalance = GetBalanceInternal(address);
+        UInt256? currentBalance = GetBalanceCurrent(address);
+        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
+        oldBalance = currentBalance ?? oldBalance;
 
         UInt256 newBalance = oldBalance - balanceChange;
         _generatingBlockAccessList.AddBalanceChange(address, oldBalance, newBalance);
-
-        _innerWorldState.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
     }
 
     public override void DeleteAccount(Address address)
@@ -128,22 +137,13 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        AddAccountRead(address);
-        if (!balance.IsZero)
-        {
-            _generatingBlockAccessList.AddBalanceChange(address, 0, balance);
-        }
-        if (!nonce.IsZero)
-        {
-            _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
-        }
-
+        RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccount(address, balance, nonce);
     }
 
     public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
     {
-        AddAccountRead(address);
+        RecordCreateAccount(address, balance, nonce);
         _innerWorldState.CreateAccountIfNotExists(address, balance, nonce);
     }
 
@@ -213,16 +213,22 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     }
 
     private UInt256 GetBalanceInternal(Address address)
+        => GetBalanceCurrent(address) ?? _innerWorldState.GetBalance(address);
+
+    private UInt256? GetBalanceCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.BalanceChanges.Count == 1)
         {
             return accountChanges.BalanceChanges.First().PostBalance;
         }
-        return _innerWorldState.GetBalance(address);
+        return null;
     }
 
     private UInt256 GetNonceInternal(Address address)
+        => GetNonceCurrent(address) ?? _innerWorldState.GetNonce(address);
+
+    private UInt256? GetNonceCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
@@ -230,7 +236,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             return accountChanges.NonceChanges.First().NewNonce;
         }
 
-        return _innerWorldState.GetNonce(address);
+        return null;
     }
 
     private byte[]? GetCodeInternal(Address address)
@@ -258,6 +264,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     }
 
     private bool AccountExistsInternal(Address address)
+        => AccountExistsCurrent(address) ?? _innerWorldState.AccountExists(address);
+
+    private bool? AccountExistsCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
@@ -267,7 +276,20 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             return true;
         }
 
-        return _innerWorldState.AccountExists(address);
+        return null;
+    }
+
+    private void RecordCreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default)
+    {
+        AddAccountRead(address);
+        if (!balance.IsZero)
+        {
+            _generatingBlockAccessList.AddBalanceChange(address, 0, balance);
+        }
+        if (!nonce.IsZero)
+        {
+            _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
+        }
     }
 
     private AccountStruct? GetAccountInternal(Address address)
