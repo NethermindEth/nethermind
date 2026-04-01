@@ -272,9 +272,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
 
     private AccountStruct? GetAccountInternal(Address address)
         => AccountExistsInternal(address) ? new(
-                GetNonceInternal(address),
-                GetBalanceInternal(address),
-                Keccak.EmptyTreeHash, // never used
-                _innerWorldState.GetCodeHash(address)) : null;
+            GetNonceInternal(address),
+            GetBalanceInternal(address),
+            Keccak.EmptyTreeHash, // never used
+            _innerWorldState.GetCodeHash(address)) : null;
 
 }

@@ -10,7 +10,6 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -160,7 +159,7 @@ public partial class BlockProcessor(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void CalculateBlooms(TxReceipt[] receipts)
+    protected static void CalculateBlooms(TxReceipt[] receipts)
     {
         ParallelUnbalancedWork.For(
             0,
@@ -175,7 +174,7 @@ public partial class BlockProcessor(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void SetAccountChanges(Block block)
+    protected void SetAccountChanges(Block block)
         => block.AccountChanges = _stateProvider.GetAccountChanges();
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)

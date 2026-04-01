@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
@@ -17,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Crypto;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -38,7 +40,9 @@ public partial class ParallelBlockProcessor(
     IBlocksConfig blocksConfig)
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
 {
+    public new event Action? TransactionsExecuted;
     private BlockAccessListManager _balManager;
+
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis)
@@ -62,6 +66,66 @@ public partial class ParallelBlockProcessor(
         IReleaseSpec spec,
         CancellationToken token)
     {
-        return [];
+        if (!spec.BlockLevelAccessListsEnabled)
+        {
+            return base.ProcessBlock(block, blockTracer, options, spec, token);
+        }
+
+        BlockBody body = block.Body;
+        BlockHeader header = block.Header;
+        bool parallel = blocksConfig.ParallelExecution && !block.IsGenesis && !options.ContainsFlag(ProcessingOptions.ProducingBlock);
+
+        _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
+
+        _balManager.StoreBeaconRoot(block, spec);
+        _balManager.ApplyBlockhashStateChanges(header, spec);
+        _stateProvider.Commit(spec, commitRoots: false);
+
+        TxReceipt[] receipts;
+        receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+
+        // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
+        // to free the thread pool for blooms, receipts root, state root parallel work below
+        TransactionsExecuted?.Invoke();
+
+        _stateProvider.Commit(spec, commitRoots: false);
+
+        CalculateBlooms(receipts);
+
+        if (spec.IsEip4844Enabled)
+        {
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
+        }
+
+        header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+
+        _balManager.ProcessWithdrawals(block, spec, parallel);
+
+        // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
+        // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
+        _stateProvider.Commit(spec, commitRoots: false);
+
+        _balManager.ProcessExecutionRequests(block, receipts, spec);
+
+        ReceiptsTracer.EndBlockTrace();
+
+        _stateProvider.Commit(spec, commitRoots: true);
+
+        if (BlockchainProcessor.IsMainProcessingThread)
+        {
+            SetAccountChanges(block);
+        }
+
+        if (ShouldComputeStateRoot(header))
+        {
+            _stateProvider.RecalculateStateRoot();
+            header.StateRoot = _stateProvider.StateRoot;
+        }
+
+        _balManager.SetBlockAccessList(block, spec);
+
+        header.Hash = header.CalculateHash();
+
+        return receipts;
     }
 }
