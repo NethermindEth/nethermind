@@ -52,8 +52,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
         {
-            if (!_canInitBeaconHeaderSync) return false;
-
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
             return true;
