@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -31,8 +30,25 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         _changes = new();
     }
 
-    public bool Equals(BlockAccessList? other) =>
-        other is not null && _accountChanges.SequenceEqual(other._accountChanges);
+    public bool Equals(BlockAccessList? other)
+    {
+        if (other is null)
+            return false;
+
+        if (_accountChanges.Count != other._accountChanges.Count)
+            return false;
+
+        foreach (KeyValuePair<Address, AccountChanges> pair in _accountChanges)
+        {
+            if (!other._accountChanges.TryGetValue(pair.Key, out AccountChanges? otherValue))
+                return false;
+
+            if (pair.Value != otherValue)
+                return false;
+        }
+
+        return true;
+    }
 
     public override bool Equals(object? obj) =>
         obj is BlockAccessList other && Equals(other);
@@ -47,6 +63,14 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         !(left == right);
 
     public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
+
+    public int ItemCount()
+    {
+        int count = _accountChanges.Count;
+        foreach (AccountChanges accountChanges in _accountChanges.Values)
+            count += accountChanges.StorageChanges.Count + accountChanges.StorageReads.Count;
+        return count;
+    }
 
     public void IncrementBlockAccessIndex()
     {

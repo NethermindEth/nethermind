@@ -39,6 +39,7 @@ namespace Nethermind.Network.Test;
 public sealed class PooledBufferLeakDetector : IDisposable
 {
     private readonly string _message;
+    private readonly long _initialAlloc;
 
     /// <summary>
     /// The allocator tracked by this instance. Tests should allocate buffers from this
@@ -46,27 +47,27 @@ public sealed class PooledBufferLeakDetector : IDisposable
     /// </summary>
     public PooledByteBufferAllocator Allocator { get; }
 
+    /// <summary>
+    /// Creates a <see cref="PooledByteBufferAllocator"/> with thread-local caches disabled,
+    /// so that <see cref="IByteBuffer.Release()"/> returns buffers directly to the arena.
+    /// This makes <c>NumActiveAllocations</c> an accurate count of unreleased buffers.
+    /// Use this to share a single allocator across multiple <see cref="PooledBufferLeakDetector"/>
+    /// instances within a test fixture, avoiding per-test arena allocation overhead.
+    /// </summary>
+    public static PooledByteBufferAllocator CreateAllocator() => new(
+        nHeapArena: 1, nDirectArena: 0, pageSize: 4096, maxOrder: 0,
+        tinyCacheSize: 0, smallCacheSize: 0, normalCacheSize: 0);
+
     public PooledBufferLeakDetector(PooledByteBufferAllocator? allocator = null, string? message = null)
     {
-        // Cache sizes MUST be 0 — see class doc for why.
-        Allocator = allocator ?? new PooledByteBufferAllocator(
-            nHeapArena: 1, nDirectArena: 0, pageSize: 4096, maxOrder: 0,
-            tinyCacheSize: 0, smallCacheSize: 0, normalCacheSize: 0);
+        Allocator = allocator ?? CreateAllocator();
         _message = message ?? "Pooled buffer leak: buffer was allocated from the pool but never released back";
-    }
-
-    /// <summary>
-    /// Explicitly assert no leaks. Call at the end of the test body to get a clear failure
-    /// without risk of masking the original exception (as Dispose would from a finally block).
-    /// </summary>
-    public void AssertNoLeaks()
-    {
-        long active = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
-        Assert.That(active, Is.EqualTo(0), _message);
+        _initialAlloc = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
     }
 
     public void Dispose()
     {
-        AssertNoLeaks();
+        long active = Allocator.Metric.HeapArenas().Sum(a => a.NumActiveAllocations);
+        Assert.That(active, Is.EqualTo(_initialAlloc), _message);
     }
 }

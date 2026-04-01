@@ -247,6 +247,8 @@ jobs:
 
           echo "=== .nettrace files (EventPipe method traces) ==="
           find "${RUNNER_TEMP}/pgo-data" -name "*.nettrace" -type f -ls 2>/dev/null || true
+          echo "=== .jit files (edge/block profiling data) ==="
+          find "${RUNNER_TEMP}/pgo-data" -name "*.jit" -type f -ls 2>/dev/null || true
 
       - name: Set up .NET
         if: always()
@@ -334,12 +336,34 @@ jobs:
           ls -lh "${mibc_file}"
           echo "mibc_file=${mibc_file}" >> "${GITHUB_OUTPUT}"
 
+          # Step 2: Trim .jit edge/block profiling data for runtime PGO
+          # .jit files (from DOTNET_WritePGOData) use a JIT-internal text format read
+          # back via DOTNET_ReadPGOData — they can't be merged into .mibc by dotnet-pgo.
+          jit_file=$(find "${pgo_dir}" -name "*.jit" -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -1 | cut -d' ' -f2- || true)
+          jit_gz="${RUNNER_TEMP}/nethermind.jit.gz"
+          if [[ -n "${jit_file}" ]]; then
+            echo "Trimming ${jit_file} with PgoTrim..."
+            dotnet run --project "${GITHUB_WORKSPACE}/tools/PgoTrim" -c Release -- \
+              "${jit_file}" "${jit_gz}" --min-block 100 --min-edge 250
+            echo "jit_gz=${jit_gz}" >> "${GITHUB_OUTPUT}"
+          else
+            echo "No .jit file found — skipping edge profiling trim."
+          fi
+
       - name: Upload .mibc artifact
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: nethermind-pgo-profile
           path: ${{ steps.convert.outputs.mibc_file }}
+          retention-days: 90
+
+      - name: Upload trimmed .jit.gz artifact
+        if: always() && steps.convert.outputs.jit_gz != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-pgo-jit
+          path: ${{ steps.convert.outputs.jit_gz }}
           retention-days: 90
 
       - name: Upload raw PGO data
@@ -366,10 +390,17 @@ jobs:
           name: nethermind-pgo-profile
           path: src/Nethermind/Nethermind.Runner/pgo/
 
+      - name: Download .jit.gz artifact
+        uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: nethermind-pgo-jit
+          path: src/Nethermind/Nethermind.Runner/pgo/
+
       - name: Check for changes
         id: diff
         run: |
-          if git diff --quiet src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc; then
+          if git diff --quiet src/Nethermind/Nethermind.Runner/pgo/; then
             echo "changed=false" >> "${GITHUB_OUTPUT}"
             echo "No changes to PGO profile."
           else
@@ -387,6 +418,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "${branch}"
           git add src/Nethermind/Nethermind.Runner/pgo/nethermind.mibc
+          git add src/Nethermind/Nethermind.Runner/pgo/nethermind.jit.gz 2>/dev/null || true
           git commit -m "chore(pgo): update PGO profile from weekly collection"
           git push -u origin "${branch}"
           gh pr create \
@@ -394,6 +426,7 @@ jobs:
             --body "$(cat <<'EOF'
           ## Summary
           - Weekly automated update of the PGO (.mibc) profile used for R2R compilation
+          - Updated edge/block profiling data (.jit.gz) for runtime branch optimization
           - Generated from 5000 mainnet blocks via EventPipe profiling
 
           ## Test plan

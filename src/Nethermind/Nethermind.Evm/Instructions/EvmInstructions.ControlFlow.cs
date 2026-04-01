@@ -148,20 +148,11 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Stops the execution of the EVM.
-    /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // In contract creation contexts, a STOP is not permitted.
-        if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            return EvmExceptionType.BadInstruction;
-        }
-
-        return EvmExceptionType.Stop;
-    }
+        => EvmExceptionType.Stop;
 
     /// <summary>
     /// Implements the REVERT opcode.
@@ -255,11 +246,7 @@ internal static partial class EvmInstructions
             false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
         };
 
-        bool outOfGas = chargesNewAccount && !(TEip8037.IsActive switch
-        {
-            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
-            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-        });
+        bool outOfGas = chargesNewAccount && !(TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
 
         if (outOfGas) goto OutOfGas;
 

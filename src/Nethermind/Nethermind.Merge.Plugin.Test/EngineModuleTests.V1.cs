@@ -22,7 +22,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
-using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.HealthChecks;
 using Nethermind.Int256;
@@ -843,7 +842,6 @@ public partial class EngineModuleTests
         resultWrapper.Data.PayloadStatus.LatestValidHash.Should().Be(Keccak.Zero);
     }
 
-    [Test]
     [CancelAfter(5000)]
     public async Task executePayloadV1_on_top_of_terminal_block(CancellationToken cancellationToken)
     {
@@ -852,19 +850,12 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block newBlock = BuildNewBlock(chain.BlockTree.Head!).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block oneMoreTerminalBlock = BuildOneMoreTerminalBlock(chain.BlockTree.Head!).TestObject;
+        oneMoreTerminalBlock.CalculateHash();
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -875,7 +866,6 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(newBlock);
         await bestBlockProcessed.WaitAsync(cancellationToken);
 
-        oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
@@ -889,7 +879,6 @@ public partial class EngineModuleTests
         ExecutionPayload.Create(chain.BlockTree.BestSuggestedBody!).Should().BeEquivalentTo(executionPayload, o => o.IgnoringCyclicReferences());
     }
 
-    [Test]
     [CancelAfter(5000)]
     public async Task executePayloadV1_on_top_of_not_processed_invalid_terminal_block(CancellationToken cancellationToken)
     {
@@ -898,19 +887,12 @@ public partial class EngineModuleTests
             TerminalTotalDifficulty = $"{1900000}"
         });
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        Block newBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(1000000)
-            .WithTotalDifficulty(2000000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
+
+        Block newBlock = BuildNewBlock(chain.BlockTree.Head!).TestObject;
         newBlock.CalculateHash();
-        Block oneMoreTerminalBlock = Build.A.Block.WithNumber(chain.BlockTree.Head!.Number)
-            .WithParent(chain.BlockTree.Head!)
-            .WithNonce(0)
-            .WithDifficulty(900000)
-            .WithTotalDifficulty(1900000L)
-            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject; //incorrect state root
+
+        Block oneMoreTerminalBlock = BuildOneMoreTerminalBlock(chain.BlockTree.Head!, correctStateRoot: false).TestObject;
+        oneMoreTerminalBlock.CalculateHash();
 
         using SemaphoreSlim bestBlockProcessed = new(0);
         chain.BlockTree.NewHeadBlock += (s, e) =>
@@ -921,7 +903,6 @@ public partial class EngineModuleTests
         await chain.BlockTree.SuggestBlockAsync(newBlock);
         await bestBlockProcessed.WaitAsync(cancellationToken);
 
-        oneMoreTerminalBlock.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(oneMoreTerminalBlock);
 
         Block firstPoSBlock = Build.A.Block.WithParent(oneMoreTerminalBlock).
@@ -1719,4 +1700,20 @@ public partial class EngineModuleTests
 
         return errorResponse.Error?.Code ?? ErrorCodes.None;
     }
+
+    protected virtual BlockBuilder BuildNewBlock(Block head)
+        => Build.A.Block.WithNumber(head.Number)
+            .WithParent(head)
+            .WithNonce(0)
+            .WithDifficulty(1000000)
+            .WithTotalDifficulty(2000000L)
+            .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
+
+    protected virtual BlockBuilder BuildOneMoreTerminalBlock(Block head, bool correctStateRoot = true)
+        => Build.A.Block.WithNumber(head.Number)
+            .WithParent(head)
+            .WithNonce(0)
+            .WithDifficulty(900000)
+            .WithTotalDifficulty(1900000L)
+            .WithStateRoot(new Hash256(correctStateRoot ? "0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f" : "0x1ef7300d8961797263939a3d29bfba4ccf1702fabf02d8ad7a20b454edb6fd2f"));
 }

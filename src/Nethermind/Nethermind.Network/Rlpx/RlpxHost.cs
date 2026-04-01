@@ -58,6 +58,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ConcurrentDictionary<Guid, SessionActivitySubscription> _sessionActivitySubscriptions = new();
         private readonly TimeSpan _shutdownQuietPeriod;
         private readonly TimeSpan _shutdownCloseTimeout;
+        private CancellationTokenSource? _shutdownCts = new();
 
         public RlpxHost(
             IMessageSerializationService serializationService,
@@ -333,7 +334,7 @@ namespace Nethermind.Network.Rlpx
             // The close completion is completed before actual closing or remaining packet is processed.
             // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
             // add some delay to account for whatever is holding the network pipeline.
-            _ = Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(
+            _ = Task.Delay(TimeSpan.FromSeconds(1), _shutdownCts?.Token ?? CancellationToken.None).ContinueWith(
                 _markDisconnectedAfterCloseDelay,
                 state,
                 CancellationToken.None,
@@ -350,6 +351,8 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdownCts);
+
             // Close channels first so Disconnected handlers fire while subscriptions are still active
             await (_bootstrapChannel?.CloseAsync().ContinueWith(t =>
             {

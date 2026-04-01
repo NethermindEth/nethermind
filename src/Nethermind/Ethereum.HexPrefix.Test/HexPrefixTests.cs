@@ -30,6 +30,7 @@ namespace Ethereum.HexPrefix.Test
             Assert.That(resultHex, Is.EqualTo(test.Output));
 
             (byte[] key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
+            Assert.That(isLeaf, Is.EqualTo(test.IsTerm));
             byte[] checkBytes = Nethermind.Trie.HexPrefix.ToBytes(key, isLeaf);
             string checkHex = checkBytes.ToHexString(false);
             Assert.That(checkHex, Is.EqualTo(test.Output));

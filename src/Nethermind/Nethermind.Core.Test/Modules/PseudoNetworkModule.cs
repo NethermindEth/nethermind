@@ -9,11 +9,8 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State;
-using Nethermind.State.SnapServer;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.TxPool;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -24,16 +21,9 @@ public class PseudoNetworkModule() : Module
         base.Load(builder);
 
         builder
-            .AddSingleton<IFullStateFinder, FullStateFinder>()
-            .AddSingleton<IBeaconSyncStrategy>(No.BeaconSync)
-            .AddSingleton<IPoSSwitcher>(NoPoS.Instance)
-
-            .AddSingleton<IProtocolValidator, ProtocolValidator>()
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
-            .AddComposite<ITxGossipPolicy, CompositeTxGossipPolicy>()
 
             // TODO: LastNStateRootTracker
-            .AddSingleton<ISnapServer, IWorldStateManager>(stateProvider => stateProvider.SnapServer!)
 
             .AddAdvance<ProtocolsManager>(cfg =>
             {

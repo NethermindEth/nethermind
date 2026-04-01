@@ -47,7 +47,6 @@ public partial class BlockProcessor(
 {
     private readonly ILogger _logger = logManager.GetClassLogger();
     private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -61,11 +60,14 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        if (_balBuilder is not null && spec.BlockLevelAccessListsEnabled)
+        if (_balBuilder is not null)
         {
-            _balBuilder.TracingEnabled = true;
-            _balBuilder.GeneratedBlockAccessList.Clear();
-            _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            bool balsEnabled = spec.BlockLevelAccessListsEnabled;
+            _balBuilder.TracingEnabled = balsEnabled;
+            if (balsEnabled)
+            {
+                _balBuilder.LoadSuggestedBlockAccessList(suggestedBlock.BlockAccessList, suggestedBlock.GasUsed);
+            }
         }
 
         ApplyDaoTransition(suggestedBlock);
@@ -116,7 +118,7 @@ public partial class BlockProcessor(
 
         StoreBeaconRoot(block, spec);
         blockHashStore.ApplyBlockhashStateChanges(header, spec);
-        _stateProvider.Commit(spec, commitRoots: false);
+        stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts;
         receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
@@ -125,7 +127,7 @@ public partial class BlockProcessor(
         // to free the thread pool for blooms, receipts root, state root parallel work below
         TransactionsExecuted?.Invoke();
 
-        _stateProvider.Commit(spec, commitRoots: false);
+        stateProvider.Commit(spec, commitRoots: false);
 
         CalculateBlooms(receipts);
 
@@ -141,26 +143,25 @@ public partial class BlockProcessor(
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
-        _stateProvider.Commit(spec, commitRoots: false);
+        stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        executionRequestsProcessor.ProcessExecutionRequests(block, stateProvider, receipts, spec);
 
         _balBuilder?.SetBlockAccessList(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec, commitRoots: true);
+        stateProvider.Commit(spec, commitRoots: true);
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
-            // Get the accounts that have been changed
-            block.AccountChanges = _stateProvider.GetAccountChanges();
+            SetAccountChanges(block);
         }
 
         if (ShouldComputeStateRoot(header))
         {
-            _stateProvider.RecalculateStateRoot();
-            header.StateRoot = _stateProvider.StateRoot;
+            stateProvider.RecalculateStateRoot();
+            header.StateRoot = stateProvider.StateRoot;
         }
 
 
@@ -183,6 +184,10 @@ public partial class BlockProcessor(
                 return receipts;
             });
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void SetAccountChanges(Block block)
+        => block.AccountChanges = stateProvider.GetAccountChanges();
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
     {
@@ -265,7 +270,7 @@ public partial class BlockProcessor(
                 tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), reward.Value);
                 if (txTracer.IsTracingState)
                 {
-                    _stateProvider.Commit(spec, txTracer);
+                    stateProvider.Commit(spec, txTracer);
                 }
             }
         }
@@ -282,7 +287,7 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"  {(BigInteger)reward.Value / (BigInteger)Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
 
-        _stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
+        stateProvider.AddToBalanceAndCreateIfNotExists(reward.Address, reward.Value, spec);
     }
 
     private void ApplyDaoTransition(Block block)
@@ -298,16 +303,16 @@ public partial class BlockProcessor(
         {
             if (_logger.IsInfo) _logger.Info("Applying the DAO transition");
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            if (!_stateProvider.AccountExists(withdrawAccount))
+            if (!stateProvider.AccountExists(withdrawAccount))
             {
-                _stateProvider.CreateAccount(withdrawAccount, 0);
+                stateProvider.CreateAccount(withdrawAccount, 0);
             }
 
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+                UInt256 balance = stateProvider.GetBalance(daoAccount);
+                stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
     }

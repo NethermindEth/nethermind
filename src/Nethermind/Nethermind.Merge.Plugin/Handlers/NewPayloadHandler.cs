@@ -349,7 +349,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         try
         {
-            CancellationTokenSource cts = new();
+            using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(_timeout, cts.Token);
 
             AddBlockResult addResult = await _blockTree

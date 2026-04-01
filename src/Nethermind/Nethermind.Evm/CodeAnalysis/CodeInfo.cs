@@ -20,22 +20,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    protected CodeInfo(IPrecompile precompile, int version, ReadOnlyMemory<byte> code)
-    {
-        Precompile = precompile;
-        Version = version;
-        Code = code;
-        _analyzer = null;
-    }
-
-    // Eof
-    protected CodeInfo(int version, ReadOnlyMemory<byte> code)
-    {
-        Version = version;
-        Code = code;
-        _analyzer = null;
-    }
-
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
@@ -47,6 +31,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     public CodeInfo(IPrecompile? precompile)
     {
         Precompile = precompile;
+        _analyzer = null;
+    }
+
+    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
+    {
+        Precompile = precompile;
+        Code = code;
         _analyzer = null;
     }
 
@@ -62,12 +53,6 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
 
     public bool ValidateJump(int destination)
         => _analyzer?.ValidateJump(destination) ?? false;
-
-    /// <summary>
-    /// Gets the version of the code format.
-    /// The default implementation returns 0, representing a legacy code format or non-EOF code.
-    /// </summary>
-    public int Version { get; } = 0;
 
     void IThreadPoolWorkItem.Execute()
         => _analyzer?.Execute();

@@ -133,14 +133,20 @@ public class ChainSpecParamsJson
     public long? TerminalPoWBlockNumber { get; set; }
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
+    public long? Eip1153Transition { get; set; }
     public ulong? Eip1153TransitionTimestamp { get; set; }
+    public long? Eip3651Transition { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
+    public long? Eip3855Transition { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
+    public long? Eip3860Transition { get; set; }
     public ulong? Eip3860TransitionTimestamp { get; set; }
     public ulong? Eip4895TransitionTimestamp { get; set; }
     public ulong? Eip4844TransitionTimestamp { get; set; }
     public ulong? Eip2537TransitionTimestamp { get; set; }
+    public long? Eip5656Transition { get; set; }
     public ulong? Eip5656TransitionTimestamp { get; set; }
+    public long? Eip6780Transition { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
@@ -159,7 +165,6 @@ public class ChainSpecParamsJson
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
-    public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
