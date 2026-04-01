@@ -235,26 +235,37 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public void RemoveStatesFrom(long blockNumber)
     {
-        // Fast check: if no snapshots exist at or above this block number, skip the full scan.
-        using (ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterReadLock(out SortedSet<StateId> sortedSnapshots))
+        // Scan _snapshots directly for the fast check since _sortedSnapshotStateIds is populated
+        // asynchronously by the compactor and may lag behind.
+        bool hasAny = false;
+        foreach (StateId key in _snapshots.Keys)
         {
-            if (sortedSnapshots.Count == 0 || sortedSnapshots.Max.BlockNumber < blockNumber)
-                return;
-        }
-
-        // Only remove non-compacted snapshots. Compacted snapshots span block ranges and are
-        // cleaned up by RemoveStatesUntil when persistence advances.
-        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
-        {
-            if (kvp.Key.BlockNumber >= blockNumber)
+            if (key.BlockNumber >= blockNumber)
             {
-                RemoveAndReleaseKnownState(kvp.Key);
+                hasAny = true;
+                break;
             }
         }
 
-        using (ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots))
+        if (!hasAny) return;
+
+        // Remove from _snapshots and track metrics. Avoids per-item write locks on the sorted set
+        // by doing a single batched cleanup at the end.
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
-            sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber);
+            if (kvp.Key.BlockNumber >= blockNumber && _snapshots.TryRemove(kvp.Key, out Snapshot? existingState))
+            {
+                Metrics.SnapshotCount--;
+
+                long totalBytes = existingState.EstimateMemory();
+                Metrics.SnapshotMemory -= totalBytes;
+                Metrics.TotalSnapshotMemory -= totalBytes;
+
+                existingState.Dispose();
+            }
         }
+
+        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
+        sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber);
     }
 }

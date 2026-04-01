@@ -173,6 +173,63 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task AddSnapshot_CallsRemoveStatesFrom()
+    {
+        StateId persistedStateId = CreateStateId(5);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
+        _snapshotRepository.TryAddSnapshot(Arg.Any<Snapshot>()).Returns(true);
+
+        ResourcePool realResourcePool = new(_config);
+        StateId snapshotFrom = CreateStateId(10);
+        StateId snapshotTo = CreateStateId(11);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+
+        _snapshotRepository.Received(1).RemoveStatesFrom(11);
+    }
+
+    [Test]
+    public async Task AddSnapshot_BlockBelowPersistedState_DoesNotCallRemoveStatesFrom()
+    {
+        StateId persistedStateId = CreateStateId(100);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
+
+        ResourcePool realResourcePool = new(_config);
+        StateId snapshotFrom = CreateStateId(50);
+        StateId snapshotTo = CreateStateId(51);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+
+        _snapshotRepository.DidNotReceive().RemoveStatesFrom(Arg.Any<long>());
+    }
+
+    [Test]
+    public async Task AddSnapshot_RejectsWhenCompactedStateExistsAtBlockNumber()
+    {
+        StateId persistedStateId = CreateStateId(5);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persistedStateId);
+        _snapshotRepository.HasCompactedStateAtOrAbove(11).Returns(true);
+
+        ResourcePool realResourcePool = new(_config);
+        StateId snapshotFrom = CreateStateId(10);
+        StateId snapshotTo = CreateStateId(11);
+        Snapshot snapshot = realResourcePool.CreateSnapshot(snapshotFrom, snapshotTo, ResourcePool.Usage.MainBlockProcessing);
+        TransientResource transientResource = realResourcePool.GetCachedResource(ResourcePool.Usage.MainBlockProcessing);
+
+        await using FlatDbManager manager = CreateManager();
+        manager.AddSnapshot(snapshot, transientResource);
+
+        _snapshotRepository.DidNotReceive().TryAddSnapshot(Arg.Any<Snapshot>());
+        _resourcePool.Received(1).ReturnCachedResource(ResourcePool.Usage.MainBlockProcessing, transientResource);
+    }
+
+    [Test]
     public async Task AddSnapshot_DuplicateSnapshot_DisposesSnapshotAndReturnsResource()
     {
         StateId persistedStateId = CreateStateId(5);
