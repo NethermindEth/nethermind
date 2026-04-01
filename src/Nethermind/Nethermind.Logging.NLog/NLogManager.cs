@@ -38,6 +38,7 @@ namespace Nethermind.Logging.NLog
             logDirectory = SetupLogDirectory(logDirectory);
             SetupLogFile(logFileName, logDirectory);
             SetupLogRules(logRules);
+            LogManager.ReconfigExistingLoggers();
         }
 
         private static void SetupLogFile(string logFileName, string logDirectory)
