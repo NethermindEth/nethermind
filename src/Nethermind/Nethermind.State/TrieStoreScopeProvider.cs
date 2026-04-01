@@ -109,12 +109,16 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 idx++;
             }
 
+            // Precompute keccak hashes and radix sort for disk cache locality
+            int[] sortedOrder = RadixSortAddresses(accountChangesList, accountCount);
+
             Account?[] accounts = new Account?[accountCount];
             Parallel.For(0, accountCount, (i) =>
             {
-                Address address = accountChangesList[i].Address;
+                int orig = sortedOrder[i];
+                Address address = accountChangesList[orig].Address;
                 Account? account = _backingStateTree.Get(address);
-                accounts[i] = account;
+                accounts[orig] = account;
 
                 _loadedAccounts.TryAdd(address, account);
                 sink.OnAccountRead(address, account);
@@ -151,15 +155,100 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 foreach (StorageRead storageRead in accountChanges.StorageReads)
                     slotIndices[si++] = storageRead.Key;
 
+                // Radix sort storage slot hashes for disk cache locality
+                int[] slotOrder = RadixSortStorageSlots(slotIndices, slotCount);
+
                 Parallel.For(0, slotCount, (si2) =>
                 {
-                    byte[] decodedValue = storageTree.Get(in slotIndices[si2]);
-                    StorageCell cell = new(address, slotIndices[si2]);
+                    int orig = slotOrder[si2];
+                    byte[] decodedValue = storageTree.Get(in slotIndices[orig]);
+                    StorageCell cell = new(address, slotIndices[orig]);
                     sink.OnStorageRead(in cell, decodedValue);
                 });
             }
 
             return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Radix sort addresses by their keccak hash (bytes 0-3) for trie locality.
+        /// Returns an index array representing the sorted order.
+        /// </summary>
+        private static int[] RadixSortAddresses(AccountChanges[] accountChanges, int count)
+        {
+            ValueHash256[] hashes = new ValueHash256[count];
+            for (int i = 0; i < count; i++)
+                hashes[i] = KeccakCache.Compute(accountChanges[i].Address.Bytes);
+
+            return RadixSortByHash(hashes, count);
+        }
+
+        /// <summary>
+        /// Radix sort storage slots by their keccak hash (bytes 0-3) for trie locality.
+        /// Returns an index array representing the sorted order.
+        /// </summary>
+        private static int[] RadixSortStorageSlots(UInt256[] slotIndices, int count)
+        {
+            ValueHash256[] hashes = new ValueHash256[count];
+            for (int i = 0; i < count; i++)
+                StorageTree.ComputeKeyWithLookup(in slotIndices[i], ref hashes[i]);
+
+            return RadixSortByHash(hashes, count);
+        }
+
+        /// <summary>
+        /// LSD radix sort on bytes 0-3 of the hash. Returns sorted index array.
+        /// </summary>
+        private static int[] RadixSortByHash(ValueHash256[] hashes, int count)
+        {
+            int[] idx0 = new int[count];
+            int[] idx1 = new int[count];
+            ValueHash256[] buf = new ValueHash256[count];
+
+            for (int i = 0; i < count; i++)
+                idx0[i] = i;
+
+            Span<int> counts = stackalloc int[256];
+            bool flipped = false;
+
+            for (int p = 3; p >= 0; p--)
+            {
+                RadixPassWithIndices(
+                    flipped ? buf : hashes,
+                    flipped ? hashes : buf,
+                    flipped ? idx1 : idx0,
+                    flipped ? idx0 : idx1,
+                    count, p, counts);
+                flipped = !flipped;
+            }
+
+            return flipped ? idx1 : idx0;
+        }
+
+        private static void RadixPassWithIndices(
+            ReadOnlySpan<ValueHash256> hashSrc, Span<ValueHash256> hashDst,
+            ReadOnlySpan<int> idxSrc, Span<int> idxDst,
+            int len, int byteIndex, Span<int> counts)
+        {
+            counts.Clear();
+            for (int i = 0; i < len; i++)
+                counts[hashSrc[i].BytesAsSpan[byteIndex]]++;
+
+            int total = 0;
+            for (int b = 0; b < 256; b++)
+            {
+                int c = counts[b];
+                counts[b] = total;
+                total += c;
+            }
+
+            for (int i = 0; i < len; i++)
+            {
+                byte key = hashSrc[i].BytesAsSpan[byteIndex];
+                int pos = counts[key]++;
+                hashDst[pos] = hashSrc[i];
+                idxDst[pos] = idxSrc[i];
+            }
         }
 
 
