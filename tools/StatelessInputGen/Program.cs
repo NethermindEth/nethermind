@@ -21,7 +21,7 @@ Option<string> blockOption = new("--block", "-b")
     HelpName = "number",
     DefaultValueFactory = r => "latest"
 };
-Option<bool> noWrapOption = new("--no-wrap")
+Option<bool> noZiskOption = new("--no-zisk")
 {
     Description = "Don't wrap the serialized data in Zisk input frame.",
     DefaultValueFactory = r => false
@@ -58,7 +58,7 @@ RootCommand rootCommand =
 [
     hostOption,
     blockOption,
-    noWrapOption,
+    noZiskOption,
     outputOption
 ];
 rootCommand.SetAction(async parseResult =>
@@ -72,7 +72,7 @@ rootCommand.SetAction(async parseResult =>
             parseResult.GetValue(blockOption)!,
             host!,
             parseResult.GetValue(outputOption)!,
-            parseResult.GetValue(noWrapOption)
+            !parseResult.GetValue(noZiskOption)
         );
     }
     catch (Exception ex)

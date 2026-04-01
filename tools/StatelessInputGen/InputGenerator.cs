@@ -15,7 +15,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool noWrap = false)
+    internal static async Task<int> Generate(string blockParam, Uri host, string output, bool forZisk)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -27,7 +27,7 @@ internal static class InputGenerator
 
         byte[] data = InputSerializer.Serialize(block, witness, chainId.Value);
 
-        if (!noWrap)
+        if (forZisk)
         {
             int rem = data.Length % sizeof(ulong);
             int len = sizeof(ulong) + data.Length + (rem == 0 ? 0 : (sizeof(ulong) - rem));
