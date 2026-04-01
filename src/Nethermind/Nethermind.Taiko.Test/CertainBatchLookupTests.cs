@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
+using System.Collections.Generic;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -9,11 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
@@ -23,183 +22,161 @@ using Nethermind.Taiko.Rpc;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using System.Collections.Generic;
 
 namespace Nethermind.Taiko.Test;
 
 /// <summary>
 /// Tests for taikoAuth_lastCertainBlockIDByBatchID and taikoAuth_lastCertainL1OriginByBatchID.
-/// These methods perform database-only lookups without blockchain traversal fallback.
+/// Mirrors taiko-geth PR #536 and #537 test patterns: write to rawdb, call RPC, verify result.
 /// </summary>
 public class CertainBatchLookupTests
 {
     private IDb _db = null!;
     private L1OriginStore _store = null!;
+    private TaikoEngineRpcModule _rpcModule = null!;
 
     [SetUp]
     public void Setup()
     {
         _db = new TestMemDb();
         _store = new L1OriginStore(_db, new L1OriginDecoder());
+        _rpcModule = CreateRpcModule(_store);
     }
 
+    /// <summary>
+    /// Mirrors ethclient/taiko_api_test.go TestLastCertainBlockIDByBatchID from taiko-geth PR #536.
+    /// Step 1: call with batchID=1, expect null (nothing in DB).
+    /// Step 2: write batch-to-block mapping, call again, expect the written blockID.
+    /// </summary>
     [Test]
-    public void LastCertainBlockIDByBatchID_Returns_null_when_batch_not_in_db()
+    public void TestLastCertainBlockIDByBatchID()
     {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID(Arg.Any<UInt256>()).Returns((UInt256?)null);
+        UInt256 batchId = 1;
 
-        TaikoEngineRpcModule module = CreateModule(originStore);
+        // Call before any mapping exists — expect null
+        ResultWrapper<UInt256?> result = _rpcModule.taikoAuth_lastCertainBlockIDByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Null);
 
-        var result = module.taikoAuth_lastCertainBlockIDByBatchID(1);
+        // Write the mapping: batchID=1 -> blockID=10
+        UInt256 blockId = 10;
+        _store.WriteBatchToLastBlockID(batchId, blockId);
 
-        result.Data.Should().BeNull();
+        // Call again — expect the written blockID
+        result = _rpcModule.taikoAuth_lastCertainBlockIDByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.EqualTo(blockId));
     }
 
+    /// <summary>
+    /// Mirrors eth/taiko_api_backend_test.go TestLastCertainL1OriginByBatchID from taiko-geth PR #537.
+    /// Step 1: call with batchID=1, expect null.
+    /// Step 2: write batch-to-block mapping (batchID=1 -> blockID=2) and L1Origin, call again, verify deep equality.
+    /// </summary>
     [Test]
-    public void LastCertainBlockIDByBatchID_Returns_blockId_when_batch_exists_in_db()
+    public void TestLastCertainL1OriginByBatchID()
     {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID((UInt256)1).Returns((UInt256?)200);
+        UInt256 batchId = 1;
 
-        TaikoEngineRpcModule module = CreateModule(originStore);
+        // Call before any mapping exists — expect null
+        ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Null);
 
-        var result = module.taikoAuth_lastCertainBlockIDByBatchID(1);
-
-        result.Data.Should().Be((UInt256)200);
-    }
-
-    [Test]
-    public void LastCertainBlockIDByBatchID_Does_not_read_l1_origin()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID(Arg.Any<UInt256>()).Returns((UInt256?)null);
-
-        TaikoEngineRpcModule module = CreateModule(originStore);
-
-        module.taikoAuth_lastCertainBlockIDByBatchID(42);
-
-        originStore.Received(1).ReadBatchToLastBlockID((UInt256)42);
-        originStore.DidNotReceive().ReadL1Origin(Arg.Any<UInt256>());
-    }
-
-    [Test]
-    public void LastCertainL1OriginByBatchID_Returns_null_when_batch_not_in_db()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID(Arg.Any<UInt256>()).Returns((UInt256?)null);
-
-        TaikoEngineRpcModule module = CreateModule(originStore);
-
-        var result = module.taikoAuth_lastCertainL1OriginByBatchID(1);
-
-        result.Data.Should().BeNull();
-    }
-
-    [Test]
-    public void LastCertainL1OriginByBatchID_Returns_origin_when_batch_and_origin_exist()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        L1Origin expectedOrigin = new(200, TestItem.KeccakA, 456, Hash256.Zero, null);
-
-        originStore.ReadBatchToLastBlockID((UInt256)1).Returns((UInt256?)200);
-        originStore.ReadL1Origin((UInt256)200).Returns(expectedOrigin);
-
-        TaikoEngineRpcModule module = CreateModule(originStore);
-
-        var result = module.taikoAuth_lastCertainL1OriginByBatchID(1);
-
-        result.Data.Should().Be(expectedOrigin);
-    }
-
-    [Test]
-    public void LastCertainL1OriginByBatchID_Returns_null_when_batch_exists_but_origin_missing()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID((UInt256)1).Returns((UInt256?)200);
-        originStore.ReadL1Origin((UInt256)200).Returns((L1Origin?)null);
-
-        TaikoEngineRpcModule module = CreateModule(originStore);
-
-        var result = module.taikoAuth_lastCertainL1OriginByBatchID(1);
-
-        result.Data.Should().BeNull();
-    }
-
-    [Test]
-    public void LastCertainL1OriginByBatchID_Does_not_read_origin_when_no_batch_mapping()
-    {
-        IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
-        originStore.ReadBatchToLastBlockID(Arg.Any<UInt256>()).Returns((UInt256?)null);
-
-        TaikoEngineRpcModule module = CreateModule(originStore);
-
-        module.taikoAuth_lastCertainL1OriginByBatchID(42);
-
-        originStore.Received(1).ReadBatchToLastBlockID((UInt256)42);
-        originStore.DidNotReceive().ReadL1Origin(Arg.Any<UInt256>());
-    }
-
-    [Test]
-    public void Integration_LastCertainBlockIDByBatchID_with_real_store()
-    {
-        _store.WriteBatchToLastBlockID(5, 500);
-
-        UInt256? blockId = _store.ReadBatchToLastBlockID(5);
-        blockId.Should().Be((UInt256)500);
-
-        UInt256? missing = _store.ReadBatchToLastBlockID(999);
-        missing.Should().BeNull();
-    }
-
-    [Test]
-    public void Integration_LastCertainL1OriginByBatchID_with_real_store()
-    {
-        UInt256 batchId = 5;
-        UInt256 blockId = 500;
-        L1Origin expectedOrigin = new(blockId, TestItem.KeccakB, 789, Hash256.Zero, null);
+        // Write the mapping and L1Origin, mirroring taiko-geth test values:
+        // blockID=2, L2BlockHash=0x1, L1BlockHeight=3, L1BlockHash=0x2
+        UInt256 blockId = 2;
+        Hash256 l2BlockHash = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        Hash256 l1BlockHash = new("0x0000000000000000000000000000000000000000000000000000000000000002");
+        L1Origin expected = new(blockId, l2BlockHash, 3, l1BlockHash, null);
 
         _store.WriteBatchToLastBlockID(batchId, blockId);
-        _store.WriteL1Origin(blockId, expectedOrigin);
+        _store.WriteL1Origin(blockId, expected);
 
-        UInt256? readBlockId = _store.ReadBatchToLastBlockID(batchId);
-        readBlockId.Should().Be(blockId);
-
-        L1Origin? readOrigin = _store.ReadL1Origin(readBlockId!.Value);
-        readOrigin.Should().NotBeNull();
-        readOrigin!.BlockId.Should().Be(blockId);
-        readOrigin.L1BlockHeight.Should().Be(789);
+        // Call again — verify all fields
+        result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
+        Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
+        Assert.That(result.Data.L1BlockHeight, Is.EqualTo(expected.L1BlockHeight));
+        Assert.That(result.Data.L1BlockHash, Is.EqualTo(expected.L1BlockHash));
     }
 
-    private static TaikoEngineRpcModule CreateModule(IL1OriginStore originStore)
+    /// <summary>
+    /// Mirrors ethclient/taiko_api_test.go TestLastCertainL1OriginByBatchID from taiko-geth PR #537.
+    /// Uses a minimal L1Origin with only BlockID and L2BlockHash set.
+    /// </summary>
+    [Test]
+    public void TestLastCertainL1OriginByBatchID_MinimalOrigin()
     {
-        return new TaikoEngineRpcModule(
-            Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
-            Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
-            Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
-            Substitute.For<IForkchoiceUpdatedHandler>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
-            Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
-            Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
-            Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
-            Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
-            Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
-            Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
-            Substitute.For<IEngineRequestsTracker>(),
-            Substitute.For<ISpecProvider>(),
-            new GCKeeper(NoGCStrategy.Instance, LimboLogs.Instance),
-            LimboLogs.Instance,
-            Substitute.For<ITxPool>(),
-            Substitute.For<IBlockFinder>(),
-            Substitute.For<IShareableTxProcessorSource>(),
-            Substitute.For<IRlpStreamEncoder<Transaction>>(),
-            originStore,
-            Substitute.For<ISurgeConfig>()
-        );
+        UInt256 batchId = 1;
+
+        // Call before any mapping exists — expect null
+        ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Null);
+
+        // Write mapping and a minimal L1Origin (only BlockID and L2BlockHash)
+        UInt256 blockId = 5;
+        Hash256 l2BlockHash = new("0x00000000000000000000000000000000000000000000000000000000deadbeef");
+        L1Origin expected = new(blockId, l2BlockHash, null, Hash256.Zero, null);
+
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        _store.WriteL1Origin(blockId, expected);
+
+        // Call again — verify
+        result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.BlockId, Is.EqualTo(expected.BlockId));
+        Assert.That(result.Data.L2BlockHash, Is.EqualTo(expected.L2BlockHash));
     }
+
+    /// <summary>
+    /// Verifies that taikoAuth_lastCertainL1OriginByBatchID returns null when the batch mapping
+    /// exists but the L1Origin for that block has not been written.
+    /// </summary>
+    [Test]
+    public void TestLastCertainL1OriginByBatchID_MissingOrigin()
+    {
+        UInt256 batchId = 1;
+        UInt256 blockId = 2;
+
+        _store.WriteBatchToLastBlockID(batchId, blockId);
+        // Don't write the L1Origin for blockId=2
+
+        ResultWrapper<L1Origin?> result = _rpcModule.taikoAuth_lastCertainL1OriginByBatchID(batchId);
+        Assert.That(result.Result, Is.EqualTo(Result.Success));
+        Assert.That(result.Data, Is.Null);
+    }
+
+    private static TaikoEngineRpcModule CreateRpcModule(IL1OriginStore l1OriginStore) => new(
+        Substitute.For<IAsyncHandler<byte[], ExecutionPayload?>>(),
+        Substitute.For<IAsyncHandler<byte[], GetPayloadV2Result?>>(),
+        Substitute.For<IAsyncHandler<byte[], GetPayloadV3Result?>>(),
+        Substitute.For<IAsyncHandler<byte[], GetPayloadV4Result?>>(),
+        Substitute.For<IAsyncHandler<byte[], GetPayloadV5Result?>>(),
+        Substitute.For<IAsyncHandler<byte[], GetPayloadV6Result?>>(),
+        Substitute.For<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>(),
+        Substitute.For<IForkchoiceUpdatedHandler>(),
+        Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>>>(),
+        Substitute.For<IGetPayloadBodiesByRangeV1Handler>(),
+        Substitute.For<IHandler<TransitionConfigurationV1, TransitionConfigurationV1>>(),
+        Substitute.For<IHandler<IEnumerable<string>, IEnumerable<string>>>(),
+        Substitute.For<IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>>>(),
+        Substitute.For<IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?>>(),
+        Substitute.For<IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>>>(),
+        Substitute.For<IGetPayloadBodiesByRangeV2Handler>(),
+        Substitute.For<IEngineRequestsTracker>(),
+        Substitute.For<ISpecProvider>(),
+        null!,
+        Substitute.For<ILogManager>(),
+        Substitute.For<ITxPool>(),
+        Substitute.For<IBlockFinder>(),
+        Substitute.For<IShareableTxProcessorSource>(),
+        Substitute.For<IRlpStreamEncoder<Transaction>>(),
+        l1OriginStore,
+        new SurgeConfig()
+    );
 }
