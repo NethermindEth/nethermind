@@ -56,11 +56,7 @@ public class StartingSyncPivotUpdater : IDisposable
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot; // Note: Blocktree would have set this to 0 if sync pivot is in DB
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
 
-        if (_maxAttempts == 0)
-        {
-            _beaconSyncStrategy.AllowBeaconHeaderSync();
-        }
-        else
+        if (_maxAttempts != 0)
         {
             _syncModeSelector.Changed += OnSyncModeChanged;
         }
@@ -82,7 +78,7 @@ public class StartingSyncPivotUpdater : IDisposable
             {
                 _syncModeSelector.Changed -= OnSyncModeChanged;
                 _syncConfig.MaxAttemptsToUpdatePivot = 0;
-                _beaconSyncStrategy.AllowBeaconHeaderSync();
+
                 if (_logger.IsInfo) _logger.Info("Failed to update pivot block, skipping it and using pivot from config file.");
             }
         }
@@ -92,7 +88,6 @@ public class StartingSyncPivotUpdater : IDisposable
         {
             _syncModeSelector.Changed -= OnSyncModeChanged;
             _syncConfig.MaxAttemptsToUpdatePivot = 0;
-            _beaconSyncStrategy.AllowBeaconHeaderSync();
             if (_logger.IsInfo) _logger.Info("Skipping pivot update");
         }
     }
@@ -226,7 +221,6 @@ public class StartingSyncPivotUpdater : IDisposable
     {
         _blockTree.SyncPivot = (finalizedBlockNumber, finalizedBlockHash);
         _syncConfig.MaxAttemptsToUpdatePivot = 0;
-        _beaconSyncStrategy.AllowBeaconHeaderSync();
     }
 
     protected void UpdateAndPrintPotentialNewPivot(Hash256 finalizedBlockHash)
