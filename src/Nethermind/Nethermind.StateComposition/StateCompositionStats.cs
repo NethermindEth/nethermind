@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.StateComposition;
 
-public readonly record struct StateCompositionStats
+public readonly record struct StateCompositionStats()
 {
     public long BlockNumber { get; init; }
     public Hash256? StateRoot { get; init; }
@@ -24,12 +24,12 @@ public readonly record struct StateCompositionStats
     public long StorageTrieShortNodes { get; init; }
     public long StorageTrieValueNodes { get; init; }
 
-    public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
-    public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
-    public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
+    public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; } = ImmutableArray<TopContractEntry>.Empty;
+    public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; } = ImmutableArray<TopContractEntry>.Empty;
+    public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; } = ImmutableArray<TopContractEntry>.Empty;
     /// <summary>
     /// Top contracts ranked by total storage trie byte size.
     /// Nethermind extension — not present in Geth's inspect-trie output.
     /// </summary>
-    public ImmutableArray<TopContractEntry> TopContractsBySize { get; init; }
+    public ImmutableArray<TopContractEntry> TopContractsBySize { get; init; } = ImmutableArray<TopContractEntry>.Empty;
 }

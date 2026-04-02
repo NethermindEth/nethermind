@@ -122,8 +122,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             StateCompositionStats stats = visitor.GetStats(header.Number, header.StateRoot);
             TrieDepthDistribution dist = visitor.GetTrieDistribution();
 
-            _stateHolder.SetBaseline(stats, dist);
-            _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
+            _stateHolder.StoreScan(header.Number, header.StateRoot!, sw.Elapsed, stats, dist);
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
@@ -139,13 +138,16 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync()
+    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync(long? blockNumber)
     {
-        if (_stateHolder.IsInitialized)
-            return Task.FromResult(Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution));
+        ScanCacheEntry? entry = _stateHolder.GetScan(blockNumber);
+        if (entry is not null)
+            return Task.FromResult(Result<TrieDepthDistribution>.Success(entry.Value.Distribution));
 
-        return Task.FromResult(Result<TrieDepthDistribution>.Fail(
-            "No cached data available. Run statecomp_getStats() first to trigger a scan."));
+        string msg = blockNumber is not null
+            ? $"No cached scan for block {blockNumber}. Run statecomp_getStats first."
+            : "No cached data available. Run statecomp_getStats() first to trigger a scan.";
+        return Task.FromResult(Result<TrieDepthDistribution>.Fail(msg));
     }
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)

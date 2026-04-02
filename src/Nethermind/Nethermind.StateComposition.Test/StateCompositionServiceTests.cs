@@ -27,7 +27,13 @@ public class StateCompositionServiceTests
         config.ScanQueueTimeoutSeconds.Returns(5);
         config.TopNContracts.Returns(20);
         config.ExcludeStorage.Returns(false);
+        config.CachePath.Returns("statecomp");
         return config;
+    }
+
+    private static IStateCompositionStateHolder CreateMockStateHolder()
+    {
+        return Substitute.For<IStateCompositionStateHolder>();
     }
 
     [Test]
@@ -40,7 +46,7 @@ public class StateCompositionServiceTests
         {
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
-                new StateCompositionStateHolder(),
+                CreateMockStateHolder(),
                 config,
                 LimboLogs.Instance);
         });
@@ -55,7 +61,7 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
-                new StateCompositionStateHolder(),
+                CreateMockStateHolder(),
                 config,
                 LimboLogs.Instance));
     }
@@ -69,7 +75,7 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
-                new StateCompositionStateHolder(),
+                CreateMockStateHolder(),
                 config,
                 LimboLogs.Instance));
     }
@@ -83,22 +89,24 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
-                new StateCompositionStateHolder(),
+                CreateMockStateHolder(),
                 config,
                 LimboLogs.Instance));
     }
 
     [Test]
-    public async Task GetTrieDistributionAsync_FailsWhenNotInitialized()
+    public async Task GetTrieDistributionAsync_FailsWhenNoScanCached()
     {
+        IStateCompositionStateHolder stateHolder = CreateMockStateHolder();
+        stateHolder.GetScan(null).Returns((ScanCacheEntry?)null);
+
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
-            new StateCompositionStateHolder(),
+            stateHolder,
             CreateValidConfig(),
             LimboLogs.Instance);
 
-        Result<TrieDepthDistribution> result =
-            await service.GetTrieDistributionAsync();
+        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync(null);
 
         using (Assert.EnterMultipleScope())
         {
@@ -108,11 +116,54 @@ public class StateCompositionServiceTests
     }
 
     [Test]
+    public async Task GetTrieDistributionAsync_FailsForSpecificBlock_WhenNotCached()
+    {
+        IStateCompositionStateHolder stateHolder = CreateMockStateHolder();
+        stateHolder.GetScan(42L).Returns((ScanCacheEntry?)null);
+
+        StateCompositionService service = new(
+            Substitute.For<IStateReader>(),
+            stateHolder,
+            CreateValidConfig(),
+            LimboLogs.Instance);
+
+        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync(42);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.True);
+            Assert.That(result.Error, Does.Contain("block 42"));
+        }
+    }
+
+    [Test]
+    public async Task GetTrieDistributionAsync_ReturnsDistribution_WhenCached()
+    {
+        TrieDepthDistribution dist = new() { AvgAccountPathDepth = 7.5 };
+        IStateCompositionStateHolder stateHolder = CreateMockStateHolder();
+        stateHolder.GetScan(null).Returns(new ScanCacheEntry { Distribution = dist });
+
+        StateCompositionService service = new(
+            Substitute.For<IStateReader>(),
+            stateHolder,
+            CreateValidConfig(),
+            LimboLogs.Instance);
+
+        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync(null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.Data.AvgAccountPathDepth, Is.EqualTo(7.5));
+        }
+    }
+
+    [Test]
     public void CancelScan_DoesNotThrowWhenNoScanRunning()
     {
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
-            new StateCompositionStateHolder(),
+            CreateMockStateHolder(),
             CreateValidConfig(),
             LimboLogs.Instance);
 
@@ -120,10 +171,10 @@ public class StateCompositionServiceTests
     }
 
     [Test]
-    public async Task AnalyzeAsync_ReturnsStats_AndUpdatesStateHolder()
+    public async Task AnalyzeAsync_ReturnsStats_AndCallsStoreScan()
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
-        StateCompositionStateHolder stateHolder = new();
+        IStateCompositionStateHolder stateHolder = CreateMockStateHolder();
 
         StateCompositionService service = new(
             stateReader, stateHolder, CreateValidConfig(), LimboLogs.Instance);
@@ -135,9 +186,8 @@ public class StateCompositionServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsSuccess, Is.True);
-            Assert.That(stateHolder.IsInitialized, Is.True);
-            Assert.That(stateHolder.LastScanMetadata, Is.Not.Null);
-            Assert.That(stateHolder.LastScanMetadata!.Value.IsComplete, Is.True);
+            stateHolder.ReceivedWithAnyArgs(1).StoreScan(
+                default, default!, default, default, default);
         }
     }
 
@@ -145,10 +195,9 @@ public class StateCompositionServiceTests
     public async Task InspectContractAsync_ReturnsNull_WhenAccountNotFound()
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
-        // TryGetAccount returns false by default (NSubstitute default for bool)
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, CreateMockStateHolder(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -177,7 +226,7 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, CreateMockStateHolder(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -206,12 +255,10 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, CreateMockStateHolder(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        // RunTreeVisitor mock is a no-op, so visitor finds nothing → returns null.
-        // The important assertion is that the flow completes without error.
         Result<TopContractEntry?> result = await service.InspectContractAsync(
             Address.Zero, header, CancellationToken.None);
 
@@ -239,15 +286,13 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, CreateMockStateHolder(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        // Start first scan — blocks inside RunTreeVisitor
         Task<Result<StateCompositionStats>> firstScan = service.AnalyzeAsync(header, CancellationToken.None);
         Assert.That(entered.Wait(TimeSpan.FromSeconds(5)), Is.True, "First scan did not enter RunTreeVisitor");
 
-        // Second scan should return error immediately (fail-fast semaphore)
         Result<StateCompositionStats> second = await service.AnalyzeAsync(header, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -256,7 +301,6 @@ public class StateCompositionServiceTests
             Assert.That(second.Error, Does.Contain("already in progress"));
         }
 
-        // Release blocker so first scan completes
         blocker.SetResult();
         await firstScan;
     }
@@ -287,7 +331,7 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, CreateMockStateHolder(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 

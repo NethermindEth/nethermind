@@ -13,4 +13,5 @@ public class StateCompositionConfig : IStateCompositionConfig
     public long ScanMemoryBudget { get; set; } = 1_000_000_000;
     public int TopNContracts { get; set; } = 20;
     public bool ExcludeStorage { get; set; }
+    public string CachePath { get; set; } = "statecomp";
 }

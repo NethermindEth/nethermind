@@ -29,4 +29,8 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Skip storage trie traversal during scans",
         DefaultValue = "false")]
     bool ExcludeStorage { get; set; }
+
+    [ConfigItem(Description = "Directory for persisted scan cache, relative to DataDir",
+        DefaultValue = "statecomp")]
+    string CachePath { get; set; }
 }

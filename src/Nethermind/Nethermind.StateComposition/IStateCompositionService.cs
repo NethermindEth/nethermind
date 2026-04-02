@@ -22,10 +22,11 @@ public interface IStateCompositionService
     Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct);
 
     /// <summary>
-    /// Get trie depth distribution. Returns cached data if available,
-    /// or <see cref="Result{T}.Fail"/> if no scan has been completed yet.
+    /// Get trie depth distribution for a cached scan.
+    /// Pass null to get the most recent scan's distribution.
+    /// Returns <see cref="Result{T}.Fail"/> if no matching scan exists.
     /// </summary>
-    Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync();
+    Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync(long? blockNumber);
 
     /// <summary>
     /// Inspect a single contract's storage trie structure.

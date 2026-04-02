@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 
@@ -16,19 +18,20 @@ public class StateCompositionRpcModule(
     IBlockTree blockTree)
     : IStateCompositionRpcModule
 {
-    public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats()
+    public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats(
+        BlockParameter? blockParameter = null)
     {
-        Block? head = blockTree.Head;
-        if (head is null)
-            return ResultWrapper<StateCompositionStats>.Fail("No head block available");
+        BlockHeader? header = ResolveHeader(blockParameter);
+        if (header is null)
+            return ResultWrapper<StateCompositionStats>.Fail("Block not found");
 
         try
         {
-            Result<StateCompositionStats> result = await service.AnalyzeAsync(head.Header, CancellationToken.None)
+            Result<StateCompositionStats> result = await service.AnalyzeAsync(header, CancellationToken.None)
                 .ConfigureAwait(false);
-            return !result.Success(out StateCompositionStats stats, out var error) ?
-                ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded) :
-                ResultWrapper<StateCompositionStats>.Success(stats);
+            return !result.Success(out StateCompositionStats stats, out var error)
+                ? ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded)
+                : ResultWrapper<StateCompositionStats>.Success(stats);
         }
         catch (OperationCanceledException)
         {
@@ -36,29 +39,36 @@ public class StateCompositionRpcModule(
         }
     }
 
-    public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats()
+    public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats(
+        BlockParameter? blockParameter = null)
     {
+        long? blockNum = ResolveBlockNumber(blockParameter);
+        ScanCacheEntry? entry = stateHolder.GetScan(blockNum);
+
         CachedStatsResponse response = new()
         {
-            Stats = stateHolder.IsInitialized ? stateHolder.CurrentStats : null,
+            Stats = entry?.Stats,
+            AvailableScans = stateHolder.ListScans(),
         };
 
         return Task.FromResult(ResultWrapper<CachedStatsResponse>.Success(response));
     }
 
-    public Task<ResultWrapper<ScanMetadata?>> statecomp_getCacheMetadata()
+    public Task<ResultWrapper<IReadOnlyList<ScanMetadata>>> statecomp_listScans()
     {
         return Task.FromResult(
-            ResultWrapper<ScanMetadata?>.Success(stateHolder.LastScanMetadata));
+            ResultWrapper<IReadOnlyList<ScanMetadata>>.Success(stateHolder.ListScans()));
     }
 
-    public async Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
+    public async Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution(
+        BlockParameter? blockParameter = null)
     {
-        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync()
+        long? blockNum = ResolveBlockNumber(blockParameter);
+        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync(blockNum)
             .ConfigureAwait(false);
-        return !result.Success(out TrieDepthDistribution dist, out var error) ?
-            ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable) :
-            ResultWrapper<TrieDepthDistribution>.Success(dist);
+        return !result.Success(out TrieDepthDistribution dist, out var error)
+            ? ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable)
+            : ResultWrapper<TrieDepthDistribution>.Success(dist);
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()
@@ -67,24 +77,44 @@ public class StateCompositionRpcModule(
         return Task.FromResult(ResultWrapper<bool>.Success(true));
     }
 
-    public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address? address)
+    public async Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(
+        Address? address, BlockParameter? blockParameter = null)
     {
         if (address is null)
             return ResultWrapper<TopContractEntry?>.Fail("Address parameter is required", ErrorCodes.InvalidInput);
 
-        Block? head = blockTree.Head;
-        if (head is null)
-            return ResultWrapper<TopContractEntry?>.Fail("No head block available");
+        BlockHeader? header = ResolveHeader(blockParameter);
+        if (header is null)
+            return ResultWrapper<TopContractEntry?>.Fail("Block not found");
 
         try
         {
             Result<TopContractEntry?> result = await service.InspectContractAsync(
-                address, head.Header, CancellationToken.None).ConfigureAwait(false);
-            return !result.Success(out TopContractEntry? entry, out var error) ? ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.LimitExceeded) : ResultWrapper<TopContractEntry?>.Success(entry);
+                address, header, CancellationToken.None).ConfigureAwait(false);
+            return !result.Success(out TopContractEntry? entry, out var error)
+                ? ResultWrapper<TopContractEntry?>.Fail(error, ErrorCodes.LimitExceeded)
+                : ResultWrapper<TopContractEntry?>.Success(entry);
         }
         catch (OperationCanceledException)
         {
             return ResultWrapper<TopContractEntry?>.Fail("Inspection was cancelled");
         }
+    }
+
+    private BlockHeader? ResolveHeader(BlockParameter? blockParameter)
+    {
+        if (blockParameter is null)
+            return blockTree.Head?.Header;
+
+        return blockTree.FindHeader(blockParameter);
+    }
+
+    private long? ResolveBlockNumber(BlockParameter? blockParameter)
+    {
+        if (blockParameter is null)
+            return null;
+
+        BlockHeader? header = blockTree.FindHeader(blockParameter);
+        return header?.Number;
     }
 }
