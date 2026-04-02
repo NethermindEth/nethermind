@@ -13,6 +13,8 @@ namespace Nethermind.Core.Test.Caching;
 /// and <see cref="Caching.AssociativeKeyCache{TKey}"/>.
 /// Each derived class wires the abstract operations to its concrete cache type.
 /// </summary>
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+[Parallelizable(ParallelScope.All)]
 public abstract class AssociativeCacheTestsBase
 {
     protected const int Capacity = 32;
