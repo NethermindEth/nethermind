@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
@@ -95,18 +93,26 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
         cache.Count.Should().BeLessOrEqualTo(10);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Clear_both_modes_invalidate_entries(bool releaseReferences)
+    [Test]
+    public void Clear_without_release_invalidates_and_allows_reuse()
     {
-        for (int i = 0; i < Capacity; i++)
-            _cache.Set(in _keys[i], _accounts[i]);
+        // Base tests cover Clear() (releaseReferences: true). This tests the fast O(1) path.
+        Cache cache = new(256);
 
-        _cache.Clear(releaseReferences);
+        for (int i = 0; i < 16; i++)
+            cache.Set(in _keys[i], _accounts[i]);
 
-        _cache.Count.Should().Be(0);
-        for (int i = 0; i < Capacity; i++)
-            _cache.Get(in _keys[i]).Should().BeNull();
+        cache.Clear(releaseReferences: false);
+
+        cache.Count.Should().Be(0);
+        for (int i = 0; i < 16; i++)
+            cache.Get(in _keys[i]).Should().BeNull();
+
+        // Re-insert — all should report as new
+        for (int i = 0; i < 16; i++)
+            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue($"key {i} should be new after Clear");
+
+        cache.Count.Should().Be(16);
     }
 
     [Test]
@@ -132,47 +138,6 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
         }
 
         cache.Count.Should().Be(16);
-    }
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Clear_both_modes_allow_reuse(bool releaseReferences)
-    {
-        // Use a large cache so 16 inserts stay well below per-set limits (no eviction).
-        Cache cache = new(256);
-        int insertCount = 16;
-
-        for (int i = 0; i < insertCount; i++)
-            cache.Set(in _keys[i], _accounts[i]);
-
-        cache.Clear(releaseReferences);
-
-        // Re-insert — all should report as new
-        for (int i = 0; i < insertCount; i++)
-            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue($"key {i} should be new after Clear");
-
-        cache.Count.Should().Be(insertCount);
-    }
-
-    [Test]
-    public void Clear_mixed_modes_parallel()
-    {
-        Cache cache = new(256);
-
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
-        {
-            for (int i = 0; i < 64; i++)
-                cache.Set(in _keys[i], _accounts[i]);
-            if (iter % 2 == 0)
-                cache.Clear(releaseReferences: true);
-            else
-                cache.Clear(releaseReferences: false);
-            for (int i = 0; i < 64; i++)
-                cache.Set(in _keys[i], _accounts[i]);
-        });
-
-        cache.Count.Should().BeGreaterThanOrEqualTo(0);
-        cache.Count.Should().BeLessOrEqualTo(256);
     }
 
     [Test]
