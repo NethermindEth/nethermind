@@ -11,7 +11,6 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.State;
 using Nethermind.Stats.Model;
 
-
 namespace Nethermind.Core.Test.Modules;
 
 public class PseudoNetworkModule() : Module

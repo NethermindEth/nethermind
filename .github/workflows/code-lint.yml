@@ -38,6 +38,7 @@ jobs:
 
       - name: Check code quality
         run: |
+          set -o pipefail
           dotnet build src/Nethermind/Nethermind.slnx \
             -p:EnforceCodeStyleInBuild=true \
             -p:TreatWarningsAsErrors=false \
