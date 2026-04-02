@@ -141,7 +141,6 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push(snapCapabilitySwitcher);
             snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
-
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)

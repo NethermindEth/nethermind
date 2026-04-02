@@ -268,7 +268,6 @@ public abstract partial class BaseEngineModuleTests
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {
             TestBlockchain bc = await base.Build(configurer);
-            BeaconSync.AllowBeaconHeaderSync();
             _lazyEngineRpcModule = bc.Container.Resolve<Lazy<IEngineRpcModule>>();
             return bc;
         }

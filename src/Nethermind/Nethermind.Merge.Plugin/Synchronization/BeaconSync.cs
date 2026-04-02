@@ -23,10 +23,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private bool _isInBeaconModeControl = false;
         private readonly ILogger _logger;
 
-        // beacon header sync can be initialized only when global pivot is already set,
-        // otherwise it might result in conflicting pivots and a deadlock
-        private bool _canInitBeaconHeaderSync = false;
-
         public BeaconSync(
             IBeaconPivot beaconPivot,
             IBlockTree blockTree,
@@ -54,23 +50,15 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _isInBeaconModeControl = true;
         }
 
-        public bool TryInitBeaconHeaderSync(BlockHeader blockHeader)
+        public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
-            if (!_canInitBeaconHeaderSync) return false;
-
             StopBeaconModeControl();
             _beaconPivot.EnsurePivot(blockHeader);
-            return true;
         }
 
         public void StopBeaconModeControl()
         {
             _isInBeaconModeControl = false;
-        }
-
-        public void AllowBeaconHeaderSync()
-        {
-            _canInitBeaconHeaderSync = true;
         }
 
         public bool ShouldBeInBeaconHeaders()
@@ -147,7 +135,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
     {
         void StopSyncing();
 
-        bool TryInitBeaconHeaderSync(BlockHeader blockHeader);
+        void InitBeaconHeaderSync(BlockHeader blockHeader);
 
         void StopBeaconModeControl();
     }
