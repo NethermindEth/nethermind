@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.Producers
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            Logger = logManager?.GetClassLogger<BlockProducerBase>() ?? throw new ArgumentNullException(nameof(logManager));
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
 
             BlockProductionTimeoutMs = _blocksConfig.BlockProductionTimeoutMs;

@@ -80,7 +80,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _specProvider = specProvider;
         _syncPeerPool = syncPeerPool;
         _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
     }
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)

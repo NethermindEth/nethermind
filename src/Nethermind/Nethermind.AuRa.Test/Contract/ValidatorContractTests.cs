@@ -31,6 +31,9 @@ namespace Nethermind.AuRa.Test.Contract
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
         private IWorldState _stateProvider;
 
+        [TearDown]
+        public void TearDown() => _readOnlyTxProcessorSource?.Dispose();
+
         [SetUp]
         public void SetUp()
         {

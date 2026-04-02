@@ -40,7 +40,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncConfig = syncConfig;
             _blockCacheService = blockCacheService;
             _poSSwitcher = poSSwitcher;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BeaconSync>();
         }
 
         public void StopSyncing()

@@ -25,7 +25,7 @@ public class NodeTable : INodeTable
         INetworkConfig? networkConfig,
         ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodeTable>() ?? throw new ArgumentNullException(nameof(logManager));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator));

@@ -14,7 +14,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeBlockchain), typeof(InitializePlugins))]
     public class LoadGenesisBlock(IMainProcessingContext mainProcessingContext, IBlockTree blockTree, IInitConfig initConfig, ILogManager logManager) : IStep
     {
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<LoadGenesisBlock>();
 
         public async Task Execute(CancellationToken cancellationToken)
         {

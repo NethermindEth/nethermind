@@ -22,7 +22,7 @@ namespace Nethermind.Runner.Ethereum
         {
             _service = service;
             _config = config;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<GrpcRunner>();
         }
 
         public Task Start(CancellationToken cancellationToken)
