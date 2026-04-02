@@ -16,7 +16,7 @@ namespace Nethermind.Logging.NLog
 
         public string Name { get; }
 
-        private readonly global::NLog.Logger _logger;
+        private readonly Logger _logger;
 
         public NLogLogger(Type type) : this(ILogManager.GetLoggerName(type))
         {
@@ -38,32 +38,27 @@ namespace Nethermind.Logging.NLog
 
         public void Info(string text)
         {
-            if (IsInfo)
-                _logger.Info(text);
+            if (IsInfo) _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            if (IsWarn)
-                _logger.Warn(text);
+            if (IsWarn) _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            if (IsDebug)
-                _logger.Debug(text);
+            if (IsDebug) _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            if (IsTrace)
-                _logger.Trace(text);
+            if (IsTrace) _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            if (IsError)
-                _logger.Error(ex, text);
+            if (IsError) _logger.Error(ex, text);
         }
     }
 }

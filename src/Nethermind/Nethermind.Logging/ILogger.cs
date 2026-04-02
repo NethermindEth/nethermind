@@ -48,7 +48,7 @@ public struct ILogger : IEquatable<ILogger>
     // otherwise they will be executing code to build error strings to pass etc, so we don't want to
     // inline the code for a second check.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void Debug(string text) =>
+    public readonly void Debug(string text)
     {
         if (IsDebug) _logger.Debug(text);
     }
