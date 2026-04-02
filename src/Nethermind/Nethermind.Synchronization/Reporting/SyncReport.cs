@@ -205,7 +205,7 @@ namespace Nethermind.Synchronization.Reporting
             Metrics.FastHeaders = FastBlocksHeaders.CurrentValue;
             Metrics.FastBodies = FastBlocksBodies.CurrentValue;
             Metrics.FastReceipts = FastBlocksReceipts.CurrentValue;
-            Metrics.FastAccessLists = FastBlocksAccessLists.CurrentValue;
+            Metrics.FastBlockAccessLists = FastBlocksAccessLists.CurrentValue;
         }
 
         private void WriteSyncConfigReport()
@@ -285,7 +285,7 @@ namespace Nethermind.Synchronization.Reporting
                 FastBlocksReceipts.LogProgress();
             }
 
-            if ((currentSyncMode & SyncMode.FastAccessLists) == SyncMode.FastAccessLists && FastBlocksAccessLists.HasStarted)
+            if ((currentSyncMode & SyncMode.FastBlockAccessLists) == SyncMode.FastBlockAccessLists && FastBlocksAccessLists.HasStarted)
             {
                 FastBlocksAccessLists.LogProgress();
             }

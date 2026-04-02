@@ -53,11 +53,11 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
         private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
         private bool FastReceiptsEnabled => FastSyncEnabled && _syncConfig.DownloadReceiptsInFastSync;
-        private bool FastAccessListsEnabled => FastSyncEnabled && _syncConfig.DownloadAccessListsInFastSync;
+        private bool FastBlockAccessListsEnabled => FastSyncEnabled && _syncConfig.DownloadAccessListsInFastSync;
         private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
-        private bool FastBlocksAccessListsFinished => !FastAccessListsEnabled || _syncProgressResolver.IsFastBlocksAccessListsFinished();
+        private bool FastBlocksAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlocksAccessListsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? _syncConfig.StateMinDistanceFromHead;
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
         private long? LastBlockThatEnabledFullSync { get; set; }
@@ -200,7 +200,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
                             best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
                             best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
-                            best.IsInFastAccessLists = ShouldBeInFastAccessListsMode(best);
+                            best.IsInFastBlockAccessLists = ShouldBeInFastBlockAccessListsMode(best);
                             best.IsInFullSync = ShouldBeInFullSyncMode(best);
                             best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
                             best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
                             CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
                             CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
-                            CheckAddFlag(best.IsInFastAccessLists, SyncMode.FastAccessLists, ref newModes);
+                            CheckAddFlag(best.IsInFastBlockAccessLists, SyncMode.FastBlockAccessLists, ref newModes);
                             CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
                             CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
                             CheckAddFlag(best.IsInStateNodes, SyncMode.StateNodes, ref newModes);
@@ -564,21 +564,21 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private bool ShouldBeInFastAccessListsMode(Snapshot best)
+        private bool ShouldBeInFastBlockAccessListsMode(Snapshot best)
         {
-            bool fastAccessListsNotFinished = !FastBlocksAccessListsFinished;
+            bool fastBlockAccessListsNotFinished = !FastBlocksAccessListsFinished;
             bool fastReceiptsFinished = FastBlocksReceiptsFinished;
             bool notInStateSync = !best.IsInStateSync;
             bool stateSyncFinished = best.StateDownloaded;
 
             // fast blocks access lists can run if there are peers until it is done
             // fast blocks access lists can run in parallel with full sync when receipts are finished
-            bool result = fastAccessListsNotFinished && fastReceiptsFinished && notInStateSync && stateSyncFinished;
+            bool result = fastBlockAccessListsNotFinished && fastReceiptsFinished && notInStateSync && stateSyncFinished;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("ACCESS_LISTS",
-                    (nameof(fastAccessListsNotFinished), fastAccessListsNotFinished),
+                    (nameof(fastBlockAccessListsNotFinished), fastBlockAccessListsNotFinished),
                     (nameof(fastReceiptsFinished), fastReceiptsFinished),
                     (nameof(notInStateSync), notInStateSync),
                     (nameof(stateSyncFinished), stateSyncFinished));
@@ -593,7 +593,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 !best.IsInFastBodies &&
                 !best.IsInFastHeaders &&
                 !best.IsInFastReceipts &&
-                !best.IsInFastAccessLists &&
+                !best.IsInFastBlockAccessLists &&
                 !best.IsInFastSync &&
                 !best.IsInFullSync &&
                 !best.IsInStateSync &&
@@ -831,7 +831,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 TargetBlock = targetBlock;
                 PivotNumber = pivotNumber;
 
-                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastAccessLists = IsInFastBodies = IsInFastHeaders
+                IsInWaitingForBlock = IsInDisconnected = IsInFastReceipts = IsInFastBlockAccessLists = IsInFastBodies = IsInFastHeaders
                     = IsInFastSync = IsInFullSync = IsInStateSync = IsInStateNodes = IsInSnapRanges = IsInBeaconHeaders = IsInUpdatingPivot = false;
             }
 
@@ -839,7 +839,7 @@ namespace Nethermind.Synchronization.ParallelSync
             public bool IsInFastHeaders { get; set; }
             public bool IsInFastBodies { get; set; }
             public bool IsInFastReceipts { get; set; }
-            public bool IsInFastAccessLists { get; set; }
+            public bool IsInFastBlockAccessLists { get; set; }
             public bool IsInFastSync { get; set; }
             public bool IsInStateSync { get; set; }
             public bool IsInStateNodes { get; set; }

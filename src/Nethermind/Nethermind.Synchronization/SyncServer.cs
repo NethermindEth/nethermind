@@ -380,6 +380,12 @@ namespace Nethermind.Synchronization
 
         public byte[]? GetBlockAccessListRlp(Hash256 blockHash)
         {
+            BlockHeader? header = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header?.BlockAccessListHash is null)
+            {
+                return null;
+            }
+
             return _blockAccessListStore.GetRlp(blockHash);
         }
 

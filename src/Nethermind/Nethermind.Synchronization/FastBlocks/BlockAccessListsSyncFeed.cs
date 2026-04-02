@@ -42,6 +42,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     private readonly IBlockAccessListStore _blockAccessListStore;
     private readonly ISyncPointers _syncPointers;
     private readonly ISyncPeerPool _syncPeerPool;
+    private readonly BlockAccessListDownloadStrategy _blockAccessListDownloadStrategy;
 
     private SyncStatusList _syncStatusList;
 
@@ -69,6 +70,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncConfig = syncConfig;
         _syncReport = syncReport;
         _blockTree = blockTree;
+        _blockAccessListDownloadStrategy = new(blockTree, syncReport);
 
         if (!_syncConfig.FastSync)
         {
@@ -102,7 +104,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     }
 
     protected override SyncMode ActivationSyncModes { get; }
-        = SyncMode.FastAccessLists & ~SyncMode.FastBlocks;
+        = SyncMode.FastBlockAccessLists & ~SyncMode.FastBlocks;
 
     public override bool IsMultiFeed => true;
 
@@ -136,7 +138,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                 ?? GethSyncLimits.MaxBodyFetch;
 
             BlockInfo?[] infos;
-            while (!_syncStatusList.TryGetInfosForBatch(requestSize, _accessListDownloadStrategy, out infos))
+            while (!_syncStatusList.TryGetInfosForBatch(requestSize, _blockAccessListDownloadStrategy, out infos))
             {
                 token.ThrowIfCancellationRequested();
                 _syncPointers.LowestInsertedAccessListBlockNumber = _syncStatusList.LowestInsertWithoutGaps;
@@ -255,14 +257,42 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
         _syncReport.FastBlocksAccessLists.CurrentQueued = _syncStatusList.QueueSize;
     }
 
-    private readonly AccessListDownloadStrategy _accessListDownloadStrategy = new();
-
-    private class AccessListDownloadStrategy : IBlockDownloadStrategy
+    private class BlockAccessListDownloadStrategy(IBlockTree blockTree, ISyncReport syncReport) : IBlockDownloadStrategy
     {
+        private long _lowestQueriedBlockWithAccessLists = long.MaxValue;
+
         public bool ShouldDownloadBlock(BlockInfo info)
         {
-            // Always download - we don't have a way to validate without fetching
-            return true;
+            if (info.BlockNumber > Interlocked.Read(ref _lowestQueriedBlockWithAccessLists))
+            {
+                return true;
+            }
+
+            BlockHeader? header = blockTree.FindHeader(info.BlockHash, blockNumber: info.BlockNumber);
+            if (header is null)
+            {
+                return true;
+            }
+
+            if (header.BlockAccessListHash is not null)
+            {
+                long currentLowest = Interlocked.Read(ref _lowestQueriedBlockWithAccessLists);
+                while (info.BlockNumber < currentLowest)
+                {
+                    long previousLowest = Interlocked.CompareExchange(ref _lowestQueriedBlockWithAccessLists, info.BlockNumber, currentLowest);
+                    if (previousLowest == currentLowest)
+                    {
+                        break;
+                    }
+
+                    currentLowest = previousLowest;
+                }
+
+                return true;
+            }
+
+            syncReport.FastBlocksAccessLists.IncrementSkipped();
+            return false;
         }
     }
 }

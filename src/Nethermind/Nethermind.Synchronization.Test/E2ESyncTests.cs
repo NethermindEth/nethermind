@@ -94,6 +94,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int HeadPivotDistance = 500;
     private static TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(10);
     private const int BalSyncChainLength = 15_000;
+    private const int PartialBalSyncChainLength = 120;
+    private const int PartialBalActivationBlock = 40;
+    private const int PartialBalSyncHeadPivotDistance = 20;
     private const int BalSyncBuildProgressInterval = 1_000;
     private const int BalSyncVerificationProgressInterval = 3_000;
 
@@ -235,6 +238,14 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         MoveBlockTransitionsToGenesis(spec);
         spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis.Header.Timestamp;
         spec.Genesis.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+    }
+
+    private static void EnableBlockAccessListsAtBlock(ChainSpec spec, ulong activationBlockNumber)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+        MoveBlockTransitionsToGenesis(spec);
+        spec.Parameters.Eip7928TransitionTimestamp = spec.Genesis.Header.Timestamp + activationBlockNumber;
+        spec.Genesis.Header.BlockAccessListHash = null;
     }
 
     private static void MoveBlockTransitionsToGenesis(ChainSpec spec)
@@ -473,6 +484,61 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         syncPivotNumber.Should().BeGreaterThan(1);
         TestContext.Progress.WriteLine($"BAL sync test: head {BalSyncChainLength}, pivot {syncPivotNumber}.");
+
+        await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
+        client.Resolve<ISyncPointers>().LowestInsertedAccessListBlockNumber.Should().BeLessThanOrEqualTo(1);
+    }
+
+    [Test]
+    [Retry(2)]
+    public async Task FastSync_skips_pre_eip7928_block_access_lists_over_eth71()
+    {
+        if (!isPostMerge || dbMode != DbMode.Default)
+        {
+            Assert.Ignore("BAL sync regression is only executed for the default post-merge fixture.");
+        }
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(BalSyncTestTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
+
+        PrivateKey serverKey = TestItem.PrivateKeyE;
+        await using IContainer server = await CreateNode(serverKey, (cfg, spec) =>
+        {
+            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+            ConfigureLocalNetwork(cfg, AllocatePort());
+            return Task.CompletedTask;
+        }, serverKey);
+
+        await StartServerAndBuildStorageChain(server, PartialBalSyncChainLength, cancellationToken, "Partial BAL sync server");
+
+        IBlockTree serverBlockTree = server.Resolve<IBlockTree>();
+        serverBlockTree.Head!.Number.Should().Be(PartialBalSyncChainLength);
+
+        IBlockAccessListStore serverBalStore = server.Resolve<IBlockAccessListStore>();
+        Block lastPreActivationBlock = serverBlockTree.FindBlock(PartialBalActivationBlock - 1)!;
+        Block firstActivatedBlock = serverBlockTree.FindBlock(PartialBalActivationBlock)!;
+        lastPreActivationBlock.Header.BlockAccessListHash.Should().BeNull();
+        serverBalStore.GetRlp(lastPreActivationBlock.Hash!).Should().BeNull();
+        firstActivatedBlock.Header.BlockAccessListHash.Should().NotBeNull();
+        serverBalStore.GetRlp(firstActivatedBlock.Hash!).Should().NotBeNull();
+
+        long syncPivotNumber = 0;
+        PrivateKey clientKey = TestItem.PrivateKeyF;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            EnableBlockAccessListsAtBlock(spec, PartialBalActivationBlock);
+
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+
+            await SetPivot(server, syncConfig, cancellationToken, PartialBalSyncHeadPivotDistance);
+            syncPivotNumber = syncConfig.PivotNumber;
+
+            ConfigureLocalNetwork(cfg, AllocatePort());
+        }, serverKey);
+
+        syncPivotNumber.Should().BeGreaterThan(PartialBalActivationBlock);
+        TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
         await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
         client.Resolve<ISyncPointers>().LowestInsertedAccessListBlockNumber.Should().BeLessThanOrEqualTo(1);
@@ -858,7 +924,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             IBlockAccessListStore sourceBlockAccessListStore = server.Resolve<IBlockAccessListStore>();
             long sourceHeadNumber = sourceBlockTree.Head!.Number;
 
-            TestContext.Progress.WriteLine($"BAL sync verification: comparing exact BAL blobs for blocks 1-{sourceHeadNumber}. Pivot {syncPivotNumber}.");
+            TestContext.Progress.WriteLine($"BAL sync verification: comparing BAL presence and exact BAL blobs for blocks 1-{sourceHeadNumber}. Pivot {syncPivotNumber}.");
             for (long blockNumber = 1; blockNumber <= sourceHeadNumber; blockNumber++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -880,6 +946,24 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
                 byte[]? sourceBal = sourceBlockAccessListStore.GetRlp(sourceBlock.Hash!);
                 byte[]? syncedBal = blockAccessListStore.GetRlp(syncedBlock.Hash!);
+                bool balEnabled = sourceBlock.Header.BlockAccessListHash is not null;
+
+                if (!balEnabled)
+                {
+                    if (sourceBal is not null || syncedBal is not null)
+                    {
+                        TestContext.Progress.WriteLine(
+                            $"BAL debug block {blockNumber}: sourceBal={(sourceBal is null ? "null" : sourceBal.Length)}, " +
+                            $"syncedBal={(syncedBal is null ? "null" : syncedBal.Length)}, " +
+                            $"sourceBalHash={sourceBlock.Header.BlockAccessListHash}, " +
+                            $"syncedBalHash={syncedBlock.Header.BlockAccessListHash}");
+                    }
+
+                    Assert.That(sourceBal, Is.Null, $"Source BAL should be absent before EIP-7928 at block {blockNumber}.");
+                    Assert.That(syncedBal, Is.Null, $"Synced BAL should be absent before EIP-7928 at block {blockNumber}.");
+                    Assert.That(syncedBlock.Header.BlockAccessListHash, Is.Null, $"BAL hash should be absent before EIP-7928 at block {blockNumber}.");
+                    return;
+                }
 
                 if (sourceBal is null || syncedBal is null)
                 {

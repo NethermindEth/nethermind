@@ -662,6 +662,71 @@ public class SyncServerTests
         ctx.SyncServer.LowestBlock.Should().Be(0);
     }
 
+    [Test]
+    public void GetBlockAccessListRlp_returns_null_for_pre_eip7928_blocks_without_touching_store()
+    {
+        Context ctx = new();
+        IBlockAccessListStore blockAccessListStore = Substitute.For<IBlockAccessListStore>();
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .WithBlockAccessListHash(null)
+            .TestObject;
+
+        ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+
+        SyncServer syncServer = new(
+            ctx.WorldStateManager,
+            new MemDb(),
+            ctx.BlockTree,
+            NullReceiptStorage.Instance,
+            blockAccessListStore,
+            Always.Valid,
+            Always.Valid,
+            ctx.PeerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            ctx.HistoryPruner,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        syncServer.GetBlockAccessListRlp(TestItem.KeccakA).Should().BeNull();
+        blockAccessListStore.DidNotReceive().GetRlp(Arg.Any<Hash256>());
+    }
+
+    [Test]
+    public void GetBlockAccessListRlp_reads_store_for_eip7928_blocks()
+    {
+        Context ctx = new();
+        IBlockAccessListStore blockAccessListStore = Substitute.For<IBlockAccessListStore>();
+        byte[] expectedBal = [0xc1, 0x80];
+        BlockHeader header = Build.A.BlockHeader
+            .WithHash(TestItem.KeccakA)
+            .WithBlockAccessListHash(TestItem.KeccakB)
+            .TestObject;
+
+        ctx.BlockTree.FindHeader(TestItem.KeccakA, BlockTreeLookupOptions.TotalDifficultyNotNeeded).Returns(header);
+        blockAccessListStore.GetRlp(TestItem.KeccakA).Returns(expectedBal);
+
+        SyncServer syncServer = new(
+            ctx.WorldStateManager,
+            new MemDb(),
+            ctx.BlockTree,
+            NullReceiptStorage.Instance,
+            blockAccessListStore,
+            Always.Valid,
+            Always.Valid,
+            ctx.PeerPool,
+            StaticSelector.Full,
+            new TestSyncConfig(),
+            Policy.FullGossip,
+            ctx.HistoryPruner,
+            MainnetSpecProvider.Instance,
+            LimboLogs.Instance);
+
+        syncServer.GetBlockAccessListRlp(TestItem.KeccakA).Should().Equal(expectedBal);
+    }
+
     private class Context
     {
         public Context()

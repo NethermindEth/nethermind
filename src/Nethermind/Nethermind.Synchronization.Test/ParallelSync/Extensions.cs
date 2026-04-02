@@ -16,7 +16,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 FastBlocksState.None => SyncMode.FastHeaders,
                 FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies : SyncMode.None,
                 FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts : SyncMode.None,
-                FastBlocksState.FinishedReceipts => isFullSync ? SyncMode.FastAccessLists : SyncMode.None,
+                FastBlocksState.FinishedReceipts => isFullSync ? SyncMode.FastBlockAccessLists : SyncMode.None,
                 _ => SyncMode.None,
             };
         }

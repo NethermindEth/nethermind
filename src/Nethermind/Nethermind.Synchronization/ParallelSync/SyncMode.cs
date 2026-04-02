@@ -53,7 +53,7 @@ namespace Nethermind.Synchronization.ParallelSync
         /// <summary>
         /// Stage of fast sync that downloads block access lists in parallel.
         /// </summary>
-        FastAccessLists = FastBlocks | 2048,
+        FastBlockAccessLists = FastBlocks | 2048,
         /// <summary>
         /// Stage of snap sync that state is being downloaded (accounts, storages, code, proofs)
         /// </summary>
@@ -68,7 +68,7 @@ namespace Nethermind.Synchronization.ParallelSync
         UpdatingPivot = 16384,
 
         All = WaitingForBlock | Disconnected | FastBlocks | FastSync | StateNodes | Full | DbLoad |
-              FastHeaders | FastBodies | FastReceipts | FastAccessLists | SnapSync | BeaconHeaders | UpdatingPivot
+              FastHeaders | FastBodies | FastReceipts | FastBlockAccessLists | SnapSync | BeaconHeaders | UpdatingPivot
     }
 
     public static class SyncModeExtensions
