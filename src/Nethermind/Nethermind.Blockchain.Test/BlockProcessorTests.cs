@@ -334,6 +334,7 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public void Dispose() { }
     }
 
     private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)

@@ -42,12 +42,15 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
     {
-        ChainSpec chainSpec = new();
+        ulong networkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+        ChainSpec chainSpec = new()
+        {
+            NetworkId = networkId,
+            ChainId = chainSpecJson.Params.ChainId ?? networkId,
+            Name = chainSpecJson.Name,
+            DataDir = chainSpecJson.DataDir
+        };
 
-        chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-        chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
-        chainSpec.Name = chainSpecJson.Name;
-        chainSpec.DataDir = chainSpecJson.DataDir;
         LoadGenesis(chainSpecJson, chainSpec);
         LoadEngine(chainSpecJson, chainSpec);
         LoadAllocations(chainSpecJson, chainSpec);
@@ -62,10 +65,10 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
     {
         long? GetTransitions(string builtInName, Predicate<KeyValuePair<string, JsonElement>> predicate)
         {
-            var allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
+            AllocationJson? allocation = chainSpecJson.Accounts?.Values.FirstOrDefault(v => v.BuiltIn?.Name.Equals(builtInName, StringComparison.OrdinalIgnoreCase) == true);
             if (allocation is null) return null;
-            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn.Pricing.Where(o => predicate(o)).ToArray();
-            if (pricing.Length > 0)
+            KeyValuePair<string, JsonElement>[] pricing = allocation.BuiltIn?.Pricing.Where(o => predicate(o)).ToArray();
+            if (pricing?.Length > 0)
             {
                 string key = pricing[0].Key;
                 return long.TryParse(key, out long transition) ? transition : Convert.ToInt64(key, 16);
@@ -138,14 +141,20 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip3529Transition = chainSpecJson.Params.Eip3529Transition,
             Eip3607Transition = chainSpecJson.Params.Eip3607Transition,
             BeaconChainGenesisTimestamp = chainSpecJson.Params.BeaconChainGenesisTimestamp,
+            Eip1153Transition = chainSpecJson.Params.Eip1153Transition,
             Eip1153TransitionTimestamp = chainSpecJson.Params.Eip1153TransitionTimestamp,
+            Eip3651Transition = chainSpecJson.Params.Eip3651Transition,
             Eip3651TransitionTimestamp = chainSpecJson.Params.Eip3651TransitionTimestamp,
+            Eip3855Transition = chainSpecJson.Params.Eip3855Transition,
             Eip3855TransitionTimestamp = chainSpecJson.Params.Eip3855TransitionTimestamp,
+            Eip3860Transition = chainSpecJson.Params.Eip3860Transition,
             Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
             Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
             Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
             Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
+            Eip5656Transition = chainSpecJson.Params.Eip5656Transition,
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
+            Eip6780Transition = chainSpecJson.Params.Eip6780Transition,
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip7951TransitionTimestamp = chainSpecJson.Params.Eip7951TransitionTimestamp,
             Rip7212TransitionTimestamp = chainSpecJson.Params.Rip7212TransitionTimestamp,
@@ -220,7 +229,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         Eip4844Constants.OverrideIfAny(chainSpec.Parameters.Eip4844MinBlobGasPrice);
     }
 
-    private TValue? LoadDependentParam<TTransition, TValue>(
+    internal static TValue? LoadDependentParam<TTransition, TValue>(
         TTransition? transition,
         TValue? value,
         Func<TValue?>? fallback = null,
@@ -324,11 +333,13 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         byte[] extraData = chainSpecJson.Genesis.ExtraData ?? [];
         UInt256 gasLimit = chainSpecJson.Genesis.GasLimit;
         Address beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
-        UInt256 baseFee = chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero;
-        if (chainSpecJson.Params.Eip1559Transition is not null)
-            baseFee = chainSpecJson.Params.Eip1559Transition == 0
-                ? (chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee)
-                : UInt256.Zero;
+        UInt256 baseFee = chainSpecJson.Params.Eip1559Transition switch
+        {
+            null => chainSpecJson.Genesis.BaseFeePerGas ?? UInt256.Zero,
+            0 => chainSpecJson.Genesis.BaseFeePerGas ?? Eip1559Constants.DefaultForkBaseFee,
+            _ => UInt256.Zero,
+        };
+
 
         Hash256 stateRoot = chainSpecJson.Genesis.StateRoot ?? Keccak.EmptyTreeHash;
         chainSpec.GenesisStateUnavailable = chainSpecJson.Genesis.StateUnavailable;
@@ -444,7 +455,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             if (account.Value.CodeHash is not null)
             {
                 string codeHashString = account.Value.CodeHash.ToString();
-                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out var codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
+                if (chainSpecJson.CodeHashes is null || !chainSpecJson.CodeHashes.TryGetValue(codeHashString, out byte[] codeHash)) throw new ArgumentException($"CodeHash {account.Value.CodeHash} is not found");
                 chainSpec.Allocations[address] = new ChainSpecAllocation(
                     account.Value.Balance ?? UInt256.Zero,
                     account.Value.Nonce,
