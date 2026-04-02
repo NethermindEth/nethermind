@@ -269,7 +269,7 @@ public sealed class AssociativeCache<TKey, TValue>
     {
         if (_setCount == 0)
         {
-            value = default;
+            value = null;
             return false;
         }
 
@@ -337,13 +337,14 @@ public sealed class AssociativeCache<TKey, TValue>
     /// </summary>
     public void Clear(bool releaseReferences = true)
     {
-        if (_setCount == 0) return;
-
-        long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
-
-        if (releaseReferences)
+        if (_setCount != 0)
         {
-            ClearEntries(currentEpoch);
+            long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
+
+            if (releaseReferences)
+            {
+                ClearEntries(currentEpoch);
+            }
         }
     }
 
@@ -375,7 +376,7 @@ public sealed class AssociativeCache<TKey, TValue>
                     if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
                     e.Key = default;
-                    e.Value = default;
+                    e.Value = null;
                     e.Ticker = 0;
 
                     Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
