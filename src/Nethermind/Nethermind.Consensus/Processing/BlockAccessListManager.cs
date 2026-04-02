@@ -273,10 +273,10 @@ public class BlockAccessListManager(
         new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, bool parallel)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ProcessingOptions options)
     {
         IWithdrawalProcessor withdrawalProcessor = new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager);
-        if (!parallel)
+        if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
             withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
         }

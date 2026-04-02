@@ -76,6 +76,9 @@ public partial class ParallelBlockProcessor(
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
+        ReceiptsTracer.SetOtherTracer(blockTracer);
+        ReceiptsTracer.StartNewBlockTrace(block);
+
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         _balManager.Setup(block, _parallel);
@@ -102,7 +105,7 @@ public partial class ParallelBlockProcessor(
 
         header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
-        _balManager.ProcessWithdrawals(block, spec, _parallel);
+        _balManager.ProcessWithdrawals(block, spec, options);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
