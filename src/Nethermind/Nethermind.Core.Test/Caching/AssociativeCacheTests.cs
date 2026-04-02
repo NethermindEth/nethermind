@@ -144,8 +144,6 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
             if (cache.TryGet(in key, out Account? val))
                 val.Should().Be(_accounts[i]);
         }
-
-        cache.Count.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Test]
