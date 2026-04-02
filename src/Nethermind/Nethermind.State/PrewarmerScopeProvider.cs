@@ -66,10 +66,18 @@ public class PrewarmerScopeProvider(
 
         private long _writeBatchTime = 0;
         private CancellationTokenSource? _balCts;
+        private Task? _balTask;
+
+        private void CancelBal()
+        {
+            _balCts?.Cancel();
+            _balTask?.GetAwaiter().GetResult();
+            _balTask = null;
+        }
 
         public void Dispose()
         {
-            _balCts?.Cancel();
+            CancelBal();
             _balCts?.Dispose();
             if (_measureMetric && _writeBatchTime != 0)
             {
@@ -92,7 +100,7 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
             // Cancel BAL background read — write batches are processor-intensive and already parallelized
-            _balCts?.Cancel();
+            CancelBal();
 
             if (!_measureMetric)
             {
@@ -110,6 +118,8 @@ public class PrewarmerScopeProvider(
 
         public void Commit(long blockNumber)
         {
+            CancelBal();
+
             if (!_measureMetric)
             {
                 baseScope.Commit(blockNumber);
@@ -182,11 +192,11 @@ public class PrewarmerScopeProvider(
                 return;
             }
 
-            _balCts?.Cancel();
+            CancelBal();
             _balCts = new CancellationTokenSource();
             CacheSink cacheSink = new(preBlockCache, storageCache);
             CancellationToken token = _balCts.Token;
-            Task.Run(() => baseScope.ReadBalAsync(bal, cacheSink, token));
+            _balTask = Task.Run(() => baseScope.ReadBalAsync(bal, cacheSink, token));
         }
 
         public Task ReadBalAsync(BlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken cancellationToken)
