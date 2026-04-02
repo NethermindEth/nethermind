@@ -24,7 +24,7 @@ public class TaikoExecutionPayload : ExecutionPayload
         }
     }
 
-    protected override int GetExecutionPayloadVersion() => this switch
+    public override int GetExecutionPayloadVersion() => this switch
     {
         { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
         { WithdrawalsHash: not null } or { Withdrawals: not null } => 2, // modified
