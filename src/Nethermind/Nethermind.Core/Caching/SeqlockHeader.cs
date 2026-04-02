@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -70,11 +71,9 @@ internal static class SeqlockHeader
 
         while (true)
         {
-            long oldEpoch = (old & EpochMask) >> EpochShift;
-            long newEpoch = oldEpoch + 1;
-            long newVal = (newEpoch << EpochShift) & EpochMask; // count = 0
+            long newValue = (oldValue + (1L << EpochShift)) & EpochMask;
 
-            long prev = Interlocked.CompareExchange(ref epochAndCount, newVal, old);
+            long prev = Interlocked.CompareExchange(ref epochAndCount, newValue, old);
             if (prev == old) return;
 
             old = prev;
@@ -101,18 +100,16 @@ internal static class SeqlockHeader
     public static void AdjustCountIfEpoch(ref long epochAndCount, long expectedEpoch, long delta)
     {
         long current = Volatile.Read(ref epochAndCount);
+
         while ((current & EpochMask) == expectedEpoch)
         {
-            long epochBits = current & EpochMask;
-            long count = (current & CountMask) + delta;
+            long newCount = Math.Clamp((current & CountMask) + delta, 0, CountMask);
+            long updated = (current & EpochMask) | newCount;
 
-            // Clamp to avoid underflow/overflow corrupting the epoch bits
-            if (count < 0) count = 0;
-            else if (count > CountMask) count = CountMask;
-
-            long updated = epochBits | count;
             long prev = Interlocked.CompareExchange(ref epochAndCount, updated, current);
-            if (prev == current) return;
+            if (prev == current)
+                return;
+
             current = prev;
         }
     }
