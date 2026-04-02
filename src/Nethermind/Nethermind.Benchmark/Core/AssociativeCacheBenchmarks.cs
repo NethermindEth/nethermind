@@ -14,34 +14,32 @@ using Nethermind.Int256;
 namespace Nethermind.Benchmarks.Core;
 
 /// <summary>
-/// Single-operation latency comparison: LruCache vs ClockCache vs AssociativeCache.
+/// Shared setup for LruCache / ClockCache / AssociativeCache comparison benchmarks.
 /// </summary>
-[MemoryDiagnoser]
-public class AssociativeCacheSingleOpBenchmarks
+public abstract class CacheBenchmarkBase
 {
-    private LruCache<AddressAsKey, Account> _lru = null!;
-    private ClockCache<AddressAsKey, Account> _clock = null!;
-    private AssociativeCache<AddressAsKey, Account> _assoc = null!;
+    protected LruCache<AddressAsKey, Account> _lru = null!;
+    protected ClockCache<AddressAsKey, Account> _clock = null!;
+    protected AssociativeCache<AddressAsKey, Account> _assoc = null!;
+    protected AddressAsKey[] _keys = null!;
+    protected Account[] _accounts = null!;
 
-    private AddressAsKey[] _keys = null!;
-    private Account[] _accounts = null!;
-    private AddressAsKey _missKey;
-
-    [Params(1000)]
-    public int KeyCount { get; set; }
-
-    [GlobalSetup]
-    public void Setup()
+    /// <summary>
+    /// Creates and pre-fills all three caches with <paramref name="keyCount"/> random entries.
+    /// Returns the <see cref="Random"/> instance so callers can draw additional values from the
+    /// same deterministic sequence.
+    /// </summary>
+    protected Random SetupCaches(int keyCount)
     {
-        _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
-        _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
-        _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
+        _lru = new LruCache<AddressAsKey, Account>(keyCount, "benchmark");
+        _clock = new ClockCache<AddressAsKey, Account>(keyCount);
+        _assoc = new AssociativeCache<AddressAsKey, Account>(keyCount);
 
-        _keys = new AddressAsKey[KeyCount];
-        _accounts = new Account[KeyCount];
+        _keys = new AddressAsKey[keyCount];
+        _accounts = new Account[keyCount];
 
         Random random = new(42);
-        for (int i = 0; i < KeyCount; i++)
+        for (int i = 0; i < keyCount; i++)
         {
             byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
@@ -53,6 +51,27 @@ public class AssociativeCacheSingleOpBenchmarks
             _clock.Set(_keys[i], _accounts[i]);
             _assoc.Set(in _keys[i], _accounts[i]);
         }
+
+        return random;
+    }
+}
+
+/// <summary>
+/// Single-operation latency comparison: LruCache vs ClockCache vs AssociativeCache.
+/// </summary>
+[MemoryDiagnoser]
+public class AssociativeCacheSingleOpBenchmarks : CacheBenchmarkBase
+{
+    private AddressAsKey _missKey;
+    private int _deleteIndex;
+
+    [Params(1000)]
+    public int KeyCount { get; set; }
+
+    [GlobalSetup]
+    public void Setup()
+    {
+        Random random = SetupCaches(KeyCount);
 
         byte[] missBytes = new byte[20];
         random.NextBytes(missBytes);
@@ -100,8 +119,6 @@ public class AssociativeCacheSingleOpBenchmarks
 
     // ==================== Delete ====================
 
-    private int _deleteIndex;
-
     [Benchmark]
     public bool LruCache_Delete()
     {
@@ -138,42 +155,13 @@ public class AssociativeCacheSingleOpBenchmarks
 /// Throughput comparison: mixed read/write workload (90% reads, 10% writes) and read-only.
 /// </summary>
 [MemoryDiagnoser]
-public class AssociativeCacheMixedWorkloadBenchmarks
+public class AssociativeCacheMixedWorkloadBenchmarks : CacheBenchmarkBase
 {
-    private LruCache<AddressAsKey, Account> _lru = null!;
-    private ClockCache<AddressAsKey, Account> _clock = null!;
-    private AssociativeCache<AddressAsKey, Account> _assoc = null!;
-
-    private AddressAsKey[] _keys = null!;
-    private Account[] _accounts = null!;
-
     private const int KeyCount = 10000;
     private const int OperationsPerInvoke = 1000;
 
     [GlobalSetup]
-    public void Setup()
-    {
-        _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
-        _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
-        _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
-
-        _keys = new AddressAsKey[KeyCount];
-        _accounts = new Account[KeyCount];
-
-        Random random = new(42);
-        for (int i = 0; i < KeyCount; i++)
-        {
-            byte[] addressBytes = new byte[20];
-            random.NextBytes(addressBytes);
-            Address address = new Address(addressBytes);
-            _keys[i] = address;
-            _accounts[i] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-
-            _lru.Set(_keys[i], _accounts[i]);
-            _clock.Set(_keys[i], _accounts[i]);
-            _assoc.Set(in _keys[i], _accounts[i]);
-        }
-    }
+    public void Setup() => SetupCaches(KeyCount);
 
     [Benchmark(Baseline = true, OperationsPerInvoke = OperationsPerInvoke)]
     public int LruCache_MixedWorkload_90Read_10Write()
@@ -276,180 +264,19 @@ public class AssociativeCacheMixedWorkloadBenchmarks
 }
 
 /// <summary>
-/// Cache quality comparison — measures effective hit rate under uniform and Zipf-like access patterns.
-/// </summary>
-public class AssociativeCacheHitRateBenchmarks
-{
-    private LruCache<AddressAsKey, Account> _lru = null!;
-    private ClockCache<AddressAsKey, Account> _clock = null!;
-    private AssociativeCache<AddressAsKey, Account> _assoc = null!;
-
-    private AddressAsKey[] _keys = null!;
-    private Account[] _accounts = null!;
-    private int[] _zipfIndices = null!;
-
-    [Params(500, 1000, 5000, 10000)]
-    public int KeyCount { get; set; }
-
-    [GlobalSetup]
-    public void Setup()
-    {
-        _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
-        _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
-        _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
-
-        _keys = new AddressAsKey[KeyCount];
-        _accounts = new Account[KeyCount];
-
-        Random random = new(42);
-        for (int i = 0; i < KeyCount; i++)
-        {
-            byte[] addressBytes = new byte[20];
-            random.NextBytes(addressBytes);
-            Address address = new Address(addressBytes);
-            _keys[i] = address;
-            _accounts[i] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-
-            _lru.Set(_keys[i], _accounts[i]);
-            _clock.Set(_keys[i], _accounts[i]);
-            _assoc.Set(in _keys[i], _accounts[i]);
-        }
-
-        // Pre-compute Zipf-like indices: 80% of accesses go to top 20% of keys
-        int hotCount = Math.Max(1, KeyCount / 5);
-        _zipfIndices = new int[KeyCount];
-        for (int i = 0; i < KeyCount; i++)
-        {
-            // 80% chance to pick from hot set (indices 0..hotCount-1)
-            _zipfIndices[i] = random.NextDouble() < 0.8
-                ? random.Next(hotCount)
-                : random.Next(KeyCount);
-        }
-    }
-
-    // ==================== Uniform hit rate ====================
-
-    [Benchmark]
-    public double LruCache_HitRate_Uniform()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            if (_lru.Get(_keys[i]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-
-    [Benchmark]
-    public double ClockCache_HitRate_Uniform()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            if (_clock.Get(_keys[i]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-
-    [Benchmark]
-    public double AssociativeCache_HitRate_Uniform()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            if (_assoc.Get(in _keys[i]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-
-    // ==================== Zipf-like hit rate ====================
-
-    [Benchmark]
-    public double LruCache_HitRate_Zipf()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            int idx = _zipfIndices[i];
-            if (_lru.Get(_keys[idx]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-
-    [Benchmark]
-    public double ClockCache_HitRate_Zipf()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            int idx = _zipfIndices[i];
-            if (_clock.Get(_keys[idx]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-
-    [Benchmark]
-    public double AssociativeCache_HitRate_Zipf()
-    {
-        int hits = 0;
-        for (int i = 0; i < KeyCount; i++)
-        {
-            int idx = _zipfIndices[i];
-            if (_assoc.Get(in _keys[idx]) is not null)
-                hits++;
-        }
-        return (double)hits / KeyCount * 100;
-    }
-}
-
-/// <summary>
 /// Multi-threaded throughput: mixed read/write workload across N threads.
 /// </summary>
 [MemoryDiagnoser]
-public class AssociativeCacheConcurrencyBenchmarks
+public class AssociativeCacheConcurrencyBenchmarks : CacheBenchmarkBase
 {
-    private LruCache<AddressAsKey, Account> _lru = null!;
-    private ClockCache<AddressAsKey, Account> _clock = null!;
-    private AssociativeCache<AddressAsKey, Account> _assoc = null!;
-
-    private AddressAsKey[] _keys = null!;
-    private Account[] _accounts = null!;
+    private const int KeyCount = 10000;
+    private const int OpsPerThread = 1000;
 
     [Params(1, 2, 4, 8)]
     public int ThreadCount { get; set; }
 
-    private const int KeyCount = 10000;
-    private const int OpsPerThread = 1000;
-
     [GlobalSetup]
-    public void Setup()
-    {
-        _lru = new LruCache<AddressAsKey, Account>(KeyCount, "benchmark");
-        _clock = new ClockCache<AddressAsKey, Account>(KeyCount);
-        _assoc = new AssociativeCache<AddressAsKey, Account>(KeyCount);
-
-        _keys = new AddressAsKey[KeyCount];
-        _accounts = new Account[KeyCount];
-
-        Random random = new(42);
-        for (int i = 0; i < KeyCount; i++)
-        {
-            byte[] addressBytes = new byte[20];
-            random.NextBytes(addressBytes);
-            Address address = new Address(addressBytes);
-            _keys[i] = address;
-            _accounts[i] = Build.An.Account.WithBalance((UInt256)i).TestObject;
-
-            _lru.Set(_keys[i], _accounts[i]);
-            _clock.Set(_keys[i], _accounts[i]);
-            _assoc.Set(in _keys[i], _accounts[i]);
-        }
-    }
+    public void Setup() => SetupCaches(KeyCount);
 
     [Benchmark]
     public long LruCache_ConcurrentMixed()
