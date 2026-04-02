@@ -348,6 +348,13 @@ public sealed class AssociativeCache<TKey, TValue>
         }
     }
 
+    /// <remarks>
+    /// If a concurrent Clear() bumps the epoch again while this scan is in progress,
+    /// entries from our epoch (N+1) that were written between the two bumps will be
+    /// skipped by both scans (neither N+1 nor N+2 matches the other's snapshot).
+    /// Those entries are logically dead (invisible to readers) but remain GC-rooted
+    /// until overwritten by new inserts. This is benign — not a safety issue.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void ClearEntries(long currentEpoch)
     {
@@ -375,7 +382,8 @@ public sealed class AssociativeCache<TKey, TValue>
                     Volatile.Write(ref e.Header, (h & EpochMask) | newSeq | LockMarker);
                     if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
-                    e.Key = default;
+                    if (RuntimeHelpers.IsReferenceOrContainsReferences<TKey>())
+                        e.Key = default;
                     e.Value = null;
                     e.Ticker = 0;
 
