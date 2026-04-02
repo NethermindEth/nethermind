@@ -130,7 +130,7 @@ public sealed class AssociativeCache<TKey, TValue>
     {
         if (_setCount == 0)
         {
-            value = default;
+            value = null;
             return false;
         }
 
@@ -172,7 +172,7 @@ public sealed class AssociativeCache<TKey, TValue>
             }
         }
 
-        value = default;
+        value = null;
         return false;
     }
 
@@ -246,19 +246,11 @@ public sealed class AssociativeCache<TKey, TValue>
             if (ReadEpoch(ref _epochAndCount) != epochTag) continue;
 
             long timestamp = Interlocked.Increment(ref _ticker);
-            int target;
-            if (bestEmpty >= 0)
-            {
-                target = bestEmpty;
-            }
-            else if (bestStale >= 0)
-            {
-                target = bestStale;
-            }
-            else
-            {
-                target = Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
-            }
+            int target = bestEmpty >= 0
+                ? bestEmpty
+                : bestStale >= 0
+                    ? bestStale
+                    : Pick3RandomEvictEntry(ref entries, baseIdx, timestamp);
 
             ref Entry te = ref Unsafe.Add(ref entries, baseIdx + target);
             long existing = Volatile.Read(ref te.Header);
@@ -329,7 +321,7 @@ public sealed class AssociativeCache<TKey, TValue>
                 if (!Sse.IsSupported) Interlocked.MemoryBarrier();
 
                 e.Key = default;
-                e.Value = default;
+                e.Value = null;
                 e.Ticker = 0;
 
                 Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
@@ -339,7 +331,7 @@ public sealed class AssociativeCache<TKey, TValue>
             }
         }
 
-        value = default;
+        value = null;
         return false;
     }
 
@@ -351,9 +343,10 @@ public sealed class AssociativeCache<TKey, TValue>
     /// </summary>
     public void Clear()
     {
-        if (_setCount == 0) return;
-
-        ClearEpochAndCount(ref _epochAndCount);
+        if (_setCount != 0)
+        {
+            ClearEpochAndCount(ref _epochAndCount);
+        }
     }
 
     [SkipLocalsInit]
