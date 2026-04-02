@@ -63,8 +63,9 @@ internal static class SeqlockHeader
     /// Atomically bumps the epoch and resets count to zero in one CAS.
     /// No race window between epoch change and count reset.
     /// </summary>
+    /// <summary>Returns the new epoch tag (bits 37-62, same positions as entry headers).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ClearEpochAndCount(ref long epochAndCount)
+    public static long ClearEpochAndCount(ref long epochAndCount)
     {
         long old = Volatile.Read(ref epochAndCount);
 
@@ -75,7 +76,7 @@ internal static class SeqlockHeader
             long newVal = (newEpoch << EpochShift) & EpochMask; // count = 0
 
             long prev = Interlocked.CompareExchange(ref epochAndCount, newVal, old);
-            if (prev == old) return;
+            if (prev == old) return newVal & EpochMask;
 
             old = prev;
         }

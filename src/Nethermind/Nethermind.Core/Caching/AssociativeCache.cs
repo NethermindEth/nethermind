@@ -339,18 +339,17 @@ public sealed class AssociativeCache<TKey, TValue>
     {
         if (_setCount == 0) return;
 
-        ClearEpochAndCount(ref _epochAndCount);
+        long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
 
         if (releaseReferences)
         {
-            ClearEntries();
+            ClearEntries(currentEpoch);
         }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ClearEntries()
+    private void ClearEntries(long currentEpoch)
     {
-        long currentEpoch = ReadEpoch(ref _epochAndCount);
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
         ref int gates = ref MemoryMarshal.GetArrayDataReference(_setGates);
 
