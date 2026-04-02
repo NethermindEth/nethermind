@@ -7,7 +7,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Bytes = Nethermind.Core.Extensions.Bytes;
 

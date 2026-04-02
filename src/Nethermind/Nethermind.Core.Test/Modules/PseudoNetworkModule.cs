@@ -10,7 +10,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization.ParallelSync;
+
 
 namespace Nethermind.Core.Test.Modules;
 

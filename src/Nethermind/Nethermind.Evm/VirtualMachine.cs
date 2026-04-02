@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

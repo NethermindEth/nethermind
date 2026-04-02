@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
