@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Archive;
@@ -81,5 +82,67 @@ internal class EraSlimReceiptDecoderTests
         receipts.Should().HaveCount(1);
         receipts[0].StatusCode.Should().Be(0);
         receipts[0].PostTransactionState.Should().BeNull();
+    }
+
+    [TestCase((byte)1)]
+    [TestCase((byte)2)]
+    [TestCase((byte)3)]
+    public void Decode_GethFormat_TypedReceipt_SetsTxType(byte txType)
+    {
+        byte[] receiptContent = [txType, 0x01, 0x80, 0xc0];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+
+        EraSlimReceiptDecoder sut = new();
+        TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
+
+        receipts.Should().HaveCount(1);
+        receipts[0].TxType.Should().Be((TxType)txType);
+        receipts[0].StatusCode.Should().Be(1);
+    }
+
+    [Test]
+    public void Decode_GethFormat_DecodesCumulativeGasUsed()
+    {
+        // gas = 100 => 0x64
+        byte[] receiptContent = [0x80, 0x01, 0x64, 0xc0];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+
+        EraSlimReceiptDecoder sut = new();
+        TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
+
+        receipts.Should().HaveCount(1);
+        receipts[0].GasUsedTotal.Should().Be(100);
+    }
+
+    [Test]
+    public void Decode_GethFormat_InvalidStatusLength_Throws()
+    {
+        // status = 2-byte string: 0x82 0x01 0x02
+        byte[] receiptContent = [0x80, 0x82, 0x01, 0x02, 0x80, 0xc0];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+
+        EraSlimReceiptDecoder sut = new();
+
+        Action act = () => sut.Decode(encoded.AsMemory());
+
+        act.Should().Throw<RlpException>();
+    }
+
+    [Test]
+    public void Decode_GethFormat_InvalidTxTypeLength_Throws()
+    {
+        // tx_type = 2-byte string
+        byte[] receiptContent = [0x82, 0x01, 0x02, 0x01, 0x80, 0xc0];
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+
+        EraSlimReceiptDecoder sut = new();
+
+        Action act = () => sut.Decode(encoded.AsMemory());
+
+        act.Should().Throw<RlpException>();
     }
 }

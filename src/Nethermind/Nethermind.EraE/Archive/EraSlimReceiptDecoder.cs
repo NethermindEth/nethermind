@@ -1,6 +1,3 @@
-// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
-// SPDX-License-Identifier: LGPL-3.0-only
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -25,6 +22,9 @@ internal sealed class EraSlimReceiptDecoder
             receipts[i] = DecodeOne(ref ctx);
         }
 
+        if (ctx.Position != outerEnd)
+            throw new RlpException("Receipt list was not fully consumed.");
+
         return receipts;
     }
 
@@ -40,40 +40,66 @@ internal sealed class EraSlimReceiptDecoder
         int fieldCount = ctx.PeekNumberOfItemsRemaining(receiptEnd);
         ctx.Position = savedPosition;
 
-        if (fieldCount != 4)
-        {
-            // Nethermind 3-field format: delegate to existing slim decoder
-            return _inner.Decode(ref ctx);
-        }
+        return fieldCount == 4
+            ? DecodeGoEthereumSlimReceipt(ref ctx)
+            : _inner.Decode(ref ctx);
+    }
 
-        // go-ethereum 4-field format: [tx_type, status, cumulative_gas, logs]
-        ctx.ReadSequenceLength(); // consume the sequence header (matches the peek above)
+    private static TxReceipt DecodeGoEthereumSlimReceipt(ref Rlp.ValueDecoderContext ctx)
+    {
+        int sequenceLength = ctx.ReadSequenceLength();
+        int receiptEnd = ctx.Position + sequenceLength;
 
         TxReceipt receipt = new();
 
         byte[] txTypeBytes = ctx.DecodeByteArray();
-        receipt.TxType = txTypeBytes.Length == 0 ? TxType.Legacy : (TxType)txTypeBytes[0];
+        if (txTypeBytes.Length > 1)
+            throw new RlpException($"Invalid slim receipt tx_type length: {txTypeBytes.Length}");
+
+        receipt.TxType = txTypeBytes.Length == 0
+            ? TxType.Legacy
+            : (TxType)txTypeBytes[0];
 
         byte[] statusBytes = ctx.DecodeByteArray();
-        // In go-ethereum ERA format, pre-EIP-658 receipts encode the post-transaction state
-        // root (32 bytes) in the status field rather than a 1-byte status code.
-        if (statusBytes.Length == Keccak.Size)
-            receipt.PostTransactionState = new Hash256(statusBytes);
-        else
-            receipt.StatusCode = statusBytes.Length == 0 ? (byte)0 : statusBytes[0];
+        switch (statusBytes.Length)
+        {
+            case 0:
+                receipt.StatusCode = 0;
+                break;
+
+            case 1:
+                receipt.StatusCode = statusBytes[0];
+                break;
+
+            case Keccak.Size:
+                receipt.PostTransactionState = new Hash256(statusBytes);
+                break;
+
+            default:
+                throw new RlpException(
+                    $"Invalid slim receipt status encoding length: {statusBytes.Length}");
+        }
 
         receipt.GasUsedTotal = ctx.DecodePositiveLong();
 
-        int logsEnd = ctx.ReadSequenceLength() + ctx.Position;
+        int logsLength = ctx.ReadSequenceLength();
+        int logsEnd = ctx.Position + logsLength;
         int logCount = ctx.PeekNumberOfItemsRemaining(logsEnd);
+
         LogEntry[] logs = new LogEntry[logCount];
         for (int i = 0; i < logCount; i++)
         {
-            logs[i] = Rlp.Decode<LogEntry>(ref ctx, RlpBehaviors.AllowExtraBytes);
+            logs[i] = Rlp.Decode<LogEntry>(ref ctx);
         }
+
+        if (ctx.Position != logsEnd)
+            throw new RlpException("Slim receipt logs list was not fully consumed.");
+
         receipt.Logs = logs;
 
-        ctx.Position = receiptEnd;
+        if (ctx.Position != receiptEnd)
+            throw new RlpException("Slim receipt sequence was not fully consumed.");
+
         return receipt;
     }
 }
