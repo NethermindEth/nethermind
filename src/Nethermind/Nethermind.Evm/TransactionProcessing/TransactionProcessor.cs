@@ -28,8 +28,9 @@ namespace Nethermind.Evm.TransactionProcessing
         IWorldState? worldState,
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager)
-        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
+        ILogManager? logManager,
+        bool parallel = false)
+        : TransactionProcessorBase<TGasPolicy>(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, parallel)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
 
     /// <summary>
@@ -65,7 +66,7 @@ namespace Nethermind.Evm.TransactionProcessing
         private SystemTransactionProcessor<TGasPolicy>? _systemTransactionProcessor;
         private readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         private readonly ILogManager _logManager;
-        private readonly IBlockAccessListBuilder? _balBuilder;
+        private readonly bool _parallel;
 
         [Flags]
         protected enum ExecutionOptions
@@ -112,7 +113,8 @@ namespace Nethermind.Evm.TransactionProcessing
             IWorldState? worldState,
             IVirtualMachine<TGasPolicy>? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool parallel = false)
         {
             ArgumentNullException.ThrowIfNull(logManager);
             ArgumentNullException.ThrowIfNull(specProvider);
@@ -127,10 +129,10 @@ namespace Nethermind.Evm.TransactionProcessing
             VirtualMachine = virtualMachine;
             _codeInfoRepository = codeInfoRepository;
             _blobBaseFeeCalculator = blobBaseFeeCalculator;
-            _balBuilder = WorldState as IBlockAccessListBuilder;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId);
             _logManager = logManager;
+            _parallel = parallel;
         }
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -485,8 +487,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (_balBuilder is not { ParallelExecutionEnabled: true } &&
-                tx.GasLimit > header.GasLimit - header.GasUsed)
+            if (!_parallel && tx.GasLimit > header.GasLimit - header.GasUsed)
             {
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
                 return TransactionResult.BlockGasLimitExceeded;
@@ -822,7 +823,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 PayRefund(tx, refundAmount, spec);
             }
         Complete:
-            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && _balBuilder is not { ParallelExecutionEnabled: true })
+            if (!opts.HasFlag(ExecutionOptions.SkipValidation) && !_parallel)
             {
                 header.GasUsed += gasConsumed.EffectiveBlockGas;
             }
