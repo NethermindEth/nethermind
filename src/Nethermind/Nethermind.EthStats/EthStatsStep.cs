@@ -27,7 +27,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.EthStats;
 
-[RunnerStepDependencies(typeof(InitializeBlockchain))]
+[RunnerStepDependencies(typeof(RegisterRpcModules))]
 public class EthStatsStep(
     ISpecProvider specProvider,
     ITxPool txPool,
@@ -40,7 +40,8 @@ public class EthStatsStep(
     INetworkConfig networkConfig,
     IInitConfig initConfig,
     IMiningConfig miningConfig,
-    ILogManager logManager
+    ILogManager logManager,
+    INewPayloadEventSource? newPayloadEventSource = null
 ) : IStep, IAsyncDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EthStatsStep>();
@@ -98,7 +99,8 @@ public class EthStatsStep(
             ethSyncingInfo!,
             miningConfig.Enabled,
             TimeSpan.FromSeconds(ethStatsConfig.SendInterval),
-            logManager);
+            logManager,
+            newPayloadEventSource);
 
         await _ethStatsIntegration.InitAsync();
     }
