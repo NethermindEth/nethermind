@@ -55,7 +55,7 @@ public class SnapServer : ISnapServer
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _lastNStateRootTracker = lastNStateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<SnapServer>();
 
         if (_store.Scheme == INodeStorage.KeyScheme.HalfPath)
         {

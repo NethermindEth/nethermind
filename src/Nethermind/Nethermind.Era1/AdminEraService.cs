@@ -24,7 +24,7 @@ public class AdminEraService : IAdminEraService
         _eraImporter = eraImporter;
         _eraExporter = eraExporter;
         _processExit = processExit;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<AdminEraService>();
     }
 
     public string ExportHistory(string destination, long from, long to)

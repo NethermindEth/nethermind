@@ -29,7 +29,7 @@ public class SnapCapabilitySwitcher : IDisposable
 
         _protocolsManager = protocolsManager;
         _syncModeSelector = syncModeSelector;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<SnapCapabilitySwitcher>();
     }
 
     /// <summary>

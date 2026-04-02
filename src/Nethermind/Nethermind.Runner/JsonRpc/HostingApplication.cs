@@ -22,7 +22,7 @@ internal sealed class HostingApplication : IHttpApplication<HostingApplication.C
         ILogManager logManager,
         HttpContextFactory httpContextFactory)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<HostingApplication>();
         //_logManager = logManager;
         _application = application;
         _httpContextFactory = httpContextFactory;

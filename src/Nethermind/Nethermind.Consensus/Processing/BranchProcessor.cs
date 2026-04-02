@@ -27,7 +27,7 @@ public class BranchProcessor(
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;
