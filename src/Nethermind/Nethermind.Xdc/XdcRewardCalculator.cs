@@ -17,12 +17,11 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Xdc
 {
     /// <summary>
-    /// Reward model (current mainnet):
+    /// Reward model:
     /// - Rewards are paid only at epoch checkpoints (number % EpochLength == 0).
-    /// - For now we **ignore** TIPUpgradeReward behavior because on mainnet
-    ///   the upgrade activation is set far in the future (effectively “not active”).
-    ///   When TIPUpgradeReward activates, protector/observer beneficiaries must be added.
-    /// - Current split implemented here: 90% to masternode owner, 10% to foundation.
+    /// - Pre-upgrade: proportional split of spec.Reward across masternode signatures.
+    /// - TIP-upgrade: fixed per-signer rewards for masternode/protector/observer.
+    /// - Holder split remains 90% owner, 10% foundation for each signer reward.
     /// </summary>
     public class XdcRewardCalculator : IRewardCalculator
     {
@@ -33,6 +32,7 @@ namespace Nethermind.Xdc
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
         private readonly IMasternodeVotingContract _masternodeVotingContract;
+        private readonly IMintedRecordContract _mintedRecordContract;
         private readonly ISigningTxCache _signingTxCache;
         private readonly ITransactionProcessor _transactionProcessor;
 
@@ -41,6 +41,7 @@ namespace Nethermind.Xdc
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IMasternodeVotingContract masternodeVotingContract,
+            IMintedRecordContract mintedRecordContract,
             ISigningTxCache signingTxCache,
             ITransactionProcessor transactionProcessor)
         {
@@ -49,6 +50,7 @@ namespace Nethermind.Xdc
             _specProvider = specProvider;
             _blockTree = blockTree;
             _masternodeVotingContract = masternodeVotingContract;
+            _mintedRecordContract = mintedRecordContract;
             _signingTxCache = signingTxCache;
             _transactionProcessor = transactionProcessor;
         }
@@ -80,34 +82,66 @@ namespace Nethermind.Xdc
             Address foundationWalletAddr = spec.FoundationWallet;
             if (foundationWalletAddr == default || foundationWalletAddr == Address.Zero) throw new InvalidOperationException("Foundation wallet address cannot be empty");
 
-            var (signers, count) = GetSigningTxCount(xdcHeader, spec);
-
-            UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
-            Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
-
             UInt256 totalFoundationWalletReward = UInt256.Zero;
+            UInt256 totalMintedInEpoch = UInt256.Zero;
             var rewards = new List<BlockReward>();
-            foreach (var (signer, reward) in rewardSigners)
+            var (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
+
+            bool isTipUpgradeRewardEnabled = xdcHeader.Number >= spec.TipUpgradeRewardBlock;
+            if (!isTipUpgradeRewardEnabled)
             {
-                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, xdcHeader);
-                totalFoundationWalletReward += foundationWalletReward;
-                rewards.Add(holderReward);
+                UInt256 chainReward = (UInt256)spec.Reward * Unit.Ether;
+                Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, masternodeSigners);
+                AddDistributedRewards(xdcHeader, rewardSigners, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
             }
+            else
+            {
+                Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
+                    spec.MasternodeReward,
+                    masternodeSigners);
+                Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
+                    spec.ProtectorReward,
+                    protectorSigners);
+                Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
+                    spec.ObserverReward,
+                    observerSigners);
+
+                AddDistributedRewards(xdcHeader, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+                AddDistributedRewards(xdcHeader, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+                AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
+
+                _mintedRecordContract.UpdateAccounting(
+                    _transactionProcessor,
+                    xdcHeader,
+                    spec,
+                    totalMintedInEpoch,
+                    burnedInOneEpoch);
+            }
+
             if (totalFoundationWalletReward > UInt256.Zero) rewards.Add(new BlockReward(foundationWalletAddr, totalFoundationWalletReward));
             return rewards.ToArray();
         }
 
-        private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
+        private (
+            Dictionary<Address, long> MasternodeSigners,
+            Dictionary<Address, long> ProtectorSigners,
+            Dictionary<Address, long> ObserverSigners,
+            UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
-            var signers = new Dictionary<Address, long>();
+            var masternodeSigners = new Dictionary<Address, long>();
+            var protectorSigners = new Dictionary<Address, long>();
+            var observerSigners = new Dictionary<Address, long>();
+            UInt256 burnedInOneEpoch = UInt256.Zero;
             long number = epochHeader.Number;
-            if (number == 0) return (signers, 0);
+            if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
 
-            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
+            long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
             var blockNumberToHash = new Dictionary<long, Hash256>();
             var hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
             var masternodes = new HashSet<Address>();
+            var protectors = new HashSet<Address>();
+            var observers = new HashSet<Address>();
             var mergeSignRange = spec.MergeSignRange;
 
             XdcBlockHeader h = epochHeader;
@@ -116,6 +150,11 @@ namespace Nethermind.Xdc
                 Hash256 parentHash = h.ParentHash;
                 h = _blockTree.FindHeader(parentHash!, i) as XdcBlockHeader;
                 if (h == null) throw new InvalidOperationException($"Header with hash {parentHash} not found");
+                if (epochCount == 0 && !h.BaseFeePerGas.IsZero)
+                {
+                    UInt256 burnedInBlock = h.BaseFeePerGas * (UInt256)h.GasUsed;
+                    burnedInOneEpoch += burnedInBlock;
+                }
                 if (_epochSwitchManager.IsEpochSwitchAtBlock(h) && h.Number != spec.SwitchBlock + 1)
                 {
                     epochCount++;
@@ -128,9 +167,29 @@ namespace Nethermind.Xdc
                             masternodes = new HashSet<Address>(h.ExtraData.ParseV1Masternodes());
                         else
                             masternodes = new HashSet<Address>(h.ValidatorsAddress!);
-                        // TIPUpgradeReward path (protector/observer selection) is currently ignored,
-                        // because on mainnet the upgrade height is set to an effectively unreachable block.
-                        // If/when that changes, we must compute protector/observer sets here.
+
+                        if (h.Number >= spec.TipUpgradeRewardBlock)
+                        {
+                            // TIPUpgradeReward path: select protector and observer sets from stake-sorted candidates.
+                            // Exclude current masternodes and penalized nodes from the checkpoint header.
+                            Address[] candidatesByStake = _masternodeVotingContract.GetCandidatesByStake(h) ?? [];
+                            int penaltiesCount = h.PenaltiesAddress?.Length ?? 0;
+                            var excludedCandidates = new HashSet<Address>(masternodes.Count + penaltiesCount);
+                            excludedCandidates.UnionWith(masternodes);
+                            if (h.PenaltiesAddress is not null)
+                                excludedCandidates.UnionWith(h.PenaltiesAddress);
+
+                            foreach (Address candidate in candidatesByStake)
+                            {
+                                if (candidate == Address.Zero || excludedCandidates.Contains(candidate))
+                                    continue;
+
+                                if (protectors.Count < spec.MaxProtectorNodes)
+                                    protectors.Add(candidate);
+                                else if (observers.Count < spec.MaxObserverNodes)
+                                    observers.Add(candidate);
+                            }
+                        }
                         break;
                     }
                 }
@@ -157,13 +216,21 @@ namespace Nethermind.Xdc
                 if (!hashToSigningAddress.TryGetValue(blockHash, out var addresses)) continue;
                 foreach (Address addr in addresses)
                 {
-                    if (!masternodes.Contains(addr)) continue;
-                    if (!signers.ContainsKey(addr)) signers[addr] = 0;
-                    signers[addr] += 1;
-                    signingCount++;
+                    if (masternodes.Contains(addr))
+                        IncrementSignerCount(masternodeSigners, addr);
+                    else if (protectors.Contains(addr))
+                        IncrementSignerCount(protectorSigners, addr);
+                    else if (observers.Contains(addr))
+                        IncrementSignerCount(observerSigners, addr);
                 }
             }
-            return (signers, signingCount);
+            return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
+        }
+
+        private static void IncrementSignerCount(Dictionary<Address, long> signers, Address addr)
+        {
+            if (!signers.TryAdd(addr, 1))
+                signers[addr] += 1;
         }
 
         private Hash256 ExtractBlockHashFromSigningTxData(ReadOnlyMemory<byte> data)
@@ -178,14 +245,36 @@ namespace Nethermind.Xdc
         }
 
         private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
-            Dictionary<Address, long> signers, long totalSigningCount)
+            Dictionary<Address, long> signers)
         {
             var rewardSigners = new Dictionary<Address, UInt256>();
+            long totalSigningCount = 0;
+            foreach (long signerCount in signers.Values)
+            {
+                totalSigningCount += signerCount;
+            }
+
             foreach (var (signer, count) in signers)
             {
                 UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);
                 rewardSigners.Add(signer, reward);
             }
+            return rewardSigners;
+        }
+
+        private Dictionary<Address, UInt256> CalculateFixedRewardForSigners(
+            UInt256 rewardPerSigner,
+            Dictionary<Address, long> signers)
+        {
+            var rewardSigners = new Dictionary<Address, UInt256>();
+            if (rewardPerSigner == UInt256.Zero)
+                return rewardSigners;
+
+            foreach ((Address signer, long signerCount) in signers)
+            {
+                rewardSigners[signer] = rewardPerSigner;
+            }
+
             return rewardSigners;
         }
 
@@ -228,6 +317,22 @@ namespace Nethermind.Xdc
             UInt256 foundationReward = reward / 10;
 
             return (new BlockReward(owner, masterReward), foundationReward);
+        }
+
+        private void AddDistributedRewards(
+            XdcBlockHeader header,
+            Dictionary<Address, UInt256> rewardSigners,
+            List<BlockReward> rewards,
+            ref UInt256 totalFoundationWalletReward,
+            ref UInt256 totalMintedInEpoch)
+        {
+            foreach ((Address signer, UInt256 reward) in rewardSigners)
+            {
+                (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, header);
+                totalFoundationWalletReward += foundationWalletReward;
+                totalMintedInEpoch += holderReward.Value + foundationWalletReward;
+                rewards.Add(holderReward);
+            }
         }
     }
 }

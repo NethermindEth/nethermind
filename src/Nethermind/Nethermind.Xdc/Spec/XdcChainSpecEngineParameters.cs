@@ -50,6 +50,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long? TipTrc21Fee { get; set; }
     public long TIP2019Block { get; set; }
     public long? TipUpgradePenalty { get; set; }
+    public long? TipUpgradeReward { get; set; }
     public long MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
     public long BlackListHFNumber { get; set; }
