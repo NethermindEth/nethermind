@@ -16,6 +16,6 @@ public class AssociativeKeyCacheTests : AssociativeCacheTestsBase
     protected override bool Get(in AddressAsKey key) => _cache.Get(in key);
     protected override bool Contains(in AddressAsKey key) => _cache.Contains(in key);
     protected override bool Delete(in AddressAsKey key) => _cache.Delete(in key);
-    protected override void Clear() => _cache.Clear();
+    protected override void Clear(bool releaseReferences = true) => _cache.Clear(releaseReferences);
     protected override int GetCount() => _cache.Count;
 }

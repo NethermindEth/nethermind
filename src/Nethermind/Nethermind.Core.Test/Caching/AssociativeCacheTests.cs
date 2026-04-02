@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
@@ -19,7 +21,7 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     protected override bool Get(in AddressAsKey key) => _cache.Get(in key) is not null;
     protected override bool Contains(in AddressAsKey key) => _cache.Contains(in key);
     protected override bool Delete(in AddressAsKey key) => _cache.Delete(in key);
-    protected override void Clear() => _cache.Clear();
+    protected override void Clear(bool releaseReferences = true) => _cache.Clear(releaseReferences);
     protected override int GetCount() => _cache.Count;
 
     protected override void AssertValue(in AddressAsKey key, int expectedIndex)
@@ -91,6 +93,35 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
 
         // Count is bounded by the rolling-window (up to 10) plus any Set calls that return true
         cache.Count.Should().BeLessOrEqualTo(10);
+    }
+
+    [Test]
+    public void Clear_with_release_preserves_entries_written_after_epoch_bump()
+    {
+        // Race the O(n) release pass against concurrent inserts.
+        // Entries written after the epoch bump must survive the null pass.
+        Cache cache = new(256);
+
+        for (int i = 0; i < Capacity; i++)
+            cache.Set(in _keys[i], _accounts[i]);
+
+        Parallel.Invoke(
+            () => cache.Clear(),
+            () =>
+            {
+                // Insert while ClearEntries is scanning sets
+                for (int i = 0; i < 16; i++)
+                    cache.Set(in _keys[i], _accounts[i]);
+            }
+        );
+
+        // Entries that survived must have correct values
+        for (int i = 0; i < 16; i++)
+        {
+            AddressAsKey key = _keys[i];
+            if (cache.TryGet(in key, out Account? val))
+                val.Should().Be(_accounts[i]);
+        }
     }
 
     [Test]

@@ -255,14 +255,67 @@ public sealed class AssociativeKeyCache<TKey>
     }
 
     /// <summary>
-    /// Logically invalidates all entries via epoch bump + count reset in a single atomic CAS.
-    /// No race window between epoch change and count reset.
+    /// Logically invalidates all entries via O(1) epoch bump.
+    /// When <paramref name="releaseReferences"/> is true (the default) and <typeparamref name="TKey"/>
+    /// contains references, also walks each set under its gate to null out Key fields.
+    /// Pass false on hot paths where O(1) clear is preferred and stale GC roots are acceptable.
     /// </summary>
-    public void Clear()
+    public void Clear(bool releaseReferences = true)
     {
         if (_setCount != 0)
         {
-            ClearEpochAndCount(ref _epochAndCount);
+            long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
+
+            if (releaseReferences && RuntimeHelpers.IsReferenceOrContainsReferences<TKey>())
+            {
+                ClearEntries(currentEpoch);
+            }
+        }
+    }
+
+    /// <remarks>
+    /// If a concurrent Clear() bumps the epoch again while this scan is in progress,
+    /// entries from our epoch that were written between the two bumps will be skipped
+    /// by both scans. Those entries are logically dead but remain GC-rooted until
+    /// overwritten by new inserts. This is benign — not a safety issue.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void ClearEntries(long currentEpoch)
+    {
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+        ref int gates = ref MemoryMarshal.GetArrayDataReference(_setGates);
+
+        for (int s = 0; s < _setCount; s++)
+        {
+            ref int gate = ref Unsafe.Add(ref gates, s);
+            AcquireGate(ref gate);
+            try
+            {
+                int baseIdx = s << WayShift;
+                for (int i = 0; i < Ways; i++)
+                {
+                    ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
+                    long h = Volatile.Read(ref e.Header);
+
+                    // Skip empty entries and entries written after the epoch bump
+                    if ((h & OccupiedBit) == 0) continue;
+                    if ((h & EpochMask) == currentEpoch) continue;
+
+                    // Seqlock write: lock → null Key → unlock (clears OccupiedBit)
+                    long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
+                    Volatile.Write(ref e.Header, (h & EpochMask) | newSeq | LockMarker);
+                    if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+                    e.Key = default;
+                    e.Ticker = 0;
+
+                    Volatile.Write(ref e.Header, (h & EpochMask) | newSeq);
+                }
+            }
+            finally
+            {
+                ReleaseGate(ref gate);
+            }
         }
     }
 
