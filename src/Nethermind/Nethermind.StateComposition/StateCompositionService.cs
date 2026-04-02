@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -91,7 +92,17 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                     while (await progressTimer.WaitForNextTickAsync(CancellationToken.None).ConfigureAwait(false))
                     {
                         if (_logger.IsInfo)
-                            _logger.Info($"StateComposition: scan in progress, elapsed {sw.Elapsed}");
+                        {
+                            double elapsed = sw.Elapsed.TotalSeconds;
+                            ScanSnapshot snap = visitor.GetSnapshot();
+                            _logger.Info(
+                                $"StateComposition: {elapsed:F1}s | " +
+                                $"accounts: {ScanSnapshot.Fmt(snap.Accounts)} ({ScanSnapshot.Fmt(snap.Accounts / elapsed)}/s) | " +
+                                $"contracts: {ScanSnapshot.Fmt(snap.Contracts)} (storage: {ScanSnapshot.Fmt(snap.ContractsWithStorage)}) | " +
+                                $"slots: {ScanSnapshot.Fmt(snap.StorageSlots)} ({ScanSnapshot.Fmt(snap.StorageSlots / elapsed)}/s) | " +
+                                $"nodes: {ScanSnapshot.Fmt(snap.Nodes)} ({ScanSnapshot.Fmt(snap.Nodes / elapsed)}/s) | " +
+                                $"data: {snap.Bytes.SizeToString(useSi: true)}");
+                        }
                     }
                 }
                 catch (OperationCanceledException) { }
