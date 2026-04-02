@@ -27,6 +27,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.Specs;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
 
@@ -159,6 +160,13 @@ public class BlockAccessListManager(
         {
             stateProvider.RecalculateStateRoot();
         }
+    }
+
+    public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
+    {
+        stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
+        stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
+        stateProvider.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
     }
 
     public void SetBlockAccessList(Block block, IReleaseSpec spec)
