@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
@@ -155,6 +157,32 @@ namespace Nethermind.Network.Discovery.Test
             _discoveryManagersMocks[0].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.Neighbors));
         }
 
+        private (IDiscoveryManager DiscoveryManager, NettyDiscoveryHandler Handler, IChannelHandlerContext Ctx, IMessageSerializationService Service) CreateHandler(NodeFilter? nodeFilter = null)
+        {
+            IDiscoveryManager discoveryManager = Substitute.For<IDiscoveryManager>();
+            IMessageSerializationService service = Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject;
+            IChannel channel = Substitute.For<IChannel>();
+            NettyDiscoveryHandler handler = nodeFilter is not null
+                ? new(discoveryManager, channel, service, Timestamper.Default, LimboLogs.Instance, nodeFilter)
+                : new(discoveryManager, channel, service, Timestamper.Default, LimboLogs.Instance);
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
+            return (discoveryManager, handler, ctx, service);
+        }
+
+        [Test]
+        public void UndersizedPacketIsNotForwardedToDiscoveryManager()
+        {
+            var (discoveryManagerMock, handler, ctx, _) = CreateHandler();
+
+            // 50 bytes is well under the 98-byte minimum for a valid discovery v4 message
+            byte[] data = new byte[50];
+            var from = IPEndPoint.Parse("127.0.0.1:10000");
+            var to = IPEndPoint.Parse("127.0.0.1:10003");
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
+
+            discoveryManagerMock.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
         [Test]
         public void ForwardsUnrecognizedMessageToNextHandler()
         {
@@ -169,6 +197,85 @@ namespace Nethermind.Network.Discovery.Test
             ctx.FireChannelRead(Arg.Is<DatagramPacket>(
                 p => p.Content.ReadAllBytesAsArray().SequenceEqual(data)
             ));
+        }
+
+        [Test]
+        public async Task FarFutureMessagesAreRejected()
+        {
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + (long)TimeSpan.FromHours(2).TotalSeconds, _address, _address2, new byte[32])
+            {
+                FarAddress = _address2
+            };
+
+            await _discoveryHandlers[0].SendMsg(msg);
+            await SleepWhileWaiting();
+
+            _discoveryManagersMocks[1].DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task RateLimitedMessagesAreIgnored()
+        {
+            var (discoveryManagerMock, handler, ctx, service) = CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)));
+            SemaphoreSlim called = new(0);
+            discoveryManagerMock.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => called.Release());
+
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+
+            // Wait for the one allowed message to be dispatched via Task.Factory.StartNew
+            Assert.That(await called.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
+            // Brief wait to ensure no second call sneaks through
+            await Task.Delay(50);
+
+            discoveryManagerMock.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task DefaultInboundRateLimiter_Allows_ShortBurstFromSameIp()
+        {
+            var (discoveryManagerMock, handler, ctx, service) = CreateHandler();
+
+            byte[] data = SerializePing(service);
+
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+
+            await SleepWhileWaiting();
+
+            discoveryManagerMock.Received(2).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public async Task DefaultInboundRateLimiter_Drops_Message_AboveBurstLimit()
+        {
+            var (discoveryManagerMock, handler, ctx, service) = CreateHandler();
+
+            byte[] data = SerializePing(service);
+
+            for (int i = 0; i < 5; i++)
+            {
+                handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])data.Clone()), _address2, _address));
+            }
+
+            await SleepWhileWaiting();
+
+            discoveryManagerMock.Received(4).OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        private byte[] SerializePing(IMessageSerializationService service)
+        {
+            PingMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address2, _address, new byte[32])
+            {
+                FarAddress = _address
+            };
+
+            IByteBuffer serialized = service.ZeroSerialize(msg);
+            byte[] data = serialized.ReadAllBytesAsArray();
+            serialized.SafeRelease();
+            return data;
         }
 
         private async Task StartUdpChannel(string address, int port, IDiscoveryManager discoveryManager, IMessageSerializationService service)

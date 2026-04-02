@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                         }
 
                         // Reschedule remaining transactions with a different start index
-                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow, "Transactions"))
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
                         {
                             transactions.Dispose();
                         }

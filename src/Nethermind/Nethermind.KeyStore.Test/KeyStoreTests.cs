@@ -177,23 +177,6 @@ public class KeyStoreTests
         Assert.That(deletedKey.Item2.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
-    [Test]
-    public void Salt32Test()
-    {
-        TestContext test = new TestContext();
-        (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
-        Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
-
-        (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-        Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes), Is.True);
-
-        Result result = test.Store.DeleteKey(key.Item1.Address);
-        Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
-
-        (PrivateKey, Result) deletedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-        Assert.That(deletedKey.Item2.ResultType, Is.EqualTo(ResultType.Failure));
-    }
 
     [Test]
     public void KeyStoreVersionMismatchTest()

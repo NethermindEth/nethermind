@@ -44,10 +44,6 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
             if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
                 return RpcTransactionErrors.GasPriceInEip1559;
 
-            // Reject zero maxFeePerGas from user input
-            if (MaxFeePerGas?.IsZero == true)
-                return RpcTransactionErrors.ZeroMaxFeePerGas;
-
             if (MaxFeePerGas < MaxPriorityFeePerGas)
                 return RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(MaxFeePerGas, MaxPriorityFeePerGas);
         }

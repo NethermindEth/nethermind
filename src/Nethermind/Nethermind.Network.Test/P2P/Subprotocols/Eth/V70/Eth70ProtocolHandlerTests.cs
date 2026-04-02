@@ -582,6 +582,24 @@ public class Eth70ProtocolHandlerTests
             !m.LastBlockIncomplete));
     }
 
+    [Test]
+    public async Task Handle_GetReceipts_disposes_request_message()
+    {
+        TrackableGetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        using ReceiptsMessage70 response = await _handler.Handle(request, CancellationToken.None);
+
+        Assert.That(request.IsDisposed, Is.True, "Handler must dispose the request message to release the pooled hash list");
+    }
+
+    private sealed class TrackableGetReceiptsMessage70(long requestId, long firstBlockReceiptIndex, IOwnedReadOnlyList<Hash256> hashes)
+        : GetReceiptsMessage70(requestId, firstBlockReceiptIndex, hashes)
+    {
+        public bool IsDisposed { get; private set; }
+        public override void Dispose() { IsDisposed = true; base.Dispose(); }
+    }
+
     private void HandleIncomingStatusMessage()
     {
         using var statusMsg = new StatusMessage69 { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };

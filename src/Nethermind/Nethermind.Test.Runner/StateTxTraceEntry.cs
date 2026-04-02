@@ -15,9 +15,6 @@ namespace Nethermind.Test.Runner
 
         public int Pc { get; set; }
 
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        public int Section { get; set; }
-
         [JsonPropertyName("op")]
         public byte Operation { get; set; }
 
@@ -32,9 +29,6 @@ namespace Nethermind.Test.Runner
         public List<string> Stack { get; set; }
 
         public int Depth { get; set; }
-
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-        public int FunctionDepth { get; set; }
 
         public int Refund { get; set; }
 

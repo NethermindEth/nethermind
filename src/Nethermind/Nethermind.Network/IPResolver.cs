@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -25,7 +26,7 @@ public class IPResolver : IIPResolver
         _logManager = logManager;
     }
 
-    public async Task Initialize()
+    public async Task Initialize(CancellationToken cancellationToken = default)
     {
         try
         {
@@ -44,7 +45,7 @@ public class IPResolver : IIPResolver
             if (i > 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"External IP resolution failed (attempt {i}/{maxAttempts}). Retrying in {delaySeconds}s...");
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
             }
 
             try

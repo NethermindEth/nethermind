@@ -87,7 +87,7 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly byte[] StopCode = [(byte)Instruction.STOP];
     private static readonly Instruction[] AllValidLegacyOpcodes = Enum
         .GetValues<Instruction>()
-        .Where(static opcode => opcode.IsValid(isEofContext: false) && opcode != Instruction.INVALID)
+        .Where(static opcode => Enum.IsDefined(opcode) && opcode != Instruction.INVALID)
         .ToArray();
     private static readonly Instruction[] PerRunRefreshedOpcodes =
     [
@@ -414,13 +414,43 @@ public unsafe class EvmOpcodesBenchmark
         return Math.Clamp(maxRuns, 1, requestedRuns);
     }
 
+    private static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(Instruction instruction) => instruction switch
+    {
+        Instruction.STOP or Instruction.INVALID or Instruction.JUMPDEST => (0, 0, 0),
+        Instruction.POP or Instruction.SELFDESTRUCT or Instruction.JUMP => (1, 0, 0),
+        Instruction.ISZERO or Instruction.NOT or Instruction.CLZ or Instruction.BALANCE or Instruction.CALLDATALOAD
+            or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.BLOCKHASH or Instruction.MLOAD
+            or Instruction.SLOAD or Instruction.BLOBHASH or Instruction.TLOAD => (1, 1, 0),
+        Instruction.MSTORE or Instruction.MSTORE8 or Instruction.SSTORE or Instruction.LOG0 or Instruction.REVERT
+            or Instruction.TSTORE or Instruction.RETURN or Instruction.JUMPI => (2, 0, 0),
+        Instruction.CALLDATACOPY or Instruction.CODECOPY or Instruction.RETURNDATACOPY or Instruction.LOG1
+            or Instruction.MCOPY => (3, 0, 0),
+        Instruction.EXTCODECOPY or Instruction.LOG2 => (4, 0, 0),
+        Instruction.LOG3 => (5, 0, 0),
+        Instruction.LOG4 => (6, 0, 0),
+        Instruction.ADDMOD or Instruction.MULMOD or Instruction.CREATE => (3, 1, 0),
+        Instruction.CREATE2 => (4, 1, 0),
+        Instruction.ADDRESS or Instruction.ORIGIN or Instruction.CALLER or Instruction.CALLVALUE
+            or Instruction.CALLDATASIZE or Instruction.CODESIZE or Instruction.GASPRICE or Instruction.RETURNDATASIZE
+            or Instruction.COINBASE or Instruction.TIMESTAMP or Instruction.NUMBER or Instruction.PREVRANDAO
+            or Instruction.GASLIMIT or Instruction.CHAINID or Instruction.SELFBALANCE or Instruction.BASEFEE
+            or Instruction.MSIZE or Instruction.GAS or Instruction.PC or Instruction.BLOBBASEFEE
+            or Instruction.SLOTNUM => (0, 1, 0),
+        Instruction.CALL or Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALLCODE => (6, 1, 0),
+        >= Instruction.PUSH0 and <= Instruction.PUSH32 => (0, 1, (ushort)(instruction - Instruction.PUSH0)),
+        >= Instruction.DUP1 and <= Instruction.DUP16 => ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0),
+        >= Instruction.SWAP1 and <= Instruction.SWAP16 => ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0),
+        Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE => (0, 0, 1),
+        _ => Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : throw new NotImplementedException($"opcode {instruction} not implemented yet"),
+    };
+
     private static (int InputCount, int OutputCount) GetStackIo(Instruction opcode)
     {
         return opcode switch
         {
             Instruction.CALL or Instruction.CALLCODE => (7, 1),
             Instruction.DELEGATECALL or Instruction.STATICCALL => (6, 1),
-            _ => (opcode.StackRequirements().InputCount, opcode.StackRequirements().OutputCount),
+            _ => (StackRequirements(opcode).InputCount, StackRequirements(opcode).OutputCount),
         };
     }
 
@@ -556,7 +586,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private int SetupGenericStack(Instruction opcode)
     {
-        int inputCount = opcode.StackRequirements().InputCount;
+        int inputCount = StackRequirements(opcode).InputCount;
         for (int i = 0; i < inputCount; i++)
         {
             UInt256 value = new((ulong)(i + 1));

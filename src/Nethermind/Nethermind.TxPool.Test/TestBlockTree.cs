@@ -105,4 +105,5 @@ internal class TestBlockTree : IBlockTree
     public bool IsBetterThanHead(BlockHeader? header) => false;
     public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) { }
     public void RecalculateTreeLevels() { }
+    public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
 }

@@ -15,6 +15,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class StorageRangesMessageSerializerTests
     {
+        private const int MaxStorageSlotValueLength = 33;
 
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
@@ -91,6 +92,62 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, msg);
+        }
+
+        [Test]
+        public void Deserialize_allows_storage_slot_value_at_current_limit()
+        {
+            using StorageRangeMessage msg = CreateMessageWithSingleSlotValue(CreateStorageSlotValue(MaxStorageSlotValueLength));
+            StorageRangesMessageSerializer serializer = new();
+
+            byte[] serialized = serializer.Serialize(msg);
+            using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
+
+            Assert.That(deserialized.Slots[0][0].SlotRlpValue.Length, Is.EqualTo(MaxStorageSlotValueLength));
+        }
+
+        [Test]
+        public void Deserialize_throws_on_storage_slot_value_above_current_limit()
+        {
+            using StorageRangeMessage msg = CreateMessageWithSingleSlotValue(CreateStorageSlotValue(MaxStorageSlotValueLength + 1));
+            StorageRangesMessageSerializer serializer = new();
+
+            byte[] serialized = serializer.Serialize(msg);
+
+            Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
+        }
+
+        private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue)
+        {
+            return new StorageRangeMessage
+            {
+                RequestId = MessageConstants.Random.NextLong(),
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                {
+                    new ArrayPoolList<PathWithStorageSlot>(1)
+                    {
+                        new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), slotRlpValue)
+                    }
+                },
+                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+            };
+        }
+
+        private static byte[] CreateStorageSlotValue(int length)
+        {
+            byte[] slotRlpValue = new byte[length];
+            if (length == 0)
+            {
+                return slotRlpValue;
+            }
+
+            slotRlpValue[0] = (byte)(0x80 + length - 1);
+            for (int i = 1; i < slotRlpValue.Length; i++)
+            {
+                slotRlpValue[i] = (byte)i;
+            }
+
+            return slotRlpValue;
         }
     }
 }

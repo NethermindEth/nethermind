@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using FastEnumUtility;
-using Nethermind.Core.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm;
 
@@ -166,24 +160,9 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
-    DATALOAD = 0xd0,
-    DATALOADN = 0xd1,
-    DATASIZE = 0xd2,
-    DATACOPY = 0xd3,
-
-    RJUMP = 0xe0,
-    RJUMPI = 0xe1,
-    RJUMPV = 0xe2,
-    CALLF = 0xe3,
-    RETF = 0xe4,
-    JUMPF = 0xe5,
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,
-
-    EOFCREATE = 0xec,
-
-    RETURNCODE = 0xee,
 
     CREATE = 0xf0,
     CALL = 0xf1,
@@ -191,218 +170,8 @@ public enum Instruction : byte
     RETURN = 0xf3,
     DELEGATECALL = 0xf4,
     CREATE2 = 0xf5,
-    RETURNDATALOAD = 0xf7,
-    EXTCALL = 0xf8,
-    EXTDELEGATECALL = 0xf9,
     STATICCALL = 0xfa,
-    EXTSTATICCALL = 0xfb,
     REVERT = 0xfd,
     INVALID = 0xfe,
     SELFDESTRUCT = 0xff
-}
-
-public static class InstructionExtensions
-{
-    private readonly static bool[] _terminatingInstructions = CreateTerminatingInstructionsLookup();
-    private readonly static bool[] _validLegacyInstructions = CreateValidInstructionsLookup(isEofContext: false);
-    private readonly static bool[] _validEofInstructions = CreateValidInstructionsLookup(isEofContext: true);
-
-    public static bool IsTerminating(this Instruction instruction)
-        => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_terminatingInstructions), (int)instruction);
-
-    public static bool IsValid(this Instruction instruction, bool isEofContext)
-        => Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(isEofContext ? _validEofInstructions : _validLegacyInstructions), (int)instruction);
-
-    public static (ushort InputCount, ushort OutputCount, ushort immediates) StackRequirements(this Instruction instruction)
-    {
-        switch (instruction)
-        {
-            case Instruction.STOP:
-            case Instruction.INVALID:
-            case Instruction.JUMPDEST:
-            case Instruction.RETF:
-                return (0, 0, 0);
-            case Instruction.POP:
-            case Instruction.SELFDESTRUCT:
-            case Instruction.JUMP:
-                return (1, 0, 0);
-            case Instruction.ISZERO:
-            case Instruction.NOT:
-            case Instruction.BALANCE:
-            case Instruction.CALLDATALOAD:
-            case Instruction.EXTCODESIZE:
-            case Instruction.RETURNDATALOAD:
-            case Instruction.EXTCODEHASH:
-            case Instruction.BLOCKHASH:
-            case Instruction.MLOAD:
-            case Instruction.SLOAD:
-            case Instruction.BLOBHASH:
-            case Instruction.TLOAD:
-            case Instruction.DATALOAD:
-                return (1, 1, 0);
-            case Instruction.MSTORE:
-            case Instruction.MSTORE8:
-            case Instruction.SSTORE:
-            case Instruction.LOG0:
-            case Instruction.REVERT:
-            case Instruction.TSTORE:
-            case Instruction.RETURN:
-            case Instruction.JUMPI:
-                return (2, 0, 0);
-            case Instruction.RETURNCODE:
-                return (2, 2, 1);
-            case Instruction.CALLDATACOPY:
-            case Instruction.CODECOPY:
-            case Instruction.RETURNDATACOPY:
-            case Instruction.LOG1:
-            case Instruction.DATACOPY:
-            case Instruction.MCOPY:
-                return (3, 0, 0);
-            case Instruction.EXTCODECOPY:
-            case Instruction.LOG2:
-                return (4, 0, 0);
-            case Instruction.LOG3:
-                return (5, 0, 0);
-            case Instruction.LOG4:
-                return (6, 0, 0);
-            case Instruction.ADDMOD:
-            case Instruction.MULMOD:
-            case Instruction.CREATE:
-            case Instruction.EXTSTATICCALL:
-            case Instruction.EXTDELEGATECALL:
-                return (3, 1, 0);
-            case Instruction.CREATE2:
-            case Instruction.EXTCALL:
-                return (4, 1, 0);
-            case Instruction.EOFCREATE:
-                return (4, 1, 1);
-            case Instruction.ADDRESS:
-            case Instruction.ORIGIN:
-            case Instruction.CALLER:
-            case Instruction.CALLVALUE:
-            case Instruction.CALLDATASIZE:
-            case Instruction.CODESIZE:
-            case Instruction.GASPRICE:
-            case Instruction.RETURNDATASIZE:
-            case Instruction.COINBASE:
-            case Instruction.TIMESTAMP:
-            case Instruction.NUMBER:
-            case Instruction.PREVRANDAO:
-            case Instruction.GASLIMIT:
-            case Instruction.CHAINID:
-            case Instruction.SELFBALANCE:
-            case Instruction.BASEFEE:
-            case Instruction.MSIZE:
-            case Instruction.GAS:
-            case Instruction.PC:
-            case Instruction.BLOBBASEFEE:
-            case Instruction.DATASIZE:
-            case Instruction.SLOTNUM:
-                return (0, 1, 0);
-            case Instruction.RJUMP:
-            case Instruction.CALLF:
-            case Instruction.JUMPF:
-                return (0, 0, 2);
-            case Instruction.DATALOADN:
-                return (0, 1, 2);
-            case Instruction.RJUMPI:
-                return (1, 0, 2);
-            case Instruction.CALL:
-            case Instruction.DELEGATECALL:
-            case Instruction.STATICCALL:
-            case Instruction.CALLCODE:
-                return (6, 1, 0);
-            case >= Instruction.PUSH0 and <= Instruction.PUSH32:
-                return (0, 1, instruction - Instruction.PUSH0);
-            case >= Instruction.DUP1 and <= Instruction.DUP16:
-                return ((ushort)(instruction - Instruction.DUP1 + 1), (ushort)(instruction - Instruction.DUP1 + 2), 0);
-            case >= Instruction.SWAP1 and <= Instruction.SWAP16:
-                return ((ushort)(instruction - Instruction.SWAP1 + 2), (ushort)(instruction - Instruction.SWAP1 + 2), 0);
-            case Instruction.RJUMPV:
-                // multi-bytes opcode
-                return (1, 0, 0);
-            // multi-bytes opcode
-            case Instruction.SWAPN:
-            case Instruction.DUPN:
-            case Instruction.EXCHANGE:
-                return (0, 0, 1);
-            default:
-                return Enum.IsDefined(instruction) ? ((ushort)2, (ushort)1, (ushort)0) : ThrowNotImplemented(instruction);
-        }
-    }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static (ushort InputCount, ushort OutputCount, ushort immediates) ThrowNotImplemented(Instruction instruction)
-        => throw new NotImplementedException($"opcode {instruction} not implemented yet");
-
-    private static bool[] CreateValidInstructionsLookup(bool isEofContext)
-    {
-        bool[] instructions = new bool[byte.MaxValue];
-        for (int i = 0; i < instructions.Length; i++)
-        {
-            instructions[i] = IsValidInstruction((Instruction)i, isEofContext);
-        }
-        return instructions;
-    }
-
-    private static bool[] CreateTerminatingInstructionsLookup()
-    {
-        bool[] instructions = new bool[byte.MaxValue];
-
-        instructions[(int)Instruction.STOP] = true;
-        instructions[(int)Instruction.RJUMP] = true;
-        instructions[(int)Instruction.RETF] = true;
-        instructions[(int)Instruction.JUMPF] = true;
-        instructions[(int)Instruction.RETURNCODE] = true;
-        instructions[(int)Instruction.RETURN] = true;
-        instructions[(int)Instruction.REVERT] = true;
-        instructions[(int)Instruction.INVALID] = true;
-
-        return instructions;
-    }
-
-    private static bool IsValidInstruction(Instruction instruction, bool isEofContext)
-    {
-        if (!Enum.IsDefined(instruction))
-        {
-            return false;
-        }
-
-        return instruction switch
-        {
-            Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => isEofContext,
-            Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => isEofContext,
-            Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => isEofContext,
-            Instruction.RETURNCODE or Instruction.EOFCREATE => isEofContext,
-            Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => isEofContext,
-            Instruction.EXTSTATICCALL or Instruction.EXTDELEGATECALL or Instruction.EXTCALL => isEofContext,
-            Instruction.RETURNDATALOAD => isEofContext,
-            Instruction.CALL => !isEofContext,
-            Instruction.CALLCODE => !isEofContext,
-            Instruction.DELEGATECALL => !isEofContext,
-            Instruction.STATICCALL => !isEofContext,
-            Instruction.SELFDESTRUCT => !isEofContext,
-            Instruction.JUMP => !isEofContext,
-            Instruction.JUMPI => !isEofContext,
-            Instruction.PC => !isEofContext,
-            Instruction.CREATE2 or Instruction.CREATE => !isEofContext,
-            Instruction.CODECOPY => !isEofContext,
-            Instruction.CODESIZE => !isEofContext,
-            Instruction.EXTCODEHASH => !isEofContext,
-            Instruction.EXTCODECOPY => !isEofContext,
-            Instruction.EXTCODESIZE => !isEofContext,
-            Instruction.GAS => !isEofContext,
-            _ => true
-        };
-    }
-
-    public static string? GetName(this Instruction instruction, IReleaseSpec? spec = null)
-    {
-        spec ??= Frontier.Instance;
-        return instruction switch
-        {
-            Instruction.JUMPDEST => spec.IsEofEnabled ? "NOP" : "JUMPDEST",
-            _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null,
-        };
-    }
 }

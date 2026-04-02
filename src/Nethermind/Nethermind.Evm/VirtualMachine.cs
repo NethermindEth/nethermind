@@ -14,14 +14,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.EvmObjectFormat.Handlers;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
 
-using static Nethermind.Evm.EvmObjectFormat.EofValidator;
 using static Nethermind.Evm.VirtualMachineStatics;
 
 #if DEBUG
@@ -47,9 +45,8 @@ public sealed class EthereumVirtualMachine(
 /// </summary>
 public static class VirtualMachineStatics
 {
-    public const int MaxCallDepth = Eof1.RETURN_STACK_MAX_HEIGHT;
+    public const int MaxCallDepth = 1024;
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
-    public static readonly byte[] EofHash256 = KeccakHash.ComputeHashBytes(EvmObjectFormat.EofValidator.MAGIC);
     public static ref readonly UInt256 P255 => ref P255Int;
     public static readonly UInt256 BigInt256 = 256;
     public static readonly UInt256 BigInt32 = 32;
@@ -124,7 +121,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
-    public int SectionIndex { get; set; }
     public int OpCodeCount { get; set; }
 
     /// <summary>
@@ -220,7 +216,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                     }
                     else
                     {
-                        callResult = CallResult.InvalidCodeException;
+                        callResult = new(EvmExceptionType.InvalidCode);
                     }
 
                     // If the call did not finish with a return, set up the next call frame and continue.
@@ -274,22 +270,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                         if (previousState.ExecutionType.IsAnyCreate())
                         {
                             PrepareCreateData(previousState, ref previousCallOutput);
-                            if (previousState.ExecutionType.IsAnyCreateLegacy())
-                            {
-                                HandleLegacyCreate(
-                                    in callResult,
-                                    previousState,
-                                    gasAvailableForCodeDeposit,
-                                    ref previousStateSucceeded);
-                            }
-                            else if (previousState.ExecutionType.IsAnyCreateEof())
-                            {
-                                HandleEofCreate(
-                                    in callResult,
-                                    previousState,
-                                    gasAvailableForCodeDeposit,
-                                    ref previousStateSucceeded);
-                            }
+                            HandleCreate(
+                                in callResult,
+                                previousState,
+                                gasAvailableForCodeDeposit,
+                                ref previousStateSucceeded);
                         }
                         else
                         {
@@ -350,12 +335,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
     {
         ZeroPaddedSpan previousCallOutput;
-        ReturnDataBuffer = callResult.Output.Bytes;
-        _previousCallResult = previousState.ExecutionType.IsAnyCallEof() ? EofStatusCode.SuccessBytes :
-            callResult.PrecompileSuccess.HasValue
+        ReturnDataBuffer = callResult.Output;
+        _previousCallResult = callResult.PrecompileSuccess.HasValue
             ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes)
             : StatusCode.SuccessBytes;
-        previousCallOutput = callResult.Output.Bytes.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Bytes.Length, (int)previousState.OutputLength));
+        previousCallOutput = callResult.Output.Span.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
         _previousCallOutputDestination = (ulong)previousState.OutputDestination;
         if (previousState.IsPrecompile)
         {
@@ -373,63 +357,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         return previousCallOutput;
     }
-
-    protected void HandleEofCreate(in CallResult callResult, VmState<TGasPolicy> previousState, long gasAvailableForCodeDeposit, ref bool previousStateSucceeded)
-    {
-        Address callCodeOwner = previousState.Env.ExecutingAccount;
-        // ReturnCode was called with a container index and auxdata
-        // 1 - load deploy EOF subcontainer at deploy_container_index in the container from which RETURNCODE is executed
-        ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
-        EofCodeInfo deployCodeInfo = (EofCodeInfo)callResult.Output.Container;
-
-        // 2 - concatenate data section with (aux_data_offset, aux_data_offset + aux_data_size) memory segment and update data size in the header
-        Span<byte> bytecodeResult = new byte[deployCodeInfo.Code.Length + auxExtraData.Length];
-        // 2 - 1 - 1 - copy old container
-        deployCodeInfo.Code.Span.CopyTo(bytecodeResult);
-        // 2 - 1 - 2 - copy aux data to dataSection
-        auxExtraData.CopyTo(bytecodeResult[deployCodeInfo.Code.Length..]);
-
-        // 2 - 2 - update data section size in the header u16
-        int dataSubHeaderSectionStart =
-            // magic + version
-            VERSION_OFFSET
-            // type section : (1 byte of separator + 2 bytes for size)
-            + Eof1.MINIMUM_HEADER_SECTION_SIZE
-            // code section :  (1 byte of separator + (CodeSections count) * 2 bytes for size)
-            + ONE_BYTE_LENGTH
-            + TWO_BYTE_LENGTH
-            + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.CodeSections.Count
-            // container section
-            + (deployCodeInfo.EofContainer.Header.ContainerSections is null
-                // bytes if no container section is available
-                ? 0
-                // 1 byte of separator + (ContainerSections count) * 2 bytes for size
-                : ONE_BYTE_LENGTH + TWO_BYTE_LENGTH + TWO_BYTE_LENGTH * deployCodeInfo.EofContainer.Header.ContainerSections.Value.Count)
-            // data section separator
-            + ONE_BYTE_LENGTH;
-
-        ushort dataSize = (ushort)(deployCodeInfo.DataSection.Length + auxExtraData.Length);
-        bytecodeResult[dataSubHeaderSectionStart + 1] = (byte)(dataSize >> 8);
-        bytecodeResult[dataSubHeaderSectionStart + 2] = (byte)(dataSize & 0xFF);
-
-        byte[] bytecodeResultArray = bytecodeResult.ToArray();
-
-        IReleaseSpec spec = BlockExecutionContext.Spec;
-        // 3 - if updated deploy container size exceeds MAX_CODE_SIZE instruction exceptionally aborts
-        if (!CodeDepositHandler.CalculateCost(spec, bytecodeResultArray.Length, out long regularDepositCost, out long stateDepositCost))
-        {
-            regularDepositCost = long.MaxValue;
-            stateDepositCost = long.MaxValue;
-        }
-
-        bool invalidCode = bytecodeResultArray.Length > spec.MaxCodeSize;
-        TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, bytecodeResultArray);
-    }
-
     /// <summary>
-    /// Handles the code deposit for a legacy contract creation operation.
-    /// This method calculates the gas cost for depositing the contract code using legacy rules,
+    /// Handles the code deposit for a contract creation operation.
+    /// This method calculates code deposit gas,
     /// validates the code, and either deposits the code or reverts the world state if the deposit fails.
     /// </summary>
     /// <param name="callResult">
@@ -445,22 +375,22 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     /// <param name="previousStateSucceeded">
     /// A reference flag indicating whether the previous call frame executed successfully. This flag is set to false if the deposit fails.
     /// </param>
-    protected void HandleLegacyCreate(
+    protected void HandleCreate(
         in CallResult callResult,
         VmState<TGasPolicy> previousState,
         long gasAvailableForCodeDeposit,
         ref bool previousStateSucceeded)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
-        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length, out long regularDepositCost, out long stateDepositCost))
+        if (!CodeDepositHandler.CalculateCost(spec, callResult.Output.Length, out long regularDepositCost, out long stateDepositCost))
         {
             regularDepositCost = long.MaxValue;
             stateDepositCost = long.MaxValue;
         }
 
-        bool invalidCode = !CodeDepositHandler.IsValidWithLegacyRules(spec, callResult.Output.Bytes);
+        bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, callResult.Output.Bytes);
+            regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
     }
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
@@ -559,19 +489,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         _worldState.Restore(previousState.Snapshot);
 
         // Cache the output bytes from the call result to avoid multiple property accesses.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+        ReadOnlyMemory<byte> outputBytes = callResult.Output;
 
         // Set the return data buffer to the output bytes from the failed call.
         ReturnDataBuffer = outputBytes;
 
-        // Determine the appropriate failure status code.
-        // For calls with EOF semantics, differentiate between precompile failure and regular revert.
-        // Otherwise, use the standard failure status code.
-        _previousCallResult = previousState.ExecutionType.IsAnyCallEof()
-            ? (callResult.PrecompileSuccess is not null
-                ? EofStatusCode.FailureBytes
-                : EofStatusCode.RevertBytes)
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Slice the output bytes, zero-padding if necessary, to match the expected output length.
         // This ensures that the returned data conforms to the caller's output length expectations.
@@ -647,11 +570,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return new TransactionSubstate(finalErrorType, txTracer.IsTracing, substateError);
         }
 
-        // For nested call frames, prepare to revert to the parent frame.
-        // Set the previous call result to a failure code depending on the call type.
-        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
-            ? EofStatusCode.FailureBytes
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Reset output destination and return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -745,10 +664,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return new TransactionSubstate(callResult.ExceptionType, txTracer.IsTracing);
         }
 
-        // For nested calls, mark the previous call result as a failure code based on the call's EOF semantics.
-        _previousCallResult = _currentState.ExecutionType.IsAnyCallEof()
-            ? EofStatusCode.FailureBytes
-            : StatusCode.FailureBytes;
+        _previousCallResult = StatusCode.FailureBytes;
 
         // Reset output destination and clear return data.
         _previousCallOutputDestination = UInt256.Zero;
@@ -879,10 +795,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
         // Calculate the gas cost required for depositing the contract code based on the length of the output.
-        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Bytes.Length);
+        long codeDepositGasCost = CodeDepositHandler.CalculateCost(spec, callResult.Output.Length);
 
         // Cache the output bytes for reuse in the tracing reports.
-        ReadOnlyMemory<byte> outputBytes = callResult.Output.Bytes;
+        ReadOnlyMemory<byte> outputBytes = callResult.Output;
 
         // If an exception occurred during execution, report the error immediately.
         if (callResult.IsException)
@@ -916,7 +832,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 }
             }
             // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes, callResult.FromVersion))
+            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
@@ -979,7 +895,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if ((ulong)baseGasCost + (ulong)dataGasCost > (ulong)long.MaxValue ||
             !TGasPolicy.UpdateGas(ref gas, baseGasCost + dataGasCost))
         {
-            return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true, EvmExceptionType.OutOfGas);
+            return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
         state.Gas = gas;
@@ -991,7 +907,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             return new(
                 success ? output.Data : [],
                 precompileSuccess: success,
-                fromVersion: 0,
                 shouldRevert: !success,
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
@@ -1008,7 +923,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         catch (Exception exception)
         {
             if (_logger.IsError) LogExecutionException(precompile, exception);
-            return new(output: default, precompileSuccess: false, fromVersion: 0, shouldRevert: true);
+            return new(default, precompileSuccess: false, shouldRevert: true);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1140,11 +1055,11 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     Empty:
         // Return an empty CallResult if there is no machine code to execute.
-        return CallResult.Empty(vmState.Env.CodeInfo.Version);
+        return CallResult.Empty();
 
     OutOfGas:
         // Return an out-of-gas CallResult if updating the memory cost fails.
-        return CallResult.OutOfGasException;
+        return new(EvmExceptionType.OutOfGas);
     }
 
     /// <summary>
@@ -1183,9 +1098,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         where TTracingInst : struct, IFlag
         where TCancelable : struct, IFlag
     {
-        // Reset return data and set the current section index from the VM state.
+        // Reset return data before executing the current frame.
         ReturnData = null;
-        SectionIndex = VmState.FunctionIndex;
 
         // Retrieve the code information and create a read-only span of instructions.
         CodeInfo codeInfo = VmState.Env.CodeInfo;
@@ -1297,7 +1211,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 #if DEBUG
         debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
 #endif
-        return CallResult.Empty(codeInfo.Version);
+        return CallResult.Empty();
 
     DataReturn:
 #if DEBUG
@@ -1308,17 +1222,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         if (ReturnData is byte[] data)
         {
             // Fall back to returning a CallResult with a byte array as the return data.
-            return new CallResult(null, data, null, codeInfo.Version);
+            return new CallResult(data, null);
         }
         else if (ReturnData is VmState<TGasPolicy> state)
         {
             return new CallResult(state);
         }
-        return ReturnEof(codeInfo);
+        return new CallResult(ReturnDataBuffer, null);
 
     Revert:
         // Return a CallResult indicating a revert.
-        return new CallResult(null, (byte[])ReturnData, null, codeInfo.Version, shouldRevert: true, exceptionType);
+        return new CallResult((byte[])ReturnData, null, shouldRevert: true, exceptionType);
 
     OutOfGas:
         TGasPolicy.SetOutOfGas(ref gas);
@@ -1341,10 +1255,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 codeBytes.Length);
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        CallResult ReturnEof(CodeInfo codeInfo)
-            => new(ReturnData as EofCodeInfo, ReturnDataBuffer, null, codeInfo.Version);
-
         [DoesNotReturn]
         static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
     }
@@ -1355,16 +1265,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         return exceptionType switch
         {
-            EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
-            EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
-            EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
-            EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
-            EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
-            EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
-            EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
-            EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
-            EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
-            EvmExceptionType.AddressOutOfRange => CallResult.InvalidAddressRange,
+            EvmExceptionType.OutOfGas or
+            EvmExceptionType.BadInstruction or
+            EvmExceptionType.StaticCallViolation or
+            EvmExceptionType.StackOverflow or
+            EvmExceptionType.StackUnderflow or
+            EvmExceptionType.InvalidJumpDestination or
+            EvmExceptionType.AccessViolation => new(exceptionType),
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
@@ -1376,18 +1283,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         state.ProgramCounter = pc;
         state.Gas = gas;
         state.DataStackHead = stackHead;
-        state.FunctionIndex = SectionIndex;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void StartInstructionTrace(Instruction instruction, long gasAvailable, int programCounter, in EvmStack stackValue)
     {
         VmState<TGasPolicy> vmState = VmState;
-        int sectionIndex = SectionIndex;
-
-        bool isEofFrame = vmState.Env.CodeInfo.Version > 0;
-        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env,
-            isEofFrame ? sectionIndex : 0, isEofFrame ? vmState.ReturnStackHead + 1 : 0);
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory.GetTrace());

@@ -276,7 +276,7 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(committedAccount!.Balance, Is.EqualTo(testAccount.Balance));
         Assert.That(committedAccount!.Nonce, Is.EqualTo(testAccount.Nonce));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage(testAddress, slotIndex, out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage((testAddress, slotIndex), out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(slotValue));
     }
 
@@ -588,7 +588,7 @@ public class FlatWorldStateScopeProviderTests
         ctx.LastCommittedSnapshot!.TryGetAccount(addr2, out Account? committedAcc2);
         Assert.That(committedAcc2!.Balance, Is.EqualTo(acc2.Balance));
 
-        ctx.LastCommittedSnapshot!.TryGetStorage(addr1, slot1, out SlotValue? committedSlot);
+        ctx.LastCommittedSnapshot!.TryGetStorage((addr1, slot1), out SlotValue? committedSlot);
         Assert.That(committedSlot!.Value.ToEvmBytes(), Is.EqualTo(val1));
     }
 

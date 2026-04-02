@@ -173,6 +173,15 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
 
+    if (parseResult.GetValue(BasicOptions.PurgeDb))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath);
+    }
+    else if (parseResult.GetValue(BasicOptions.ForceResync))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
+    }
+
     logger.Info("Configuration complete");
 
     EthereumJsonSerializer serializer = new();
@@ -425,9 +434,11 @@ RootCommand CreateRootCommand()
         BasicOptions.ConfigurationDirectory,
         BasicOptions.DatabasePath,
         BasicOptions.DataDirectory,
+        BasicOptions.ForceResync,
         BasicOptions.LoggerConfigurationSource,
         BasicOptions.LogLevel,
-        BasicOptions.PluginsDirectory
+        BasicOptions.PluginsDirectory,
+        BasicOptions.PurgeDb
     ];
 
     rootCommand.Description = "Nethermind Ethereum execution client";
@@ -482,6 +493,9 @@ void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
         initConfig.BaseDbPath = dbPath;
     }
 }
+
+void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
+    DatabasePurger.Purge(basePath, preserveNetwork, logger);
 
 void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig keyStoreConfig, ISnapshotConfig snapshotConfig)
 {
@@ -557,12 +571,37 @@ static class BasicOptions
         HelpName = "level"
     };
 
+    public static Option<bool> ForceResync { get; } = CreateForceResyncOption();
+
+    private static Option<bool> CreateForceResyncOption()
+    {
+        Option<bool> option = new("--force-resync")
+        {
+            Description = "Deletes all database files except peer and discovery data, forcing a full resync on startup.",
+            DefaultValueFactory = _ => false
+        };
+
+        option.Validators.Add(result =>
+        {
+            if (result.GetValueOrDefault<bool>() && result.Parent?.GetValue(PurgeDb) == true)
+                result.AddError("Cannot use --force-resync and --purge-db together. Choose one.");
+        });
+
+        return option;
+    }
+
     public static Option<string> PluginsDirectory { get; } =
         new("--plugins-dir", "--pluginsDirectory", "-pd")
         {
             Description = "The path to the Nethermind plugins directory.",
             HelpName = "path"
         };
+
+    public static Option<bool> PurgeDb { get; } = new("--purge-db")
+    {
+        Description = "Deletes the entire database directory, including peer and discovery data.",
+        DefaultValueFactory = _ => false
+    };
 }
 
 class AsynchronousCommandLineAction(Func<ParseResult, int> action) : SynchronousCommandLineAction

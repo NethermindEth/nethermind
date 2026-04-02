@@ -235,7 +235,6 @@ public class SnapshotCompactorTests
         AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
 
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
     }
 

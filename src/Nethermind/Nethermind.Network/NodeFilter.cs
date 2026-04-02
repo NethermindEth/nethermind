@@ -49,6 +49,21 @@ public sealed class NodeFilter
         => filterEnabled ? new NodeFilter(maxActivePeers * 4, !subnetBucketing, currentIp) : AcceptAll;
 
     /// <summary>
+    /// Creates an exact-match filter with a custom timeout window.
+    /// </summary>
+    public static NodeFilter CreateExact(int size, TimeSpan timeout)
+        => new(size, exactMatchOnly: true, currentIp: null, (long)timeout.TotalMilliseconds);
+
+    public static bool IsLoopbackOrPrivateOrLinkLocal(IPAddress ipAddress)
+        => IpSubnetKey.IsLoopbackOrPrivateOrLinkLocal(ipAddress);
+
+    public static bool IsIPv4Multicast(IPAddress ipAddress)
+    {
+        byte[] bytes = ipAddress.GetAddressBytes();
+        return bytes.Length == 4 && bytes[0] is >= 224 and <= 239;
+    }
+
+    /// <summary>
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.
     /// </summary>
@@ -68,7 +83,19 @@ public sealed class NodeFilter
         return true;
     }
 
-    internal void Touch(IPAddress ipAddress, bool exactOnly = false)
+    /// <summary>
+    /// Read-only check: returns <c>true</c> if the address would be accepted (not seen recently),
+    /// without inserting it into the cache.
+    /// </summary>
+    public bool CanAccept(IPAddress ipAddress, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        return !_cache.TryGet(key, out long lastSeen) || Environment.TickCount64 - lastSeen >= _timeoutMs;
+    }
+
+    public void Touch(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null)
         {

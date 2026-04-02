@@ -57,7 +57,7 @@ public class ExecutionEngineManager(
             }
 
             if (_logger.IsInfo) _logger.Info($"Derived payload. Number: {payloadAttributes.Number}");
-            ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes);
+            ExecutionPayloadV3? executionPayload = await BuildBlockWithPayloadAttributes(payloadAttributes, token);
             if (executionPayload is null)
             {
                 return null;
@@ -171,7 +171,7 @@ public class ExecutionEngineManager(
         }
     }
 
-    private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes)
+    private async Task<ExecutionPayloadV3?> BuildBlockWithPayloadAttributes(PayloadAttributesRef payloadAttributes, CancellationToken token)
     {
         var fcuResult = await l2Api.ForkChoiceUpdatedV3(
             _currentHead.Hash, _currentFinalizedHead.Hash, _currentSafeHead.Hash,
@@ -184,14 +184,14 @@ public class ExecutionEngineManager(
         }
 
         var getPayloadResult = await l2Api.GetPayloadV3(fcuResult.PayloadId!);
-        if (!await SendNewPayload(getPayloadResult.ExecutionPayload))
+        if (!await SendNewPayload(getPayloadResult.ExecutionPayload, token))
         {
             return null;
         }
         return getPayloadResult.ExecutionPayload;
     }
 
-    private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload)
+    private async Task<bool> SendNewPayload(ExecutionPayloadV3 executionPayload, CancellationToken token)
     {
         PayloadStatusV1 npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
 
@@ -199,7 +199,7 @@ public class ExecutionEngineManager(
         {
             // retry after delay
             if (_logger.IsWarn) _logger.Warn($"Got Syncing after NewPayload. {executionPayload.BlockNumber}");
-            await Task.Delay(100);
+            await Task.Delay(100, token);
             npResult = await l2Api.NewPayloadV3(executionPayload, executionPayload.ParentBeaconBlockRoot);
         }
 

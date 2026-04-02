@@ -10,6 +10,7 @@ public class SimulateCallResult
     public ulong Status { get; set; }
     public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
+    public ulong? MaxUsedGas { get; set; }
     public Error? Error { get; set; }
     public ICollection<Log> Logs { get; set; } = [];
 }

@@ -157,6 +157,18 @@ public class SnapProtocolHandlerTests
         ctx.RecordedMessageSizesShouldDecrease();
     }
 
+    [TestCase(long.MaxValue, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes + 1, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(1_000_000L, 1_000_000L)]
+    [TestCase(1L, 1L)]
+    [TestCase(0L, 1L)]
+    [TestCase(-1L, 1L)]
+    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected)
+    {
+        Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
+    }
+
     [Test]
     [Explicit]
     public async Task Test_response_bytes_reset_on_error()

@@ -92,9 +92,7 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task sending_ping_receiving_proper_pong_sets_bounded()
     {
-        Node node = new(TestItem.PublicKeyB, _host, _port);
-        NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
-        , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+        NodeLifecycleManager nodeManager = CreateNodeManager();
 
         byte[] mdc = new byte[32];
         PingMsg? sentPing = null;
@@ -105,7 +103,7 @@ public class NodeLifecycleManagerTests
         }));
 
         await nodeManager.SendPingAsync();
-        nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
+        nodeManager.ProcessPongMsg(new PongMsg(nodeManager.ManagedNode.Address, GetExpirationTime(), sentPing!.Mdc!));
 
         Assert.That(nodeManager.IsBonded, Is.True);
     }
@@ -113,18 +111,10 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task handling_findnode_msg_will_limit_result_to_12()
     {
-        IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
-        discoveryConfig.PongTimeout = 50;
-        discoveryConfig.BucketSize = 32;
-        discoveryConfig.BucketsCount = 1;
+        ReinitializeNodeTableWithLargeBuckets();
+        NodeLifecycleManager nodeManager = CreateNodeManager();
 
-        _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
-        _nodeTable.Initialize(TestItem.PublicKeyA);
-
-        Node node = new(TestItem.PublicKeyB, _host, _port);
-        NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
-
-        await BondWithSelf(nodeManager, node);
+        await BondWithSelf(nodeManager);
 
         for (int i = 0; i < 32; i++)
         {
@@ -151,26 +141,22 @@ public class NodeLifecycleManagerTests
 
     [Test]
     public Task processNeighboursMessage_willCombineTwoSubsequentMessage()
-        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 16);
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 12, 4, 16);
+
+    [Test]
+    public Task processNeighboursMessage_willCombineSplitResponseWithFewerThan16Nodes()
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 12, 3, 15);
 
     [Test]
     public Task processNeighboursMessage_willCombineDeduplicateMultipleIps()
-        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.100", 0), 1);
+        => processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.100", 0), 12, 4, 1);
 
-    public async Task processNeighboursMessage_Test(Func<PublicKey, int, Node> createNode, int expectedCount)
+    public async Task processNeighboursMessage_Test(Func<PublicKey, int, Node> createNode, int firstCount, int secondCount, int expectedCount)
     {
-        IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
-        discoveryConfig.PongTimeout = 50;
-        discoveryConfig.BucketSize = 32;
-        discoveryConfig.BucketsCount = 1;
+        ReinitializeNodeTableWithLargeBuckets();
+        NodeLifecycleManager nodeManager = CreateNodeManager();
 
-        _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
-        _nodeTable.Initialize(TestItem.PublicKeyA);
-
-        Node node = new(TestItem.PublicKeyB, _host, _port);
-        NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock, _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
-
-        await BondWithSelf(nodeManager, node);
+        await BondWithSelf(nodeManager);
 
         _discoveryManagerMock
             .Received(0)
@@ -187,14 +173,14 @@ public class NodeLifecycleManagerTests
         });
 
         Node[] firstNodes = TestItem.PublicKeys
-            .Take(12)
+            .Take(firstCount)
             .Select(createNode)
             .ToArray();
         NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
         Node[] secondNodes = TestItem.PublicKeys
-            .Skip(12)
-            .Take(4)
-            .Select((pubkey, i) => createNode(pubkey, i + 14))
+            .Skip(firstCount)
+            .Take(secondCount)
+            .Select((pubkey, i) => createNode(pubkey, i + firstCount + 2))
             .ToArray();
         NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
 
@@ -209,14 +195,41 @@ public class NodeLifecycleManagerTests
     [Test]
     public async Task sending_ping_receiving_incorrect_pong_does_not_bond()
     {
-        Node node = new(TestItem.PublicKeyB, _host, _port);
-        NodeLifecycleManager nodeManager = new(node, _discoveryManagerMock
-        , _nodeTable, _evictionManagerMock, _nodeStatsMock, new NodeRecord(), _discoveryConfigMock, Timestamper.Default, _loggerMock);
+        NodeLifecycleManager nodeManager = CreateNodeManager();
 
         await nodeManager.SendPingAsync();
         nodeManager.ProcessPongMsg(new PongMsg(TestItem.PublicKeyB, GetExpirationTime(), new byte[] { 1, 1, 1 }));
 
         Assert.That(nodeManager.IsBonded, Is.False);
+    }
+
+    [Test]
+    public void ProcessPingMsg_WhenNotBonded_DoesNotSendEnrRequest()
+    {
+        NodeLifecycleManager nodeManager = CreateNodeManager();
+        Node node = nodeManager.ManagedNode;
+
+        PingMsg pingMsg = new(node.Id, GetExpirationTime(), node.Address, _nodeTable.MasterNode!.Address, new byte[32])
+        {
+            EnrSequence = 1
+        };
+
+        nodeManager.ProcessPingMsg(pingMsg);
+
+        _discoveryManagerMock.DidNotReceive().SendMessage(Arg.Any<EnrRequestMsg>());
+    }
+
+    [Test]
+    public async Task SendFindNode_Is_Throttled()
+    {
+        NodeLifecycleManager nodeManager = CreateNodeManager();
+
+        await BondWithSelf(nodeManager);
+
+        await nodeManager.SendFindNode(_nodeTable.MasterNode!.Id.Bytes);
+        await nodeManager.SendFindNode(_nodeTable.MasterNode.Id.Bytes);
+
+        await _discoveryManagerMock.Received(1).SendMessageAsync(Arg.Any<FindNodeMsg>());
     }
 
     [Test]
@@ -369,6 +382,33 @@ public class NodeLifecycleManagerTests
         //Assert.IsTrue(managers.Where(x => x.State == NodeLifecycleState.Active).All(x => closestNodes.Any(y => y.Host == x.ManagedNode.Host)));
         //Assert.IsTrue(closestNodes.Count(x => x.Host == evictionCandidate.ManagedNode.Host) == 0);
         //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 1);
+    }
+
+    [Test]
+    public async Task ProcessPingMsg_RetriesEnrRequest_WhenNewerEnrStillMissing()
+    {
+        NodeLifecycleManager nodeManager = CreateNodeManager();
+
+        await BondWithSelf(nodeManager);
+        Node node = nodeManager.ManagedNode;
+
+        // Bonding triggers one ENR request when state becomes Active with empty ENR
+        _discoveryManagerMock.Received(1).SendMessage(Arg.Any<EnrRequestMsg>());
+
+        // Clear to isolate subsequent behavior
+        _discoveryManagerMock.ClearReceivedCalls();
+
+        // If ENR refreshes are lost, later pings with newer ENR sequence should retry.
+        for (int seq = 1; seq <= 5; seq++)
+        {
+            PingMsg ping = new(node.Id, GetExpirationTime(), node.Address, _nodeTable.MasterNode!.Address, new byte[32])
+            {
+                EnrSequence = seq
+            };
+            nodeManager.ProcessPingMsg(ping);
+        }
+
+        _discoveryManagerMock.Received(5).SendMessage(Arg.Any<EnrRequestMsg>());
     }
 
     [Test]
@@ -545,7 +585,7 @@ public class NodeLifecycleManagerTests
         record.EnrSequence = sequence;
         record.SetEntry(new IpEntry(IPAddress.Parse(ip)));
         record.SetEntry(new UdpEntry(port));
-        record.SetEntry(new Secp256K1Entry(privateKey.CompressedPublicKey));
+        record.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
 
         Ecdsa ecdsa = new();
         NodeRecordSigner signer = new(ecdsa, privateKey);
@@ -576,7 +616,29 @@ public class NodeLifecycleManagerTests
         manager.ProcessPongMsg(new PongMsg(remoteNode.Address, GetExpirationTime(), sentPing!.Mdc!));
     }
 
-    private async Task BondWithSelf(NodeLifecycleManager nodeManager, Node node)
+    [Test]
+    public async Task ProcessNeighborsMsg_Without_Prior_FindNode_Is_Dropped()
+    {
+        ReinitializeNodeTableWithLargeBuckets();
+        NodeLifecycleManager nodeManager = CreateNodeManager();
+
+        await BondWithSelf(nodeManager);
+
+        // Do NOT call SendFindNode — _isNeighborsExpected remains false
+        Node[] injectedNodes = TestItem.PublicKeys
+            .Take(12)
+            .Select((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0))
+            .ToArray();
+        NeighborsMsg unsolicitedMsg = new(TestItem.PublicKeyA, 1, injectedNodes);
+
+        nodeManager.ProcessNeighborsMsg(unsolicitedMsg);
+
+        _discoveryManagerMock
+            .Received(0)
+            .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>(), Arg.Any<bool>());
+    }
+
+    private async Task BondWithSelf(NodeLifecycleManager nodeManager)
     {
         byte[] mdc = new byte[32];
         PingMsg? sentPing = null;
@@ -586,7 +648,7 @@ public class NodeLifecycleManagerTests
             sentPing = msg;
         }));
         await nodeManager.SendPingAsync();
-        nodeManager.ProcessPongMsg(new PongMsg(node.Address, GetExpirationTime(), sentPing!.Mdc!));
+        nodeManager.ProcessPongMsg(new PongMsg(nodeManager.ManagedNode.Address, GetExpirationTime(), sentPing!.Mdc!));
     }
 
     private async Task<(NodeLifecycleManager manager, Node remoteNode)> CreateBondedNodeLifecycleManager()
@@ -616,6 +678,20 @@ public class NodeLifecycleManagerTests
             nodeIdBytes[63] = (byte)i;
             _nodeIds[i] = new PublicKey(nodeIdBytes);
         }
+    }
+
+    private NodeLifecycleManager CreateNodeManager()
+        => CreateNodeLifecycleManager(TestItem.PublicKeyB, _host, _port);
+
+    private void ReinitializeNodeTableWithLargeBuckets()
+    {
+        IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
+        discoveryConfig.PongTimeout = 50;
+        discoveryConfig.BucketSize = 32;
+        discoveryConfig.BucketsCount = 1;
+
+        _nodeTable = new NodeTable(new NodeDistanceCalculator(discoveryConfig), discoveryConfig, _networkConfig, LimboLogs.Instance);
+        _nodeTable.Initialize(TestItem.PublicKeyA);
     }
 
     private NodeLifecycleManager CreateNodeLifecycleManager(PublicKey publicKey, string host, int port = 30303)

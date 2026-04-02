@@ -153,11 +153,6 @@ namespace Nethermind.Merge.Plugin
 
         public void ForkchoiceUpdated(BlockHeader newHeadHash, Hash256 finalizedHash)
         {
-            if (finalizedHash != Keccak.Zero && _finalizedBlockHash == Keccak.Zero)
-            {
-                _blockTree.NewHeadBlock -= CheckIfTerminalBlockReached;
-            }
-
             if (finalizedHash != Keccak.Zero)
             {
                 if (_finalizedBlockHash == Keccak.Zero)

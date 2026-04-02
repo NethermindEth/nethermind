@@ -10,6 +10,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
@@ -285,6 +286,57 @@ public class SessionTests
     }
 
     [Test]
+    public void Disconnected_handlers_can_unsubscribe_during_dispatch()
+    {
+        int firstCalls = 0;
+        int secondCalls = 0;
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+
+        EventHandler<DisconnectEventArgs>? first = null;
+        EventHandler<DisconnectEventArgs>? second = null;
+
+        first = (_, _) =>
+        {
+            firstCalls++;
+            session.Disconnected -= first;
+        };
+
+        second = (_, _) =>
+        {
+            secondCalls++;
+            session.Disconnected -= second;
+        };
+
+        session.Disconnected += first;
+        session.Disconnected += second;
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+
+        Assert.That(firstCalls, Is.EqualTo(1));
+        Assert.That(secondCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Removing_one_duplicate_disconnected_handler_keeps_remaining_subscription()
+    {
+        int calls = 0;
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        EventHandler<DisconnectEventArgs> handler = (_, _) => calls++;
+
+        session.Disconnected += handler;
+        session.Disconnected += handler;
+        session.Disconnected -= handler;
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
+
+        Assert.That(calls, Is.EqualTo(1));
+    }
+
+    [Test]
     public void Disconnects_after_initiating_disconnect()
     {
         bool wasCalled = false;
@@ -372,6 +424,20 @@ public class SessionTests
         Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyB);
         Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
+    }
+
+    [Test]
+    public void Outgoing_handshake_with_unexpected_identity_is_rejected()
+    {
+        DisconnectReason? disconnectReason = null;
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Disconnecting += (_, e) => disconnectReason = e.DisconnectReason;
+
+        session.Handshake(TestItem.PublicKeyB);
+
+        Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyA));
+        session.Init(5, _channelHandlerContext, _packetSender);
+        Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.UnexpectedIdentity));
     }
 
     [Test]

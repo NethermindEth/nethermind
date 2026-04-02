@@ -505,17 +505,12 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    bool ssetOutOfGas = TEip8037.IsActive switch
-                    {
-                        true => !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.SSetState) || !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSetRegular),
-                        false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.SSet),
-                    };
-
+                    bool ssetOutOfGas = !TGasPolicy.ConsumeStorageWrite<TEip8037, OnFlag>(ref gas, spec);
                     if (ssetOutOfGas) goto OutOfGas;
                 }
                 else
                 {
-                    if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
+                    if (!TGasPolicy.ConsumeStorageWrite<TEip8037, OffFlag>(ref gas, spec))
                         goto OutOfGas;
 
                     if (newIsZero)

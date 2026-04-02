@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,11 +22,10 @@ namespace Nethermind.Network.P2P;
 
 public readonly record struct VersionedProtocol(string Protocol, byte Version);
 
-public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) : IMetricLabels
+public readonly record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) : IMetricLabels
 {
     private static readonly FrozenDictionary<(string, int), string> MessageNames =
         FromMessageCodeClass(Contract.P2P.Protocol.P2P, typeof(P2PMessageCode))
-
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth62MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth63MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth65MessageCode)))
@@ -33,11 +33,8 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth68MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth69MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth70MessageCode)))
-
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.NodeData, typeof(NodeDataMessageCode)))
-
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Snap, typeof(SnapMessageCode)))
-
             .ToFrozenDictionary();
 
     private static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType) =>
@@ -46,13 +43,10 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
             .Where(field => field.FieldType.IsAssignableTo(typeof(int)))
             .Select(field => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
 
-    private string[]? _labels = null;
-    public string[] Labels => _labels ??= CalculateLabel();
+    private static readonly ConcurrentDictionary<P2PMessageKey, string[]> s_labelCache = new();
+    public readonly string[] Labels => s_labelCache.GetOrAdd(this, static key => key.CalculateLabel());
 
-    private readonly string[] CalculateLabel()
-    {
-        return [$"{Protocol.Protocol}{Protocol.Version}", GetMessageType()];
-    }
+    private readonly string[] CalculateLabel() => [$"{Protocol.Protocol}{Protocol.Version}", GetMessageType()];
 
     private readonly string GetMessageType()
     {
@@ -67,8 +61,5 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
         return messageName;
     }
 
-    public override string ToString()
-    {
-        return string.Join(',', Labels);
-    }
+    public override string ToString() => string.Join(',', Labels);
 }

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -521,7 +522,7 @@ public class TrieNodeTests
     public void Cannot_ask_about_validity_on_non_branch_nodes()
     {
         TrieNode leaf = new(NodeType.Leaf);
-        TrieNode extension = new(NodeType.Leaf);
+        TrieNode extension = new(NodeType.Extension);
         Assert.Throws<TrieException>(() => _ = leaf.IsValidWithOneNodeLess, "leaf");
         Assert.Throws<TrieException>(() => _ = extension.IsValidWithOneNodeLess, "extension");
     }
@@ -883,9 +884,8 @@ public class TrieNodeTests
         Assert.Throws<TrieException>(() => trieNode.GetChild(trieStore, ref emptyPath, 0).ResolveNode(trieStore, TreePath.Empty));
     }
 
-    [Ignore("This does not fail on the build server")]
     [Test]
-    public async Task Trie_node_is_not_thread_safe()
+    public async Task Trie_node_concurrent_child_hash_reads_are_safe()
     {
         TrieNode trieNode = new(NodeType.Branch);
         for (int i = 0; i < 16; i++)
@@ -901,27 +901,19 @@ public class TrieNodeTests
         {
             for (int i = 0; i < 16 * 10; i++)
             {
-                try
-                {
-                    trieNode.GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
-                }
-                catch (Exception)
-                {
-                    throw new AssertionException("Failed");
-                }
+                trieNode.GetChildHash(i % 16).Should().BeEquivalentTo(TestItem.Keccaks[i % 16], i.ToString());
             }
         }
 
         List<Task> tasks = new();
-        for (int i = 0; i < 2; i++)
+        for (int i = 0; i < 4; i++)
         {
             Task task = new(CheckChildren);
             task.Start();
             tasks.Add(task);
         }
 
-        Assert.ThrowsAsync<AssertionException>(() => Task.WhenAll(tasks));
-        await Task.CompletedTask;
+        await Task.WhenAll(tasks);
     }
 
     [Test]
@@ -1131,5 +1123,113 @@ public class TrieNodeTests
             public int GetHashCode((TreePath, TrieNode, byte[]) obj) =>
                 HashCode.Combine(obj.Item1, obj.Item2, Bytes.EqualityComparer.GetHashCode(obj.Item3));
         }
+    }
+
+    [Test]
+    [Category("LongRunning")]
+    public void FullRlp_concurrent_reads_and_writes_do_not_produce_torn_reads()
+    {
+        // Regression test: CappedArray<byte> is 12 bytes (ref + int), not atomically
+        // readable on x64. The seqlock in TrieNode must ensure readers never observe
+        // a length from one write paired with an array from another.
+        byte[] rlp1 = new byte[100];
+        Array.Fill(rlp1, (byte)0xAA);
+        byte[] rlp2 = new byte[200];
+        Array.Fill(rlp2, (byte)0xBB);
+
+        TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(rlp1));
+        bool failed = false;
+        const int iterations = 100_000;
+
+        Parallel.Invoke(
+            // Writer: alternate between two different-sized arrays via internal WriteRlp
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    CappedArray<byte> data = (i & 1) == 0
+                        ? new CappedArray<byte>(rlp1)
+                        : new CappedArray<byte>(rlp2);
+                    node.WriteRlp(data);
+                }
+            },
+            // Reader: verify length and array content are always consistent
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    CappedArray<byte> rlp = node.FullRlp;
+                    if (rlp.IsNotNull && rlp.UnderlyingArray is not null)
+                    {
+                        int length = rlp.Length;
+                        byte[]? array = rlp.UnderlyingArray;
+                        // Detect length > array (classic torn read)
+                        if (length > array!.Length) { Volatile.Write(ref failed, true); break; }
+                        // Detect wrong-array-for-length (cross-read torn read)
+                        if (length == 100 && array[0] != 0xAA) { Volatile.Write(ref failed, true); break; }
+                        if (length == 200 && array[0] != 0xBB) { Volatile.Write(ref failed, true); break; }
+                    }
+                }
+            }
+        );
+
+        failed.Should().BeFalse("a torn read was detected: length > array.Length");
+    }
+
+    [Test]
+    public void FullRlp_seqlock_returns_consistent_length_and_array()
+    {
+        byte[] small = new byte[10];
+        TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(small));
+
+        CappedArray<byte> result = node.FullRlp;
+        result.IsNotNull.Should().BeTrue();
+        result.Length.Should().Be(10);
+        result.UnderlyingArray.Should().BeSameAs(small);
+    }
+
+    [Test]
+    [Category("LongRunning")]
+    public void FullRlp_concurrent_writers_do_not_corrupt_seqlock()
+    {
+        byte[] rlp1 = new byte[50];
+        Array.Fill(rlp1, (byte)0xCC);
+        byte[] rlp2 = new byte[300];
+        Array.Fill(rlp2, (byte)0xDD);
+        TrieNode node = new(NodeType.Leaf, new CappedArray<byte>(rlp1));
+        bool failed = false;
+        const int iterations = 100_000;
+
+        // Two concurrent writers + one reader
+        Parallel.Invoke(
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                    node.WriteRlp(new CappedArray<byte>(rlp1));
+            },
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                    node.WriteRlp(new CappedArray<byte>(rlp2));
+            },
+            () =>
+            {
+                for (int i = 0; i < iterations && !Volatile.Read(ref failed); i++)
+                {
+                    CappedArray<byte> rlp = node.FullRlp;
+                    if (rlp.IsNotNull && rlp.UnderlyingArray is not null)
+                    {
+                        int length = rlp.Length;
+                        byte[]? array = rlp.UnderlyingArray;
+                        if (length > array!.Length) { Volatile.Write(ref failed, true); break; }
+                        // Cross-check: length must match the array's content marker
+                        if (length == 50 && array[0] != 0xCC) { Volatile.Write(ref failed, true); break; }
+                        if (length == 300 && array[0] != 0xDD) { Volatile.Write(ref failed, true); break; }
+                    }
+                }
+            }
+        );
+
+        failed.Should().BeFalse("seqlock corruption detected: invalid length or torn read");
     }
 }

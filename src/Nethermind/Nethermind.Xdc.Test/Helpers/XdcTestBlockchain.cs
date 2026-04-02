@@ -180,16 +180,6 @@ public class XdcTestBlockchain : TestBlockchain
 
             .AddSingleton<ITxPool>((ctx) =>
             {
-                var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
-
-                var compoundPolicy = new CompositeTxGossipPolicy();
-                if (gossipPolicy != null)
-                {
-                    compoundPolicy.Policies.Add(gossipPolicy);
-                }
-
-                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
-
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
                     ctx.Resolve<IChainHeadInfoProvider>(),
@@ -197,7 +187,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
-                    compoundPolicy,
+                    ctx.Resolve<ITxGossipPolicy>(),
                     new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );

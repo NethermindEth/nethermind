@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -80,8 +79,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         return executionType switch
         {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
+            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
             ExecutionType.CALL or ExecutionType.TRANSACTION => "call",
             ExecutionType.DELEGATECALL => "delegatecall",
             ExecutionType.STATICCALL => "staticcall",
@@ -94,8 +92,7 @@ public class ParityLikeTxTracer : TxTracer
     {
         return executionType switch
         {
-            ExecutionType.CREATE or ExecutionType.CREATE2 or ExecutionType.EOFCREATE
-                or ExecutionType.TXCREATE => "create",
+            ExecutionType.CREATE or ExecutionType.CREATE2 => "create",
             _ => "call"
         };
     }
@@ -109,8 +106,6 @@ public class ParityLikeTxTracer : TxTracer
             EvmExceptionType.StackOverflow => "Stack overflow",
             EvmExceptionType.StackUnderflow => "Stack underflow",
             EvmExceptionType.OutOfGas => "Out of gas",
-            EvmExceptionType.InvalidSubroutineEntry => "Invalid subroutine entry",
-            EvmExceptionType.InvalidSubroutineReturn => "Invalid subroutine return",
             EvmExceptionType.InvalidJumpDestination => "Bad jump destination",
             EvmExceptionType.AccessViolation => "Access violation",
             EvmExceptionType.StaticCallViolation => "Static call violation",
@@ -232,15 +227,12 @@ public class ParityLikeTxTracer : TxTracer
         };
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env,
-        int codeSection = 0, int functionDepth = 0)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
-        operationTrace.Pc = pc + (env.CodeInfo is EofCodeInfo eof ? eof.PcOffset() : 0);
+        operationTrace.Pc = pc;
         operationTrace.Cost = gas;
-        // skip codeSection
-        // skip functionDepth
         _currentOperation = operationTrace;
         _currentPushList.Clear();
         _currentVmTrace.Ops.Add(operationTrace);
@@ -405,8 +397,6 @@ public class ParityLikeTxTracer : TxTracer
         {
             ExecutionType.CREATE => "create",
             ExecutionType.CREATE2 => "create2",
-            ExecutionType.EOFCREATE => "create3",
-            ExecutionType.TXCREATE => "create4",
             _ => null
         };
     }

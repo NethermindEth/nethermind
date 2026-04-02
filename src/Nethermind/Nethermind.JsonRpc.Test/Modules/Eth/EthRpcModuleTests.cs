@@ -460,6 +460,67 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    private static IEnumerable<TestCaseData> EthGetStorageValuesCases()
+    {
+        string addressA = TestItem.AddressA.Bytes.ToHexString(true);
+        string addressB = TestItem.AddressB.Bytes.ToHexString(true);
+        string zero = "0x0000000000000000000000000000000000000000000000000000000000000000";
+        string abcdef = "0x0000000000000000000000000000000000000000000000000000000000abcdef";
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = [UInt256.One] },
+                $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressA}\":[\"{abcdef}\"]}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_WhenSingleSlotRequested_ReturnsPaddedStorageValue");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = [UInt256.One, UInt256.Zero] },
+                $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressA}\":[\"{abcdef}\",\"{zero}\"]}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_WhenMultipleSlotsRequested_ReturnsValuesInRequestOrder");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressB] = [UInt256.Zero] },
+                $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressB}\":[\"{zero}\"]}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_WhenAccountHasNoStorage_ReturnsZeros");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]>(),
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"empty request\"},\"id\":67}")
+            .SetName("Eth_get_storage_values_WhenRequestDictionaryIsEmpty_ReturnsInvalidParams");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = [] },
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"empty request\"},\"id\":67}")
+            .SetName("Eth_get_storage_values_WhenAllSlotArraysAreEmpty_ReturnsInvalidParams");
+
+        yield return new TestCaseData(
+                new Dictionary<Address, UInt256[]> { [TestItem.AddressA] = Enumerable.Range(0, EthRpcModule.MaxGetStorageSlots + 1).Select(i => (UInt256)i).ToArray() },
+                $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32602,\"message\":\"too many slots (max {EthRpcModule.MaxGetStorageSlots})\"}},\"id\":67}}")
+            .SetName("Eth_get_storage_values_WhenSlotCountExceedsLimit_ReturnsInvalidParams");
+    }
+
+    [TestCaseSource(nameof(EthGetStorageValuesCases))]
+    public async Task Eth_get_storage_values(Dictionary<Address, UInt256[]> requests, string expected)
+    {
+        using Context ctx = await Context.Create();
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, "latest");
+        Assert.That(serialized, Is.EqualTo(expected));
+    }
+
+    [TestCase("earliest", TestName = "Eth_get_storage_values_WhenEarliestBlock_ReturnsStorageValue")]
+    [TestCase("latest", TestName = "Eth_get_storage_values_WhenLatestBlock_ReturnsStorageValue")]
+    [TestCase("pending", TestName = "Eth_get_storage_values_WhenPendingBlock_ReturnsStorageValue")]
+    [TestCase("0x0", TestName = "Eth_get_storage_values_WhenBlockByNumber_ReturnsStorageValue")]
+    public async Task Eth_get_storage_values_WhenBlockParameterProvided_ReturnsStorageValue(string blockParameter)
+    {
+        using Context ctx = await Context.Create();
+        string addressA = TestItem.AddressA.Bytes.ToHexString(true);
+        BlockHeader? latestHeader = ctx.Test.BlockFinder.FindHeader(new BlockParameter(BlockParameterType.Latest));
+        latestHeader.Should().NotBeNull("precondition: blockchain must have a latest block with initialized state");
+        Dictionary<Address, UInt256[]> requests = new() { [TestItem.AddressA] = [UInt256.One] };
+        string serialized = await ctx.Test.TestEthRpc("eth_getStorageValues", requests, blockParameter);
+        Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":{{\"{addressA}\":[\"0x0000000000000000000000000000000000000000000000000000000000abcdef\"]}},\"id\":67}}"));
+    }
+
     [Test]
     public async Task Eth_get_block_number()
     {
@@ -1766,7 +1827,6 @@ public partial class EthRpcModuleTests
             .Done;
         return (byteCode, AccessListForRpc.FromAccessList(accessList));
     }
-
 
     protected class Context : IDisposable
     {

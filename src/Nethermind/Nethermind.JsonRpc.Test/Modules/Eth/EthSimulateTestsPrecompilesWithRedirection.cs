@@ -133,9 +133,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
         byte[] transactionData = EthRpcSimulateTestsBase.GetTxData(chain, TestItem.PrivateKeyA);
 
         Hash256 headHash = chain.BlockFinder.Head!.Hash!;
-        Address contractAddress = await EthRpcSimulateTestsBase.DeployEcRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.EcRecoverCallerContractBytecode);
+        Address contractAddress = await EthRpcSimulateTestsBase.DeployECRecoverContract(chain, TestItem.PrivateKeyB, EthSimulateTestsSimplePrecompiles.ECRecoverCallerContractBytecode);
 
-        EthRpcSimulateTestsBase.EcRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
+        EthRpcSimulateTestsBase.ECRecoverCall(chain, TestItem.AddressB, transactionData, contractAddress);
 
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
@@ -161,7 +161,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
                         {
-                            EcRecoverPrecompile.Address,
+                            ECRecoverPrecompile.Address,
                             new AccountOverride
                             {
                                 Code = code,

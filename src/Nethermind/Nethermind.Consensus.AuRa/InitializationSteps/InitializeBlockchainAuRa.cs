@@ -20,8 +20,8 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
-public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider)
-    : InitializeBlockchain(api, chainHeadInfoProvider)
+public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvider chainHeadInfoProvider, ITxGossipPolicy txGossipPolicy)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
 {
     private INethermindApi NethermindApi => api;
 
@@ -98,7 +98,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             api.TxValidator!,
             api.LogManager,
             CreateTxPoolTxComparer(txPriorityContract, localDataSource),
-            api.TxGossipPolicy,
+            _txGossipPolicy,
             new TxFilterAdapter(api.BlockTree, txPoolFilter, api.LogManager, api.SpecProvider),
             api.HeadTxValidator,
             txPriorityContract is not null || localDataSource is not null);

@@ -123,6 +123,7 @@ public class XdcModule : Module
             .AddMessageSerializer<SyncInfoMsg, SyncInfoMsgSerializer>()
             .AddMessageSerializer<TimeoutMsg, TimeoutMsgSerializer>()
 
+            .AddLast<ITxGossipPolicy, XdcTxGossipPolicy>()
             .AddSingleton<IBlockProducerTxSourceFactory, XdcTxPoolTxSourceFactory>()
 
             // block processing

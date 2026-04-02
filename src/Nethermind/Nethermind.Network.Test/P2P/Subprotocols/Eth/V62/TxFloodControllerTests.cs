@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(AcceptTxResult.Invalid);
 
             _session.Received(1)
-                .InitiateDisconnect(DisconnectReason.Other, "invalid tx");
+                .InitiateDisconnect(DisconnectReason.InvalidTxReceived, "invalid tx");
         }
     }
 }

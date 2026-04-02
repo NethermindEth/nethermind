@@ -411,6 +411,15 @@ public class BlockValidator(
 
         if (block.BlockAccessList is not null)
         {
+            int itemCount = block.BlockAccessList.ItemCount();
+            if (itemCount * GasCostOf.BlockAccessListItem > block.Header.GasLimit)
+            {
+                error = BlockErrorMessages.BlockAccessListGasLimitExceeded(itemCount, block.Header.GasLimit);
+                if (_logger.IsWarn) _logger.Warn($"Block level access list item count {itemCount} exceeds block gas limit bound in block {block.ToString(Block.Format.FullHashAndNumber)}.");
+
+                return false;
+            }
+
             if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))
             {
                 error = BlockErrorMessages.InvalidBlockLevelAccessListHash(block.Header.BlockAccessListHash, blockLevelAccessListHash);

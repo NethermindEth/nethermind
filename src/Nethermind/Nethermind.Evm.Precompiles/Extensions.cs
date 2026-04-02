@@ -13,7 +13,7 @@ public static class Extensions
     {
         OrderedDictionary<string, Address> precompiles = [];
 
-        AddPrecompile<EcRecoverPrecompile>();
+        AddPrecompile<ECRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
         AddPrecompile<Ripemd160Precompile>();
         AddPrecompile<IdentityPrecompile>();
@@ -37,7 +37,7 @@ public static class Extensions
 
         if (spec.IsEip4844Enabled)
         {
-            AddPrecompile<PointEvaluationPrecompile>();
+            AddPrecompile<KzgPointEvaluationPrecompile>();
         }
 
         if (spec.Bls12381Enabled)
@@ -53,7 +53,7 @@ public static class Extensions
 
         if (spec.IsEip7951Enabled)
         {
-            AddPrecompile<Secp256r1Precompile>();
+            AddPrecompile<SecP256r1Precompile>();
         }
 
         if (spec.IsRip7728Enabled)

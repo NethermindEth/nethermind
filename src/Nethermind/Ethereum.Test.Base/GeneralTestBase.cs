@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.EvmObjectFormat;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -66,8 +65,6 @@ namespace Ethereum.Test.Base
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
             Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
 
-            EofValidator.Logger = _logger;
-
             test.Fork = ChainUtils.ResolveSpec(test.Fork, test.ChainId);
 
             ISpecProvider specProvider =
@@ -106,6 +103,8 @@ namespace Ethereum.Test.Base
                 stateProvider.RecalculateStateRoot();
             }
 
+            Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
+
             if (test.Transaction.ChainId is null)
             {
                 test.Transaction.ChainId = test.ChainId;
@@ -131,7 +130,7 @@ namespace Ethereum.Test.Base
                 MixHash = test.CurrentRandom,
                 WithdrawalsRoot = test.CurrentWithdrawalsRoot ?? (spec.WithdrawalsEnabled ? PatriciaTree.EmptyTreeHash : null),
                 ParentBeaconBlockRoot = test.CurrentBeaconRoot,
-                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null),
+                ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork.IsEip4844Enabled ? 0ul : null),
                 SlotNumber = test.CurrentSlotNumber,
                 BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction),
                 RequestsHash = test.RequestsHash ?? (spec.RequestsEnabled ? ExecutionRequestExtensions.EmptyRequestsHash : null),
@@ -183,7 +182,8 @@ namespace Ethereum.Test.Base
                 }
                 else
                 {
-                    stateProvider.Reset();
+                    stateProvider.Restore(preExecutionSnapshot);
+                    stateProvider.RecalculateStateRoot();
                 }
             }
 

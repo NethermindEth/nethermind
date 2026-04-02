@@ -23,8 +23,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override void Dispose()
         {
             base.Dispose();
-            PathsWithAccounts.Dispose();
-            Proofs.Dispose();
+            PathsWithAccounts?.Dispose();
+            Proofs?.Dispose();
         }
     }
 }
