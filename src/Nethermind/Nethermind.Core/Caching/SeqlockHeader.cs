@@ -46,10 +46,8 @@ internal static class SeqlockHeader
     /// Uses dynamic shift to read bits immediately above the set index.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long ExtractHashPart(long hashCode, int hashShift)
-    {
-        return ((hashCode >> hashShift) & HashRawMask) << HashFieldShift;
-    }
+    public static long ExtractHashPart(long hashCode, int hashShift) =>
+        ((hashCode >> hashShift) & HashRawMask) << HashFieldShift;
 
     /// <summary>Mask for the count portion of the combined epoch+count field (bits 0-36).</summary>
     public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_001F_FFFF_FFFF
@@ -87,19 +85,13 @@ internal static class SeqlockHeader
     /// Reads the epoch tag from the combined field (bits 37-62, same positions as entry header).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long ReadEpoch(ref long epochAndCount)
-    {
-        return Volatile.Read(ref epochAndCount) & EpochMask;
-    }
+    public static long ReadEpoch(ref long epochAndCount) => Volatile.Read(ref epochAndCount) & EpochMask;
 
     /// <summary>
     /// Reads the count from the combined field (bits 0-36).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int ReadCount(ref long epochAndCount)
-    {
-        return (int)(Volatile.Read(ref epochAndCount) & CountMask);
-    }
+    public static int ReadCount(ref long epochAndCount) => (int)(Volatile.Read(ref epochAndCount) & CountMask);
 
     /// <summary>
     /// Adjusts the count portion of epochAndCount by delta, but only if the epoch
@@ -143,21 +135,16 @@ internal static class SeqlockHeader
     /// Release a per-set gate.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void ReleaseGate(ref int gate)
-    {
-        Volatile.Write(ref gate, 0);
-    }
+    public static void ReleaseGate(ref int gate) => Volatile.Write(ref gate, 0);
 
     /// <summary>
     /// Pick 3 distinct indices from [0, 8), return the one whose ticker is smallest (oldest).
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static int Pick3RandomEvict(long tickerA, long tickerB, long tickerC, int a, int b, int c)
-    {
-        if (tickerA <= tickerB && tickerA <= tickerC) return a;
-        if (tickerB <= tickerC) return b;
-        return c;
-    }
+    public static int Pick3RandomEvict(long tickerA, long tickerB, long tickerC, int a, int b, int c) =>
+        tickerA <= tickerB
+            ? tickerA <= tickerC ? a : c
+            : tickerB <= tickerC ? b : c;
 
     /// <summary>
     /// Generate 3 distinct indices in [0, 8) from a timestamp, with xorshift mixing.
