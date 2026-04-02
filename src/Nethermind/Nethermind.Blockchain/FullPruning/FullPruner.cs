@@ -39,6 +39,12 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
 
+        /// <summary>
+        /// When set, called during the full pruning copy phase to preserve additional state trie nodes
+        /// (e.g. the Arbitrum validator's active range) that would otherwise be lost after pruning.
+        /// </summary>
+        public IAdditionalRootsProvider? AdditionalRootsProvider { get; set; }
+
         public FullPruner(
             IFullPruningDb fullPruningDb,
             INodeStorageFactory nodeStorageFactory,
@@ -266,6 +272,11 @@ namespace Nethermind.Blockchain.FullPruning
                 visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
                     ? CopyTree<NoopTreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
                     : CopyTree<TreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
+
+                // Preserve additional state roots required by external components (e.g. Arbitrum validator).
+                // Pass the base block number used for pruning.
+                if (baseBlock is not null)
+                    AdditionalRootsProvider?.CopyAdditionalStatesToNodeStorage(targetNodeStorage, baseBlock.Number);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {

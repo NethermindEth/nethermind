@@ -64,6 +64,12 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
 
+    /// <summary>
+    /// When set, called during shutdown persistence to copy additional in-memory trie nodes into
+    /// the underlying state DB so they survive restart. Invoked before the final node storage flush.
+    /// </summary>
+    public IAdditionalRootsProvider? AdditionalRootsProvider { get; set; }
+
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
 
@@ -1254,6 +1260,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
+        AdditionalRootsProvider?.CopyAdditionalStatesToNodeStorage(_nodeStorage);
+
         if (_commitSetQueue.IsEmpty) return;
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);

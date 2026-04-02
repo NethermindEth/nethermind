@@ -161,6 +161,7 @@ public class PruningTrieStateFactory(
                 drive,
                 trieStore,
                 logManager);
+            mainPruningTrieStoreFactory.FullPruner = pruner;
             disposeStack.Push(pruner);
         }
     }
@@ -281,6 +282,9 @@ public class MainPruningTrieStoreFactory
     }
 
     public IPruningTrieStore PruningTrieStore { get; }
+
+    /// <summary>Exposes the <see cref="FullPruner"/> instance when full pruning is configured, null otherwise.</summary>
+    public FullPruner? FullPruner { get; internal set; }
 
     // Used to simulate long reorg by delaying `FinalizedBlockNumber`
     private class DelayedFinalizedStateProvider(
