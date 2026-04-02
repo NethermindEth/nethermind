@@ -202,6 +202,27 @@ public sealed class StateCompositionVisitor(
         };
     }
 
+    /// <summary>
+    /// Take a mid-scan snapshot of counters for progress reporting.
+    /// Thread-safe: reads from ThreadLocal values with Volatile.Read.
+    /// </summary>
+    public ScanSnapshot GetSnapshot()
+    {
+        long accounts = 0, contracts = 0, withStorage = 0, slots = 0, nodes = 0, bytes = 0;
+        foreach (VisitorCounters c in _localCounters.Values)
+        {
+            accounts += Volatile.Read(ref c.AccountsTotal);
+            contracts += Volatile.Read(ref c.ContractsTotal);
+            withStorage += Volatile.Read(ref c.ContractsWithStorage);
+            slots += Volatile.Read(ref c.StorageSlotsTotal);
+            nodes += c.AccountFullNodes + c.AccountShortNodes + c.AccountValueNodes
+                   + c.StorageFullNodes + c.StorageShortNodes + c.StorageValueNodes;
+            bytes += c.AccountNodeBytes + c.StorageNodeBytes;
+        }
+
+        return new ScanSnapshot(accounts, contracts, withStorage, slots, nodes, bytes);
+    }
+
     public TrieDepthDistribution GetTrieDistribution()
     {
         VisitorCounters agg = GetAggregated();
@@ -309,4 +330,19 @@ public sealed class StateCompositionVisitor(
     {
         _localCounters.Dispose();
     }
+}
+
+/// <summary>
+/// Mid-scan counter snapshot for progress reporting.
+/// </summary>
+public readonly record struct ScanSnapshot(
+    long Accounts, long Contracts, long ContractsWithStorage,
+    long StorageSlots, long Nodes, long Bytes)
+{
+    /// <summary>
+    /// Format a count using the Nethermind convention (see VisitorProgressTracker):
+    /// values &gt;= 1M shown as "1.2M", otherwise as "1,234".
+    /// </summary>
+    internal static string Fmt(double value) =>
+        value >= 1_000_000 ? $"{value / 1_000_000.0:F1}M" : $"{value:N0}";
 }
