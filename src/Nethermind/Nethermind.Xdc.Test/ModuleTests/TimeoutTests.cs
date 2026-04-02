@@ -66,7 +66,7 @@ public class TimeoutTests
 
         // Sanity check: round hasn’t advanced, HighestTC not set to this round yet
         Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));        
+        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
 
         // Send timeout message with wrong gap so it doesn't reach threshold yet
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(signers.Last(), round, 1350));
