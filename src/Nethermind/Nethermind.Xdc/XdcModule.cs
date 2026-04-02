@@ -105,6 +105,7 @@ public class XdcModule : Module
             .AddSingleton<ISignTransactionManager, ISigner, ITxPool, ILogManager>(CreateSignTransactionManager)
             .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<ITimeoutTimer, TimeoutTimer>()
+            .AddSingleton<ConsensusEventChannel>()
             .AddSingleton<ISyncInfoManager, SyncInfoManager>()
 
             // sync

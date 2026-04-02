@@ -9,6 +9,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
@@ -21,8 +22,7 @@ using System;
 namespace Nethermind.Xdc.P2P;
 
 internal class XdcProtocolHandler(
-    ITimeoutCertificateManager timeoutCertificateManager,
-    IVotesManager votesManager,
+    ConsensusEventChannel channel,
     ISyncInfoManager syncInfoManager,
     ISession session,
     IMessageSerializationService serializer,
@@ -35,8 +35,7 @@ internal class XdcProtocolHandler(
     ILogManager logManager,
     ITxGossipPolicy? transactionsGossipPolicy = null) : Eth65ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy), IStaticProtocolInfo
 {
-    private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
-    private readonly IVotesManager _votesManager = votesManager;
+    private readonly ConsensusEventChannel _channel = channel;
     private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
@@ -78,6 +77,18 @@ internal class XdcProtocolHandler(
                     Handle(syncInfoMsg);
                     break;
                 }
+            case Eth62MessageCode.NewBlock:
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Received NewBlock from peer {Session.RemoteNodeId} ({size} bytes).");
+                    base.HandleMessage(message);
+                    break;
+                }
+            case Eth62MessageCode.NewBlockHashes:
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Received NewBlockHashes from peer {Session.RemoteNodeId} ({size} bytes).");
+                    base.HandleMessage(message);
+                    break;
+                }
             default:
                 {
                     base.HandleMessage(message);
@@ -93,11 +104,11 @@ internal class XdcProtocolHandler(
 
     private void Handle(VoteMsg voteMsg)
     {
-        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
+        _channel.TryWrite(new VoteReceivedEvent(voteMsg.Vote));
     }
     private void Handle(TimeoutMsg timeoutMsg)
     {
-        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
+        _channel.TryWrite(new TimeoutVoteReceivedEvent(timeoutMsg.Timeout));
     }
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
@@ -107,13 +118,14 @@ internal class XdcProtocolHandler(
             if (Logger.IsDebug) Logger.Debug($"Received useless SyncInfo from peer {Session.RemoteNodeId}: {error}");
             return;
         }
-        syncInfoManager.ProcessSyncInfo(syncInfoMsg.SyncInfo);
+        _channel.TryWrite(new SyncInfoReceivedEvent(syncInfoMsg.SyncInfo));
     }
 
     public void SendVote(Vote vote)
     {
         if (!ShouldNotifyVote(vote))
             return;
+        if (Logger.IsDebug) Logger.Debug($"{Session.Node?.Address} Sending Vote {vote.ProposedBlockInfo.Round}");
         Send(new VoteMsg() { Vote = vote });
     }
 
@@ -121,6 +133,7 @@ internal class XdcProtocolHandler(
     {
         if (!ShouldNotifyTimeout(timeout))
             return;
+        if (Logger.IsDebug) Logger.Debug($"{Session.Node?.Address} Sending Timeout {timeout.Round}:{timeout.Signer}");
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 

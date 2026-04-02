@@ -61,6 +61,9 @@ public class XdcPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _nethermindApi.Context.Resolve<ITimeoutTimer>(),
             _nethermindApi.ProcessExit,
             _nethermindApi.Context.Resolve<ISignTransactionManager>(),
+            _nethermindApi.Context.Resolve<ITimeoutCertificateManager>(),
+            _nethermindApi.Context.Resolve<ISyncInfoManager>(),
+            _nethermindApi.Context.Resolve<ConsensusEventChannel>(),
             _nethermindApi.Context.Resolve<ILogManager>()
             );
     }
