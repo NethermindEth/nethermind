@@ -1,0 +1,46 @@
+name: Code Lint
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/ci-code-quality
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-quality:
+    name: Check code lint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props') }}
+          restore-keys: ${{ runner.os }}-nuget-
+
+      - name: Register problem matcher
+        run: echo "::add-matcher::.github/problem-matchers/dotnet-format.json"
+
+      - name: Check code quality
+        run: |
+          dotnet build src/Nethermind/Nethermind.slnx \
+            -p:EnforceCodeStyleInBuild=true \
+            -p:TreatWarningsAsErrors=false \
+            -p:GenerateDocumentationFile=true \
+            -p:NoWarn=CS0419%3BCS1570%3BCS1572%3BCS1573%3BCS1574%3BCS1584%3BCS1587%3BCS1591%3BCS1658%3BCS1711%3BCS1712%3BCS1723%3BCS1734%3BCS1735%3BNU1701%3BNUnit1032 2>&1 | tee /tmp/build.log
+          ! grep -qP "warning (IDE|CA)\d+" /tmp/build.log
