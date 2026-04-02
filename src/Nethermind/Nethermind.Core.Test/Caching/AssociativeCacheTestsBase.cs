@@ -274,4 +274,21 @@ public abstract class AssociativeCacheTestsBase
         Set(in _keys[0], 1).Should().BeTrue();
         AssertValue(in _keys[0], 1);
     }
+
+    [Test]
+    public void Contains_works()
+    {
+        Contains(in _keys[0]).Should().BeFalse();
+        Get(in _keys[0]).Should().BeFalse();
+
+        Set(in _keys[0], 0);
+
+        Contains(in _keys[0]).Should().BeTrue();
+        Get(in _keys[0]).Should().BeTrue();
+
+        Delete(in _keys[0]);
+
+        Contains(in _keys[0]).Should().BeFalse();
+        Get(in _keys[0]).Should().BeFalse();
+    }
 }

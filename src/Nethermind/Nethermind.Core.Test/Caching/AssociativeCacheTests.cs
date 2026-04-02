@@ -29,17 +29,6 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     }
 
     [Test]
-    public void Can_clear()
-    {
-        AddressAsKey key = _keys[0];
-        _cache.Set(in key, _accounts[0]).Should().BeTrue();
-        _cache.Clear();
-        _cache.Get(in key).Should().BeNull();
-        _cache.Set(in key, _accounts[1]).Should().BeTrue();
-        _cache.Get(in key).Should().Be(_accounts[1]);
-    }
-
-    [Test]
     public void Can_set_and_then_set_null()
     {
         AddressAsKey key = _keys[0];
@@ -105,7 +94,7 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     }
 
     [Test]
-    public void TryGet_and_Contains_work()
+    public void TryGet_returns_value()
     {
         AddressAsKey presentKey = _keys[0];
         AddressAsKey missingKey = _keys[Capacity];
@@ -114,14 +103,11 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
 
         _cache.TryGet(in presentKey, out Account? hit).Should().BeTrue();
         hit.Should().Be(_accounts[0]);
-        _cache.Contains(in presentKey).Should().BeTrue();
 
         _cache.TryGet(in missingKey, out Account? miss).Should().BeFalse();
         miss.Should().BeNull();
-        _cache.Contains(in missingKey).Should().BeFalse();
 
         _cache.Delete(in presentKey);
         _cache.TryGet(in presentKey, out _).Should().BeFalse();
-        _cache.Contains(in presentKey).Should().BeFalse();
     }
 }

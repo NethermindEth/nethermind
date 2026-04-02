@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using FluentAssertions;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
 
@@ -19,21 +18,4 @@ public class AssociativeKeyCacheTests : AssociativeCacheTestsBase
     protected override bool Delete(in AddressAsKey key) => _cache.Delete(in key);
     protected override void Clear() => _cache.Clear();
     protected override int GetCount() => _cache.Count;
-
-    [Test]
-    public void Contains_works()
-    {
-        _cache.Contains(in _keys[0]).Should().BeFalse();
-        _cache.Get(in _keys[0]).Should().BeFalse();
-
-        _cache.Set(in _keys[0]);
-
-        _cache.Contains(in _keys[0]).Should().BeTrue();
-        _cache.Get(in _keys[0]).Should().BeTrue();
-
-        _cache.Delete(in _keys[0]);
-
-        _cache.Contains(in _keys[0]).Should().BeFalse();
-        _cache.Get(in _keys[0]).Should().BeFalse();
-    }
 }
