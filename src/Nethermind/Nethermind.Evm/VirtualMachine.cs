@@ -309,7 +309,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Continue with the next iteration of the execution loop.
             continue;
 
-            // Failure handling: attempts to process and possibly finalize the transaction after an error.
+        // Failure handling: attempts to process and possibly finalize the transaction after an error.
         Failure:
             TransactionSubstate failSubstate = HandleFailure<TTracingInst>(failure, substateError, ref previousCallOutput, out bool shouldExit);
             if (shouldExit)

@@ -1,9 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Types;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Xdc;
@@ -17,6 +21,19 @@ internal class SyncInfoManager(
     ILogManager logManager) : ISyncInfoManager
 {
     private readonly ILogger _logger = logManager.GetClassLogger<SyncInfoManager>();
+
+    private XdcPool<SyncInfo> _syncInfoPool = new();
+
+    public IDictionary<(ulong Round, Hash256 Hash), ArrayPoolList<SyncInfo>> GetReceivedSyncInfos()
+    {
+        return _syncInfoPool.Items;
+    }
+
+    public SyncInfo GetSyncInfo()
+    {
+        return new SyncInfo(xdcContext.HighestQC, xdcContext.HighestTC);
+    }
+
     public void ProcessSyncInfo(SyncInfo syncInfo)
     {
         try
@@ -29,6 +46,10 @@ internal class SyncInfoManager(
             //We can get SyncInfo while syncing
             if (_logger.IsDebug)
                 _logger.Debug($"Couldn't find {nameof(SyncInfo)} block {e.IncomingBlockHash.ToShortString()} #{e.IncomingBlockNumber} ");
+        }
+        finally
+        {
+            _syncInfoPool.Add(syncInfo);
         }
     }
 

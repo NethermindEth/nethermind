@@ -21,6 +21,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Modules;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -33,6 +34,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
+using Nethermind.Xdc.RPC;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
 
@@ -130,7 +132,10 @@ public class XdcModule : Module
             .AddScoped<ITransactionProcessor, XdcTransactionProcessor>()
             .AddSingleton<IGasLimitCalculator, XdcGasLimitCalculator>()
             .AddSingleton<IDifficultyCalculator, XdcDifficultyCalculator>()
-            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>();
+            .AddScoped<IProducedBlockSuggester, XdcBlockSuggester>()
+
+            .RegisterSingletonJsonRpcModule<IXdcRpcModule, XdcRpcModule>()
+            ;
     }
 
     private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
