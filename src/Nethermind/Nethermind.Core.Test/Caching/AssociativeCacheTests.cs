@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core.Caching;
 using NUnit.Framework;
@@ -12,194 +10,56 @@ using Cache = Nethermind.Core.Caching.AssociativeCache<Nethermind.Core.AddressAs
 namespace Nethermind.Core.Test.Caching;
 
 [TestFixture]
-public class AssociativeCacheTests
+public class AssociativeCacheTests : AssociativeCacheTestsBase
 {
-    private const int Capacity = 32;
+    private Cache _cache = null!;
 
-    private AddressAsKey[] _keys = null!;
-    private Account[] _accounts = null!;
+    protected override void CreateCache(int capacity) => _cache = new Cache(capacity);
+    protected override bool Set(in AddressAsKey key, int accountIndex) => _cache.Set(in key, _accounts[accountIndex]);
+    protected override bool Get(in AddressAsKey key) => _cache.Get(in key) is not null;
+    protected override bool Contains(in AddressAsKey key) => _cache.Contains(in key);
+    protected override bool Delete(in AddressAsKey key) => _cache.Delete(in key);
+    protected override void Clear() => _cache.Clear();
+    protected override int GetCount() => _cache.Count;
 
-    [SetUp]
-    public void Setup()
+    protected override void AssertValue(in AddressAsKey key, int expectedIndex)
     {
-        (_keys, _accounts) = CacheTestData.Build(Capacity * 2 + 1);
-    }
-
-    private static Cache Create() => new Cache(Capacity);
-
-    private void FillCache(Cache cache, int count)
-    {
-        for (int i = 0; i < count; i++)
-            cache.Set(in _keys[i], _accounts[i]);
-    }
-
-    private void AssertAllPresent(Cache cache, int count)
-    {
-        for (int i = 0; i < count; i++)
-        {
-            AddressAsKey key = _keys[i];
-            cache.TryGet(in key, out Account? val).Should().BeTrue($"key {i} should be present");
-            val.Should().Be(_accounts[i]);
-        }
-    }
-
-    [Test]
-    public void At_capacity()
-    {
-        Cache cache = Create();
-        for (int i = 0; i < Capacity; i++)
-        {
-            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue();
-        }
-
-        AddressAsKey lastKey = _keys[Capacity - 1];
-        Account? account = cache.Get(in lastKey);
-        account.Should().Be(_accounts[Capacity - 1]);
-    }
-
-    [Test]
-    public void Can_reset()
-    {
-        Cache cache = Create();
-        AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]).Should().BeTrue();
-        cache.Set(in key, _accounts[1]).Should().BeFalse();
-        cache.Get(in key).Should().Be(_accounts[1]);
-    }
-
-    [Test]
-    public void Can_ask_before_first_set()
-    {
-        Cache cache = Create();
-        AddressAsKey key = _keys[0];
-        cache.Get(in key).Should().BeNull();
+        _cache.TryGet(in key, out Account? val).Should().BeTrue("key should be present");
+        val.Should().Be(_accounts[expectedIndex]);
     }
 
     [Test]
     public void Can_clear()
     {
-        Cache cache = Create();
         AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]).Should().BeTrue();
-        cache.Clear();
-        cache.Get(in key).Should().BeNull();
-        cache.Set(in key, _accounts[1]).Should().BeTrue();
-        cache.Get(in key).Should().Be(_accounts[1]);
-    }
-
-    [Test]
-    public void Beyond_capacity()
-    {
-        Cache cache = Create();
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            cache.Set(in _keys[i], _accounts[i]);
-        }
-
-        // Eviction is non-deterministic (3-random within set), so only assert the count is bounded
-        cache.Count.Should().BeLessOrEqualTo(Capacity);
-
-        // Any item that is present must return the correct value
-        for (int i = 0; i < Capacity * 2; i++)
-        {
-            AddressAsKey key = _keys[i];
-            Account? found = cache.Get(in key);
-            if (found is not null)
-            {
-                found.Should().Be(_accounts[i]);
-            }
-        }
-    }
-
-    [Test]
-    public void Beyond_capacity_stress()
-    {
-        Cache cache = Create();
-        for (int iter = 0; iter < 4; iter++)
-        {
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                cache.Set(in _keys[i], _accounts[i]);
-            }
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Get(in key);
-            }
-            if (iter % 2 == 0)
-            {
-                cache.Clear();
-            }
-        }
-
-        // No crash means success; count is bounded
-        cache.Count.Should().BeLessOrEqualTo(Capacity);
-    }
-
-    [Test]
-    public void Beyond_capacity_parallel()
-    {
-        Cache cache = new Cache(Capacity);
-        Parallel.For(0, Environment.ProcessorCount * 8, iter =>
-        {
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Set(in key, _accounts[i]);
-            }
-            for (int i = 0; i < Capacity * 2; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Get(in key);
-            }
-            for (int i = 0; i < Capacity / 2; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Delete(in key);
-            }
-            if (iter % Environment.ProcessorCount == 0)
-            {
-                cache.Clear();
-            }
-        });
-
-        // No crash means success
+        _cache.Set(in key, _accounts[0]).Should().BeTrue();
+        _cache.Clear();
+        _cache.Get(in key).Should().BeNull();
+        _cache.Set(in key, _accounts[1]).Should().BeTrue();
+        _cache.Get(in key).Should().Be(_accounts[1]);
     }
 
     [Test]
     public void Can_set_and_then_set_null()
     {
-        Cache cache = Create();
         AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]).Should().BeTrue();
-        cache.Set(in key, _accounts[0]).Should().BeFalse();
+        _cache.Set(in key, _accounts[0]).Should().BeTrue();
+        _cache.Set(in key, _accounts[0]).Should().BeFalse();
         // Set with null triggers Delete
-        cache.Set(in key, null!).Should().BeTrue();
-        cache.Get(in key).Should().BeNull();
-    }
-
-    [Test]
-    public void Can_delete()
-    {
-        Cache cache = Create();
-        AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]);
-        cache.Delete(in key).Should().BeTrue();
-        cache.Get(in key).Should().BeNull();
-        cache.Delete(in key).Should().BeFalse();
+        _cache.Set(in key, null!).Should().BeTrue();
+        _cache.Get(in key).Should().BeNull();
     }
 
     [Test]
     public void Delete_returns_value()
     {
-        Cache cache = Create();
         AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]);
+        _cache.Set(in key, _accounts[0]);
 
-        cache.Delete(in key, out Account? value).Should().BeTrue();
+        _cache.Delete(in key, out Account? value).Should().BeTrue();
         value.Should().Be(_accounts[0]);
 
-        cache.Delete(in key, out Account? noValue).Should().BeFalse();
+        _cache.Delete(in key, out Account? noValue).Should().BeFalse();
         noValue.Should().BeNull();
     }
 
@@ -210,7 +70,7 @@ public class AssociativeCacheTests
         // With a very large number of sets (>= iterations), each key gets its own set.
         int iterations = 40;
         // iterations keys, each in its own set: need setCount >= iterations, rounded to power-of-2.
-        // setCount = 64 → maxCapacity = 64 * 8 = 512.
+        // setCount = 64 -> maxCapacity = 64 * 8 = 512.
         int maxCapacity = 512;
 
         AssociativeCache<AddressAsKey, Account> cache = new(maxCapacity);
@@ -244,209 +104,24 @@ public class AssociativeCacheTests
         cache.Count.Should().BeLessOrEqualTo(10);
     }
 
-    [TestCase(-1)]
-    [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity)
-    {
-        FluentActions.Invoking(() => new Cache(capacity))
-            .Should().Throw<ArgumentOutOfRangeException>();
-    }
-
-    [TestCase(0)]
-    [TestCase(4096)]
-    public void Capacity_valid_boundary(int capacity)
-    {
-        // Construction must succeed at boundary values
-        AssociativeCache<AddressAsKey, Account> cache = new(capacity);
-
-        AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]);
-
-        if (capacity == 0)
-        {
-            cache.TryGet(in key, out _).Should().BeFalse();
-        }
-        else
-        {
-            cache.TryGet(in key, out Account? value).Should().BeTrue();
-            value.Should().Be(_accounts[0]);
-        }
-    }
-
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
-    {
-        // Catches hash signature extraction bugs: if the signature is computed from
-        // wrong bits, Get won't find keys that were just inserted (tag mismatch).
-        // Insert only 50% of capacity to avoid set-conflict eviction.
-        AssociativeCache<AddressAsKey, Account> cache = new(capacity);
-        int insertCount = Math.Min(capacity / 2, _keys.Length - 1);
-
-        for (int i = 0; i < insertCount; i++)
-        {
-            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue();
-        }
-
-        for (int i = 0; i < insertCount; i++)
-        {
-            AddressAsKey key = _keys[i];
-            cache.TryGet(in key, out Account? val).Should().BeTrue($"key {i} should be present at capacity {capacity}");
-            val.Should().Be(_accounts[i]);
-        }
-
-        cache.Count.Should().Be(insertCount);
-    }
-
-    [Test]
-    public void Concurrent_clear_does_not_corrupt_count()
-    {
-        // Catches count/Clear race: concurrent Set + Clear should not produce
-        // negative counts or counts wildly exceeding capacity.
-        Cache cache = Create();
-
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
-        {
-            for (int i = 0; i < Capacity; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Set(in key, _accounts[i]);
-            }
-
-            if (iter % 3 == 0)
-            {
-                cache.Clear();
-            }
-        });
-
-        int count = cache.Count;
-        count.Should().BeGreaterThanOrEqualTo(0);
-        count.Should().BeLessOrEqualTo(Capacity);
-    }
-
-    [Test]
-    public void No_duplicate_keys_under_concurrency()
-    {
-        Cache cache = Create();
-        AddressAsKey sharedKey = _keys[0];
-        Account sharedAccount = _accounts[0];
-
-        Parallel.For(0, Environment.ProcessorCount * 16, _ =>
-        {
-            cache.Set(in sharedKey, sharedAccount);
-        });
-
-        Account? result = cache.Get(in sharedKey);
-        result.Should().Be(sharedAccount);
-
-        cache.Count.Should().BeGreaterThan(0);
-
-        cache.Delete(in sharedKey).Should().BeTrue();
-        cache.Get(in sharedKey).Should().BeNull();
-    }
-
-    [Test]
-    public void Set_after_clear_persists()
-    {
-        Cache cache = Create();
-        AddressAsKey key0 = _keys[0];
-        AddressAsKey key1 = _keys[1];
-        cache.Set(in key0, _accounts[0]);
-        cache.Clear();
-
-        // Set immediately after Clear must succeed AND be retrievable
-        cache.Set(in key1, _accounts[1]).Should().BeTrue();
-        cache.TryGet(in key1, out Account? val).Should().BeTrue();
-        val.Should().Be(_accounts[1]);
-        cache.Count.Should().Be(1);
-    }
-
-    [Test]
-    public void Count_does_not_go_negative_on_clear_then_delete()
-    {
-        // Catches count underflow: Clear sets count to 0, then Delete
-        // on a stale entry should not decrement below 0.
-        Cache cache = Create();
-        AddressAsKey key = _keys[0];
-        cache.Set(in key, _accounts[0]);
-        cache.Count.Should().Be(1);
-
-        cache.Clear();
-        cache.Count.Should().Be(0);
-
-        // Delete after Clear — entry is stale, delete should be a no-op
-        cache.Delete(in key).Should().BeFalse();
-        cache.Count.Should().Be(0);
-    }
-
-    [Test]
-    public void Concurrent_delete_and_clear_keeps_count_non_negative()
-    {
-        // Stress test: concurrent Delete + Clear should never produce negative count.
-        Cache cache = new Cache(256);
-
-        Parallel.For(0, Environment.ProcessorCount * 4, iter =>
-        {
-            for (int i = 0; i < 64; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Set(in key, _accounts[i]);
-            }
-
-            if (iter % 2 == 0)
-            {
-                cache.Clear();
-            }
-
-            for (int i = 0; i < 64; i++)
-            {
-                AddressAsKey key = _keys[i];
-                cache.Delete(in key);
-            }
-        });
-
-        cache.Count.Should().BeGreaterThanOrEqualTo(0);
-    }
-
-    [Test]
-    public void Clear_invalidates_and_frees_capacity()
-    {
-        Cache cache = Create();
-        AddressAsKey key = _keys[1];
-
-        cache.Set(in key, _accounts[0]).Should().BeTrue();
-        cache.Clear();
-
-        // Epoch bump makes entry invisible, count resets
-        cache.Get(in key).Should().BeNull();
-        cache.Count.Should().Be(0);
-
-        // Capacity is free — Set returns true (new), value is retrievable
-        cache.Set(in key, _accounts[1]).Should().BeTrue();
-        cache.Get(in key).Should().Be(_accounts[1]);
-    }
-
     [Test]
     public void TryGet_and_Contains_work()
     {
-        Cache cache = Create();
         AddressAsKey presentKey = _keys[0];
         AddressAsKey missingKey = _keys[Capacity];
 
-        cache.Set(in presentKey, _accounts[0]);
+        _cache.Set(in presentKey, _accounts[0]);
 
-        cache.TryGet(in presentKey, out Account? hit).Should().BeTrue();
+        _cache.TryGet(in presentKey, out Account? hit).Should().BeTrue();
         hit.Should().Be(_accounts[0]);
-        cache.Contains(in presentKey).Should().BeTrue();
+        _cache.Contains(in presentKey).Should().BeTrue();
 
-        cache.TryGet(in missingKey, out Account? miss).Should().BeFalse();
+        _cache.TryGet(in missingKey, out Account? miss).Should().BeFalse();
         miss.Should().BeNull();
-        cache.Contains(in missingKey).Should().BeFalse();
+        _cache.Contains(in missingKey).Should().BeFalse();
 
-        cache.Delete(in presentKey);
-        cache.TryGet(in presentKey, out _).Should().BeFalse();
-        cache.Contains(in presentKey).Should().BeFalse();
+        _cache.Delete(in presentKey);
+        _cache.TryGet(in presentKey, out _).Should().BeFalse();
+        _cache.Contains(in presentKey).Should().BeFalse();
     }
 }
