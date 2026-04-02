@@ -22,6 +22,7 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     protected override bool Contains(in AddressAsKey key) => _cache.Contains(in key);
     protected override bool Delete(in AddressAsKey key) => _cache.Delete(in key);
     protected override void Clear() => _cache.Clear();
+    protected override void Clear(bool releaseReferences) => _cache.Clear(releaseReferences);
     protected override int GetCount() => _cache.Count;
 
     protected override void AssertValue(in AddressAsKey key, int expectedIndex)
@@ -93,28 +94,6 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
 
         // Count is bounded by the rolling-window (up to 10) plus any Set calls that return true
         cache.Count.Should().BeLessOrEqualTo(10);
-    }
-
-    [Test]
-    public void Clear_without_release_invalidates_and_allows_reuse()
-    {
-        // Base tests cover Clear() (releaseReferences: true). This tests the fast O(1) path.
-        Cache cache = new(256);
-
-        for (int i = 0; i < 16; i++)
-            cache.Set(in _keys[i], _accounts[i]);
-
-        cache.Clear(releaseReferences: false);
-
-        cache.Count.Should().Be(0);
-        for (int i = 0; i < 16; i++)
-            cache.Get(in _keys[i]).Should().BeNull();
-
-        // Re-insert — all should report as new
-        for (int i = 0; i < 16; i++)
-            cache.Set(in _keys[i], _accounts[i]).Should().BeTrue($"key {i} should be new after Clear");
-
-        cache.Count.Should().Be(16);
     }
 
     [Test]

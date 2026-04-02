@@ -38,6 +38,7 @@ public abstract class AssociativeCacheTestsBase
     protected abstract bool Contains(in AddressAsKey key);
     protected abstract bool Delete(in AddressAsKey key);
     protected abstract void Clear();
+    protected abstract void Clear(bool releaseReferences);
     protected abstract int GetCount();
 
     /// <summary>
@@ -290,5 +291,27 @@ public abstract class AssociativeCacheTestsBase
 
         Contains(in _keys[0]).Should().BeFalse();
         Get(in _keys[0]).Should().BeFalse();
+    }
+
+    [Test]
+    public void Clear_without_release_invalidates_and_allows_reuse()
+    {
+        // Base tests cover Clear() (releaseReferences: true). This tests the fast O(1) path.
+        CreateCache(256);
+
+        for (int i = 0; i < 16; i++)
+            Set(in _keys[i], i);
+
+        Clear(releaseReferences: false);
+
+        GetCount().Should().Be(0);
+        for (int i = 0; i < 16; i++)
+            Get(in _keys[i]).Should().BeFalse();
+
+        // Re-insert — all should report as new
+        for (int i = 0; i < 16; i++)
+            Set(in _keys[i], i).Should().BeTrue($"key {i} should be new after Clear");
+
+        GetCount().Should().Be(16);
     }
 }
