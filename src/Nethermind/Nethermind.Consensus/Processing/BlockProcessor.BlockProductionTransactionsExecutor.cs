@@ -109,8 +109,8 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    ITransactionProcessorAdapter txProcessor = _balManager is null ? transactionProcessor : _balManager.GetTxProcessor();
-                    TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
+                    ITransactionProcessorAdapter processor = _balManager is null ? transactionProcessor : _balManager.GetTxProcessor();
+                    TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
                     {
