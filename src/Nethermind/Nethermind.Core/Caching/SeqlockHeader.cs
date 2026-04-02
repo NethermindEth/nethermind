@@ -67,16 +67,16 @@ internal static class SeqlockHeader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ClearEpochAndCount(ref long epochAndCount)
     {
-        long old = Volatile.Read(ref epochAndCount);
+        long oldValue = Volatile.Read(ref epochAndCount);
 
         while (true)
         {
             long newValue = (oldValue + (1L << EpochShift)) & EpochMask;
 
-            long prev = Interlocked.CompareExchange(ref epochAndCount, newValue, old);
-            if (prev == old) return;
+            long prev = Interlocked.CompareExchange(ref epochAndCount, newValue, oldValue);
+            if (prev == oldValue) return;
 
-            old = prev;
+            oldValue = prev;
         }
     }
 
