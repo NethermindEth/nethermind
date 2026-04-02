@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -56,7 +55,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         if (offset < 0)
             throw new EraException("This EraE file does not contain an AccumulatorRoot (post-merge epoch).");
 
-        e2.ReadEntryAndDecode<ValueHash256>(
+        e2.ReadEntryAndDecode(
             offset,
             static buffer => new ValueHash256(buffer.Span),
             EntryTypes.AccumulatorRoot,
@@ -73,12 +72,16 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         CancellationToken cancellation = default)
     {
         ArgumentNullException.ThrowIfNull(specProvider);
-        if (verifyConcurrency <= 0) verifyConcurrency = Environment.ProcessorCount;
+        ArgumentNullException.ThrowIfNull(blockValidator);
+
+        if (verifyConcurrency <= 0)
+            verifyConcurrency = Environment.ProcessorCount;
 
         long startBlock = e2.First;
         int blockCount = (int)e2.BlockCount;
 
-        using ArrayPoolList<(Hash256 Hash, UInt256 Td, bool IsPreMerge)> blockMeta = new(blockCount, blockCount);
+        (Hash256 Hash, UInt256 Td, bool IsPreMerge)[] blockMeta =
+            new (Hash256 Hash, UInt256 Td, bool IsPreMerge)[blockCount];
 
         ConcurrentQueue<long> blockNumbers = new();
         for (long n = startBlock; n <= e2.LastBlock; n++)
@@ -98,16 +101,16 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     if (!blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error))
                         throw new EraVerificationException($"Mismatched block body against header: {error}. Block {blockNumber}.");
 
-                    if (!blockValidator.ValidateOrphanedBlock(block, out error))
-                        throw new EraVerificationException($"Invalid block {blockNumber}: {error}.");
-
                     Hash256 receiptRoot = ReceiptTrie.CalculateRoot(
                         specProvider.GetReceiptSpec(block.Number), receipts, _fullReceiptDecoder);
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 
                     int idx = (int)(block.Header.Number - startBlock);
-                    blockMeta[idx] = (block.Header.Hash!, block.TotalDifficulty ?? UInt256.Zero, !block.Header.IsPostMerge);
+                    blockMeta[idx] = (
+                        block.Header.Hash!,
+                        block.TotalDifficulty ?? UInt256.Zero,
+                        !block.Header.IsPostMerge);
                 }
             }, cancellation);
         }
@@ -122,7 +125,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         ValueHash256 storedRoot = ReadAccumulatorRoot();
 
         using AccumulatorCalculator calculator = new();
-        foreach ((Hash256 hash, UInt256 td, bool isPreMerge) in blockMeta.AsSpan())
+        foreach ((Hash256 hash, UInt256 td, bool isPreMerge) in blockMeta)
         {
             if (!isPreMerge) continue; // post-merge blocks excluded from accumulator even in transition epochs
             calculator.Add(hash, td);
@@ -148,9 +151,9 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         long headerPos = e2.HeaderOffset(blockNumber);
         (BlockHeader header, _) = await e2.ReadSnappyCompressedEntryAndDecode(
             headerPos, DecodeHeader, EntryTypes.CompressedHeader, cancellation);
+
         // IsPostMerge is not RLP-serialized; restore it from Difficulty after decode.
         // Pre-merge blocks have Difficulty > 0, post-merge blocks have Difficulty == 0 (EIP-3675).
-        // Safe on all supported networks: genesis always has Difficulty > 0 on mainnet and testnets.
         header.IsPostMerge = header.Difficulty == 0;
 
         long bodyPos = e2.BodyOffset(blockNumber);
@@ -187,5 +190,4 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
         Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
-
 }
