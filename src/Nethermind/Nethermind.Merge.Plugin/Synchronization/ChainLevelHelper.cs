@@ -87,59 +87,39 @@ public class ChainLevelHelper : IChainLevelHelper
 
         if (blockNumber <= syncPivotNumber)
         {
-            HandleMissingInFastHeadersRange(blockNumber);
+            // FastHeaders range [0, SyncPivot]. Gaps are normal while the feed is active.
+            SyncMode currentMode = _syncModeSelector.Current;
+            bool fastHeadersActive = (currentMode & SyncMode.FastHeaders) != SyncMode.None;
+
+            if (fastHeadersActive)
+            {
+                WaitWithSafetyTimer(blockNumber, $"FastHeaders active (mode={currentMode}), transient batch gap");
+                return;
+            }
+
+            if (HasSafetyTimerExpired())
+            {
+                ForceRestart(blockNumber, $"block in FastHeaders range missing after feed inactive (mode={currentMode}) and safety timer expired");
+                return;
+            }
+
+            WaitWithSafetyTimer(blockNumber, $"FastHeaders not active (mode={currentMode}), monitoring via safety timer");
+        }
+        else if (_beaconPivot.BeaconPivotExists())
+        {
+            // Beacon range (SyncPivot, ProcessDestination). Block is guaranteed to be within
+            // [PivotDestinationNumber, PivotNumber] by the callers — the routing condition
+            // ensures blockNumber > SyncPivot >= PivotDestinationNumber - 1, and the
+            // ProcessDestination guard ensures blockNumber < PivotNumber.
+            // Wait for BeaconHeadersSyncFeed to fill it; safety timer catches permanent stalls.
+            WaitWithSafetyTimer(blockNumber,
+                $"block in beacon range [{_beaconPivot.PivotDestinationNumber}, {_beaconPivot.PivotNumber}]");
         }
         else
         {
-            HandleMissingInBeaconRange(blockNumber);
+            // Block is above SyncPivot but no beacon pivot exists — no feed will fill this.
+            ForceRestart(blockNumber, $"block {blockNumber} above SyncPivot {syncPivotNumber} with no beacon pivot");
         }
-    }
-
-    /// <summary>
-    /// Block is in the FastHeaders range [0, SyncPivot]. If FastHeaders is actively running,
-    /// the gap is a transient batch hole — wait. Otherwise use the safety timer before restart.
-    /// </summary>
-    private void HandleMissingInFastHeadersRange(long blockNumber)
-    {
-        SyncMode currentMode = _syncModeSelector.Current;
-        bool fastHeadersActive = (currentMode & SyncMode.FastHeaders) != SyncMode.None;
-
-        if (fastHeadersActive)
-        {
-            WaitWithSafetyTimer(blockNumber, $"FastHeaders active (mode={currentMode}), transient batch gap");
-            return;
-        }
-
-        if (HasSafetyTimerExpired())
-        {
-            ForceRestart(blockNumber, $"block in FastHeaders range missing after feed inactive (mode={currentMode}) and safety timer expired");
-            return;
-        }
-
-        WaitWithSafetyTimer(blockNumber, $"FastHeaders not active (mode={currentMode}), monitoring via safety timer");
-    }
-
-    /// <summary>
-    /// Block is above the global sync pivot — in the beacon range.
-    /// Uses [PivotDestinationNumber, PivotNumber] to determine if the block is
-    /// BeaconHeadersSyncFeed's responsibility. Does NOT use LowestInsertedBeaconHeader
-    /// because EnsurePivot raises it to the latest FCU head every slot (sawtooth pattern),
-    /// making it unreliable as a contiguity marker.
-    /// </summary>
-    private void HandleMissingInBeaconRange(long blockNumber)
-    {
-        long destinationNumber = _beaconPivot.PivotDestinationNumber;
-        long pivotNumber = _beaconPivot.PivotNumber;
-
-        if (blockNumber >= destinationNumber && blockNumber <= pivotNumber)
-        {
-            WaitWithSafetyTimer(blockNumber,
-                $"block in beacon range [{destinationNumber}, {pivotNumber}]");
-            return;
-        }
-
-        ForceRestart(blockNumber,
-            $"block {blockNumber} outside beacon range [{destinationNumber}, {pivotNumber}]");
     }
 
     private void WaitWithSafetyTimer(long blockNumber, string reason)
