@@ -39,8 +39,7 @@ public abstract class AssociativeCacheTestsBase
 
     protected abstract bool Contains(in AddressAsKey key);
     protected abstract bool Delete(in AddressAsKey key);
-    protected abstract void Clear();
-    protected abstract void Clear(bool releaseReferences);
+    protected abstract void Clear(bool releaseReferences = true);
     protected abstract int GetCount();
 
     /// <summary>
