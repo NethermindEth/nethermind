@@ -284,7 +284,7 @@ public class BlockAccessListManager(
     public void ProcessWithdrawals(Block block, IReleaseSpec spec, ProcessingOptions options)
     {
         IWithdrawalProcessor withdrawalProcessor = new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager);
-        if (!options.ContainsFlag(ProcessingOptions.ProducingBlock))
+        if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
         {
             withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
         }
