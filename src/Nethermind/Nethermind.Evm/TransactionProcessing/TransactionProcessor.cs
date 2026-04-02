@@ -728,6 +728,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
+                    string addy = env.ExecutingAccount.ToString();
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareDeployment(env.ExecutingAccount))
                     {

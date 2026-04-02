@@ -191,7 +191,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override bool IsContract(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.IsContract(address);
+        return IsContractInternal(address);
     }
 
     public override bool IsStorageEmpty(Address address)
@@ -203,7 +203,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
     public override bool IsDeadAccount(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.IsDeadAccount(address);
+        return IsDeadAccountInternal(address);
     }
 
     public override void ClearStorage(Address address)
@@ -239,7 +239,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
         return null;
     }
 
-    private byte[]? GetCodeInternal(Address address)
+    private byte[]? GetCodeCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.CodeChanges.Count == 1)
@@ -247,9 +247,28 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
             return accountChanges.CodeChanges.First().NewCode;
         }
 
-        return _innerWorldState.GetCode(address);
+        return null;
     }
 
+    private byte[]? GetCodeInternal(Address address)
+        => GetCodeCurrent(address) ?? _innerWorldState.GetCode(address);
+
+    private ValueHash256 GetCodeHashInternal(Address address)
+    {
+        // todo: store code hash?
+        byte[]? code = GetCodeCurrent(address);
+        return code is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(code);
+    }
+
+    private bool IsContractInternal(Address address)
+        => GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
+
+    private bool IsDeadAccountInternal(Address address)
+        => !AccountExistsInternal(address) ||
+                (
+                    GetBalanceInternal(address) == 0 &&
+                    GetNonceInternal(address) == 0 &&
+                    GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);

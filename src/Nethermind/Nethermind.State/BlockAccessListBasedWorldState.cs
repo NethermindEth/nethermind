@@ -225,7 +225,7 @@ public class BlockAccessListBasedWorldState(
     {
         // see https://eips.ethereum.org/EIPS/eip-7610
         // storage could only be non-empty for 28 old accounts
-        AccountChanges? accountChanges = new AccountChanges();
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null)
         {
             return accountChanges.EmptyBeforeBlock;
