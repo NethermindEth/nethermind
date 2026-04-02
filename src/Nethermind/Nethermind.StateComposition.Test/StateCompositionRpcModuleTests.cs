@@ -4,10 +4,12 @@
 #nullable enable
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
@@ -164,5 +166,45 @@ public class StateCompositionRpcModuleTests
             Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(result.Result.Error, Does.Contain("Address parameter is required"));
         }
+    }
+
+    [Test]
+    public async Task ScanByStateRoot_CallsAnalyzeAsync_WithSyntheticHeader()
+    {
+        IStateCompositionService service = Substitute.For<IStateCompositionService>();
+        StateCompositionStats stats = new() { AccountsTotal = 777 };
+        service.AnalyzeAsync(Arg.Any<BlockHeader>(), Arg.Any<CancellationToken>())
+            .Returns(Result<StateCompositionStats>.Success(stats));
+
+        StateCompositionRpcModule rpc = new(
+            service,
+            Substitute.For<IStateCompositionStateHolder>(),
+            Substitute.For<IBlockTree>());
+
+        JsonRpc.ResultWrapper<StateCompositionStats> result =
+            await rpc.statecomp_scanByStateRoot(Keccak.Zero, 24357856);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.AccountsTotal, Is.EqualTo(777));
+            await service.Received(1).AnalyzeAsync(
+                Arg.Is<BlockHeader>(h => h.Number == 24357856 && h.StateRoot == Keccak.Zero),
+                Arg.Any<CancellationToken>());
+        }
+    }
+
+    [Test]
+    public async Task ScanByStateRoot_Fails_WhenStateRootNull()
+    {
+        StateCompositionRpcModule rpc = new(
+            Substitute.For<IStateCompositionService>(),
+            Substitute.For<IStateCompositionStateHolder>(),
+            Substitute.For<IBlockTree>());
+
+        JsonRpc.ResultWrapper<StateCompositionStats> result =
+            await rpc.statecomp_scanByStateRoot(null!, 100);
+
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 }

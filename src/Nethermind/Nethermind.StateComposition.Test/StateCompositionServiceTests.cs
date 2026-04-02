@@ -187,7 +187,7 @@ public class StateCompositionServiceTests
         {
             Assert.That(result.IsSuccess, Is.True);
             stateHolder.ReceivedWithAnyArgs(1).StoreScan(
-                default, default!, default, default, default);
+                0, null!, TimeSpan.Zero, default, default);
         }
     }
 

@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.StateComposition;
@@ -98,6 +100,36 @@ public class StateCompositionRpcModule(
         catch (OperationCanceledException)
         {
             return ResultWrapper<TopContractEntry?>.Fail("Inspection was cancelled");
+        }
+    }
+
+    public async Task<ResultWrapper<StateCompositionStats>> statecomp_scanByStateRoot(
+        Hash256 stateRoot, long blockNumber)
+    {
+        BlockHeader header = new(
+            parentHash: Keccak.Zero,
+            unclesHash: Keccak.OfAnEmptySequenceRlp,
+            beneficiary: Address.Zero,
+            difficulty: UInt256.Zero,
+            number: blockNumber,
+            gasLimit: 0,
+            timestamp: 0,
+            extraData: Array.Empty<byte>())
+        {
+            StateRoot = stateRoot,
+        };
+
+        try
+        {
+            Result<StateCompositionStats> result = await service.AnalyzeAsync(header, CancellationToken.None)
+                .ConfigureAwait(false);
+            return !result.Success(out StateCompositionStats stats, out var error)
+                ? ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.LimitExceeded)
+                : ResultWrapper<StateCompositionStats>.Success(stats);
+        }
+        catch (OperationCanceledException)
+        {
+            return ResultWrapper<StateCompositionStats>.Fail("Scan was cancelled");
         }
     }
 

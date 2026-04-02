@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 
@@ -48,4 +49,11 @@ public interface IStateCompositionRpcModule : IRpcModule
                       "Returns null if the address has no storage.")]
     Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(
         Address address, BlockParameter? blockParameter = null);
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Run a full state composition scan using an explicit state root. " +
+                      "Use when the block header is not in the block tree (e.g. snapshot-only nodes). " +
+                      "The blockNumber is recorded in scan metadata but not looked up in the block tree.")]
+    Task<ResultWrapper<StateCompositionStats>> statecomp_scanByStateRoot(
+        Hash256 stateRoot, long blockNumber);
 }
