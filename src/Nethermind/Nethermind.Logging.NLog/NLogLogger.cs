@@ -18,7 +18,7 @@ namespace Nethermind.Logging.NLog
 
         private readonly global::NLog.Logger _logger;
 
-        public NLogLogger(Type type) : this(GetTypeName(type.FullName))
+        public NLogLogger(Type type) : this(ILogManager.GetLoggerName(type))
         {
         }
 
@@ -35,8 +35,6 @@ namespace Nethermind.Logging.NLog
             IsError = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
             Name = _logger.Name;
         }
-
-        private static string GetTypeName(string typeName) => typeName.Replace("Nethermind.", string.Empty);
 
         public void Info(string text)
         {

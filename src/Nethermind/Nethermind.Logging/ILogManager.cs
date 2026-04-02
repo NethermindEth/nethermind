@@ -10,22 +10,21 @@ namespace Nethermind.Logging
 #if !ZK_EVM
         ILogger GetClassLogger<T>();
 #endif
-        ILogger GetClassLogger(string filePath);
         ILogger GetLogger(string loggerName);
 
         void SetGlobalVariable(string name, object value) { }
+
+        static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
     }
 
     public static class LogManagerExtensions
     {
-        private static string GetLoggerName(Type type) => (type.FullName ?? type.Name).Replace("Nethermind.", string.Empty);
-
 #if ZK_EVM
         public static ILogger GetClassLogger<T>(this ILogManager logManager)
-            => logManager.GetLogger(GetLoggerName(typeof(T)));
+            => logManager.GetLogger(ILogManager.GetLoggerName(typeof(T)));
 #endif
 
         public static ILogger GetClassLogger(this ILogManager logManager, Type type)
-            => logManager.GetLogger(GetLoggerName(type));
+            => logManager.GetLogger(ILogManager.GetLoggerName(type));
     }
 }

@@ -14,8 +14,6 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => _logger;
 
-        public ILogger GetClassLogger(string filePath) => _logger;
-
         public ILogger GetLogger(string loggerName) => _logger;
     }
 }

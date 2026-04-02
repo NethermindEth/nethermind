@@ -13,8 +13,6 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => NullLogger.Instance;
 
-        public ILogger GetClassLogger(string filePath) => NullLogger.Instance;
-
         public ILogger GetLogger(string loggerName) => NullLogger.Instance;
     }
 }

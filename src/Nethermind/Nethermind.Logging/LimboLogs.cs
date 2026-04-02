@@ -26,8 +26,6 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger<T>() => LimboTraceLogger.Instance;
 
-        public ILogger GetClassLogger(string filePath) => LimboTraceLogger.Instance;
-
         public ILogger GetLogger(string loggerName) => LimboTraceLogger.Instance;
     }
 }
