@@ -35,12 +35,16 @@ public class PatriciaTreeBulkReadBenchmarks
     private const int TotalSize = TreeSize + BackgroundSize;
 
     internal static readonly ConcurrentDictionary<string, ConcurrentBag<double>> HitRates = new();
+    internal static readonly ConcurrentDictionary<string, ConcurrentBag<long>> NodeGets = new();
+    internal static readonly ConcurrentDictionary<string, ConcurrentBag<long>> NodeHits = new();
+    internal static readonly ConcurrentDictionary<string, ConcurrentBag<long>> RlpGets = new();
+    internal static readonly ConcurrentDictionary<string, ConcurrentBag<long>> RlpCacheHits = new();
 
     private BlockCacheTrieStore _blockCacheStore = null!;
     private Hash256 _rootHash = null!;
     private ValueHash256[] _readKeys = null!;
 
-    [Params(16, 64, 256, 1024, 4096, 8192, 16384)]
+    [Params(256, 4096, 16384)]
     public int KeyCount { get; set; }
 
     [GlobalSetup]
@@ -87,7 +91,6 @@ public class PatriciaTreeBulkReadBenchmarks
         Random readRng = new(123);
         for (int i = 0; i < KeyCount; i++)
             _readKeys[i] = allKeys[readRng.Next(TreeSize)];
-
     }
 
     private static void CollectNodes(IScopedTrieStore store, TrieNode node, TreePath path, List<(TreePath, Hash256)> result)
@@ -118,13 +121,15 @@ public class PatriciaTreeBulkReadBenchmarks
 
     private void RecordHitRate(string method)
     {
-        (long hits, long misses) = _blockCacheStore.GetAndResetStats();
-        long total = hits + misses;
-        if (total > 0)
-        {
-            string key = $"{method} | KeyCount={KeyCount}";
-            HitRates.GetOrAdd(key, _ => new ConcurrentBag<double>()).Add(100.0 * hits / total);
-        }
+        var stats = _blockCacheStore.GetAndResetStats();
+        string key = $"{method} | KeyCount={KeyCount}";
+        long rlpTotal = stats.RlpHits + stats.RlpMisses;
+        if (rlpTotal > 0)
+            HitRates.GetOrAdd(key, _ => new ConcurrentBag<double>()).Add(100.0 * stats.RlpHits / rlpTotal);
+        NodeGets.GetOrAdd(key, _ => new ConcurrentBag<long>()).Add(stats.NodeGets);
+        NodeHits.GetOrAdd(key, _ => new ConcurrentBag<long>()).Add(stats.NodeHits);
+        RlpGets.GetOrAdd(key, _ => new ConcurrentBag<long>()).Add(rlpTotal);
+        RlpCacheHits.GetOrAdd(key, _ => new ConcurrentBag<long>()).Add(stats.RlpHits);
     }
 
     [Benchmark(Baseline = true)]
@@ -135,31 +140,6 @@ public class PatriciaTreeBulkReadBenchmarks
         for (int i = 0; i < _readKeys.Length; i++)
             tree.Get(_readKeys[i].Bytes);
         RecordHitRate(nameof(ReadOneByOne));
-    }
-
-    [Benchmark]
-    public void ParallelNoSort() => SortAndParallelRead(0, 0, nameof(ParallelNoSort));
-
-    [Benchmark]
-    public void ParallelRadix_0_4() => SortAndParallelRead(0, 4, nameof(ParallelRadix_0_4));
-
-    [Benchmark]
-    public void ParallelStdSort()
-    {
-        _blockCacheStore.ResetBlockCache();
-
-        int len = _readKeys.Length;
-        using ArrayPoolList<ValueHash256> buf = new(len, len);
-        _readKeys.CopyTo(buf.AsSpan());
-        buf.AsSpan().Sort();
-
-        ValueHash256[] keys = buf.UnsafeGetInternalArray();
-        PatriciaTree tree = new(_blockCacheStore, _rootHash, true, LimboLogs.Instance);
-        Parallel.For(0, len, (i) =>
-        {
-            tree.Get(keys[i].Bytes);
-        });
-        RecordHitRate(nameof(ParallelStdSort));
     }
 
     [Benchmark]
@@ -190,35 +170,6 @@ public class PatriciaTreeBulkReadBenchmarks
         RecordHitRate(nameof(SequentialRadix_0_8));
     }
 
-    private void SortAndParallelRead(int startByte, int endByte, string method)
-    {
-        _blockCacheStore.ResetBlockCache();
-
-        int len = _readKeys.Length;
-        using ArrayPoolList<ValueHash256> buf0 = new(len, len);
-        using ArrayPoolList<ValueHash256> buf1 = new(len, len);
-        _readKeys.CopyTo(buf0.AsSpan());
-
-        Span<int> counts = stackalloc int[256];
-        bool flipped = false;
-        for (int p = endByte; p >= startByte; p--)
-        {
-            if (!flipped)
-                RadixPass(buf0.AsSpan(), buf1.AsSpan(), len, p, counts);
-            else
-                RadixPass(buf1.AsSpan(), buf0.AsSpan(), len, p, counts);
-            flipped = !flipped;
-        }
-
-        ValueHash256[] keys = flipped ? buf1.UnsafeGetInternalArray() : buf0.UnsafeGetInternalArray();
-        PatriciaTree tree = new(_blockCacheStore, _rootHash, true, LimboLogs.Instance);
-        Parallel.For(0, len, (i) =>
-        {
-            tree.Get(keys[i].Bytes);
-        });
-        RecordHitRate(method);
-    }
-
     private static void RadixPass(Span<ValueHash256> src, Span<ValueHash256> dst, int len, int byteIndex, Span<int> counts)
     {
         counts.Clear();
@@ -244,8 +195,13 @@ public class PatriciaTreeBulkReadBenchmarks
     {
         public Config()
         {
-            AddJob(Job.ShortRun.WithToolchain(InProcessNoEmitToolchain.Default));
+            AddJob(Job.ShortRun.WithToolchain(InProcessNoEmitToolchain.Default)
+                .WithIterationCount(3).WithWarmupCount(1));
             AddColumn(new CacheHitRateColumn());
+            AddColumn(new LongStatColumn("NodeGet", "FindCachedOrUnknown calls", NodeGets));
+            AddColumn(new LongStatColumn("NodeHit", "FindCachedOrUnknown cache hits", NodeHits));
+            AddColumn(new LongStatColumn("RlpGet", "LoadRlp calls", RlpGets));
+            AddColumn(new LongStatColumn("RlpHit", "LoadRlp block cache hits", RlpCacheHits));
         }
     }
 
@@ -278,6 +234,33 @@ public class PatriciaTreeBulkReadBenchmarks
             GetValue(summary, benchmarkCase);
     }
 
+    private class LongStatColumn(string name, string legend, ConcurrentDictionary<string, ConcurrentBag<long>> store) : IColumn
+    {
+        public string Id => name;
+        public string ColumnName => name;
+        public string Legend => legend;
+        public bool AlwaysShow => true;
+        public ColumnCategory Category => ColumnCategory.Custom;
+        public int PriorityInCategory => 0;
+        public bool IsNumeric => true;
+        public UnitType UnitType => UnitType.Dimensionless;
+        public bool IsDefault(Summary summary, BenchmarkCase benchmarkCase) => false;
+        public bool IsAvailable(Summary summary) => true;
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase)
+        {
+            string method = benchmarkCase.Descriptor.WorkloadMethod.Name;
+            object keyCountParam = benchmarkCase.Parameters["KeyCount"];
+            string key = $"{method} | KeyCount={keyCountParam}";
+            return store.TryGetValue(key, out var values) && values.Count > 0
+                ? $"{(long)values.Average():N0}"
+                : "N/A";
+        }
+
+        public string GetValue(Summary summary, BenchmarkCase benchmarkCase, SummaryStyle style) =>
+            GetValue(summary, benchmarkCase);
+    }
+
     /// <summary>
     /// Models OS block cache with LRU eviction. Nodes are ordered on disk by TreePath.
     /// Node index / BlockSize = block ID. A ConcurrentDictionary tracks recently accessed blocks.
@@ -286,7 +269,7 @@ public class PatriciaTreeBulkReadBenchmarks
     internal sealed class BlockCacheTrieStore(IScopedTrieStore inner, Dictionary<TreePath, int> pathIndex) : IScopedTrieStore
     {
         private const int SpinIterations = 5000; // ~100µs I/O latency on cache miss
-        private const int LruSize = 833;
+        private const int LruSize = 416;
         private const int BlockSize = 24;
         private const int ShardCount = 16;
 
@@ -294,6 +277,8 @@ public class PatriciaTreeBulkReadBenchmarks
         private readonly LruKeyCache<int>[] _shards = CreateShards();
         private long _hits;
         private long _misses;
+        private long _nodeGets;
+        private long _nodeHits;
 
         private static LruKeyCache<int>[] CreateShards()
         {
@@ -310,17 +295,30 @@ public class PatriciaTreeBulkReadBenchmarks
             _nodeCache.Clear();
             Interlocked.Exchange(ref _hits, 0);
             Interlocked.Exchange(ref _misses, 0);
+            Interlocked.Exchange(ref _nodeGets, 0);
+            Interlocked.Exchange(ref _nodeHits, 0);
         }
 
-        public (long hits, long misses) GetAndResetStats()
+        public (long RlpHits, long RlpMisses, long NodeGets, long NodeHits) GetAndResetStats()
         {
             long h = Interlocked.Exchange(ref _hits, 0);
             long m = Interlocked.Exchange(ref _misses, 0);
-            return (h, m);
+            long ng = Interlocked.Exchange(ref _nodeGets, 0);
+            long nh = Interlocked.Exchange(ref _nodeHits, 0);
+            return (h, m, ng, nh);
         }
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) =>
-            _nodeCache.GetOrAdd(hash, static h => new TrieNode(NodeType.Unknown, h));
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
+        {
+            Interlocked.Increment(ref _nodeGets);
+            bool existed = _nodeCache.TryGetValue(hash, out TrieNode node);
+            if (existed)
+            {
+                Interlocked.Increment(ref _nodeHits);
+                return node!;
+            }
+            return _nodeCache.GetOrAdd(hash, static h => new TrieNode(NodeType.Unknown, h));
+        }
 
         public byte[] LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
