@@ -109,6 +109,8 @@ public partial class ParallelBlockProcessor
                 {
                     if (i == 0)
                     {
+                        // todo: this is a bit weird, but there was an error about accessing WorldState when executing using Task.Run
+                        // need to investigate more
                         BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                         return state;
                     }

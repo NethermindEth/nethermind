@@ -165,8 +165,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public virtual TransactionResult Warmup(Transaction transaction, ITxTracer txTracer) =>
             ExecuteCore(transaction, txTracer, ExecutionOptions.Warmup | ExecutionOptions.SkipValidation);
 
-        public int BlockAccessIndex => VirtualMachine.TxExecutionContext.BlockAccessIndex;
-
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
@@ -199,7 +197,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UInt256 effectiveGasPrice = CalculateEffectiveGasPrice(tx, spec.IsEip1559Enabled, header.BaseFeePerGas, out UInt256 opcodeGasPrice);
 
-            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice, tx.BlockAccessIndex));
+            VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice));
 
             UpdateMetrics(opts, effectiveGasPrice);
 

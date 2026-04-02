@@ -274,7 +274,6 @@ public class Era1ModuleTests
                     item.SenderAddress = null;
                     item.SpentGas = 0;
                     item.BlockGasUsed = 0;
-                    item.BlockAccessIndex = 0;
                 }
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }

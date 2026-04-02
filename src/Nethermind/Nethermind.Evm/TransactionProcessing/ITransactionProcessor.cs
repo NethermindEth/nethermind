@@ -36,8 +36,6 @@ public interface ITransactionProcessor
     /// </summary>
     TransactionResult Warmup(Transaction transaction, ITxTracer txTracer);
 
-    public int BlockAccessIndex { get; }
-
     void SetBlockExecutionContext(BlockHeader blockHeader);
     void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext);
 
