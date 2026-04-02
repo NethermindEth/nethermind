@@ -15,7 +15,7 @@ public class AdminEraService(
     IProcessExitSource processExit,
     ILogManager logManager) : IAdminEraService
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<AdminEraService>();
     private int _canEnterImport = 1;
     private int _canEnterExport = 1;
 
