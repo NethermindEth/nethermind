@@ -7,12 +7,15 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
 using EraException = Nethermind.Era1.EraException;
 using Nethermind.EraE.Proofs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.EraE.Export;
 
@@ -31,6 +34,7 @@ public class EraExporter(
         : eraConfig.NetworkName.Trim().ToLower();
 
     private readonly ILogger _logger = logManager.GetClassLogger<EraExporter>();
+    private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly int _eraSize = eraConfig.MaxEraSize is > 0 and <= EraWriter.MaxEraSize
         ? eraConfig.MaxEraSize
         : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
@@ -141,6 +145,16 @@ public class EraExporter(
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))
                         throw new EraException($"Could not find receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+
+                    if (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash)
+                    {
+                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(block.Number), receipts, _receiptDecoder);
+                        if (computedRoot != block.Header.ReceiptsRoot)
+                            throw new EraException(
+                                $"Receipt root mismatch at block {block.ToString(Block.Format.FullHashAndNumber)}: " +
+                                "the database contains stale or corrupt receipt data. " +
+                                "Re-import from the original ERA source before re-exporting.");
+                    }
 
                     await eraWriter.Add(block, receipts, cancel);
                     lastBlockHash = block.Hash!;
