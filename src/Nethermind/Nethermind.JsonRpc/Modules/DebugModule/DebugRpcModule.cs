@@ -690,7 +690,7 @@ public class DebugRpcModule(
 
         tx.SenderAddress ??= Address.Zero;
 
-        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data.Length}");
+        if (_logger.IsDebug) _logger.Debug($"debug_executionWitnessCall: target={tx.To}, block={header.Number}, data_len={tx.Data?.Length ?? 0}");
 
         return ResultWrapper<Witness>.Success(blockchainBridge.GenerateExecutionWitnessForCall(header, tx));
     }
