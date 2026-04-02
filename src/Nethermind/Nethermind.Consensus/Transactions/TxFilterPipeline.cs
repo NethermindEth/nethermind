@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.Transactions;
 public class TxFilterPipeline(ILogManager logManager) : ITxFilterPipeline
 {
     private readonly List<ITxFilter> _filters = [];
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TxFilterPipeline>();
 
     public void AddTxFilter(ITxFilter txFilter)
     {

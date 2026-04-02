@@ -16,7 +16,7 @@ public class L1ConfigValidator : IL1ConfigValidator
     public L1ConfigValidator(IEthApi ethApi, ILogManager logManager)
     {
         _ethApi = ethApi;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<L1ConfigValidator>();
     }
 
     public async Task<bool> Validate(ulong expectedChainId, ulong genesisNumber, Hash256 expectedGenesisHash)

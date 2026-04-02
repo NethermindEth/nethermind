@@ -23,7 +23,7 @@ public abstract class GetPayloadHandlerBase<TGetPayloadResult>(
     : IAsyncHandler<byte[], TGetPayloadResult?>
     where TGetPayloadResult : IForkValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadHandlerBase<>));
 
     public async Task<ResultWrapper<TGetPayloadResult?>> HandleAsync(byte[] payloadId)
     {

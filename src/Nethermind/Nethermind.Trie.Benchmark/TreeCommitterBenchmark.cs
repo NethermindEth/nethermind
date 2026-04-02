@@ -13,7 +13,7 @@ namespace Nethermind.Trie.Benchmark
     {
         static TreeStoreBenchmark()
         {
-            _ = LimboLogs.Instance.GetClassLogger(); // lazy-init
+            _ = LimboLogs.Instance.GetClassLogger<TreeStoreBenchmark>(); // lazy-init
         }
 
         // public readonly struct Param

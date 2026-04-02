@@ -62,7 +62,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _engineRequestsTracker = engineRequestsTracker;
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _gcKeeper = gcKeeper;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EngineRpcModule>();
     }
 
     public ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods)

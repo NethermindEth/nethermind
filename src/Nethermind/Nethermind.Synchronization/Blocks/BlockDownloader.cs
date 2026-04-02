@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Blocks
             _fullStateFinder = fullStateFinder;
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BlockDownloader>();
             // Assume that each tx cost about 1kb.
             _maxTxInBuffer = (int)(syncConfig.ForwardSyncDownloadBufferMemoryBudget / 1000);
             _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
