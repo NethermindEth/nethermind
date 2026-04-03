@@ -73,7 +73,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 _context.LockQC = parentQc;
             }
 
-            if (!CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc, out string error))
+            if (!CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, out string error))
             {
                 if (_logger.IsWarn) _logger.Warn($"Could not commit block ({proposedBlockHeader.Hash}). {error}");
             }
@@ -86,7 +86,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
     }
 
-    private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert, [NotNullWhen(false)] out string? error)
+    private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, [NotNullWhen(false)] out string? error)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
         //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
