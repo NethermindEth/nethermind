@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -266,6 +267,12 @@ namespace Nethermind.State
 
         public bool IsInScope => _currentScope is not null;
         public IWorldStateScopeProvider ScopeProvider { get; }
+
+        public void HintBal(BlockAccessList bal)
+        {
+            GuardInScope();
+            _currentScope!.HintBal(bal);
+        }
 
         public ref readonly UInt256 GetBalance(Address address)
         {
