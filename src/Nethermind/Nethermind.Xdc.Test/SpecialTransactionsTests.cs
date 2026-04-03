@@ -190,13 +190,30 @@ internal class SpecialTransactionsTests
             head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header;
         }
 
-        var block = (XdcBlockHeader)blockChain.BlockTree.Head.Header;
-        spec = blockChain.SpecProvider.GetXdcSpec(block!);
+        // Find the block that contains both special and normal transactions.
+        // Due to the non-deterministic scheduling of block building in the
+        // background consensus loop, the target transactions may end up in
+        // different blocks on slower runners (ARM). Scan the last few blocks
+        // to find the one with receipts.Length > 1.
+        TxReceipt[]? receipts = null;
+        XdcBlockHeader? block = null;
+        for (long n = blockChain.BlockTree.Head!.Number; n >= 1; n--)
+        {
+            Block? blk = blockChain.BlockTree.FindBlock(n);
+            if (blk is null) break;
+            TxReceipt[]? r = blockChain.ReceiptStorage.Get(blk.Hash!);
+            if (r is not null && r.Length > 1)
+            {
+                receipts = r;
+                block = (XdcBlockHeader)blk.Header;
+                break;
+            }
+        }
 
-        var receipts = blockChain.ReceiptStorage.Get(block.Hash!);
+        spec = blockChain.SpecProvider.GetXdcSpec(blockChain.BlockTree.Head!.Header as XdcBlockHeader ?? throw new Exception("Head is not XdcBlockHeader"));
 
-        Assert.That(receipts, Is.Not.Empty);
-        Assert.That(receipts.Length, Is.GreaterThan(1));
+        Assert.That(receipts, Is.Not.Null, "No block found with both special and normal transactions");
+        Assert.That(receipts!.Length, Is.GreaterThan(1));
 
         bool onlyEncounteredSpecialTx = true;
         foreach (var transaction in receipts)
