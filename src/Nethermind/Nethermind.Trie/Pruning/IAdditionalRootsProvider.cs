@@ -11,16 +11,17 @@ public interface IAdditionalRootsProvider
     /// <summary>
     /// Copies trie nodes to <paramref name="target"/>, reading from any available source (in-memory overlay, disk).
     /// <para>
-    /// When <paramref name="upToBlockNumberExclusive"/> is provided, method is called
-    ///  during full pruning and notify the base block from which to keep states.
+    /// When <paramref name="pruningBaseBlockNumber"/> is provided, method is called
+    /// during full pruning and passes the base block from which states are kept by pruning.
+    /// Pruning deletes all states before that base block.
     /// Called by <see cref="Nethermind.Blockchain.FullPruning.FullPruner"/> before pruning commits,
-    /// passing <c>baseBlock.Number</c>.
+    /// passing <c>pruningBaseBlockNumber</c>.
     /// </para>
     /// <para>
-    /// When <paramref name="upToBlockNumberExclusive"/> is <see langword="null"/>,
+    /// When <paramref name="pruningBaseBlockNumber"/> is <see langword="null"/>,
     /// it means method is called during shutdown persistence.
     /// Called by <see cref="TrieStore"/> on shutdown.
     /// </para>
     /// </summary>
-    void CopyAdditionalStatesToNodeStorage(INodeStorage target, long? upToBlockNumberExclusive = null);
+    void CopyAdditionalStatesToNodeStorage(INodeStorage target, long? pruningBaseBlockNumber = null);
 }
