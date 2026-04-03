@@ -14,8 +14,6 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// </summary>
 public class StateDiffRecorder
 {
-    public Address? CoinbaseAddress { get; set; }
-
     private readonly HashSet<AddressAsKey> _readAccounts = [];
     private readonly HashSet<StorageCell> _readStorageCells = [];
 
@@ -26,35 +24,14 @@ public class StateDiffRecorder
     private readonly HashSet<AddressAsKey> _writtenAccounts = [];
     private readonly HashSet<StorageCell> _writtenStorageCells = [];
 
-    // Coinbase accumulator
-    private Account? _coinbaseBefore;
-    private UInt256 _coinbaseBalanceDelta;
-
-    public void RecordAccountRead(Address address, Account? account)
-    {
-        if (CoinbaseAddress is not null && address == CoinbaseAddress)
-        {
-            _coinbaseBefore ??= account;
-            return;
-        }
-
+    public void RecordAccountRead(Address address, Account? account) =>
         _readAccounts.Add(address);
-    }
 
     public void RecordStorageRead(in StorageCell cell) =>
         _readStorageCells.Add(cell);
 
     public void RecordAccountWrite(Address address, Account? account)
     {
-        if (CoinbaseAddress is not null && address == CoinbaseAddress)
-        {
-            if (account is not null && _coinbaseBefore is not null && account.Balance >= _coinbaseBefore.Balance)
-                _coinbaseBalanceDelta = account.Balance - _coinbaseBefore.Balance;
-            else if (account is not null && _coinbaseBefore is null)
-                _coinbaseBalanceDelta = account.Balance;
-            return;
-        }
-
         _accountWrites.Add((address, account));
         _writtenAccounts.Add(address);
     }
@@ -74,7 +51,7 @@ public class StateDiffRecorder
     /// </summary>
     public TransactionStateDiff TakeDiff()
     {
-        TransactionStateDiff diff = new() { CoinbaseBalanceDelta = _coinbaseBalanceDelta };
+        TransactionStateDiff diff = new();
 
         foreach (AddressAsKey addr in _readAccounts) diff.ReadAccounts.Add(addr);
         foreach (StorageCell cell in _readStorageCells) diff.ReadStorageCells.Add(cell);
@@ -97,7 +74,5 @@ public class StateDiffRecorder
         _codeWrites.Clear();
         _writtenAccounts.Clear();
         _writtenStorageCells.Clear();
-        _coinbaseBefore = null;
-        _coinbaseBalanceDelta = UInt256.Zero;
     }
 }

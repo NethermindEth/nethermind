@@ -23,6 +23,4 @@ public class TransactionStateDiff
     public HashSet<AddressAsKey> WrittenAccounts { get; } = [];
     public HashSet<StorageCell> WrittenStorageCells { get; } = [];
 
-    // Coinbase handled as a special accumulator (excluded from conflict detection)
-    public UInt256 CoinbaseBalanceDelta { get; set; }
 }

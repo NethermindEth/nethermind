@@ -33,7 +33,7 @@ public class ParallelBlockExecutionContext
     /// <summary>
     /// Inject a state diff directly into the active scope's trie via a write batch.
     /// </summary>
-    public void InjectDiff(TransactionStateDiff diff, Address coinbase)
+    public void InjectDiff(TransactionStateDiff diff)
     {
         if (_activeScope is null)
             throw new InvalidOperationException("Cannot inject diff without an active scope");
@@ -72,16 +72,6 @@ public class ParallelBlockExecutionContext
             using IWorldStateScopeProvider.ICodeSetter codeSetter = _activeScope.CodeDb.BeginCodeWrite();
             foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
                 codeSetter.Set(codeHash, code);
-        }
-
-        // Coinbase accumulator
-        if (diff.CoinbaseBalanceDelta > UInt256.Zero)
-        {
-            Account? currentCoinbase = _activeScope.Get(coinbase);
-            UInt256 newBalance = (currentCoinbase?.Balance ?? UInt256.Zero) + diff.CoinbaseBalanceDelta;
-            Account updatedCoinbase = (currentCoinbase ?? new Account(UInt256.Zero))
-                .WithChangedBalance(newBalance);
-            writeBatch.Set(coinbase, updatedCoinbase);
         }
     }
 

@@ -38,8 +38,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     private readonly ILogger _logger;
     private readonly Worker[] _workers;
 
-    private Address _coinbaseAddress = Address.Zero;
-
     public ParallelBlockValidationTransactionsExecutor(
         ILifetimeScope rootScope,
         IWorldStateManager worldStateManager,
@@ -81,13 +79,8 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
-        _coinbaseAddress = blockExecutionContext.Coinbase;
-
         for (int i = 0; i < _workers.Length; i++)
-        {
             _workers[i].TxProcessor.SetBlockExecutionContext(in blockExecutionContext);
-            _workers[i].Recorder.CoinbaseAddress = _coinbaseAddress;
-        }
     }
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
@@ -96,8 +89,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
 
         int txCount = block.Transactions.Length;
         if (txCount == 0) return [];
-
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"ProcessTransactions block={block.Number} txs={txCount}\n");
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
@@ -110,13 +101,11 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Stopwatch parallelSw = Stopwatch.StartNew();
         ParallelTxResult[] results = ExecuteInParallel(block, parentHeader, spec, token);
         long parallelMs = parallelSw.ElapsedMilliseconds;
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Parallel phase done in {parallelMs}ms\n");
 
         // Phase 2 — Sequential conflict resolution + scope-level diff application
         Stopwatch sequentialSw = Stopwatch.StartNew();
         int conflictCount = ApplyResultsSequentially(block, results, spec, parentHeader, receiptsTracer, token);
         long sequentialMs = sequentialSw.ElapsedMilliseconds;
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Sequential phase done in {sequentialMs}ms, conflicts={conflictCount}\n");
 
         long totalMs = totalSw.ElapsedMilliseconds;
 
@@ -208,14 +197,13 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 BlockHeader reExecHeader = new() { StateRoot = currentRoot };
 
                 Worker reExecWorker = _workers[0]; // reuse first worker
-                reExecWorker.Recorder.CoinbaseAddress = _coinbaseAddress;
                 ParallelTxResult reExecResult = ExecuteSingleTx(reExecWorker, tx, reExecHeader, spec);
 
                 if (!reExecResult.Success)
                     ThrowInvalidTransactionException(reExecResult.Result, block.Header, tx, i);
 
                 // Apply re-execution diff at scope level
-                _context.InjectDiff(reExecResult.Diff, _coinbaseAddress);
+                _context.InjectDiff(reExecResult.Diff);
 
                 // Replay receipt
                 ReplayReceipt(reExecResult.Receipt, tx, receiptsTracer);
@@ -229,7 +217,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             else
             {
                 // Apply parallel diff at scope level
-                _context.InjectDiff(diff, _coinbaseAddress);
+                _context.InjectDiff(diff);
 
                 // Replay receipt
                 ReplayReceipt(parallel.Receipt, tx, receiptsTracer);
