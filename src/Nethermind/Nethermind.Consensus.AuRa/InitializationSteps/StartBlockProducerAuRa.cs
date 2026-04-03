@@ -101,7 +101,7 @@ public class StartBlockProducerAuRa(
 
     public IBlockProducer BuildProducer()
     {
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger<StartBlockProducerAuRa>();
         if (logger.IsInfo) logger.Info("Starting AuRa block producer & sealer");
 
         BlockProducerEnv producerEnv = GetProducerChain();

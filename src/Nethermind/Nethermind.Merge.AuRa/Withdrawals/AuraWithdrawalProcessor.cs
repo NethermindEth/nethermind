@@ -26,7 +26,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         ArgumentNullException.ThrowIfNull(logManager);
 
         _contract = contract ?? throw new ArgumentNullException(nameof(contract));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<AuraWithdrawalProcessor>();
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

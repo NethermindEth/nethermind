@@ -96,7 +96,7 @@ public class InitializeNetwork : IStep
         _syncConfig = syncConfig;
         _initConfig = initConfig;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
     public virtual Task Execute(CancellationToken cancellationToken)

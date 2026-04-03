@@ -39,7 +39,7 @@ namespace Ethereum.Test.Base
         static GeneralStateTestBase()
         {
             _logManager ??= LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
             KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
@@ -51,7 +51,7 @@ namespace Ethereum.Test.Base
         protected static void Setup(ILogManager? logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test)

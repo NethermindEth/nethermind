@@ -38,7 +38,7 @@ namespace Nethermind.Network.Discovery
         {
             _discoveryStorage = discoveryStorage;
             _discoveryManager = discoveryManager;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
             _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
         }
 

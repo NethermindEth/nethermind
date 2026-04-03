@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.FullPruning
             _trieStore = trieStore;
             _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<FullPruner>();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
 
             if (_pruningConfig.FullPruningCompletionBehavior != FullPruningCompletionBehavior.None)

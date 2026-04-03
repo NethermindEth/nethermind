@@ -96,7 +96,7 @@ namespace Nethermind.EthStats.Integrations
             _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
                 ? sendStatsInterval
                 : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<EthStatsIntegration>();
         }
 
         public async Task InitAsync()

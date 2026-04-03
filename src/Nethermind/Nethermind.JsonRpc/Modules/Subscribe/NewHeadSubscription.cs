@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             : base(jsonRpcDuplexClient)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NewHeadSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
             _specProvider = specProvider;
 

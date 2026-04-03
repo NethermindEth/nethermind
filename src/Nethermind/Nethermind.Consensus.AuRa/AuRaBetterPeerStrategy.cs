@@ -15,7 +15,7 @@ public class AuRaBetterPeerStrategy : IBetterPeerStrategy
     public AuRaBetterPeerStrategy(IBetterPeerStrategy betterPeerStrategy, ILogManager logManager)
     {
         _betterPeerStrategy = betterPeerStrategy;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<AuRaBetterPeerStrategy>();
     }
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY)

@@ -18,7 +18,7 @@ public class ExchangeCapabilitiesHandler : IHandler<IEnumerable<string>, IEnumer
     {
         ArgumentNullException.ThrowIfNull(logManager);
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ExchangeCapabilitiesHandler>();
         _engineRpcCapabilitiesProvider = engineRpcCapabilitiesProvider;
     }
 
