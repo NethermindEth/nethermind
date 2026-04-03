@@ -585,7 +585,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 {
                     Metrics.BadBlocksByNethermindNodes++;
                 }
-                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
                 BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
                     (_options.DumpOptions & DumpOptions.Rlp) != 0,
@@ -608,6 +607,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     options,
                     new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }),
                     DumpOptions.Geth);
+
+                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
             }
 
             processedBlocks = null;

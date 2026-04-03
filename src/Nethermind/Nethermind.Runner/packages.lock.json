@@ -67,6 +67,11 @@
           "Microsoft.EntityFrameworkCore": "8.0.0"
         }
       },
+      "AWSSDK.Core": {
+        "type": "Transitive",
+        "resolved": "4.0.3.3",
+        "contentHash": "YQv10JuxnciWh0QwnkarSbge4gXQV1qTURf5jkBjNUH/3jYS9QrbxopA4TK1qdjfOfP37tqiJkLSrRRNqX81aw=="
+      },
       "BinaryEncoding": {
         "type": "Transitive",
         "resolved": "1.4.0",
@@ -893,6 +898,17 @@
           "Nethermind.Init": "[1.37.0-unstable, )"
         }
       },
+      "nethermind.invalidchaindump": {
+        "type": "Project",
+        "dependencies": {
+          "AWSSDK.S3": "[4.0.14, )",
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Logging": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.jsonrpc": {
         "type": "Project",
         "dependencies": {
@@ -1240,6 +1256,15 @@
         "contentHash": "ZjR/onUlP7BzQ7VBBigQepWLAyAzi3VRGX3pP6sBqkPRiT61fsTZqbTpRUKxo30TMgbs1o3y6bpLbETix4SJog==",
         "dependencies": {
           "Autofac": "8.1.0"
+        }
+      },
+      "AWSSDK.S3": {
+        "type": "CentralTransitive",
+        "requested": "[4.0.14, )",
+        "resolved": "4.0.14",
+        "contentHash": "fDCodgci9lznbQnLp+t0ed15OGsO4teOtd5p2RZBIGvlnegAwefifVbLr3FKTZrdAyzUIc6aHLcd5DVVPR87Ig==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.3.3, 5.0.0)"
         }
       },
       "BouncyCastle.Cryptography": {
