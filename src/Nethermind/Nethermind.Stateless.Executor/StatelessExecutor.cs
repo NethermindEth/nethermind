@@ -16,7 +16,7 @@ namespace Nethermind.Stateless.Execution;
 
 public static class StatelessExecutor
 {
-    public static bool TryExecute(ReadOnlySpan<byte> data, out Block? processedBlock)
+    public static Block Execute(ReadOnlySpan<byte> data)
     {
         Witness witness;
         (Block suggestedBlock, witness, ulong chainId) = InputSerializer.Deserialize(data);
@@ -32,14 +32,13 @@ public static class StatelessExecutor
             foreach (Transaction tx in suggestedBlock.Transactions)
                 tx.SenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
-            return TryExecute(suggestedBlock, witness, specProvider, out processedBlock);
+            return Execute(suggestedBlock, witness, specProvider);
         }
     }
 
-    public static bool TryExecute(
-        Block suggestedBlock, Witness witness, ISpecProvider specProvider, out Block? processedBlock)
+    public static Block Execute(
+        Block suggestedBlock, Witness witness, ISpecProvider specProvider)
     {
-        processedBlock = null;
         BlockHeader? parentHeader = null;
         using ArrayPoolList<BlockHeader> headers = witness.DecodeHeaders();
 
@@ -53,7 +52,7 @@ public static class StatelessExecutor
         }
 
         if (parentHeader is null)
-            return false;
+            throw new InvalidOperationException("Witness is missing the parent header");
 
         StatelessBlockTree blockTree = new(headers);
         HeaderValidator headerValidator = new(
@@ -70,8 +69,8 @@ public static class StatelessExecutor
             NullLogManager.Instance
         );
 
-        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out _))
-            return false;
+        if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error))
+            throw new InvalidBlockException(suggestedBlock, error!);
 
         StatelessBlockProcessingEnv blockProcessingEnv = new(
             witness, specProvider, Always.Valid, NullLogManager.Instance);
@@ -80,13 +79,16 @@ public static class StatelessExecutor
 
         IBlockProcessor blockProcessor = blockProcessingEnv.BlockProcessor;
 
-        (processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
+        (Block processedBlock, TxReceipt[] receipts) = blockProcessor.ProcessOne(
             suggestedBlock,
             ProcessingOptions.ReadOnlyChain,
             NullBlockTracer.Instance,
             specProvider.GetSpec(suggestedBlock.Header));
 
-        return blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock);
+        if (!blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error))
+            throw new InvalidBlockException(processedBlock, error!);
+
+        return processedBlock;
     }
 
     private static ISpecProvider GetSpecProvider(ulong chainId) => chainId switch
@@ -94,6 +96,6 @@ public static class StatelessExecutor
         BlockchainIds.Hoodi => HoodiSpecProvider.Instance,
         BlockchainIds.Mainnet => MainnetSpecProvider.Instance,
         BlockchainIds.Sepolia => SepoliaSpecProvider.Instance,
-        _ => throw new ArgumentException($"Unsupported chain id: {chainId}")
+        _ => throw new ArgumentException($"Unsupported chain id: {chainId}", nameof(chainId))
     };
 }

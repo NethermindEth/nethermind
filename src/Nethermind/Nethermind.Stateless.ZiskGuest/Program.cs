@@ -15,15 +15,14 @@ class Program
     {
         ReadOnlySpan<byte> input = IO.ReadInput();
 
-        if (!StatelessExecutor.TryExecute(input, out Block? block))
-            Environment.FailFast("Execution failed");
+        Block block = StatelessExecutor.Execute(input);
+        Span<byte> hash = block.Hash!.Bytes;
 
-        Span<byte> hash = block!.Hash!.Bytes;
-
-        // TODO: Output chain id and state root too
+        // TODO: Output zkEVM standard format when ready
         for (int i = 0, j = 0; i < hash.Length; i += sizeof(uint))
             IO.SetOutput(j++, BinaryPrimitives.ReadUInt32BigEndian(hash.Slice(i, sizeof(uint))));
 
+        // TODO: Remove when zkEVM standard output format is ready
         IO.WriteLine(block.Hash.ToString());
     }
 }
