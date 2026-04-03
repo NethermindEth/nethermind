@@ -4,7 +4,6 @@
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;

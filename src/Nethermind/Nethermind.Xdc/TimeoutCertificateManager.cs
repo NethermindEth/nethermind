@@ -121,7 +121,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
     {
-        if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
+        ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeoutCertificate.GapNumber);

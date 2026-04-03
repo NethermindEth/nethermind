@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if ZK_EVM
 using System.Collections.Generic;
+#endif
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;

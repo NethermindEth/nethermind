@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
