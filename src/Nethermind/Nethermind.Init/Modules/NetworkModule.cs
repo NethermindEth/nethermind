@@ -27,7 +27,6 @@ using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
-using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
 
@@ -73,10 +72,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<P2P.HelloMessage, P2P.HelloMessageSerializer>()
             .AddMessageSerializer<P2P.PingMessage, P2P.PingMessageSerializer>()
             .AddMessageSerializer<P2P.PongMessage, P2P.PongMessageSerializer>()
-
-            // NodeData
-            .AddMessageSerializer<NodeData.GetNodeDataMessage, NodeData.GetNodeDataMessageSerializer>()
-            .AddMessageSerializer<NodeData.NodeDataMessage, NodeData.NodeDataMessageSerializer>()
 
             // Snap
             .AddMessageSerializer<Snap.AccountRangeMessage, Snap.AccountRangeMessageSerializer>()
@@ -143,7 +138,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
             .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()
-            .AddProtocolHandler<Subprotocols.NodeData.NodeDataProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V67.Eth67ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
