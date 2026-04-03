@@ -79,34 +79,18 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = inner.StartWriteBatch(estimatedAccountNum);
-
-            // Inject pending diffs. First write accounts + code in a separate batch
-            // (so they're committed before storage batches verify account existence in flat DB),
-            // then write storage in the main batch.
+            // Dump pending diffs into the inner scope BEFORE creating the main write batch.
+            // This ensures the diffs are committed to the trie/flat DB before the normal
+            // FlushToTree + OnAccountUpdated flow runs.
             List<TransactionStateDiff>? diffs = context.TakePendingDiffs();
             if (diffs is not null)
             {
-                // Pass 1: accounts + code in a separate write batch (committed on dispose)
-                using (IWorldStateScopeProvider.IWorldStateWriteBatch accountBatch = inner.StartWriteBatch(0))
-                {
-                    foreach (TransactionStateDiff diff in diffs)
-                    {
-                        foreach ((Address address, Account? account) in diff.AccountWrites)
-                            accountBatch.Set(address, account);
-
-                        if (diff.CodeWrites.Count > 0)
-                        {
-                            using IWorldStateScopeProvider.ICodeSetter codeSetter = inner.CodeDb.BeginCodeWrite();
-                            foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
-                                codeSetter.Set(codeHash, code);
-                        }
-                    }
-                }
-
-                // Pass 2: storage writes in the main batch (accounts now visible)
+                using IWorldStateScopeProvider.IWorldStateWriteBatch diffBatch = inner.StartWriteBatch(0);
                 foreach (TransactionStateDiff diff in diffs)
                 {
+                    foreach ((Address address, Account? account) in diff.AccountWrites)
+                        diffBatch.Set(address, account);
+
                     Dictionary<Address, List<(UInt256 Index, byte[] Value)>>? storageByAddress = null;
                     foreach ((Address address, UInt256 index, byte[] value) in diff.StorageWrites)
                     {
@@ -124,15 +108,23 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
                         foreach (KeyValuePair<Address, List<(UInt256 Index, byte[] Value)>> kv in storageByAddress)
                         {
                             using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
-                                writeBatch.CreateStorageWriteBatch(kv.Key, kv.Value.Count);
+                                diffBatch.CreateStorageWriteBatch(kv.Key, kv.Value.Count);
                             foreach ((UInt256 index, byte[] value) in kv.Value)
                                 storageBatch.Set(index, value);
                         }
                     }
+
+                    if (diff.CodeWrites.Count > 0)
+                    {
+                        using IWorldStateScopeProvider.ICodeSetter codeSetter = inner.CodeDb.BeginCodeWrite();
+                        foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
+                            codeSetter.Set(codeHash, code);
+                    }
                 }
             }
 
-            return writeBatch;
+            // Now create the real write batch for WorldState.Commit's FlushToTree
+            return inner.StartWriteBatch(estimatedAccountNum);
         }
     }
 
