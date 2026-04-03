@@ -33,7 +33,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         ILogManager logManager)
     {
         _inner = inner;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<CachedReaderPersistence>();
         _cancelTokenSource = CancellationTokenSource.CreateLinkedTokenSource(processExitSource.Token);
 
         // Start the background cache clearing task

@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P
     public class Session : ISession
     {
         private static readonly ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new();
-        private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new();
+        private readonly ConcurrentDictionary<string, IProtocolHandler> _protocols = new(concurrencyLevel: 1, capacity: 4);
 
         private readonly ILogger _logger;
         private readonly ILogManager _logManager;

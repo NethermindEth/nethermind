@@ -219,6 +219,8 @@ namespace Nethermind.PerfTest
             {
                 return _blockTree.DeleteChainSlice(startNumber, endNumber);
             }
+
+            public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth) { }
         }
 
         private const string DbBasePath = @"C:\perf_db";
@@ -242,7 +244,7 @@ namespace Nethermind.PerfTest
         {
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.log", null);
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<Program>();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");
 

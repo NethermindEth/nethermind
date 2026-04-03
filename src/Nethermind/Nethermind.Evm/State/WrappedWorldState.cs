@@ -15,6 +15,13 @@ namespace Nethermind.Evm.State;
 public class WrappedWorldState(IWorldState innerWorldState) : IWorldState
 {
     protected IWorldState _innerWorldState = innerWorldState;
+
+    /// <summary>
+    /// Gets the underlying world's non-tracking read-only view.
+    /// Wrappers forward this by default so speculative reads bypass wrapper-specific tracking behavior.
+    /// </summary>
+    public IReadOnlyStateProvider GetUntrackedReader() => _innerWorldState.GetUntrackedReader();
+
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
 

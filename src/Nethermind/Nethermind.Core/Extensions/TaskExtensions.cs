@@ -20,6 +20,16 @@ public static class TaskExtensions
         catch (OperationCanceledException) { return false; }
     }
 
+    /// <summary>
+    /// Delay that returns immediately when cancelled instead of throwing <see cref="OperationCanceledException"/>.
+    /// Returns <c>true</c> if the delay completed normally, <c>false</c> if cancelled.
+    /// </summary>
+    public static async Task<bool> DelaySafe(TimeSpan delay, CancellationToken cancellationToken)
+    {
+        try { await Task.Delay(delay, cancellationToken); return true; }
+        catch (OperationCanceledException) { return false; }
+    }
+
     public static bool IsFailedButNotCanceled(this Task? task)
     {
         if (task is null || !task.IsFaulted || task.Exception is null) return false;

@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NewPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
 
             _txPool.NewPending += OnNewPending;

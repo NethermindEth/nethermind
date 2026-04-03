@@ -20,7 +20,7 @@ public static class Extensions
         using (var scope = app.ApplicationServices.CreateScope())
         {
             webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
-            logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger() ?? default;
+            logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger(typeof(Extensions)) ?? default;
         }
 
         app.Run(async (context) =>

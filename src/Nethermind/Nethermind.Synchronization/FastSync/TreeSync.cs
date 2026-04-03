@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.FastSync
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateSyncPivot = stateSyncPivot;
 
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TreeSync>() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);

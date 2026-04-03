@@ -12,6 +12,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
+using TaskExtensions = Nethermind.Core.Extensions.TaskExtensions;
 
 namespace Nethermind.Network.P2P;
 
@@ -31,7 +32,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
-    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
+    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new(concurrencyLevel: 1, capacity: MaxConcurrentRequest);
     private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;
@@ -70,29 +71,27 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     private async Task CleanOldRequests()
     {
-        try
+        while (true)
         {
-            while (true)
-            {
-                await Task.Delay(_oldRequestThreshold, _cancellationToken);
+            if (!await TaskExtensions.DelaySafe(_oldRequestThreshold, _cancellationToken))
+                break;
 
-                foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
+            foreach (KeyValuePair<long, Request<T66Msg, TData>> requestIdValues in _requests)
+            {
+                if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
                 {
-                    if (requestIdValues.Value.Elapsed > _oldRequestThreshold)
+                    if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
                     {
-                        if (_requests.TryRemove(requestIdValues.Key, out Request<T66Msg, TData> request))
-                        {
-                            Interlocked.Decrement(ref _requestCount);
-                            // Unblock waiting thread.
-                            request.CompletionSource.TrySetException(new TimeoutException("No response received"));
-                        }
+                        Interlocked.Decrement(ref _requestCount);
+                        request.Message.TryDispose();
+                        // Unblock waiting thread.
+                        request.CompletionSource.TrySetException(new TimeoutException("No response received"));
                     }
                 }
-
-                if (Volatile.Read(ref _requestCount) == 0) break;
             }
+
+            if (Volatile.Read(ref _requestCount) == 0) break;
         }
-        catch (OperationCanceledException) { }
     }
 
     public void Handle(long id, TData data, long size)

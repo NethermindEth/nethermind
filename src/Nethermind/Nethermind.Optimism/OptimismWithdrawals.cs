@@ -28,7 +28,7 @@ public class OptimismWithdrawalProcessor : IWithdrawalProcessor
     {
         _state = state;
         _specHelper = specHelper;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismWithdrawalProcessor>();
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
