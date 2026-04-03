@@ -11,12 +11,11 @@ using Nethermind.Int256;
 namespace Nethermind.Consensus.Processing.Parallel;
 
 /// <summary>
-/// Decorates <see cref="IWorldStateScopeProvider"/> to intercept all reads/writes and feed them
-/// to a <see cref="StateDiffRecorder"/>.
+/// Decorates <see cref="IWorldStateScopeProvider"/> to intercept reads/writes for state diff recording.
+/// Feeds scope information into <see cref="ParallelBlockExecutionContext"/>.
 /// <para>
-/// When <paramref name="bufferOnly"/> is <c>true</c> (parallel workers), the write batch does NOT
-/// delegate to the inner scope — no trie root hash computation. When <c>false</c> (main state),
-/// writes delegate to the inner scope normally.
+/// When <paramref name="bufferOnly"/> is <c>true</c> (parallel workers), write batches are buffer-only.
+/// When <c>false</c> (main scope), writes delegate to the inner and storage writes are buffered per-batch.
 /// </para>
 /// </summary>
 public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
@@ -24,27 +23,38 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
     private readonly IWorldStateScopeProvider _inner;
     private readonly StateDiffRecorder _recorder;
     private readonly bool _bufferOnly;
+    private readonly ParallelBlockExecutionContext? _context;
 
-    /// <summary>
-    /// Constructor used by Autofac decorator resolution (main scope, bufferOnly = false).
-    /// </summary>
-    public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder)
-        : this(inner, recorder, bufferOnly: false) { }
+    /// <summary>Constructor for Autofac decorator resolution (main scope).</summary>
+    public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder, ParallelBlockExecutionContext context)
+    {
+        _inner = inner;
+        _recorder = recorder;
+        _bufferOnly = false;
+        _context = context;
+    }
 
-    /// <summary>
-    /// Constructor for manual creation (parallel workers, bufferOnly = true).
-    /// </summary>
+    /// <summary>Constructor for manual creation (parallel workers, bufferOnly = true, no context).</summary>
     public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder, bool bufferOnly)
     {
         _inner = inner;
         _recorder = recorder;
         _bufferOnly = bufferOnly;
+        _context = null;
     }
 
     public bool HasRoot(BlockHeader? baseBlock) => _inner.HasRoot(baseBlock);
 
-    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) =>
-        new DecoratedScope(_inner.BeginScope(baseBlock), _recorder, _bufferOnly);
+    public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
+    {
+        IWorldStateScopeProvider.IScope innerScope = _inner.BeginScope(baseBlock);
+        if (_context is not null)
+        {
+            _context.LastBaseBlock = baseBlock;
+            _context.SetActiveScope(innerScope);
+        }
+        return new DecoratedScope(innerScope, _recorder, _bufferOnly);
+    }
 
     private class DecoratedScope : IWorldStateScopeProvider.IScope
     {
@@ -61,7 +71,6 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         }
 
         public Hash256 RootHash => _inner.RootHash;
-
         public void UpdateRootHash() => _inner.UpdateRootHash();
 
         public Account? Get(Address address)
@@ -84,7 +93,6 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
                 : new DelegatingWriteBatch(_inner.StartWriteBatch(estimatedAccountNum), _recorder);
 
         public void Commit(long blockNumber) => _inner.Commit(blockNumber);
-
         public void Dispose() => _inner.Dispose();
     }
 
@@ -103,16 +111,14 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         }
 
         public void HintGet(in UInt256 index, byte[]? value) => inner.HintGet(in index, value);
-
         public byte[] Get(in ValueHash256 hash) => inner.Get(in hash);
     }
 
-    // ── Buffer-only write batches (parallel workers: no trie delegation) ──────────────
+    // ── Buffer-only (parallel workers) ───────────────────────────────────────────
 
     private class BufferOnlyWriteBatch(StateDiffRecorder recorder) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
         private List<BufferOnlyStorageWriteBatch>? _childBatches;
-
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
         public void Set(Address key, Account? account)
@@ -131,35 +137,26 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         public void Dispose()
         {
             if (_childBatches is not null)
-            {
                 foreach (BufferOnlyStorageWriteBatch batch in _childBatches)
                     batch.FlushTo(recorder);
-            }
         }
     }
 
     private class BufferOnlyStorageWriteBatch(Address address) : IWorldStateScopeProvider.IStorageWriteBatch
     {
         private List<(UInt256 Index, byte[] Value)>? _buffered;
-
-        public void Set(in UInt256 index, byte[] value) =>
-            (_buffered ??= []).Add((index, value));
-
+        public void Set(in UInt256 index, byte[] value) => (_buffered ??= []).Add((index, value));
         public void Clear() { }
-
         public void FlushTo(StateDiffRecorder recorder)
         {
             if (_buffered is not null)
-            {
                 foreach ((UInt256 index, byte[] value) in _buffered)
                     recorder.RecordStorageWrite(address, in index, value);
-            }
         }
-
         public void Dispose() { }
     }
 
-    // ── Delegating write batches (main state: full trie delegation + recording) ──────
+    // ── Delegating (main state) ──────────────────────────────────────────────────
 
     private class DelegatingWriteBatch(
         IWorldStateScopeProvider.IWorldStateWriteBatch inner,
@@ -188,22 +185,13 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
 
         public void Dispose()
         {
-            // Flush child storage batches to recorder on the main thread
             if (_childBatches is not null)
-            {
                 foreach (DelegatingStorageWriteBatch batch in _childBatches)
                     batch.FlushTo(recorder);
-            }
-
             inner.Dispose();
         }
     }
 
-    /// <summary>
-    /// Delegates to the inner storage write batch AND buffers writes locally.
-    /// Multiple instances are processed in parallel by <c>UpdateRootHashesMultiThread</c>,
-    /// so writes are flushed to the recorder by the parent on the main thread.
-    /// </summary>
     private class DelegatingStorageWriteBatch(
         IWorldStateScopeProvider.IStorageWriteBatch inner,
         Address address) : IWorldStateScopeProvider.IStorageWriteBatch
@@ -221,23 +209,20 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         public void FlushTo(StateDiffRecorder recorder)
         {
             if (_buffered is not null)
-            {
                 foreach ((UInt256 index, byte[] value) in _buffered)
                     recorder.RecordStorageWrite(address, in index, value);
-            }
         }
 
         public void Dispose() => inner.Dispose();
     }
 
-    // ── Code DB ──────────────────────────────────────────────────────────────────────
+    // ── Code DB ──────────────────────────────────────────────────────────────────
 
     private class DecoratedCodeDb(
         IWorldStateScopeProvider.ICodeDb inner,
         StateDiffRecorder recorder) : IWorldStateScopeProvider.ICodeDb
     {
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);
-
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() =>
             new DecoratedCodeSetter(inner.BeginCodeWrite(), recorder);
     }
@@ -248,7 +233,7 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
     {
         public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
         {
-            recorder.RecordCodeWrite(Address.Zero, in codeHash, code.ToArray());
+            recorder.RecordCodeWrite(in codeHash, code.ToArray());
             inner.Set(in codeHash, code);
         }
 

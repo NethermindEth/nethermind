@@ -14,10 +14,14 @@ public class TransactionStateDiff
     public HashSet<AddressAsKey> ReadAccounts { get; } = [];
     public HashSet<StorageCell> ReadStorageCells { get; } = [];
 
-    // Write sets (for applying diff + conflict detection) — excludes coinbase
-    public Dictionary<AddressAsKey, (Account? Before, Account? After)> AccountWrites { get; } = [];
-    public Dictionary<StorageCell, byte[]> StorageWrites { get; } = [];
-    public List<(Address Address, ValueHash256 CodeHash, byte[] Code)> CodeWrites { get; } = [];
+    // Raw write batch entries (for scope-level application)
+    public List<(Address Address, Account? Account)> AccountWrites { get; } = [];
+    public List<(Address Address, UInt256 Index, byte[] Value)> StorageWrites { get; } = [];
+    public List<(ValueHash256 CodeHash, byte[] Code)> CodeWrites { get; } = [];
+
+    // Write addresses for conflict detection — excludes coinbase
+    public HashSet<AddressAsKey> WrittenAccounts { get; } = [];
+    public HashSet<StorageCell> WrittenStorageCells { get; } = [];
 
     // Coinbase handled as a special accumulator (excluded from conflict detection)
     public UInt256 CoinbaseBalanceDelta { get; set; }

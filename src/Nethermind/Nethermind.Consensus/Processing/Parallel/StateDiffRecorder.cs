@@ -18,12 +18,13 @@ public class StateDiffRecorder
 
     private readonly HashSet<AddressAsKey> _readAccounts = [];
     private readonly HashSet<StorageCell> _readStorageCells = [];
-    private readonly Dictionary<AddressAsKey, (Account? Before, Account? After)> _accountWrites = [];
-    private readonly Dictionary<StorageCell, byte[]> _storageWrites = [];
-    private readonly List<(Address Address, ValueHash256 CodeHash, byte[] Code)> _codeWrites = [];
 
-    // Track first-seen account values to know the "before" when a write comes later
-    private readonly Dictionary<AddressAsKey, Account?> _firstReadAccounts = [];
+    private readonly List<(Address Address, Account? Account)> _accountWrites = [];
+    private readonly List<(Address Address, UInt256 Index, byte[] Value)> _storageWrites = [];
+    private readonly List<(ValueHash256 CodeHash, byte[] Code)> _codeWrites = [];
+
+    private readonly HashSet<AddressAsKey> _writtenAccounts = [];
+    private readonly HashSet<StorageCell> _writtenStorageCells = [];
 
     // Coinbase accumulator
     private Account? _coinbaseBefore;
@@ -31,71 +32,57 @@ public class StateDiffRecorder
 
     public void RecordAccountRead(Address address, Account? account)
     {
-        AddressAsKey key = address;
-
         if (CoinbaseAddress is not null && address == CoinbaseAddress)
         {
             _coinbaseBefore ??= account;
             return;
         }
 
-        _readAccounts.Add(key);
-        _firstReadAccounts.TryAdd(key, account);
+        _readAccounts.Add(address);
     }
 
-    public void RecordStorageRead(in StorageCell cell)
-    {
+    public void RecordStorageRead(in StorageCell cell) =>
         _readStorageCells.Add(cell);
-    }
 
-    public void RecordAccountWrite(Address address, Account? after)
+    public void RecordAccountWrite(Address address, Account? account)
     {
-        AddressAsKey key = address;
-
         if (CoinbaseAddress is not null && address == CoinbaseAddress)
         {
-            if (after is not null && _coinbaseBefore is not null && after.Balance >= _coinbaseBefore.Balance)
-            {
-                _coinbaseBalanceDelta = after.Balance - _coinbaseBefore.Balance;
-            }
-            else if (after is not null && _coinbaseBefore is null)
-            {
-                _coinbaseBalanceDelta = after.Balance;
-            }
-
+            if (account is not null && _coinbaseBefore is not null && account.Balance >= _coinbaseBefore.Balance)
+                _coinbaseBalanceDelta = account.Balance - _coinbaseBefore.Balance;
+            else if (account is not null && _coinbaseBefore is null)
+                _coinbaseBalanceDelta = account.Balance;
             return;
         }
 
-        Account? before = _firstReadAccounts.GetValueOrDefault(key);
-        _accountWrites[key] = (before, after);
+        _accountWrites.Add((address, account));
+        _writtenAccounts.Add(address);
     }
 
     public void RecordStorageWrite(Address address, in UInt256 index, byte[] value)
     {
         StorageCell cell = new(address, index);
-        _storageWrites[cell] = value;
+        _storageWrites.Add((address, index, value));
+        _writtenStorageCells.Add(cell);
     }
 
-    public void RecordCodeWrite(Address address, in ValueHash256 codeHash, byte[] code)
-    {
-        _codeWrites.Add((address, codeHash, code));
-    }
+    public void RecordCodeWrite(in ValueHash256 codeHash, byte[] code) =>
+        _codeWrites.Add((codeHash, code));
 
     /// <summary>
     /// Returns the current diff and resets all collections for reuse.
     /// </summary>
     public TransactionStateDiff TakeDiff()
     {
-        TransactionStateDiff diff = new()
-        {
-            CoinbaseBalanceDelta = _coinbaseBalanceDelta
-        };
+        TransactionStateDiff diff = new() { CoinbaseBalanceDelta = _coinbaseBalanceDelta };
 
         foreach (AddressAsKey addr in _readAccounts) diff.ReadAccounts.Add(addr);
         foreach (StorageCell cell in _readStorageCells) diff.ReadStorageCells.Add(cell);
-        foreach (KeyValuePair<AddressAsKey, (Account? Before, Account? After)> kv in _accountWrites) diff.AccountWrites[kv.Key] = kv.Value;
-        foreach (KeyValuePair<StorageCell, byte[]> kv in _storageWrites) diff.StorageWrites[kv.Key] = kv.Value;
-        foreach ((Address Address, ValueHash256 CodeHash, byte[] Code) entry in _codeWrites) diff.CodeWrites.Add(entry);
+        foreach ((Address addr, Account? acct) in _accountWrites) diff.AccountWrites.Add((addr, acct));
+        foreach ((Address addr, UInt256 idx, byte[] val) in _storageWrites) diff.StorageWrites.Add((addr, idx, val));
+        foreach ((ValueHash256 hash, byte[] code) in _codeWrites) diff.CodeWrites.Add((hash, code));
+        foreach (AddressAsKey addr in _writtenAccounts) diff.WrittenAccounts.Add(addr);
+        foreach (StorageCell cell in _writtenStorageCells) diff.WrittenStorageCells.Add(cell);
 
         Reset();
         return diff;
@@ -108,7 +95,8 @@ public class StateDiffRecorder
         _accountWrites.Clear();
         _storageWrites.Clear();
         _codeWrites.Clear();
-        _firstReadAccounts.Clear();
+        _writtenAccounts.Clear();
+        _writtenStorageCells.Clear();
         _coinbaseBefore = null;
         _coinbaseBalanceDelta = UInt256.Zero;
     }

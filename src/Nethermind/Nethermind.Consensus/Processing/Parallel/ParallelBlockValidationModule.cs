@@ -19,5 +19,7 @@ public class ParallelBlockValidationModule : Module, IMainProcessingModule
     protected override void Load(ContainerBuilder builder) => builder
         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, ParallelBlockValidationTransactionsExecutor>()
         .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-        .AddScoped<StateDiffRecorder>();
+        .AddScoped<StateDiffRecorder>()
+        .AddScoped<ParallelBlockExecutionContext>()
+        .AddDecorator<IWorldStateScopeProvider, StateDiffScopeProviderDecorator>();
 }

@@ -28,14 +28,13 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// <summary>
 /// Parallel variant of <see cref="BlockProcessor.BlockValidationTransactionsExecutor"/>.
 /// Executes all transactions in parallel on separate read-only world state copies,
-/// records state diffs, then applies diffs sequentially — re-executing on conflict.
+/// records state diffs, then applies diffs sequentially at the scope provider level —
+/// re-executing conflicting txs on the current accumulated state.
 /// </summary>
 public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private readonly IWorldState _mainWorldState;
-    private readonly ITransactionProcessorAdapter _mainTransactionProcessor;
     private readonly ISpecProvider _specProvider;
-    private readonly StateDiffRecorder _mainRecorder;
+    private readonly ParallelBlockExecutionContext _context;
     private readonly ILogger _logger;
     private readonly Worker[] _workers;
 
@@ -44,28 +43,22 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     public ParallelBlockValidationTransactionsExecutor(
         ILifetimeScope rootScope,
         IWorldStateManager worldStateManager,
-        IWorldState mainWorldState,
-        ITransactionProcessorAdapter mainTransactionProcessor,
         ISpecProvider specProvider,
-        StateDiffRecorder mainRecorder,
+        ParallelBlockExecutionContext context,
         ILogManager logManager)
     {
-        _mainWorldState = mainWorldState;
-        _mainTransactionProcessor = mainTransactionProcessor;
         _specProvider = specProvider;
-        _mainRecorder = mainRecorder;
+        _context = context;
         _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
 
         int parallelismFactor = Environment.ProcessorCount;
         _workers = new Worker[parallelismFactor];
 
-        if (_logger.IsInfo) _logger.Info($"Parallel block validation executor created with {parallelismFactor} workers");
-
         for (int i = 0; i < parallelismFactor; i++)
         {
             StateDiffRecorder recorder = new();
             IWorldStateScopeProvider readOnlyProvider = worldStateManager.CreateResettableWorldState();
-            IWorldStateScopeProvider decorated = new StateDiffScopeProviderDecorator(readOnlyProvider, recorder, bufferOnly: true);
+            StateDiffScopeProviderDecorator decorated = new(readOnlyProvider, recorder, bufferOnly: true);
 
             ILifetimeScope childScope = rootScope.BeginLifetimeScope(builder =>
             {
@@ -79,16 +72,16 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 childScope,
                 childScope.Resolve<IWorldState>(),
                 childScope.Resolve<ITransactionProcessorAdapter>(),
-                recorder);
+                recorder,
+                decorated);
         }
+
+        if (_logger.IsInfo) _logger.Info($"Parallel block validation executor created with {parallelismFactor} workers");
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _coinbaseAddress = blockExecutionContext.Coinbase;
-
-        _mainTransactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-        _mainRecorder.CoinbaseAddress = _coinbaseAddress;
 
         for (int i = 0; i < _workers.Length; i++)
         {
@@ -104,11 +97,12 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         int txCount = block.Transactions.Length;
         if (txCount == 0) return [];
 
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"ProcessTransactions block={block.Number} txs={txCount}\n");
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        // The main world state is already scoped at the parent's state root by BranchProcessor.
-        // Use its current state root to open parallel worker scopes at the same base state.
-        BlockHeader parentHeader = new() { StateRoot = _mainWorldState.StateRoot };
+        // Use the base block captured by the context when BranchProcessor opened the main scope
+        BlockHeader? parentHeader = _context.LastBaseBlock;
 
         Stopwatch totalSw = Stopwatch.StartNew();
 
@@ -116,11 +110,13 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Stopwatch parallelSw = Stopwatch.StartNew();
         ParallelTxResult[] results = ExecuteInParallel(block, parentHeader, spec, token);
         long parallelMs = parallelSw.ElapsedMilliseconds;
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Parallel phase done in {parallelMs}ms\n");
 
-        // Phase 2 — Sequential conflict resolution + main state application
+        // Phase 2 — Sequential conflict resolution + scope-level diff application
         Stopwatch sequentialSw = Stopwatch.StartNew();
-        int conflictCount = ApplyResultsSequentially(block, results, spec, processingOptions, receiptsTracer);
+        int conflictCount = ApplyResultsSequentially(block, results, spec, parentHeader, receiptsTracer, token);
         long sequentialMs = sequentialSw.ElapsedMilliseconds;
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Sequential phase done in {sequentialMs}ms, conflicts={conflictCount}\n");
 
         long totalMs = totalSw.ElapsedMilliseconds;
 
@@ -130,7 +126,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         return [.. receiptsTracer.TxReceipts];
     }
 
-    private ParallelTxResult[] ExecuteInParallel(Block block, BlockHeader parentHeader, IReleaseSpec spec, CancellationToken token)
+    private ParallelTxResult[] ExecuteInParallel(Block block, BlockHeader? parentHeader, IReleaseSpec spec, CancellationToken token)
     {
         int txCount = block.Transactions.Length;
         ParallelTxResult[] results = new ParallelTxResult[txCount];
@@ -147,22 +143,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
 
                 for (int i = workerIdx; i < txCount; i += workerCount)
                 {
-                    Transaction tx = block.Transactions[i];
-                    ReceiptCapturingTracer tracer = new();
-                    TransactionResult txResult;
-
-                    using (worker.WorldState.BeginScope(parentHeader))
-                    {
-                        txResult = worker.TxProcessor.Execute(tx, tracer);
-                        if ((bool)txResult)
-                            worker.WorldState.Commit(spec, NullStateTracer.Instance);
-                    }
-
-                    results[i] = new ParallelTxResult(
-                        (bool)txResult,
-                        txResult,
-                        tracer.Captured,
-                        worker.Recorder.TakeDiff());
+                    results[i] = ExecuteSingleTx(worker, block.Transactions[i], parentHeader, spec);
                 }
 
                 if (_logger.IsDebug)
@@ -174,12 +155,32 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         return results;
     }
 
+    private static ParallelTxResult ExecuteSingleTx(Worker worker, Transaction tx, BlockHeader? baseHeader, IReleaseSpec spec)
+    {
+        ReceiptCapturingTracer tracer = new();
+        TransactionResult txResult;
+
+        using (worker.WorldState.BeginScope(baseHeader))
+        {
+            txResult = worker.TxProcessor.Execute(tx, tracer);
+            if ((bool)txResult)
+                worker.WorldState.Commit(spec, NullStateTracer.Instance);
+        }
+
+        return new ParallelTxResult(
+            (bool)txResult,
+            txResult,
+            tracer.Captured,
+            worker.Recorder.TakeDiff());
+    }
+
     private int ApplyResultsSequentially(
         Block block,
         ParallelTxResult[] results,
         IReleaseSpec spec,
-        ProcessingOptions processingOptions,
-        BlockReceiptsTracer receiptsTracer)
+        BlockHeader? parentHeader,
+        BlockReceiptsTracer receiptsTracer,
+        CancellationToken token)
     {
         HashSet<AddressAsKey> committedWrites = [];
         HashSet<StorageCell> committedStorageWrites = [];
@@ -201,45 +202,59 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 conflictCount++;
                 Metrics.ParallelStateDiffMergeConflicts++;
 
-                // Re-execute on main world state; capture actual writes via main recorder
-                _mainRecorder.Reset();
-                TransactionResult result = _mainTransactionProcessor.ProcessTransaction(tx, receiptsTracer, processingOptions, _mainWorldState);
-                if (!result)
-                    ThrowInvalidTransactionException(result, block.Header, tx, i);
+                // Re-execute on current accumulated state using a worker
+                // Get current root hash (includes all previously applied diffs)
+                Hash256 currentRoot = _context.GetCurrentRootHash();
+                BlockHeader reExecHeader = new() { StateRoot = currentRoot };
 
-                TransactionStateDiff reExecDiff = _mainRecorder.TakeDiff();
+                Worker reExecWorker = _workers[0]; // reuse first worker
+                reExecWorker.Recorder.CoinbaseAddress = _coinbaseAddress;
+                ParallelTxResult reExecResult = ExecuteSingleTx(reExecWorker, tx, reExecHeader, spec);
 
-                // Use ACTUAL writes from re-execution for committed set
-                foreach (AddressAsKey addr in reExecDiff.AccountWrites.Keys)
+                if (!reExecResult.Success)
+                    ThrowInvalidTransactionException(reExecResult.Result, block.Header, tx, i);
+
+                // Apply re-execution diff at scope level
+                _context.InjectDiff(reExecResult.Diff, _coinbaseAddress);
+
+                // Replay receipt
+                ReplayReceipt(reExecResult.Receipt, tx, receiptsTracer);
+
+                // Track actual writes from re-execution
+                foreach (AddressAsKey addr in reExecResult.Diff.WrittenAccounts)
                     committedWrites.Add(addr);
-                foreach (StorageCell cell in reExecDiff.StorageWrites.Keys)
+                foreach (StorageCell cell in reExecResult.Diff.WrittenStorageCells)
                     committedStorageWrites.Add(cell);
             }
             else
             {
-                // Apply diff to main world state
-                ApplyStateDiff(diff, spec);
+                // Apply parallel diff at scope level
+                _context.InjectDiff(diff, _coinbaseAddress);
 
-                // Replay receipt into main receiptsTracer
-                CapturedReceipt captured = parallel.Receipt;
-                using ITxTracer tracer = receiptsTracer.StartNewTxTrace(tx);
-                if (captured.IsSuccess)
-                    receiptsTracer.MarkAsSuccess(captured.Recipient, captured.GasConsumed,
-                        captured.Output, captured.Logs!, captured.StateRoot);
-                else
-                    receiptsTracer.MarkAsFailed(captured.Recipient, captured.GasConsumed,
-                        captured.Output, captured.Error, captured.StateRoot);
-                receiptsTracer.EndTxTrace();
+                // Replay receipt
+                ReplayReceipt(parallel.Receipt, tx, receiptsTracer);
 
                 // Update committed write sets
-                foreach (AddressAsKey addr in diff.AccountWrites.Keys)
+                foreach (AddressAsKey addr in diff.WrittenAccounts)
                     committedWrites.Add(addr);
-                foreach (StorageCell cell in diff.StorageWrites.Keys)
+                foreach (StorageCell cell in diff.WrittenStorageCells)
                     committedStorageWrites.Add(cell);
             }
         }
 
         return conflictCount;
+    }
+
+    private static void ReplayReceipt(CapturedReceipt captured, Transaction tx, BlockReceiptsTracer receiptsTracer)
+    {
+        using ITxTracer tracer = receiptsTracer.StartNewTxTrace(tx);
+        if (captured.IsSuccess)
+            receiptsTracer.MarkAsSuccess(captured.Recipient, captured.GasConsumed,
+                captured.Output, captured.Logs!, captured.StateRoot);
+        else
+            receiptsTracer.MarkAsFailed(captured.Recipient, captured.GasConsumed,
+                captured.Output, captured.Error, captured.StateRoot);
+        receiptsTracer.EndTxTrace();
     }
 
     private static bool HasConflict(
@@ -253,78 +268,16 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         if (diff.ReadAccounts.Overlaps(committedWrites))
             return true;
 
-        foreach (AddressAsKey key in diff.AccountWrites.Keys)
+        foreach (AddressAsKey key in diff.WrittenAccounts)
             if (committedWrites.Contains(key)) return true;
 
         if (diff.ReadStorageCells.Overlaps(committedStorageWrites))
             return true;
 
-        foreach (StorageCell cell in diff.StorageWrites.Keys)
+        foreach (StorageCell cell in diff.WrittenStorageCells)
             if (committedStorageWrites.Contains(cell)) return true;
 
         return false;
-    }
-
-    private void ApplyStateDiff(TransactionStateDiff diff, IReleaseSpec spec)
-    {
-        _mainWorldState.TakeSnapshot(newTransactionStart: true);
-
-        foreach (KeyValuePair<AddressAsKey, (Account? Before, Account? After)> kv in diff.AccountWrites)
-        {
-            Address address = kv.Key;
-            Account? before = kv.Value.Before;
-            Account? after = kv.Value.After;
-
-            if (before is null && after is not null)
-            {
-                _mainWorldState.CreateAccount(address, after.Balance, after.Nonce);
-            }
-            else if (before is not null && after is null)
-            {
-                _mainWorldState.DeleteAccount(address);
-            }
-            else if (before is not null && after is not null)
-            {
-                if (after.Balance > before.Balance)
-                    _mainWorldState.AddToBalance(address, after.Balance - before.Balance, spec, out _);
-                else if (after.Balance < before.Balance)
-                    _mainWorldState.SubtractFromBalance(address, before.Balance - after.Balance, spec, out _);
-
-                if (after.Nonce > before.Nonce)
-                    _mainWorldState.IncrementNonce(address, after.Nonce - before.Nonce, out _);
-            }
-        }
-
-        foreach (KeyValuePair<StorageCell, byte[]> kv in diff.StorageWrites)
-        {
-            _mainWorldState.Set(kv.Key, kv.Value);
-        }
-
-        if (diff.CodeWrites.Count > 0)
-        {
-            Dictionary<ValueHash256, byte[]> codeByHash = [];
-            foreach ((Address _, ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
-                codeByHash[codeHash] = code;
-
-            foreach (KeyValuePair<AddressAsKey, (Account? Before, Account? After)> kv in diff.AccountWrites)
-            {
-                Account? after = kv.Value.After;
-                Account? before = kv.Value.Before;
-                if (after is not null && after.HasCode)
-                {
-                    ValueHash256 afterCodeHash = after.CodeHash;
-                    if ((before is null || before.CodeHash != afterCodeHash) && codeByHash.TryGetValue(afterCodeHash, out byte[]? code))
-                    {
-                        _mainWorldState.InsertCode(kv.Key, afterCodeHash, code, spec);
-                    }
-                }
-            }
-        }
-
-        if (diff.CoinbaseBalanceDelta > UInt256.Zero)
-            _mainWorldState.AddToBalance(_coinbaseAddress, diff.CoinbaseBalanceDelta, spec, out _);
-
-        _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: false);
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -332,5 +285,10 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         throw new InvalidTransactionException(header, $"Transaction {tx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
     private readonly record struct ParallelTxResult(bool Success, TransactionResult Result, CapturedReceipt Receipt, TransactionStateDiff Diff);
-    private readonly record struct Worker(ILifetimeScope Scope, IWorldState WorldState, ITransactionProcessorAdapter TxProcessor, StateDiffRecorder Recorder);
+    private readonly record struct Worker(
+        ILifetimeScope Scope,
+        IWorldState WorldState,
+        ITransactionProcessorAdapter TxProcessor,
+        StateDiffRecorder Recorder,
+        StateDiffScopeProviderDecorator Decorator);
 }
