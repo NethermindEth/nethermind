@@ -54,7 +54,7 @@ jobs:
             --sim ethereum/engine \
             --sim.loglevel 3 \
             --sim.parallelism 4 \
-            --sim.limit "Invalid Missing Ancestor Syncing ReOrg"
+            --sim.limit "/Invalid Missing Ancestor Syncing ReOrg"
 
       - name: Upload results
         uses: actions/upload-artifact@v4
