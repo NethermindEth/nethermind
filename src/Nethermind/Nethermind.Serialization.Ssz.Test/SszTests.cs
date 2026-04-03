@@ -129,6 +129,12 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
+        public void DecodeBitvector_rejects_zero_length_vector()
+        {
+            Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, 0));
+        }
+
+        [Test]
         public void DecodeBitvector_rejects_set_high_bits()
         {
             // Bitvector[5]: only bits 0-4 valid. 0xFF has bits 5-7 set.

@@ -87,6 +87,45 @@ public static partial class Merkle
         root = HashConcatenation(root, lengthPart, 0);
     }
 
+    // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
+    public static void MixInActiveFields(ref UInt256 root, ReadOnlySpan<byte> activeFields)
+    {
+        if (activeFields.Length > 32)
+        {
+            throw new ArgumentOutOfRangeException(nameof(activeFields), "active_fields must fit in 256 bits.");
+        }
+
+        Span<byte> chunk = stackalloc byte[32];
+        activeFields.CopyTo(chunk);
+        root = HashConcatenation(root, new UInt256(chunk), 0);
+    }
+
+    // EIP-7495 / EIP-7916 progressive merkleization keeps generalized indices stable across extensions.
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1)
+    {
+        if (numLeaves == 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(numLeaves), "Progressive merkleization requires numLeaves > 0.");
+        }
+
+        if (chunks.Length == 0)
+        {
+            root = UInt256.Zero;
+            return;
+        }
+
+        int rightChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        ReadOnlySpan<UInt256> leftChunks = chunks[rightChunkCount..];
+        UInt256 left = UInt256.Zero;
+        if (!leftChunks.IsEmpty)
+        {
+            MerkleizeProgressive(out left, leftChunks, checked(numLeaves * 4));
+        }
+
+        Merkleize(out UInt256 right, chunks[..rightChunkCount], numLeaves);
+        root = HashConcatenation(left, right, 0);
+    }
+
     public static void Merkleize(out UInt256 root, bool value)
     {
         root = value ? UInt256.One : UInt256.Zero;

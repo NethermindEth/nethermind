@@ -9,11 +9,28 @@ using System.Collections;
 
 public abstract class SszDiagnosticAnalyzer : DiagnosticAnalyzer
 {
-    protected static string[] SszSerializableAttributeNames = ["SszSerializable", "SszSerializableAttribute"];
-    protected static string[] SszCollectionAttributeNames = ["SszVector", "SszList", "SszListAttribute", "SszVectorAttribute"];
+    protected static string[] SszRootAttributeNames =
+    [
+        "SszContainer",
+        "SszContainerAttribute",
+        "SszCompatibleUnion",
+        "SszCompatibleUnionAttribute",
+    ];
 
-    protected static bool IsSerializableType(TypeDeclarationSyntax type) =>
-        type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => SszSerializableAttributeNames.Contains(attr.ToString()));
+    protected static string[] SszCollectionAttributeNames =
+    [
+        "SszVector",
+        "SszList",
+        "SszListAttribute",
+        "SszVectorAttribute",
+        "SszProgressiveList",
+        "SszProgressiveListAttribute",
+        "SszProgressiveBitlist",
+        "SszProgressiveBitlistAttribute",
+    ];
+
+    protected static bool IsSszRootType(TypeDeclarationSyntax type) =>
+        type.AttributeLists.SelectMany(attrList => attrList.Attributes).Any(attr => SszRootAttributeNames.Contains(attr.Name.ToString()));
 
     protected static bool IsCollectionType(ITypeSymbol typeSymbol) =>
             typeSymbol is IArrayTypeSymbol || (typeSymbol is INamedTypeSymbol namedTypeSymbol

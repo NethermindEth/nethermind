@@ -12,24 +12,6 @@ namespace Ethereum.Ssz.Test;
 [TestFixture]
 public class SszContainerTests
 {
-    private static readonly HashSet<string> KnownContainers =
-    [
-        "SingleFieldTestStruct",
-        "SmallTestStruct",
-        "FixedTestStruct",
-        "VarTestStruct",
-        "ComplexTestStruct",
-        "BitsStruct"
-    ];
-
-    // These must be listed explicitly. If the specs add a new type
-    // then we should add it here if its not implemented or the build will fail.
-    private static readonly HashSet<string> UnsupportedContainers =
-    [
-        "ProgressiveTestStruct",
-        "ProgressiveBitsStruct"
-    ];
-
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
     {
@@ -92,11 +74,26 @@ public class SszContainerTests
                     Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
                     break;
                 }
+            case "ProgressiveTestStruct":
+                {
+                    SszEncoding.Decode(ssz, out ProgressiveTestStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
+            case "ProgressiveBitsStruct":
+                {
+                    SszEncoding.Decode(ssz, out ProgressiveBitsStruct decoded);
+                    byte[] reEncoded = SszEncoding.Encode(decoded);
+                    Assert.That(reEncoded, Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+                    SszEncoding.Merkleize(decoded, out UInt256 root);
+                    Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+                    break;
+                }
             default:
-                if (UnsupportedContainers.Contains(containerType))
-                    Assert.Ignore($"Unsupported container type (not yet implemented): {containerType}");
-                else
-                    Assert.Fail($"Unrecognized container type: {containerType} — add it to KnownContainers or UnsupportedContainers");
+                Assert.Fail($"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
                 break;
         }
     }
@@ -126,11 +123,14 @@ public class SszContainerTests
             case "BitsStruct":
                 Assert.That(() => SszEncoding.Decode(ssz, out BitsStruct _), Throws.InstanceOf<Exception>());
                 break;
+            case "ProgressiveTestStruct":
+                Assert.That(() => SszEncoding.Decode(ssz, out ProgressiveTestStruct _), Throws.InstanceOf<Exception>());
+                break;
+            case "ProgressiveBitsStruct":
+                Assert.That(() => SszEncoding.Decode(ssz, out ProgressiveBitsStruct _), Throws.InstanceOf<Exception>());
+                break;
             default:
-                if (UnsupportedContainers.Contains(containerType))
-                    Assert.Ignore($"Unsupported container type (not yet implemented): {containerType}");
-                else
-                    Assert.Fail($"Unrecognized container type: {containerType} — add it to KnownContainers or UnsupportedContainers");
+                Assert.Fail($"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
                 break;
         }
     }
@@ -139,23 +139,12 @@ public class SszContainerTests
 
 
     /// <summary>
-    /// Extracts the container type from a case name like "BitsStruct_lengthy_0" → "BitsStruct".
-    /// Matches against both known and explicitly unsupported types.
-    /// Returns null only for truly unrecognized types (which should fail the test).
+    /// Extracts the container type from a case name like "BitsStruct_lengthy_0".
     /// </summary>
-    private static string? ExtractContainerType(string caseName)
+    private static string ExtractContainerType(string caseName)
     {
-        foreach (string container in KnownContainers)
-        {
-            if (caseName.StartsWith(container, StringComparison.Ordinal))
-                return container;
-        }
-        foreach (string container in UnsupportedContainers)
-        {
-            if (caseName.StartsWith(container, StringComparison.Ordinal))
-                return container;
-        }
-        return null;
+        int separatorIndex = caseName.IndexOf('_');
+        return separatorIndex >= 0 ? caseName[..separatorIndex] : caseName;
     }
 
     // --- Test case sources ---
@@ -175,10 +164,9 @@ public class SszContainerTests
         foreach (string casePath in Directory.GetDirectories(validityPath))
         {
             string caseName = Path.GetFileName(casePath);
-            string? containerType = ExtractContainerType(caseName);
+            string containerType = ExtractContainerType(caseName);
 
-            // Unrecognized type — yield it so the test fails loudly
-            yield return new TestCaseData(casePath, containerType ?? caseName)
+            yield return new TestCaseData(casePath, containerType)
                 .SetName($"containers/{validity}/{caseName}");
         }
     }

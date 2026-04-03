@@ -48,6 +48,11 @@ public static partial class Ssz
 
     public static BitArray DecodeBitvector(ReadOnlySpan<byte> span, int vectorLength)
     {
+        if (vectorLength <= 0)
+        {
+            throw new InvalidDataException("Invalid bitvector: vector length must be greater than zero");
+        }
+
         int expectedBytes = (vectorLength + 7) / 8;
         if (span.Length != expectedBytes)
         {
