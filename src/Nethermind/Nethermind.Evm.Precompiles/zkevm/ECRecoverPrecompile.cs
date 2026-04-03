@@ -16,7 +16,7 @@ public partial class ECRecoverPrecompile
         byte recoveryId,
         ReadOnlySpan<byte> message)
     {
-        Span<byte> result = stackalloc byte[32];
+        Span<byte> result = stackalloc byte[32]; // The first 12 bytes will be zero
 
         return EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, result)
             ? result.ToArray() : Empty;
