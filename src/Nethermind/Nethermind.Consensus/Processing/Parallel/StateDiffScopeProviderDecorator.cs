@@ -81,17 +81,32 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         {
             IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = inner.StartWriteBatch(estimatedAccountNum);
 
-            // Inject pending diffs into the write batch immediately.
-            // These go to the trie/flat DB. OnAccountUpdated won't fire for these
-            // (subscription happens after StartWriteBatch returns), but the trie is updated.
+            // Inject pending diffs. First write accounts + code in a separate batch
+            // (so they're committed before storage batches verify account existence in flat DB),
+            // then write storage in the main batch.
             List<TransactionStateDiff>? diffs = context.TakePendingDiffs();
             if (diffs is not null)
             {
+                // Pass 1: accounts + code in a separate write batch (committed on dispose)
+                using (IWorldStateScopeProvider.IWorldStateWriteBatch accountBatch = inner.StartWriteBatch(0))
+                {
+                    foreach (TransactionStateDiff diff in diffs)
+                    {
+                        foreach ((Address address, Account? account) in diff.AccountWrites)
+                            accountBatch.Set(address, account);
+
+                        if (diff.CodeWrites.Count > 0)
+                        {
+                            using IWorldStateScopeProvider.ICodeSetter codeSetter = inner.CodeDb.BeginCodeWrite();
+                            foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
+                                codeSetter.Set(codeHash, code);
+                        }
+                    }
+                }
+
+                // Pass 2: storage writes in the main batch (accounts now visible)
                 foreach (TransactionStateDiff diff in diffs)
                 {
-                    foreach ((Address address, Account? account) in diff.AccountWrites)
-                        writeBatch.Set(address, account);
-
                     Dictionary<Address, List<(UInt256 Index, byte[] Value)>>? storageByAddress = null;
                     foreach ((Address address, UInt256 index, byte[] value) in diff.StorageWrites)
                     {
@@ -113,13 +128,6 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
                             foreach ((UInt256 index, byte[] value) in kv.Value)
                                 storageBatch.Set(index, value);
                         }
-                    }
-
-                    if (diff.CodeWrites.Count > 0)
-                    {
-                        using IWorldStateScopeProvider.ICodeSetter codeSetter = inner.CodeDb.BeginCodeWrite();
-                        foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
-                            codeSetter.Set(codeHash, code);
                     }
                 }
             }
