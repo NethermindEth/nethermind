@@ -46,7 +46,8 @@ public class PruningTrieStateFactory(
     IDisposableStack disposeStack,
     Lazy<IPathRecovery> pathRecovery,
     ILogManager logManager,
-    NodeStorageCache? nodeStorageCache = null
+    NodeStorageCache? nodeStorageCache = null,
+    Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null
 )
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
@@ -58,6 +59,12 @@ public class PruningTrieStateFactory(
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;
 
         ITrieStore mainWorldTrieStore = trieStore;
+
+        // Force resolution of IAdditionalRootsProvider while the DI container is alive.
+        // The Lazy<> is created during MainPruningTrieStoreFactory construction but its Value
+        // must be evaluated before container disposal, otherwise the captured scope is gone.
+        if (additionalRootsProvider is not null && trieStore is TrieStore concreteTrieStore)
+            concreteTrieStore.WarmUpAdditionalRootsProvider();
 
         if (nodeStorageCache is not null)
         {
@@ -160,8 +167,8 @@ public class PruningTrieStateFactory(
                 ChainSizes.CreateChainSizeInfo(chainSpec.ChainId),
                 drive,
                 trieStore,
-                logManager);
-            mainPruningTrieStoreFactory.FullPruner = pruner;
+                logManager,
+                additionalRootsProvider);
             disposeStack.Push(pruner);
         }
     }
@@ -181,7 +188,8 @@ public class MainPruningTrieStoreFactory
         IDbConfig dbConfig,
         ILogIndexConfig logIndexConfig,
         IHardwareInfo hardwareInfo,
-        ILogManager logManager
+        ILogManager logManager,
+        Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null
     )
     {
         _logger = logManager.GetClassLogger<MainPruningTrieStoreFactory>();
@@ -246,7 +254,8 @@ public class MainPruningTrieStoreFactory
             persistenceStrategy,
             finalizedStateProvider,
             pruningConfig,
-            logManager);
+            logManager,
+            additionalRootsProvider);
     }
 
     private void AdviseConfig(IPruningConfig pruningConfig, IDbConfig dbConfig, IHardwareInfo hardwareInfo)
@@ -282,9 +291,6 @@ public class MainPruningTrieStoreFactory
     }
 
     public IPruningTrieStore PruningTrieStore { get; }
-
-    /// <summary>Exposes the <see cref="FullPruner"/> instance when full pruning is configured, null otherwise.</summary>
-    public FullPruner? FullPruner { get; internal set; }
 
     // Used to simulate long reorg by delaying `FinalizedBlockNumber`
     private class DelayedFinalizedStateProvider(

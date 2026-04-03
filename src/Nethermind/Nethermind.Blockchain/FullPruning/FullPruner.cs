@@ -39,11 +39,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
 
-        /// <summary>
-        /// When set, called during the full pruning copy phase to preserve additional state trie nodes
-        /// (e.g. the Arbitrum validator's active range) that would otherwise be lost after pruning.
-        /// </summary>
-        public IAdditionalRootsProvider? AdditionalRootsProvider { get; set; }
+        private readonly Lazy<IAdditionalRootsProvider>? _additionalRootsProvider;
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
@@ -57,7 +53,8 @@ namespace Nethermind.Blockchain.FullPruning
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
             IPruningTrieStore trieStore,
-            ILogManager logManager)
+            ILogManager logManager,
+            Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null)
         {
             _fullPruningDb = fullPruningDb;
             _nodeStorageFactory = nodeStorageFactory;
@@ -70,6 +67,7 @@ namespace Nethermind.Blockchain.FullPruning
             _logManager = logManager;
             _chainEstimations = chainEstimations;
             _trieStore = trieStore;
+            _additionalRootsProvider = additionalRootsProvider;
             _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger<FullPruner>();

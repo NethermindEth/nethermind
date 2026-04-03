@@ -63,12 +63,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
+    private readonly Lazy<IAdditionalRootsProvider>? _additionalRootsProvider;
 
     /// <summary>
-    /// When set, called during shutdown persistence to copy additional in-memory trie nodes into
-    /// the underlying state DB so they survive restart. Invoked before the final node storage flush.
+    /// Resolves the lazy <see cref="IAdditionalRootsProvider"/> while the DI container is still alive,
+    /// so that the cached value is used safely during <see cref="Dispose"/> without container access.
     /// </summary>
-    public IAdditionalRootsProvider? AdditionalRootsProvider { get; set; }
+    public void WarmUpAdditionalRootsProvider() => _ = _additionalRootsProvider?.Value;
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
@@ -83,8 +84,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPersistenceStrategy persistenceStrategy,
         IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null)
     {
+        _additionalRootsProvider = additionalRootsProvider;
         _logger = logManager.GetClassLogger<TrieStore>();
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
@@ -1291,7 +1294,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         // Always copy additional state roots (e.g. Arbitrum validator last-valid state) and flush,
         // even when the commit queue was empty (e.g. shutdown after a failed full pruning run whose
         // PersistCache already drained the queue but whose CopyTrie never completed).
-        AdditionalRootsProvider?.CopyAdditionalStatesToNodeStorage(_nodeStorage);
+        _additionalRootsProvider?.Value?.CopyAdditionalStatesToNodeStorage(_nodeStorage);
         _nodeStorage.Flush(onlyWal: false);
 
         if (!persistedCommitSets)
