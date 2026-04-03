@@ -12,7 +12,7 @@ public class TotalDifficultyBetterPeerStrategy : IBetterPeerStrategy
 
     public TotalDifficultyBetterPeerStrategy(ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TotalDifficultyBetterPeerStrategy>();
     }
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>

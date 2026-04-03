@@ -3,9 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Evm.GasPolicy;
-using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 

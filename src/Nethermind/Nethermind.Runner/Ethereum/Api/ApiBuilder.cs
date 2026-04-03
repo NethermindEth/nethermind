@@ -32,7 +32,7 @@ public class ApiBuilder
     public ApiBuilder(IProcessExitSource processExitSource, IConfigProvider configProvider, ILogManager logManager)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<ApiBuilder>();
         _processExitSource = processExitSource;
         _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
         _initConfig = configProvider.GetConfig<IInitConfig>();

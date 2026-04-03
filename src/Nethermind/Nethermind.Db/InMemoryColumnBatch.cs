@@ -3,7 +3,6 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 
 namespace Nethermind.Db
 {

@@ -16,7 +16,7 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
 {
     public INethermindApi Api => api;
     public ILifetimeScope LifetimeScope => lifetimeScope;
-    private readonly ILogger _logger = api.LogManager.GetClassLogger();
+    private readonly ILogger _logger = api.LogManager.GetClassLogger<EthereumRunner>();
 
     public async Task Start(CancellationToken cancellationToken)
     {

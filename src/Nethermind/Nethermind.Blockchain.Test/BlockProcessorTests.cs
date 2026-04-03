@@ -23,7 +23,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -334,6 +333,7 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public void Dispose() { }
     }
 
     private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)

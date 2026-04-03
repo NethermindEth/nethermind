@@ -6,7 +6,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -24,7 +23,7 @@ namespace Nethermind.Db.Rpc
         : IDb
     {
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-        private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly ILogger _logger = logManager?.GetClassLogger<RpcDb>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IJsonRpcClient _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
 
         public void Dispose()

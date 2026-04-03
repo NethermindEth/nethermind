@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db.Rocks.Config;
@@ -408,12 +407,12 @@ public class DbConfig : IDbConfig
         "";
     public string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
-    public string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; } =
+    public string? FlatFallbackNodesDbRocksDbOptions { get; set; } =
         FlatDbCommonTrieOptions +
         // Fallback nodes is tiny. Like KB level small. This is generous.
         "max_bytes_for_level_base=4000000;" +
         "";
-    public string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+    public string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
     public string? PreimageDbRocksDbOptions { get; set; } = "";
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }
