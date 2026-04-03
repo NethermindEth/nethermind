@@ -1,15 +1,6 @@
 name: Sync Supported Chains
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker image"]
-    branches: [release/*]
-    types:
-      - completed
-
-  schedule:
-    - cron: "0 0 * * 0,3"   # Sunday, Wednesday
-
   workflow_dispatch:
     inputs:
       nethermind_image:
@@ -48,7 +39,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: nethermind
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Set Matrix
         id: set-matrix
@@ -59,16 +50,7 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            requested_mode="${{ github.event.inputs.mode }}"
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
-            requested_mode="Both"
-          else
-            # workflow_run (release branches) defaults to HalfPath
-            requested_mode="HalfPath"
-          fi
-
-          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
+          requested_mode=$(echo "${{ github.event.inputs.mode }}" | tr '[:upper:]' '[:lower:]')
 
           case "$requested_mode" in
             both)
@@ -172,7 +154,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           clean: true
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -231,7 +213,7 @@ jobs:
           node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
-            REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+            REF_NAME="${{ github.ref_name }}"
             CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
             if [[ $CLEAN_REF == release/* ]]; then
               CLEAN_REF=$(echo "$CLEAN_REF" | sed 's/[^a-zA-Z0-9._-]/-/g')

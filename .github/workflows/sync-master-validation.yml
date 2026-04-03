@@ -17,14 +17,13 @@ on:
         default: ""
         required: false
       mode:
-        description: "Sync mode (overrides alternation)"
+        description: "Sync mode"
         type: choice
         options:
-          - Alternate
           - Both
           - HalfPath
           - Flat
-        default: Alternate
+        default: Both
         required: true
       chain_filter:
         description: "Run specific chain(s) only (partial name match, e.g. 'mainnet')"
@@ -54,67 +53,48 @@ jobs:
             echo "docker_image=nethermindeth/nethermind:master" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/config
+          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+
       - name: Set Matrix
         id: set-matrix
         env:
           MODE_INPUT: ${{ github.event.inputs.mode }}
           CHAIN_FILTER: ${{ github.event.inputs.chain_filter }}
-          RUN_NUMBER: ${{ github.run_number }}
         run: |
-          requested_mode="${MODE_INPUT:-Alternate}"
+          requested_mode="${MODE_INPUT:-Both}"
+          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
 
-          if [ "$requested_mode" = "Alternate" ]; then
-            if [ $(( RUN_NUMBER % 2 )) -eq 0 ]; then
-              mainnet_mode="Flat"
-              gnosis_mode="HalfPath"
-              op_mainnet_mode="Flat"
-            else
-              mainnet_mode="HalfPath"
-              gnosis_mode="Flat"
-              op_mainnet_mode="HalfPath"
-            fi
-          elif [ "$requested_mode" = "Both" ]; then
-            mainnet_mode="Both"
-            gnosis_mode="Both"
-            op_mainnet_mode="Both"
-          else
-            mainnet_mode="$requested_mode"
-            gnosis_mode="$requested_mode"
-            op_mainnet_mode="$requested_mode"
-          fi
+          case "$requested_mode" in
+            both)     modes='["HalfPath","Flat"]' ;;
+            halfpath) modes='["HalfPath"]' ;;
+            flat)     modes='["Flat"]' ;;
+            *)
+              echo "Unsupported mode '$requested_mode'. Expected 'Both', 'HalfPath', or 'Flat'."
+              exit 1
+              ;;
+          esac
 
-          matrix='[]'
+          # Filter testnet-matrix.json to master-validation chains only
+          MASTER_CHAINS='["mainnet","gnosis","op-mainnet"]'
 
-          add_chain() {
-            local network="$1" agent="$2" timeout="$3" cl="$4" cl_image="$5" checkpoint="$6" mode="$7"
-            local prefix
-            if [ "$mode" = "Flat" ]; then prefix="f"; else prefix="hp"; fi
-            local label="${prefix}-${GITHUB_RUN_ID}-master-${network}"
-
-            matrix=$(echo "$matrix" | jq \
-              --arg net "$network" --arg ag "$agent" --argjson to "$timeout" \
-              --arg cl "$cl" --arg cli "$cl_image" --arg cp "$checkpoint" \
-              --arg mode "$mode" --arg label "$label" \
-              '. + [{
-                network: $net, agent: $ag, timeout: $to,
-                cl: $cl, cl_image: $cli, checkpoint_sync_url: $cp,
-                mode: $mode, runner_label: $label
-              }]')
-          }
-
-          add_entry() {
-            local network="$1" agent="$2" timeout="$3" cl="$4" cl_image="$5" checkpoint="$6" mode_var="$7"
-            if [ "$mode_var" = "Both" ]; then
-              add_chain "$network" "$agent" "$timeout" "$cl" "$cl_image" "$checkpoint" "HalfPath"
-              add_chain "$network" "$agent" "$timeout" "$cl" "$cl_image" "$checkpoint" "Flat"
-            else
-              add_chain "$network" "$agent" "$timeout" "$cl" "$cl_image" "$checkpoint" "$mode_var"
-            fi
-          }
-
-          add_entry "mainnet"    "g6-standard-8" 600 "lodestar" "chainsafe/lodestar:latest" "https://mainnet-checkpoint-sync.attestant.io/" "$mainnet_mode"
-          add_entry "gnosis"     "g6-standard-6" 180 "lodestar" "chainsafe/lodestar:latest" "https://checkpoint.gnosischain.com"             "$gnosis_mode"
-          add_entry "op-mainnet" "g6-standard-8" 600 ""         ""                           ""                                               "$op_mainnet_mode"
+          matrix=$(cat scripts/config/testnet-matrix.json | jq \
+            --argjson chains "$MASTER_CHAINS" \
+            --argjson modes "$modes" \
+            --arg run_id "$GITHUB_RUN_ID" \
+            '[.[] | select(.network as $n | $chains | index($n)) ] |
+             [.[] as $config
+              | $modes[] as $mode
+              | $config + {
+                  mode: $mode,
+                  runner_label: (
+                    (if $mode == "Flat" then "f-" else "hp-" end)
+                    + $run_id + "-master-" + $config.network
+                  )
+                }]')
 
           # Apply chain_filter if provided
           if [ -n "$CHAIN_FILTER" ]; then
@@ -221,7 +201,7 @@ jobs:
           SYNC_MODE: ${{ matrix.config.mode }}
           CL_CLIENT: ${{ matrix.config.cl }}
           CL_IMAGE: ${{ matrix.config.cl_image }}
-          CHECKPOINT_URL: ${{ matrix.config.checkpoint_sync_url }}
+          CHECKPOINT_URL: ${{ matrix.config.checkpoint-sync-url }}
           SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
           GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
           MAINNET_CONSENSUS_URL: ${{ secrets.MAINNET_CONSENSUS_URL }}
