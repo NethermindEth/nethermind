@@ -33,6 +33,7 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// </summary>
 public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
+    private readonly IWorldState _mainWorldState;
     private readonly ISpecProvider _specProvider;
     private readonly ParallelBlockExecutionContext _context;
     private readonly ILogger _logger;
@@ -41,10 +42,12 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     public ParallelBlockValidationTransactionsExecutor(
         ILifetimeScope rootScope,
         IWorldStateManager worldStateManager,
+        IWorldState mainWorldState,
         ISpecProvider specProvider,
         ParallelBlockExecutionContext context,
         ILogManager logManager)
     {
+        _mainWorldState = mainWorldState;
         _specProvider = specProvider;
         _context = context;
         _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
@@ -105,6 +108,10 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         // Phase 2 — Sequential conflict resolution + scope-level diff application
         Stopwatch sequentialSw = Stopwatch.StartNew();
         int conflictCount = ApplyResultsSequentially(block, results, spec, parentHeader, receiptsTracer, token);
+
+        // Flush all buffered diffs to the trie via WorldState.Commit → StartWriteBatch → injection
+        _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
+
         long sequentialMs = sequentialSw.ElapsedMilliseconds;
 
         long totalMs = totalSw.ElapsedMilliseconds;
@@ -191,19 +198,17 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 conflictCount++;
                 Metrics.ParallelStateDiffMergeConflicts++;
 
-                // Re-execute on current accumulated state using a worker
-                // Get current root hash (includes all previously applied diffs)
-                Hash256 currentRoot = _context.GetCurrentRootHash();
-                BlockHeader reExecHeader = new() { StateRoot = currentRoot };
+                // Flush buffered diffs to trie before re-execution so the worker sees accumulated state
+                _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
 
                 Worker reExecWorker = _workers[0]; // reuse first worker
-                ParallelTxResult reExecResult = ExecuteSingleTx(reExecWorker, tx, reExecHeader, spec);
+                ParallelTxResult reExecResult = ExecuteSingleTx(reExecWorker, tx, _context.LastBaseBlock, spec);
 
                 if (!reExecResult.Success)
                     ThrowInvalidTransactionException(reExecResult.Result, block.Header, tx, i);
 
-                // Apply re-execution diff at scope level
-                _context.InjectDiff(reExecResult.Diff);
+                // Buffer re-execution diff for deferred injection
+                _context.BufferDiff(reExecResult.Diff);
 
                 // Replay receipt
                 ReplayReceipt(reExecResult.Receipt, tx, receiptsTracer);
@@ -216,8 +221,8 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             }
             else
             {
-                // Apply parallel diff at scope level
-                _context.InjectDiff(diff);
+                // Buffer diff for deferred injection
+                _context.BufferDiff(diff);
 
                 // Replay receipt
                 ReplayReceipt(parallel.Receipt, tx, receiptsTracer);
