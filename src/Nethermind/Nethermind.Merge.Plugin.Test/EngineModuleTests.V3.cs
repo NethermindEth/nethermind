@@ -951,12 +951,10 @@ public partial class EngineModuleTests
     private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0, bool oneBlobPerTx = true)
     {
-        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, mergeConfig: new MergeConfig()
         {
             NewPayloadBlockProcessingTimeout = 1000,
         });
-        long t1 = System.Diagnostics.Stopwatch.GetTimestamp();
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
         Transaction[] txs = [];
 
@@ -971,7 +969,6 @@ public partial class EngineModuleTests
             txs = BuildTransactions(chain, currentHeadHash, TestItem.PrivateKeyA, TestItem.AddressB, oneBlobPerTx ? (uint)transactionCount : 1, 0, out _, out _, oneBlobPerTx ? 1 : transactionCount, spec);
             chain.AddTransactions(txs);
         }
-        long t2 = System.Diagnostics.Stopwatch.GetTimestamp();
 
         PayloadAttributes payloadAttributes = new()
         {
@@ -987,18 +984,8 @@ public partial class EngineModuleTests
         string? payloadId = spec.IsBeaconBlockRootAvailable
             ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId
             : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId;
-        long t3 = System.Diagnostics.Stopwatch.GetTimestamp();
 
         await blockImprovementWait;
-        long t4 = System.Diagnostics.Stopwatch.GetTimestamp();
-
-        await TestContext.Out.WriteLineAsync(
-            $"[BuildAndGetPayloadV3] txCount={transactionCount} oneBlobPerTx={oneBlobPerTx} " +
-            $"createChain={System.Diagnostics.Stopwatch.GetElapsedTime(t0, t1).TotalMilliseconds:F0}ms " +
-            $"buildTxs={System.Diagnostics.Stopwatch.GetElapsedTime(t1, t2).TotalMilliseconds:F0}ms " +
-            $"fcU={System.Diagnostics.Stopwatch.GetElapsedTime(t2, t3).TotalMilliseconds:F0}ms " +
-            $"waitImproved={System.Diagnostics.Stopwatch.GetElapsedTime(t3, t4).TotalMilliseconds:F0}ms " +
-            $"total={System.Diagnostics.Stopwatch.GetElapsedTime(t0, t4).TotalMilliseconds:F0}ms");
 
         return (rpcModule, payloadId, txs, chain);
     }

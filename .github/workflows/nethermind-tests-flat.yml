@@ -61,10 +61,6 @@ jobs:
             chunk: 7of8
           - project: Ethereum.Legacy.Blockchain.Test
             chunk: 8of8
-          - project: Ethereum.Transaction.Test
-            chunk: 1of2
-          - project: Ethereum.Transaction.Test
-            chunk: 2of2
           - project: Ethereum.Blockchain.Pyspec.Test
             chunk: 1of4
           - project: Ethereum.Blockchain.Pyspec.Test

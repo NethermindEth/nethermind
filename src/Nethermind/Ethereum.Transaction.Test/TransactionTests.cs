@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using Ethereum.Test.Base;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +27,7 @@ public class TransactionTests
     private static readonly string[] TestSets =
         ["Address", "Data", "EIP2028", "GasLimit", "GasPrice", "Nonce", "RSValue", "Signature", "Value", "WrongRLP"];
 
-    private static IEnumerable<TransactionTest> LoadAllTests() => TestChunkFilter.FilterByChunk(TestSets.SelectMany(LoadTests));
+    private static IEnumerable<TransactionTest> LoadAllTests() => TestSets.SelectMany(LoadTests);
 
     private static IEnumerable<TransactionTest> LoadTests(string testSet)
     {

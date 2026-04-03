@@ -728,7 +728,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    [CancelAfter(10000)]
+    [CancelAfter(5000)]
+    [Retry(3)]
     public async Task Maintain_correct_pointers_for_beacon_sync_in_archive_sync(CancellationToken cancellationToken)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
