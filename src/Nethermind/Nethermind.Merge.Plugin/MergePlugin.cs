@@ -76,7 +76,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = _api.LogManager.GetClassLogger<MergePlugin>();
 
         EnsureNotConflictingSettings();
 

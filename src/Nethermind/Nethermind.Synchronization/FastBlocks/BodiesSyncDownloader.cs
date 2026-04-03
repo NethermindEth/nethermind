@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public BodiesSyncDownloader(ILogManager logManager)
         {
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger<BodiesSyncDownloader>();
         }
 
         public async Task Dispatch(PeerInfo peerInfo, BodiesSyncBatch batch, CancellationToken cancellationToken)

@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.AuRa
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AuRaSealer>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)

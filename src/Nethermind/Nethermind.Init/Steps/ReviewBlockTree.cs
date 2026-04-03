@@ -27,7 +27,7 @@ namespace Nethermind.Init.Steps
         ILogManager logManager
     ) : IStep
     {
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<ReviewBlockTree>();
 
         public Task Execute(CancellationToken cancellationToken)
         {

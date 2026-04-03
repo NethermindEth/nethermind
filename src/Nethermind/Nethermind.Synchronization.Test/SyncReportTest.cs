@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -74,7 +75,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+            logManager.GetClassLogger<SyncReport>().Returns(logger);
+            logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);
@@ -117,7 +119,8 @@ namespace Nethermind.Synchronization.Test
             iLogger.IsInfo.Returns(true);
             iLogger.IsError.Returns(true);
             ILogger logger = new(iLogger);
-            logManager.GetClassLogger().Returns(logger);
+            logManager.GetClassLogger<SyncReport>().Returns(logger);
+            logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
             syncModes.Enqueue(SyncMode.FastHeaders);

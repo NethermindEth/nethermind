@@ -58,7 +58,7 @@ public class CliqueBlockProducerTests
 
         private On(ulong blockPeriod)
         {
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<On>();
             _cliqueConfig = new CliqueConfig();
             _cliqueConfig.BlockPeriod = blockPeriod;
             _cliqueConfig.Epoch = 30000;

@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Processing
             : IBlockProductionTransactionsExecutor
         {
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
             private readonly IReadOnlyStateProvider _txSelectionStateProvider = stateProvider.GetUntrackedReader();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;

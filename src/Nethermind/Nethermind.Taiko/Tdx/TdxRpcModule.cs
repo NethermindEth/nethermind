@@ -21,7 +21,7 @@ public class TdxRpcModule(
     private static readonly ResultWrapper<TdxGuestInfo> TdxDisabledInfo =
         ResultWrapper<TdxGuestInfo>.Fail("TDX is not enabled. Set Surge.TdxEnabled=true in configuration.");
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TdxRpcModule>();
 
     public Task<ResultWrapper<TdxBlockHeaderSignature>> taiko_tdxSignBlockHeader(BlockParameter blockParameter)
     {

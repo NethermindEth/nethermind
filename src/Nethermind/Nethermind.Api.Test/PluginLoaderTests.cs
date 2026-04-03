@@ -30,7 +30,7 @@ public class PluginLoaderTests
     public void full_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
@@ -55,7 +55,7 @@ public class PluginLoaderTests
     public void full_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
             typeof(EthashPlugin),
@@ -86,7 +86,7 @@ public class PluginLoaderTests
         PluginLoader loader = new PluginLoader(
             string.Empty,
             fileSystem,
-            new TestLogManager().GetClassLogger(),
+            new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin),
             typeof(AnotherAura),
             typeof(CliquePlugin),
@@ -108,7 +108,7 @@ public class PluginLoaderTests
     public void partial_lexicographical_order()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(AuRaPlugin), typeof(CliquePlugin), typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(TestPlugin));
         loader.Load();
         IPluginConfig pluginConfig =
@@ -131,7 +131,7 @@ public class PluginLoaderTests
     public void default_config()
     {
         IFileSystem fileSystem = Substitute.For<IFileSystem>();
-        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger(),
+        IPluginLoader loader = new PluginLoader(string.Empty, fileSystem, new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(EthashPlugin), typeof(NethDevPlugin), typeof(HivePlugin), typeof(HealthChecksPlugin), typeof(MergePlugin));
         loader.Load();
         IPluginConfig pluginConfig =
@@ -152,7 +152,7 @@ public class PluginLoaderTests
     [Test]
     public async Task Can_PassInConfig_And_OnlyLoadEnabledPlugins()
     {
-        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger(),
+        PluginLoader loader = new PluginLoader(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
             typeof(TestPlugin1), typeof(TestPlugin2));
         loader.Load();
 
