@@ -114,7 +114,7 @@ public class StateCompositionRpcModule(
             number: blockNumber,
             gasLimit: 0,
             timestamp: 0,
-            extraData: Array.Empty<byte>())
+            extraData: [])
         {
             StateRoot = stateRoot,
         };

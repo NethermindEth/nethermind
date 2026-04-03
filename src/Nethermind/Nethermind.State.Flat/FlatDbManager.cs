@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading.Channels;
 using Nethermind.Config;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -52,7 +51,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     // For debugging. Do the compaction synchronously
     private readonly bool _inlineCompaction;
     private readonly CancellationTokenSource _cancelTokenSource;
-    private int _isDisposed = 0;
+    private int _isDisposed;
     private readonly bool _enableDetailedMetrics;
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
