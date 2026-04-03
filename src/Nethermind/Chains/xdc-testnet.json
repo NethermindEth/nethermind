@@ -148,9 +148,9 @@
     "eip2930Transition": 61290000,
 
     "eip1559Transition": 71550000,
-    "eip2929Transition": 61290000,
+    "eip2929Transition": 71550000,
     "eip3198Transition": 61290000,
-    "eip3529Transition": 61290000,
+    "eip3529Transition": 71550000,
     "eip3541Transition": 61290000,
     "eip3554Transition": 61290000,
 
@@ -158,7 +158,7 @@
 
     "eip3651Transition": 61290000,
     "eip3855Transition": 61290000,
-    "eip3860Transition": 61290000,
+    "eip3860Transition": 71550000,
     "eip6049Transition": 61290000,
 
     "eip1153Transition": 71551800,
