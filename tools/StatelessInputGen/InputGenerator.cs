@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Globalization;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Client;
@@ -41,7 +42,7 @@ internal static class InputGenerator
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{GetBlockNumber(block, blockParam)}.bin";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.bin";
         string path = Path.Join(output, fileName);
 
         File.WriteAllBytes(path, data);
@@ -65,7 +66,7 @@ internal static class InputGenerator
             .SpinnerStyle(Style.Parse("blue"))
             .StartAsync($"[orange1]Fetching block `{blockParam}`[/]", async ctx =>
             {
-                string? rlpHex = await client.Post<string>("debug_getRawBlock", blockParam);
+                string? rlpHex = await client.Post<string>("debug_getRawBlock", EnsureIsHexIfNumber(blockParam));
 
                 if (string.IsNullOrEmpty(rlpHex))
                 {
@@ -80,13 +81,13 @@ internal static class InputGenerator
                 block = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
                 blockContext.Check(rlp.Length);
 
-                string blockNumber = GetBlockNumber(block, blockParam);
+                string blockNumber = EnsureBlockParamIsNumber(blockParam, block);
 
                 AnsiConsole.MarkupLine($"[green]✓[/] Fetched block {blockNumber}: {rlp.Length:N0} bytes");
 
                 ctx.Status = $"[orange1]Fetching witness for block {blockNumber}[/]";
 
-                witness = await client.Post<Witness>("debug_executionWitness", blockParam);
+                witness = await client.Post<Witness>("debug_executionWitness", $"0x{block.Number:x}");
 
                 if (witness is null)
                 {
@@ -113,10 +114,24 @@ internal static class InputGenerator
         return (block, witness, chainId);
     }
 
-    private static string GetBlockNumber(Block block, string blockParameter) =>
-        blockParameter.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
-            ? blockParameter[2..]
+    /// <summary>
+    /// If the block parameter is a number, ensures that the same format provided by the user is used.
+    /// Otherwise, uses the <c>block</c>'s number.
+    /// </summary>
+    private static string EnsureBlockParamIsNumber(string blockParameter, Block block) =>
+        blockParameter.StartsWith("0x", StringComparison.OrdinalIgnoreCase) &&
+        ulong.TryParse(blockParameter[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out _) ||
+        ulong.TryParse(blockParameter, NumberStyles.None, CultureInfo.InvariantCulture, out _)
+            ? blockParameter
             : block.Number.ToString();
+
+    private static string EnsureIsHexIfNumber(string blockParameter)
+    {
+        if (ulong.TryParse(blockParameter, NumberStyles.None, CultureInfo.InvariantCulture, out ulong number))
+            return $"0x{number:x}";
+
+        return blockParameter;
+    }
 
     private static int GetWitnessSize(Witness witness)
     {
