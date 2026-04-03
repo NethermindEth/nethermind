@@ -67,7 +67,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         {
             StateDiffRecorder recorder = new();
             IWorldStateScopeProvider readOnlyProvider = worldStateManager.CreateResettableWorldState();
-            IWorldStateScopeProvider decorated = new StateDiffScopeProviderDecorator(readOnlyProvider, recorder);
+            IWorldStateScopeProvider decorated = new StateDiffScopeProviderDecorator(readOnlyProvider, recorder, bufferOnly: true);
 
             ILifetimeScope childScope = rootScope.BeginLifetimeScope(builder =>
             {
