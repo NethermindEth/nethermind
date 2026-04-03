@@ -82,5 +82,4 @@ jobs:
       - name: Test Nethermind guest
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
-        run: |
-          make run INPUT="${{ matrix.input }}"
+        run: make run INPUT="${{ matrix.input }}"
