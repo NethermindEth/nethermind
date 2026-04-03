@@ -273,14 +273,14 @@ namespace Nethermind.Blockchain.FullPruning
                     ? CopyTree<NoopTreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
                     : CopyTree<TreePathContextWithStorage>(baseBlock, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
 
-                // Preserve additional state roots required by external components (e.g. Arbitrum validator).
-                // Pass the base block number used for pruning.
-                if (baseBlock is not null)
-                    AdditionalRootsProvider?.CopyAdditionalStatesToNodeStorage(targetNodeStorage, baseBlock.Number);
-
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     visitor.Finish();
+
+                    // Preserve additional state roots required by external components (e.g. Arbitrum validator).
+                    // Pass the base block number used for pruning.
+                    if (baseBlock is not null)
+                        _additionalRootsProvider?.Value?.CopyAdditionalStatesToNodeStorage(targetNodeStorage, baseBlock.Number);
 
                     using (_trieStore.PrepareStableState(cancellationToken))
                     {
