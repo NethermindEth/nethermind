@@ -96,28 +96,12 @@ public static class InputSerializer
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static uint ReadUInt32(ReadOnlySpan<byte> source, ref int offset)
-    {
-        var value = BinaryPrimitives.ReadUInt32LittleEndian(source.Slice(offset, sizeof(uint)));
-        offset += sizeof(uint);
-
-        return value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReadUInt64(ReadOnlySpan<byte> source, ref int offset)
     {
         var value = BinaryPrimitives.ReadUInt64LittleEndian(source.Slice(offset, sizeof(ulong)));
         offset += sizeof(ulong);
 
         return value;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void WriteUInt32(uint value, Span<byte> destination, ref int offset)
-    {
-        BinaryPrimitives.WriteUInt32LittleEndian(destination.Slice(offset, sizeof(uint)), value);
-        offset += sizeof(uint);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
