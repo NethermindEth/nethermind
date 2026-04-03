@@ -66,7 +66,7 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
         _invalidChainTracker = invalidChainTracker;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     }
 
     protected override SyncMode ActivationSyncModes { get; }

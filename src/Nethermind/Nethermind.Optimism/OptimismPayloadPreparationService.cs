@@ -40,7 +40,7 @@ public class OptimismPayloadPreparationService : PayloadPreparationService
             blocksConfig)
     {
         _specProvider = specProvider;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
     }
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,

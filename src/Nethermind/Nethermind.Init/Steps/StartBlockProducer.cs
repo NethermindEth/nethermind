@@ -29,7 +29,7 @@ namespace Nethermind.Init.Steps
                 if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
                 if (_api.BlockProducerRunner is null) throw new StepDependencyException(nameof(_api.BlockProducerRunner));
 
-                ILogger logger = _api.LogManager.GetClassLogger();
+                ILogger logger = _api.LogManager.GetClassLogger<StartBlockProducer>();
                 if (logger.IsInfo) logger.Info($"Starting {_api.SealEngineType} block producer & sealer");
                 _api.Context.ResolveOptional<IProducedBlockSuggester>();
                 _api.BlockProducerRunner.Start();
