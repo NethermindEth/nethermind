@@ -34,6 +34,7 @@ namespace Nethermind.Consensus.Processing.Parallel;
 public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
     private readonly IWorldState _mainWorldState;
+    private readonly ITransactionProcessorAdapter _mainTransactionProcessor;
     private readonly ISpecProvider _specProvider;
     private readonly ParallelBlockExecutionContext _context;
     private readonly ILogger _logger;
@@ -43,11 +44,13 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         ILifetimeScope rootScope,
         IWorldStateManager worldStateManager,
         IWorldState mainWorldState,
+        ITransactionProcessorAdapter mainTransactionProcessor,
         ISpecProvider specProvider,
         ParallelBlockExecutionContext context,
         ILogManager logManager)
     {
         _mainWorldState = mainWorldState;
+        _mainTransactionProcessor = mainTransactionProcessor;
         _specProvider = specProvider;
         _context = context;
         _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
@@ -91,6 +94,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Evm.Metrics.ResetBlockStats();
 
         int txCount = block.Transactions.Length;
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"ProcessTransactions block={block.Number} txs={txCount} parentHeader={_context.LastBaseBlock?.StateRoot}\n");
         if (txCount == 0) return [];
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
@@ -101,16 +105,28 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Stopwatch totalSw = Stopwatch.StartNew();
 
         // Phase 1 — Parallel execution
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Starting parallel phase\n");
         Stopwatch parallelSw = Stopwatch.StartNew();
         ParallelTxResult[] results = ExecuteInParallel(block, parentHeader, spec, token);
         long parallelMs = parallelSw.ElapsedMilliseconds;
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Parallel done in {parallelMs}ms\n");
 
         // Phase 2 — Sequential conflict resolution + scope-level diff application
         Stopwatch sequentialSw = Stopwatch.StartNew();
-        int conflictCount = ApplyResultsSequentially(block, results, spec, parentHeader, receiptsTracer, token);
+        int conflictCount = ApplyResultsSequentially(block, results, spec, processingOptions, parentHeader, receiptsTracer, token);
 
         // Flush all buffered diffs to the trie via WorldState.Commit → StartWriteBatch → injection
-        _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
+        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Before flush commit, conflicts={conflictCount}\n");
+        try
+        {
+            _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
+            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  After flush commit OK\n");
+        }
+        catch (System.Exception ex)
+        {
+            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Flush commit FAILED: {ex.Message}\n{ex.StackTrace}\n");
+            throw;
+        }
 
         long sequentialMs = sequentialSw.ElapsedMilliseconds;
 
@@ -174,6 +190,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Block block,
         ParallelTxResult[] results,
         IReleaseSpec spec,
+        ProcessingOptions processingOptions,
         BlockHeader? parentHeader,
         BlockReceiptsTracer receiptsTracer,
         CancellationToken token)
@@ -191,6 +208,8 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             bool hasConflict = !parallel.Success
                 || HasConflict(diff, committedWrites, committedStorageWrites);
 
+            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] success={parallel.Success} conflict={hasConflict} reads={diff.ReadAccounts.Count} writes={diff.WrittenAccounts.Count}\n");
+
             Metrics.ParallelStateDiffMergeAttempts++;
 
             if (hasConflict)
@@ -198,25 +217,21 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 conflictCount++;
                 Metrics.ParallelStateDiffMergeConflicts++;
 
-                // Flush buffered diffs to trie before re-execution so the worker sees accumulated state
+                System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] re-executing on main state\n");
+                // Flush buffered diffs to trie before re-execution
                 _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
 
-                Worker reExecWorker = _workers[0]; // reuse first worker
-                ParallelTxResult reExecResult = ExecuteSingleTx(reExecWorker, tx, _context.LastBaseBlock, spec);
+                // Re-execute directly on main world state (it has accumulated state)
+                TransactionResult result = _mainTransactionProcessor.ProcessTransaction(tx, receiptsTracer, processingOptions, _mainWorldState);
+                if (!result)
+                    ThrowInvalidTransactionException(result, block.Header, tx, i);
 
-                if (!reExecResult.Success)
-                    ThrowInvalidTransactionException(reExecResult.Result, block.Header, tx, i);
+                System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] re-execution done\n");
 
-                // Buffer re-execution diff for deferred injection
-                _context.BufferDiff(reExecResult.Diff);
-
-                // Replay receipt
-                ReplayReceipt(reExecResult.Receipt, tx, receiptsTracer);
-
-                // Track actual writes from re-execution
-                foreach (AddressAsKey addr in reExecResult.Diff.WrittenAccounts)
+                // Track writes from re-execution (use parallel diff as conservative approximation)
+                foreach (AddressAsKey addr in diff.WrittenAccounts)
                     committedWrites.Add(addr);
-                foreach (StorageCell cell in reExecResult.Diff.WrittenStorageCells)
+                foreach (StorageCell cell in diff.WrittenStorageCells)
                     committedStorageWrites.Add(cell);
             }
             else
