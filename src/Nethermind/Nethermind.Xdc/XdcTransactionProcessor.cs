@@ -130,7 +130,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         {
             if (tx.IsSignTransaction(xdcSpec))
             {
-                var nonce = WorldState.GetNonce(tx.SenderAddress);
+                UInt256 nonce = WorldState.GetNonce(tx.SenderAddress);
 
                 if (nonce < tx.Nonce)
                 {
@@ -152,7 +152,8 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
 
     protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
     {
-        var spec = SpecProvider.GetXdcSpec((XdcBlockHeader)header);
+        XdcBlockHeader xdcHeader = (XdcBlockHeader)header;
+        IXdcReleaseSpec spec = SpecProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
         if (tx.RequiresSpecialHandling(spec))
         {
             return TransactionResult.Ok;

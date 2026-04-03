@@ -66,7 +66,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         }
 
         var header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
-        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
+        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!, header.ExtraConsensusData.BlockRound);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
         var penalties = new HashSet<Address>();
 
@@ -74,7 +74,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
             ? currentSpec.MinimumMinerBlockPerEpoch
             : XdcConstants.MinimumMinerBlockPerEpoch;
 
-        foreach (var (miner, total) in minerStatistics)
+        foreach ((Address miner, int total) in minerStatistics)
         {
             if (total < minMinerBlockPerEpoch)
                 penalties.Add(miner);

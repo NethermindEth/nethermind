@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 
@@ -110,7 +111,8 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
     protected override bool ValidateTimestamp(BlockHeader header, BlockHeader parent, ref string? error)
     {
-        var xdcSpec = _specProvider.GetXdcSpec((XdcBlockHeader)header); // will throw if no spec found
+        XdcBlockHeader xdcHeader = (XdcBlockHeader)header;
+        IXdcReleaseSpec xdcSpec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound); // will throw if no spec found
 
         //TODO check if V2 header
         if (parent.Timestamp + (ulong)xdcSpec.MinePeriod > header.Timestamp)
