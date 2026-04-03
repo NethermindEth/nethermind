@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,19 +11,6 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing.Parallel;
 
-/// <summary>
-/// Decorates <see cref="IWorldStateScopeProvider"/> to intercept reads/writes for state diff recording
-/// (worker scopes) and to inject buffered diffs into write batches (main scope).
-/// <para>
-/// When <paramref name="bufferOnly"/> is <c>true</c> (parallel workers), write batches buffer locally
-/// and do not delegate to the inner scope. Reads are recorded into <paramref name="recorder"/>.
-/// </para>
-/// <para>
-/// When used as main scope decorator (via DI), captures <c>LastBaseBlock</c> and injects pending
-/// diffs from <see cref="ParallelBlockExecutionContext"/> into write batches created by
-/// <c>WorldState.Commit(commitRoots: true)</c>.
-/// </para>
-/// </summary>
 public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _inner;
@@ -30,7 +18,7 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
     private readonly bool _bufferOnly;
     private readonly ParallelBlockExecutionContext? _context;
 
-    /// <summary>Constructor for Autofac decorator resolution (main scope — no recording, injects diffs).</summary>
+    /// <summary>Main scope — reads from overlay, dumps on StartWriteBatch.</summary>
     public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, ParallelBlockExecutionContext context)
     {
         _inner = inner;
@@ -39,7 +27,7 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         _context = context;
     }
 
-    /// <summary>Constructor for manual creation (parallel workers — records reads/writes, buffer-only).</summary>
+    /// <summary>Worker scope — records reads/writes, buffer-only write batches.</summary>
     public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder, bool bufferOnly)
     {
         _inner = inner;
@@ -47,6 +35,11 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         _bufferOnly = bufferOnly;
         _context = null;
     }
+
+    // Overlay for re-execution — worker reads from this before falling through to inner
+    private ParallelBlockExecutionContext? _overlay;
+    public void SetOverlay(ParallelBlockExecutionContext overlay) => _overlay = overlay;
+    public void ClearOverlay() => _overlay = null;
 
     public bool HasRoot(BlockHeader? baseBlock) => _inner.HasRoot(baseBlock);
 
@@ -58,11 +51,11 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         IWorldStateScopeProvider.IScope innerScope = _inner.BeginScope(baseBlock);
 
         return _bufferOnly
-            ? new RecordingScope(innerScope, _recorder!)
+            ? new RecordingScope(innerScope, _recorder!, this)
             : new MainScope(innerScope, _context!);
     }
 
-    // ── Main scope (no recording, injects buffered diffs) ────────────────────────
+    // ── Main scope (overlay reads, dump on StartWriteBatch) ──────────────────────
 
     private class MainScope(
         IWorldStateScopeProvider.IScope inner,
@@ -70,76 +63,73 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
     {
         public Hash256 RootHash => inner.RootHash;
         public void UpdateRootHash() => inner.UpdateRootHash();
-        public Account? Get(Address address) => inner.Get(address);
+
+        public Account? Get(Address address) =>
+            context.AccountOverlay.TryGetValue(address, out Account? account)
+                ? account
+                : inner.Get(address);
+
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
-        public IWorldStateScopeProvider.ICodeDb CodeDb => inner.CodeDb;
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => inner.CreateStorageTree(address);
-        public void Commit(long blockNumber) => inner.Commit(blockNumber);
-        public void Dispose() => inner.Dispose();
+
+        public IWorldStateScopeProvider.ICodeDb CodeDb => new OverlayCodeDb(inner.CodeDb, context.CodeOverlay);
+
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
+            new OverlayStorageTree(inner.CreateStorageTree(address), context.StorageOverlay, address);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
-            // Dump pending diffs into the inner scope BEFORE creating the main write batch.
-            // This ensures the diffs are committed to the trie/flat DB before the normal
-            // FlushToTree + OnAccountUpdated flow runs.
-            List<TransactionStateDiff>? diffs = context.TakePendingDiffs();
-            if (diffs is not null)
-            {
-                using IWorldStateScopeProvider.IWorldStateWriteBatch diffBatch = inner.StartWriteBatch(0);
-                foreach (TransactionStateDiff diff in diffs)
-                {
-                    foreach ((Address address, Account? account) in diff.AccountWrites)
-                        diffBatch.Set(address, account);
-
-                    Dictionary<Address, List<(UInt256 Index, byte[] Value)>>? storageByAddress = null;
-                    foreach ((Address address, UInt256 index, byte[] value) in diff.StorageWrites)
-                    {
-                        storageByAddress ??= [];
-                        if (!storageByAddress.TryGetValue(address, out List<(UInt256, byte[])>? list))
-                        {
-                            list = [];
-                            storageByAddress[address] = list;
-                        }
-                        list.Add((index, value));
-                    }
-
-                    if (storageByAddress is not null)
-                    {
-                        foreach (KeyValuePair<Address, List<(UInt256 Index, byte[] Value)>> kv in storageByAddress)
-                        {
-                            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
-                                diffBatch.CreateStorageWriteBatch(kv.Key, kv.Value.Count);
-                            foreach ((UInt256 index, byte[] value) in kv.Value)
-                                storageBatch.Set(index, value);
-                        }
-                    }
-
-                    if (diff.CodeWrites.Count > 0)
-                    {
-                        using IWorldStateScopeProvider.ICodeSetter codeSetter = inner.CodeDb.BeginCodeWrite();
-                        foreach ((ValueHash256 codeHash, byte[] code) in diff.CodeWrites)
-                            codeSetter.Set(codeHash, code);
-                    }
-                }
-            }
-
-            // Now create the real write batch for WorldState.Commit's FlushToTree
-            return inner.StartWriteBatch(estimatedAccountNum);
+            // Dump the overlay into the inner scope's write batch, then clear
+            IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = inner.StartWriteBatch(estimatedAccountNum);
+            context.DumpAndClear(writeBatch, inner);
+            return writeBatch;
         }
+
+        public void Commit(long blockNumber) => inner.Commit(blockNumber);
+        public void Dispose() => inner.Dispose();
     }
 
-    // ── Recording scope (parallel workers — records reads/writes, buffer-only) ───
+    private class OverlayStorageTree(
+        IWorldStateScopeProvider.IStorageTree inner,
+        ConcurrentDictionary<StorageCell, byte[]> storageOverlay,
+        Address address) : IWorldStateScopeProvider.IStorageTree
+    {
+        public Hash256 RootHash => inner.RootHash;
+
+        public byte[] Get(in UInt256 index) =>
+            storageOverlay.TryGetValue(new StorageCell(address, index), out byte[]? value)
+                ? value
+                : inner.Get(in index);
+
+        public void HintGet(in UInt256 index, byte[]? value) => inner.HintGet(in index, value);
+        public byte[] Get(in ValueHash256 hash) => inner.Get(in hash);
+    }
+
+    private class OverlayCodeDb(
+        IWorldStateScopeProvider.ICodeDb inner,
+        ConcurrentDictionary<ValueHash256, byte[]> codeOverlay) : IWorldStateScopeProvider.ICodeDb
+    {
+        public byte[]? GetCode(in ValueHash256 codeHash) =>
+            codeOverlay.TryGetValue(codeHash, out byte[]? code)
+                ? code
+                : inner.GetCode(in codeHash);
+
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => inner.BeginCodeWrite();
+    }
+
+    // ── Recording scope (parallel workers) ───────────────────────────────────────
 
     private class RecordingScope : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope _inner;
         private readonly StateDiffRecorder _recorder;
+        private readonly StateDiffScopeProviderDecorator _parent;
         private RecordingCodeDb? _codeDb;
 
-        public RecordingScope(IWorldStateScopeProvider.IScope inner, StateDiffRecorder recorder)
+        public RecordingScope(IWorldStateScopeProvider.IScope inner, StateDiffRecorder recorder, StateDiffScopeProviderDecorator parent)
         {
             _inner = inner;
             _recorder = recorder;
+            _parent = parent;
         }
 
         public Hash256 RootHash => _inner.RootHash;
@@ -147,6 +137,14 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
 
         public Account? Get(Address address)
         {
+            // Check overlay first (set during re-execution)
+            ParallelBlockExecutionContext? overlay = _parent._overlay;
+            if (overlay is not null && overlay.AccountOverlay.TryGetValue(address, out Account? overlayAccount))
+            {
+                _recorder.RecordAccountRead(address, overlayAccount);
+                return overlayAccount;
+            }
+
             Account? account = _inner.Get(address);
             _recorder.RecordAccountRead(address, account);
             return account;
@@ -156,7 +154,7 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb ??= new RecordingCodeDb(_inner.CodeDb, _recorder);
 
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-            new RecordingStorageTree(_inner.CreateStorageTree(address), _recorder, address);
+            new RecordingStorageTree(_inner.CreateStorageTree(address), _recorder, address, _parent);
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
             new BufferOnlyWriteBatch(_recorder);
@@ -168,12 +166,20 @@ public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
     private class RecordingStorageTree(
         IWorldStateScopeProvider.IStorageTree inner,
         StateDiffRecorder recorder,
-        Address address) : IWorldStateScopeProvider.IStorageTree
+        Address address,
+        StateDiffScopeProviderDecorator parent) : IWorldStateScopeProvider.IStorageTree
     {
         public Hash256 RootHash => inner.RootHash;
 
         public byte[] Get(in UInt256 index)
         {
+            ParallelBlockExecutionContext? overlay = parent._overlay;
+            if (overlay is not null && overlay.StorageOverlay.TryGetValue(new StorageCell(address, index), out byte[]? overlayValue))
+            {
+                recorder.RecordStorageRead(new StorageCell(address, index));
+                return overlayValue;
+            }
+
             byte[] value = inner.Get(in index);
             recorder.RecordStorageRead(new StorageCell(address, index));
             return value;

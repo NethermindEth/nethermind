@@ -28,13 +28,11 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// <summary>
 /// Parallel variant of <see cref="BlockProcessor.BlockValidationTransactionsExecutor"/>.
 /// Executes all transactions in parallel on separate read-only world state copies,
-/// records state diffs, then applies diffs sequentially at the scope provider level —
-/// re-executing conflicting txs on the current accumulated state.
+/// records state diffs, then merges diffs into an in-memory overlay sequentially —
+/// re-executing conflicting txs on a worker that sees the overlay.
 /// </summary>
 public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBlockTransactionsExecutor
 {
-    private readonly IWorldState _mainWorldState;
-    private readonly ITransactionProcessorAdapter _mainTransactionProcessor;
     private readonly ISpecProvider _specProvider;
     private readonly ParallelBlockExecutionContext _context;
     private readonly ILogger _logger;
@@ -43,14 +41,10 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     public ParallelBlockValidationTransactionsExecutor(
         ILifetimeScope rootScope,
         IWorldStateManager worldStateManager,
-        IWorldState mainWorldState,
-        ITransactionProcessorAdapter mainTransactionProcessor,
         ISpecProvider specProvider,
         ParallelBlockExecutionContext context,
         ILogManager logManager)
     {
-        _mainWorldState = mainWorldState;
-        _mainTransactionProcessor = mainTransactionProcessor;
         _specProvider = specProvider;
         _context = context;
         _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
@@ -92,42 +86,26 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
     {
         Evm.Metrics.ResetBlockStats();
+        _context.AccountOverlay.Clear();
+        _context.StorageOverlay.Clear();
+        _context.CodeOverlay.Clear();
 
         int txCount = block.Transactions.Length;
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"ProcessTransactions block={block.Number} txs={txCount} parentHeader={_context.LastBaseBlock?.StateRoot}\n");
         if (txCount == 0) return [];
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-
-        // Use the base block captured by the context when BranchProcessor opened the main scope
         BlockHeader? parentHeader = _context.LastBaseBlock;
 
         Stopwatch totalSw = Stopwatch.StartNew();
 
         // Phase 1 — Parallel execution
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Starting parallel phase\n");
         Stopwatch parallelSw = Stopwatch.StartNew();
         ParallelTxResult[] results = ExecuteInParallel(block, parentHeader, spec, token);
         long parallelMs = parallelSw.ElapsedMilliseconds;
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Parallel done in {parallelMs}ms\n");
 
-        // Phase 2 — Sequential conflict resolution + scope-level diff application
+        // Phase 2 — Sequential: merge diffs into overlay, re-execute conflicts
         Stopwatch sequentialSw = Stopwatch.StartNew();
-        int conflictCount = ApplyResultsSequentially(block, results, spec, processingOptions, parentHeader, receiptsTracer, token);
-
-        // Flush all buffered diffs to the trie via WorldState.Commit → StartWriteBatch → injection
-        System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Before flush commit, conflicts={conflictCount}\n");
-        try
-        {
-            _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
-            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  After flush commit OK\n");
-        }
-        catch (System.Exception ex)
-        {
-            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"  Flush commit FAILED: {ex.Message}\n{ex.StackTrace}\n");
-            throw;
-        }
-
+        int conflictCount = ApplyResultsSequentially(block, results, spec, parentHeader, receiptsTracer, token);
         long sequentialMs = sequentialSw.ElapsedMilliseconds;
 
         long totalMs = totalSw.ElapsedMilliseconds;
@@ -150,16 +128,9 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             int workerIdx = w;
             tasks[w] = Task.Run(() =>
             {
-                Stopwatch workerSw = Stopwatch.StartNew();
                 Worker worker = _workers[workerIdx];
-
                 for (int i = workerIdx; i < txCount; i += workerCount)
-                {
                     results[i] = ExecuteSingleTx(worker, block.Transactions[i], parentHeader, spec);
-                }
-
-                if (_logger.IsDebug)
-                    _logger.Debug($"Parallel worker {workerIdx} finished in {workerSw.ElapsedMilliseconds}ms");
             }, token);
         }
 
@@ -190,7 +161,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         Block block,
         ParallelTxResult[] results,
         IReleaseSpec spec,
-        ProcessingOptions processingOptions,
         BlockHeader? parentHeader,
         BlockReceiptsTracer receiptsTracer,
         CancellationToken token)
@@ -208,8 +178,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             bool hasConflict = !parallel.Success
                 || HasConflict(diff, committedWrites, committedStorageWrites);
 
-            System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] success={parallel.Success} conflict={hasConflict} reads={diff.ReadAccounts.Count} writes={diff.WrittenAccounts.Count}\n");
-
             Metrics.ParallelStateDiffMergeAttempts++;
 
             if (hasConflict)
@@ -217,32 +185,30 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
                 conflictCount++;
                 Metrics.ParallelStateDiffMergeConflicts++;
 
-                System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] re-executing on main state\n");
-                // Flush buffered diffs to trie before re-execution
-                _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: true);
+                // Re-execute on a worker that sees the overlay (accumulated state)
+                Worker reExecWorker = _workers[0];
+                ParallelTxResult reExecResult = ExecuteSingleTxWithOverlay(reExecWorker, tx, parentHeader, spec);
 
-                // Re-execute directly on main world state (it has accumulated state)
-                TransactionResult result = _mainTransactionProcessor.ProcessTransaction(tx, receiptsTracer, processingOptions, _mainWorldState);
-                if (!result)
-                    ThrowInvalidTransactionException(result, block.Header, tx, i);
+                if (!reExecResult.Success)
+                    ThrowInvalidTransactionException(reExecResult.Result, block.Header, tx, i);
 
-                System.IO.File.AppendAllText("/tmp/parallel_debug.log", $"    tx[{i}] re-execution done\n");
+                // Merge re-execution diff into overlay
+                _context.MergeDiff(reExecResult.Diff);
 
-                // Track writes from re-execution (use parallel diff as conservative approximation)
-                foreach (AddressAsKey addr in diff.WrittenAccounts)
+                ReplayReceipt(reExecResult.Receipt, tx, receiptsTracer);
+
+                foreach (AddressAsKey addr in reExecResult.Diff.WrittenAccounts)
                     committedWrites.Add(addr);
-                foreach (StorageCell cell in diff.WrittenStorageCells)
+                foreach (StorageCell cell in reExecResult.Diff.WrittenStorageCells)
                     committedStorageWrites.Add(cell);
             }
             else
             {
-                // Buffer diff for deferred injection
-                _context.BufferDiff(diff);
+                // Merge parallel diff into overlay
+                _context.MergeDiff(diff);
 
-                // Replay receipt
                 ReplayReceipt(parallel.Receipt, tx, receiptsTracer);
 
-                // Update committed write sets
                 foreach (AddressAsKey addr in diff.WrittenAccounts)
                     committedWrites.Add(addr);
                 foreach (StorageCell cell in diff.WrittenStorageCells)
@@ -251,6 +217,24 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         }
 
         return conflictCount;
+    }
+
+    /// <summary>
+    /// Execute a tx on a worker whose scope reads from the overlay (accumulated diffs)
+    /// before falling through to the read-only parent state.
+    /// </summary>
+    private ParallelTxResult ExecuteSingleTxWithOverlay(Worker worker, Transaction tx, BlockHeader? parentHeader, IReleaseSpec spec)
+    {
+        // Temporarily layer the overlay onto the worker's scope provider
+        worker.Decorator.SetOverlay(_context);
+        try
+        {
+            return ExecuteSingleTx(worker, tx, parentHeader, spec);
+        }
+        finally
+        {
+            worker.Decorator.ClearOverlay();
+        }
     }
 
     private static void ReplayReceipt(CapturedReceipt captured, Transaction tx, BlockReceiptsTracer receiptsTracer)
