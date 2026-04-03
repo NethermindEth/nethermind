@@ -32,7 +32,7 @@ public class TestingRpcModule(
     ILogManager logManager)
     : ITestingRpcModule
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TestingRpcModule>();
 
     public async Task<ResultWrapper<object?>> testing_buildBlockV1(Hash256 parentBlockHash, PayloadAttributes payloadAttributes, IEnumerable<byte[]>? txRlps, byte[]? extraData = null)
     {
