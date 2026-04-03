@@ -1,7 +1,12 @@
-name: Sync Smoke Test
+name: Sync PR Gate (Hoodi)
 
 on:
   pull_request:
+    branches: [master]
+
+concurrency:
+  group: sync-pr-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
 
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
@@ -33,6 +38,8 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -74,10 +81,23 @@ jobs:
           cd sedge
           make compile
 
+      - name: Build Docker image locally
+        run: |
+          docker build -t nethermind:pr-local \
+            --build-arg BUILD_CONFIG=release \
+            --build-arg CI=true \
+            --build-arg COMMIT_HASH=${{ github.sha }} \
+            .
+
       - name: Generate and run Sedge
         working-directory: sedge
+        env:
+          SYNC_MODE: ${{ matrix.mode }}
+          FLATDB: ${{ matrix.flatdb }}
+          SEQ_API_KEY: ${{ secrets.SEQ_API_KEY }}
+          GRAFANA_URL: ${{ secrets.GRAFANA_CONNECTION_STRING }}
         run: |
-          node_name="SyncSmokeTest-hoodi-${{ matrix.mode }}-${GITHUB_RUN_ID}"
+          node_name="SyncPRGate-hoodi-${SYNC_MODE}-${GITHUB_RUN_ID}"
 
           ./build/sedge deps install
 
@@ -89,12 +109,12 @@ jobs:
             -p $GITHUB_WORKSPACE/sedge \
             full-node \
             -c lodestar:chainsafe/lodestar:latest \
-            -e nethermind:nethermindeth/nethermind:master \
+            -e nethermind:nethermind:pr-local \
             --map-all \
             --no-mev-boost \
             --no-validator \
             --network hoodi \
-            --el-extra-flag FlatDb.Enabled=${{ matrix.flatdb }} \
+            --el-extra-flag FlatDb.Enabled=$FLATDB \
             --el-extra-flag Sync.NonValidatorNode=true \
             --el-extra-flag Sync.DownloadBodiesInFastSync=false \
             --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
@@ -104,11 +124,14 @@ jobs:
             --el-extra-flag "Metrics.NodeName=${node_name}" \
             --el-extra-flag Metrics.Enabled=true \
             --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
-            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-extra-flag "Seq.ApiKey=${SEQ_API_KEY}" \
             --el-extra-flag Seq.MinLevel=Info \
-            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}" \
+            --el-extra-flag "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug" \
+            --el-extra-flag "Metrics.PushGatewayUrl=${GRAFANA_URL}" \
             --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
 
+          # Use docker compose directly instead of `sedge run` because sedge run
+          # does `docker compose pull` which fails for the locally-built image.
           docker compose up -d
 
       - name: Wait for hoodi to sync
