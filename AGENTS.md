@@ -132,9 +132,9 @@ This repository contains a dedicated workflow for reproducible payload benchmark
   - renaming scenario key `nethermind:` to a detailed scenario name
   - appending user-provided extra flags under `extra_flags:`
 - Installs `expb` via `uv tool install --force --from ... expb`.
-- Runs `expb execute-scenarios` with per-payload metrics and logs.
+- Runs `expb execute-scenarios` with per-payload metrics, logs, SSE client metrics, and stable CPU settings.
 - Handles termination gracefully with cleanup grace period.
-- On successful `master` push runs, caches per-payload timing aggregates extracted from the `processing_ms` table.
+- On successful `master` push runs, caches per-payload timing aggregates. Prefers SSE client metrics (server-side processing times reported via Nethermind's `/data/events` SSE feed) over k6-measured timings as they are more stable. Falls back to k6 table values if SSE data is unavailable.
 - On labeled PR runs, restores latest cached `master` metrics and posts a PR comment with PR vs master comparison.
 
 ### What to inspect in run output
@@ -162,6 +162,7 @@ This repository contains a dedicated workflow for reproducible payload benchmark
   - EXPB structured events like: `timestamp=... level=info event="..."`.
   - K6 progress and metric blocks (`http_req_duration`, `iteration_duration`, percentiles like `p(95)`).
   - Raw Nethermind runtime logs (received blocks, processed block timings, shutdown sequence).
+  - SSE client metric lines: `[payload-server] client_metric block_number=N processing_ms=X` (server-side processing times, preferred over k6 timings).
   - Per-payload metrics table near the end, marked by:
     - `+---------+------------+-----------------+`
     - `| payload | gas_used   | processing_ms   |`

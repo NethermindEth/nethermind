@@ -659,6 +659,8 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
+            --client-metrics \
+            --stable-cpu \
             > "${RAW_RUN_LOG}" 2>&1 &
           expb_pid=$!
 
@@ -685,6 +687,7 @@ jobs:
           exception_lines="${RUNNER_TEMP}/expb-exceptions.log"
           invalid_block_lines="${RUNNER_TEMP}/expb-invalid-blocks.log"
           processing_ms="${RUNNER_TEMP}/expb-processing-ms.txt"
+          sse_processing_ms="${RUNNER_TEMP}/expb-sse-processing-ms.txt"
           processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted.txt"
           metrics_file="${RUNNER_TEMP}/expb-metrics.env"
 
@@ -711,6 +714,13 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
+          # Extract SSE client metrics (server-side processing times, more stable)
+          grep -oE 'client_metric block_number=[0-9]+ processing_ms=[0-9]+(\.[0-9]+)?' "${clean_log}" \
+            | grep -oE 'processing_ms=[0-9]+(\.[0-9]+)?' \
+            | cut -d= -f2 \
+            > "${sse_processing_ms}" || true
+
+          # Extract k6-measured processing_ms from the per-payload table (fallback)
           awk -F'|' '
             /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
               value = $4
@@ -721,14 +731,28 @@ jobs:
             }
           ' "${clean_log}" > "${processing_ms}"
 
-          count=$(wc -l < "${processing_ms}")
-          count="${count//[[:space:]]/}"
-          if [[ "${count}" -eq 0 ]]; then
+          # Prefer SSE values (more stable), fall back to k6 table values
+          sse_count=$(wc -l < "${sse_processing_ms}")
+          sse_count="${sse_count//[[:space:]]/}"
+          k6_count=$(wc -l < "${processing_ms}")
+          k6_count="${k6_count//[[:space:]]/}"
+
+          if [[ "${sse_count}" -gt 0 ]]; then
+            echo "Using SSE client metrics (${sse_count} samples) as primary source."
+            cp "${sse_processing_ms}" "${processing_ms_sorted}.unsorted"
+            metrics_source="sse"
+          elif [[ "${k6_count}" -gt 0 ]]; then
+            echo "SSE client metrics not available, falling back to k6 table values (${k6_count} samples)."
+            cp "${processing_ms}" "${processing_ms_sorted}.unsorted"
+            metrics_source="k6"
+          else
             echo "Could not extract per-payload processing_ms rows from benchmark output."
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          count=$(wc -l < "${processing_ms_sorted}.unsorted")
+          count="${count//[[:space:]]/}"
+          sort -n "${processing_ms_sorted}.unsorted" > "${processing_ms_sorted}"
 
           min=$(head -n 1 "${processing_ms_sorted}")
           max=$(tail -n 1 "${processing_ms_sorted}")
@@ -761,6 +785,7 @@ jobs:
             echo "P99=${p99}"
             echo "MIN=${min}"
             echo "MAX=${max}"
+            echo "METRICS_SOURCE=${metrics_source}"
           } > "${metrics_file}"
 
           {
@@ -777,6 +802,7 @@ jobs:
             echo "p99=${p99}"
             echo "min=${min}"
             echo "max=${max}"
+            echo "metrics_source=${metrics_source}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Upload metrics artifact
@@ -951,10 +977,17 @@ jobs:
               return
             fi
 
+            local current_source="$(load_metric "${current_metrics}" "METRICS_SOURCE")"
+            local master_source="$(load_metric "${master_metrics}" "METRICS_SOURCE")"
+            local source_label=""
+            if [[ -n "${current_source}" ]]; then
+              source_label=" (source: ${current_source})"
+            fi
+
             if [[ ! -f "${master_metrics}" ]]; then
               append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
               append_blank
-              append_line "| Metric | PR |"
+              append_line "| Metric | PR${source_label} |"
               append_line "|---|---:|"
               append_line "| AVG (ms) | $(load_metric "${current_metrics}" "AVG") |"
               append_line "| MEDIAN (ms) | $(load_metric_with_fallback "${current_metrics}" "MEDIAN" "MEAN") |"
@@ -983,6 +1016,9 @@ jobs:
             master_max="$(load_metric "${master_metrics}" "MAX")"
 
             append_line "Scenario: \`${scenario_name}\`"
+            if [[ -n "${current_source}" || -n "${master_source}" ]]; then
+              append_line "Metrics source: PR=${current_source:-k6}, Master=${master_source:-k6}"
+            fi
             append_blank
             append_line "| Metric | PR | Master (cached) | Delta PR vs Master |"
             append_line "|---|---:|---:|---:|"
@@ -1415,6 +1451,8 @@ jobs:
             --per-payload-metrics \
             --per-payload-metrics-logs \
             --print-logs \
+            --client-metrics \
+            --stable-cpu \
             > "${RAW_RUN_LOG}" 2>&1 &
           expb_pid=$!
 
@@ -1444,6 +1482,7 @@ jobs:
           exception_lines="${RUNNER_TEMP}/expb-exceptions-${key}.log"
           invalid_block_lines="${RUNNER_TEMP}/expb-invalid-blocks-${key}.log"
           processing_ms="${RUNNER_TEMP}/expb-processing-ms-${key}.txt"
+          sse_processing_ms="${RUNNER_TEMP}/expb-sse-processing-ms-${key}.txt"
           processing_ms_sorted="${RUNNER_TEMP}/expb-processing-ms-sorted-${key}.txt"
           metrics_dir="${RUNNER_TEMP}/expb-metrics-${key}"
 
@@ -1477,6 +1516,13 @@ jobs:
             head -n 40 "${invalid_block_lines}"
           fi
 
+          # Extract SSE client metrics (server-side processing times, more stable)
+          grep -oE 'client_metric block_number=[0-9]+ processing_ms=[0-9]+(\.[0-9]+)?' "${clean_log}" \
+            | grep -oE 'processing_ms=[0-9]+(\.[0-9]+)?' \
+            | cut -d= -f2 \
+            > "${sse_processing_ms}" || true
+
+          # Extract k6-measured processing_ms from the per-payload table (fallback)
           awk -F'|' '
             /^[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+[[:space:]]*\|[[:space:]]*[0-9]+(\.[0-9]+)?[[:space:]]*\|[[:space:]]*$/ {
               value = $4
@@ -1487,10 +1533,21 @@ jobs:
             }
           ' "${clean_log}" > "${processing_ms}"
 
-          count=$(wc -l < "${processing_ms}")
-          count="${count//[[:space:]]/}"
+          # Prefer SSE values (more stable), fall back to k6 table values
+          sse_count=$(wc -l < "${sse_processing_ms}")
+          sse_count="${sse_count//[[:space:]]/}"
+          k6_count=$(wc -l < "${processing_ms}")
+          k6_count="${k6_count//[[:space:]]/}"
 
-          if [[ "${count}" -eq 0 ]]; then
+          if [[ "${sse_count}" -gt 0 ]]; then
+            echo "Using SSE client metrics (${sse_count} samples) as primary source."
+            cp "${sse_processing_ms}" "${processing_ms_sorted}.unsorted"
+            metrics_source="sse"
+          elif [[ "${k6_count}" -gt 0 ]]; then
+            echo "SSE client metrics not available, falling back to k6 table values (${k6_count} samples)."
+            cp "${processing_ms}" "${processing_ms_sorted}.unsorted"
+            metrics_source="k6"
+          else
             echo "Could not extract per-payload processing_ms rows from benchmark output."
             {
               echo "TAG=${TAG}"
@@ -1502,7 +1559,9 @@ jobs:
             exit 1
           fi
 
-          sort -n "${processing_ms}" > "${processing_ms_sorted}"
+          count=$(wc -l < "${processing_ms_sorted}.unsorted")
+          count="${count//[[:space:]]/}"
+          sort -n "${processing_ms_sorted}.unsorted" > "${processing_ms_sorted}"
 
           min=$(head -n 1 "${processing_ms_sorted}")
           max=$(tail -n 1 "${processing_ms_sorted}")
@@ -1539,6 +1598,7 @@ jobs:
             echo "P99=${p99}"
             echo "MIN=${min}"
             echo "MAX=${max}"
+            echo "METRICS_SOURCE=${metrics_source}"
           } > "${metrics_dir}/metrics.env"
 
           echo "Metrics for ${TAG} run ${RUN}:"
