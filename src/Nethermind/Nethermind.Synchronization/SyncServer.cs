@@ -559,7 +559,7 @@ namespace Nethermind.Synchronization
 
         public void StopNotifyingPeersAboutNewBlocks()
         {
-            if (_gossipStopped == false)
+            if (!_gossipStopped)
             {
                 _blockTree.NewHeadBlock -= OnNewHeadBlock;
                 _pool.NotifyPeerBlock -= OnNotifyPeerBlock;

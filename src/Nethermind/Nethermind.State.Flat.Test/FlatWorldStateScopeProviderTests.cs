@@ -4,10 +4,8 @@
 using System;
 using System.Threading;
 using Autofac;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;

@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Microsoft.AspNetCore.Http;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
