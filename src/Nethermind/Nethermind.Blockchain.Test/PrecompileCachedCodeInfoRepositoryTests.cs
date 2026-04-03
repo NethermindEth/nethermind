@@ -14,7 +14,6 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 

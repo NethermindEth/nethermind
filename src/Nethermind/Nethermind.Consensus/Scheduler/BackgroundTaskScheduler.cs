@@ -58,7 +58,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                 SingleWriter = false,
                 AllowSynchronousContinuations = false
             });
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BackgroundTaskScheduler>();
         _branchProcessor = branchProcessor;
         _headInfo = headInfo;
         _capacity = capacity;
@@ -279,7 +279,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
 
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BelowNormalPriorityTaskScheduler>();
             _maxDegreeOfParallelism = maxDegreeOfParallelism;
             workerThreads = [.. Enumerable.Range(0, maxDegreeOfParallelism)
                             .Select(i =>

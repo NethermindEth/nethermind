@@ -91,7 +91,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _improvementToken = cts.Token;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterBlockImprovementContext>();
         _blockProducer = blockProducer;
         _txSignal = shutterTxSignal;
         _shutterConfig = shutterConfig;

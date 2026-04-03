@@ -13,7 +13,7 @@ namespace Nethermind.TxPool.Filters
     internal sealed class GasLimitTxFilter(IChainHeadInfoProvider chainHeadInfoProvider, ITxPoolConfig txPoolConfig, ILogManager logManager)
         : IIncomingTxFilter
     {
-        private readonly ILogger _logger = logManager.GetClassLogger();
+        private readonly ILogger _logger = logManager.GetClassLogger<GasLimitTxFilter>();
         private readonly long _configuredGasLimit = txPoolConfig.GasLimit ?? long.MaxValue;
 
         public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)

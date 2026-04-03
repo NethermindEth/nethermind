@@ -25,7 +25,7 @@ public class MergeBetterPeerStrategy : IBetterPeerStrategy
         _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
         _poSSwitcher = poSSwitcher;
         _beaconPivot = beaconPivot;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<MergeBetterPeerStrategy>();
     }
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>

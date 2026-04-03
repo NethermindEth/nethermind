@@ -168,7 +168,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
 #endif
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
     ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
@@ -318,7 +318,7 @@ void ConfigureLogger(ParseResult parseResult)
 
     using NLogManager logManager = new();
 
-    logger = logManager.GetClassLogger();
+    logger = logManager.GetClassLogger<Program>();
 
     string? logLevel = parseResult.GetValue(BasicOptions.LogLevel);
 
@@ -468,7 +468,7 @@ ILogger GetCriticalLogger()
 {
     try
     {
-        return new NLogManager("nethermind.log").GetClassLogger();
+        return new NLogManager("nethermind.log").GetClassLogger<Program>();
     }
     catch
     {

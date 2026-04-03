@@ -40,7 +40,7 @@ namespace Nethermind.Runner.JsonRpc
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonRpcProcessor = jsonRpcProcessor;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<JsonRpcIpcRunner>();
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
             _fileSystem = fileSystem;

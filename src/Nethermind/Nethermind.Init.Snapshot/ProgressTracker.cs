@@ -21,7 +21,7 @@ public class ProgressTracker : IDisposable
         _total = total;
         _current = current;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ProgressTracker>();
 
         _timer = timerFactory.CreateTimer(interval);
         _timer.Elapsed += ReportProgress;

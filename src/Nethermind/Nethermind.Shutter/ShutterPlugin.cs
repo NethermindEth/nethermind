@@ -42,7 +42,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _logger = nethermindApi.LogManager.GetClassLogger();
+        _logger = nethermindApi.LogManager.GetClassLogger<ShutterPlugin>();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }

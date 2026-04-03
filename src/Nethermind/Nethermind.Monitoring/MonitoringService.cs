@@ -56,7 +56,7 @@ public class MonitoringService : IMonitoringService, IAsyncDisposable
 
         _logger = logManager is null
             ? throw new ArgumentNullException(nameof(logManager))
-            : logManager.GetClassLogger();
+            : logManager.GetClassLogger<MonitoringService>();
         _options = GetOptions(metricsConfig);
     }
 
