@@ -37,7 +37,7 @@ public class BlockchainProcessorTests
     [TestCase("default_either")]
     public void LogDiagnosticTrace_does_not_throw_for_edge_cases(string variant)
     {
-        ILogger logger = LimboLogs.Instance.GetClassLogger();
+        ILogger logger = LimboLogs.Instance.GetClassLogger<BlockchainProcessorTests>();
         Either<Hash256, IList<Block>> input = variant == "null_hash"
             ? (Hash256)null!  // intentionally null to test null-safety
             : default!;
