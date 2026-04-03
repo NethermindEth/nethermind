@@ -43,29 +43,49 @@ public class ParallelBlockExecutionContext
     /// Dump the overlay into a write batch and clear it.
     /// Called by the decorator's <c>StartWriteBatch</c>.
     /// </summary>
+    /// <summary>
+    /// Dump the overlay into the inner scope and clear it.
+    /// Accounts + code are written in a separate write batch first (committed on dispose)
+    /// so that flat DB's <c>CreateStorageWriteBatch</c> can verify account existence.
+    /// Storage is written into the provided <paramref name="writeBatch"/>.
+    /// </summary>
     public void DumpAndClear(
         Evm.State.IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch,
         Evm.State.IWorldStateScopeProvider.IScope scope)
     {
-        foreach (KeyValuePair<AddressAsKey, Account?> kv in AccountOverlay)
-            writeBatch.Set(kv.Key, kv.Value);
+        if (AccountOverlay.Count == 0 && StorageOverlay.Count == 0 && CodeOverlay.Count == 0)
+            return;
 
-        // Group storage writes by address
-        Dictionary<Address, List<(UInt256 Index, byte[] Value)>>? storageByAddress = null;
-        foreach (KeyValuePair<StorageCell, byte[]> kv in StorageOverlay)
+        // Pass 1: accounts + code in a separate batch (committed on dispose)
+        // so they're visible when CreateStorageWriteBatch verifies in flat DB
+        using (Evm.State.IWorldStateScopeProvider.IWorldStateWriteBatch accountBatch = scope.StartWriteBatch(AccountOverlay.Count))
         {
-            storageByAddress ??= [];
-            StorageCell cell = kv.Key;
-            if (!storageByAddress.TryGetValue(cell.Address, out List<(UInt256, byte[])>? list))
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in AccountOverlay)
+                accountBatch.Set(kv.Key, kv.Value);
+
+            if (CodeOverlay.Count > 0)
             {
-                list = [];
-                storageByAddress[cell.Address] = list;
+                using Evm.State.IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();
+                foreach (KeyValuePair<ValueHash256, byte[]> kv in CodeOverlay)
+                    codeSetter.Set(kv.Key, kv.Value);
             }
-            list.Add((cell.Index, kv.Value));
         }
 
-        if (storageByAddress is not null)
+        // Pass 2: storage in the main write batch (accounts now committed)
+        if (StorageOverlay.Count > 0)
         {
+            Dictionary<Address, List<(UInt256 Index, byte[] Value)>> storageByAddress = [];
+            foreach (KeyValuePair<StorageCell, byte[]> kv in StorageOverlay)
+            {
+                StorageCell cell = kv.Key;
+                if (!storageByAddress.TryGetValue(cell.Address, out List<(UInt256, byte[])>? list))
+                {
+                    list = [];
+                    storageByAddress[cell.Address] = list;
+                }
+                list.Add((cell.Index, kv.Value));
+            }
+
             foreach (KeyValuePair<Address, List<(UInt256 Index, byte[] Value)>> kv in storageByAddress)
             {
                 using Evm.State.IWorldStateScopeProvider.IStorageWriteBatch storageBatch =
@@ -73,13 +93,6 @@ public class ParallelBlockExecutionContext
                 foreach ((UInt256 index, byte[] value) in kv.Value)
                     storageBatch.Set(index, value);
             }
-        }
-
-        if (CodeOverlay.Count > 0)
-        {
-            using Evm.State.IWorldStateScopeProvider.ICodeSetter codeSetter = scope.CodeDb.BeginCodeWrite();
-            foreach (KeyValuePair<ValueHash256, byte[]> kv in CodeOverlay)
-                codeSetter.Set(kv.Key, kv.Value);
         }
 
         AccountOverlay.Clear();
