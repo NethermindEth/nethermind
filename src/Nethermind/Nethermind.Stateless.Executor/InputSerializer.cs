@@ -10,6 +10,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Stateless.Execution;
 
+/// <summary>
+/// Provides methods for zkVM input serialization. <see cref="Witness.Keys"/> are ignored.
+/// </summary>
 public static class InputSerializer
 {
     public static byte[] Serialize(Block block, Witness witness, ulong chainId)
