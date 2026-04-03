@@ -65,4 +65,7 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(Description = "The max blob count after which the block producer should stop adding blobs. Minimum value is `0`.", DefaultValue = "null")]
     int? BlockProductionBlobLimit { get; set; }
+
+    [ConfigItem(Description = "Whether to use parallel transaction execution during block validation. Transactions are executed in parallel on separate state copies and state diffs are applied sequentially, re-executing on conflict.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ParallelBlockValidation { get; set; }
 }

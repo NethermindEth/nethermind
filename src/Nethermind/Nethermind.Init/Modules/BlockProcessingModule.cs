@@ -83,10 +83,6 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .Map<IBlockProcessingQueue, MainProcessingContext>(ctx => (IBlockProcessingQueue)ctx.BlockchainProcessor)
             .Bind<IMainProcessingContext, MainProcessingContext>()
 
-            // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
-            // modules in case they have special case where it only apply to validation and rpc but not block producer.
-            .AddSingleton<IBlockValidationModule, StandardBlockValidationModule>()
-
             // Block production components
             .AddSingleton<IRewardCalculatorSource>(NoBlockRewards.Instance)
             .AddSingleton<ISealValidator>(NullSealEngine.Instance)
@@ -121,6 +117,12 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 .AddScoped<IProducedBlockSuggester, ProducedBlockSuggester>();
         }
 
+        // Some configuration that applies to validation and rpc but not to block producer. Plugins can add
+        // modules in case they have special case where it only apply to validation and rpc but not block producer.
+        // When Blocks.ParallelBlockValidation is enabled, a ParallelBlockValidationModule is added as an additional
+        // IBlockValidationModule. Its registrations load after StandardBlockValidationModule and override it.
+        builder.AddSingleton<IBlockValidationModule, StandardBlockValidationModule>();
+
         if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
     }
 
@@ -130,4 +132,5 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
             .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
+
 }
