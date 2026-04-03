@@ -39,7 +39,7 @@ namespace Ethereum.Test.Base
         static GeneralStateTestBase()
         {
             _logManager ??= LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
             KzgPolynomialCommitments.InitializeAsync().Wait();
         }
 
@@ -51,7 +51,7 @@ namespace Ethereum.Test.Base
         protected static void Setup(ILogManager? logManager)
         {
             _logManager = logManager ?? LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<GeneralStateTestBase>();
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
@@ -102,6 +102,8 @@ namespace Ethereum.Test.Base
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
+
+            Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
 
             if (test.Transaction.ChainId is null)
             {
@@ -180,7 +182,8 @@ namespace Ethereum.Test.Base
                 }
                 else
                 {
-                    stateProvider.Reset();
+                    stateProvider.Restore(preExecutionSnapshot);
+                    stateProvider.RecalculateStateRoot();
                 }
             }
 

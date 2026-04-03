@@ -31,6 +31,8 @@ using DataCompletion = System.Threading.Tasks.TaskCompletionSource<byte[]>;
 
 namespace Nethermind.Runner.Monitoring;
 
+using Nethermind.Core.Extensions;
+
 public class DataFeed
 {
     public static long StartTime { get; set; }
@@ -68,7 +70,7 @@ public class DataFeed
         _receiptFinder = receiptFinder;
         _syncPeerPool = syncPeerPool;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DataFeed>();
 
         mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;
@@ -182,7 +184,7 @@ public class DataFeed
     {
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 
@@ -212,7 +214,7 @@ public class DataFeed
 
     private async Task<byte[]> GetStatsTask(int delayMs)
     {
-        await Task.Delay(delayMs);
+        await TaskExtensions.DelaySafe(delayMs, _lifetime);
 
         Environment.ProcessCpuUsage cpuUsage = Environment.CpuUsage;
         long timeStamp = Stopwatch.GetTimestamp();
@@ -239,7 +241,7 @@ public class DataFeed
         _lastTimeStamp = Stopwatch.GetTimestamp();
         while (!_lifetime.IsCancellationRequested)
         {
-            await Task.Delay(millisecondsDelay: 1000);
+            await TaskExtensions.DelaySafe(millisecondsDelay: 1000, _lifetime);
             // No subscribers, no need to prepare event data
             if (!HaveSubscribers) continue;
 

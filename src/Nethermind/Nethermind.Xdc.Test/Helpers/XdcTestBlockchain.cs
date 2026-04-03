@@ -3,12 +3,8 @@
 
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -17,19 +13,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
-using Nethermind.Facade.Find;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
-using Nethermind.State.Repositories;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.TxPool;
@@ -39,7 +30,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Test.Modules;
 
 namespace Nethermind.Xdc.Test.Helpers;
 
@@ -180,16 +170,6 @@ public class XdcTestBlockchain : TestBlockchain
 
             .AddSingleton<ITxPool>((ctx) =>
             {
-                var gossipPolicy = ctx.Resolve<ITxGossipPolicy>();
-
-                var compoundPolicy = new CompositeTxGossipPolicy();
-                if (gossipPolicy != null)
-                {
-                    compoundPolicy.Policies.Add(gossipPolicy);
-                }
-
-                compoundPolicy.Policies.Add(new XdcTxGossipPolicy(SpecProvider, ctx.Resolve<IChainHeadInfoProvider>()));
-
                 Nethermind.TxPool.TxPool txPool = new(ctx.Resolve<IEthereumEcdsa>()!,
                     ctx.Resolve<IBlobTxStorage>() ?? NullBlobTxStorage.Instance,
                     ctx.Resolve<IChainHeadInfoProvider>(),
@@ -197,7 +177,7 @@ public class XdcTestBlockchain : TestBlockchain
                     ctx.Resolve<ITxValidator>(),
                     ctx.Resolve<ILogManager>(),
                     new XdcTransactionComparerProvider(SpecProvider, BlockTree).GetDefaultComparer(),
-                    compoundPolicy,
+                    ctx.Resolve<ITxGossipPolicy>(),
                     new SignTransactionFilter(SnapshotManager, BlockTree, SpecProvider),
                     ctx.Resolve<ITxValidator>()
                 );

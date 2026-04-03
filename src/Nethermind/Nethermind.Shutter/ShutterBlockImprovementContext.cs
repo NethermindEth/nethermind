@@ -6,6 +6,7 @@ using Nethermind.Shutter.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using System;
@@ -28,18 +29,18 @@ public class ShutterBlockImprovementContextFactory(
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationTokenSource cts) =>
+        SharedCancellationTokenSource cts) =>
         new ShutterBlockImprovementContext(blockProducer,
-                                           shutterTxSource,
-                                           shutterConfig,
-                                           time,
-                                           currentBestBlock,
-                                           parentHeader,
-                                           payloadAttributes,
-                                           startDateTime,
-                                           slotLength,
-                                           logManager,
-                                           cts);
+            shutterTxSource,
+            shutterConfig,
+            time,
+            currentBestBlock,
+            parentHeader,
+            payloadAttributes,
+            startDateTime,
+            slotLength,
+            logManager,
+            cts);
 }
 
 public class ShutterBlockImprovementContext : IBlockImprovementContext
@@ -53,7 +54,8 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
 
     public UInt256 BlockFees => 0;
 
-    private readonly CancellationTokenSource _improvementCancellation;
+    private readonly SharedCancellationTokenSource _improvementCancellation;
+    private readonly CancellationToken _improvementToken;
     private CancellationTokenSource? _linkedCancellation;
     private readonly ILogger _logger;
     private readonly IBlockProducer _blockProducer;
@@ -76,7 +78,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         DateTimeOffset startDateTime,
         TimeSpan slotLength,
         ILogManager logManager,
-        CancellationTokenSource cts)
+        SharedCancellationTokenSource cts)
     {
         if (slotLength == TimeSpan.Zero)
         {
@@ -86,9 +88,10 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         _slotTimestampMs = payloadAttributes.Timestamp * 1000;
 
         _improvementCancellation = cts;
+        _improvementToken = cts.Token;
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ShutterBlockImprovementContext>();
         _blockProducer = blockProducer;
         _txSignal = shutterTxSignal;
         _shutterConfig = shutterConfig;
@@ -100,7 +103,7 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         ImprovementTask = Task.Run(ImproveBlock);
     }
 
-    public void CancelOngoingImprovements() => _improvementCancellation.Cancel();
+    public void CancelOngoingImprovements() => _improvementCancellation.CancelAndDispose();
 
     public void Dispose()
     {
@@ -142,12 +145,13 @@ public class ShutterBlockImprovementContext : IBlockImprovementContext
         if (_logger.IsDebug) _logger.Debug($"Awaiting Shutter decryption keys for {slot} at offset {offset}ms. Timeout in {waitTime}ms...");
 
         using var txTimeout = new CancellationTokenSource((int)waitTime);
-        _linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementCancellation.Token, txTimeout.Token);
+        CancellationTokenSource linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(_improvementToken, txTimeout.Token);
+        _linkedCancellation = linkedCancellation;
 
         try
         {
-            _linkedCancellation.Token.ThrowIfCancellationRequested();
-            await _txSignal.WaitForTransactions(slot, _linkedCancellation.Token);
+            linkedCancellation.Token.ThrowIfCancellationRequested();
+            await _txSignal.WaitForTransactions(slot, linkedCancellation.Token);
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {

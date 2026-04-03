@@ -28,7 +28,7 @@ public class L2Api(
     ILogManager logManager) : IL2Api
 {
     private const int L2ApiRetryDelayMilliseconds = 1000;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<L2Api>();
 
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {

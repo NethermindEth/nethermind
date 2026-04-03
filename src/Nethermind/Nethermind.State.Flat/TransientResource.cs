@@ -8,7 +8,6 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.Trie;
@@ -32,8 +31,8 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
 
     public int CachedNodes => Nodes.Count;
 
-    public ConcurrentDictionary<TreePath, TrieNode> ReadStateNodes = new();
-    public ConcurrentDictionary<(Hash256AsKey, TreePath), TrieNode> ReadStorageNodes = new();
+    public ConcurrentDictionary<HashedKey<TreePath>, TrieNode> ReadStateNodes = new();
+    public ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> ReadStorageNodes = new();
 
     public void Reset()
     {

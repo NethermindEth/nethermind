@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -234,7 +232,6 @@ public class SnapshotCompactorTests
         Assert.That(compacted.StoragesCount, Is.EqualTo(1));
         AssertSlotValueEqual(slotValue2, compacted.Content.Storages[(address, storageIndex)]);
 
-        Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
         Assert.That(compacted.StateNodesCount, Is.EqualTo(1));
         Assert.That(compacted.StorageNodesCount, Is.EqualTo(1));
     }

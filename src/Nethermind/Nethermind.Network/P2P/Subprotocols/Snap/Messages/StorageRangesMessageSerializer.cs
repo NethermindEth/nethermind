@@ -5,7 +5,6 @@ using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -59,28 +58,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
         public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
 
-            ctx.ReadSequenceLength();
-
             StorageRangeMessage message = new();
-            message.RequestId = ctx.DecodeLong();
 
-            message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
-                outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
-                {
-                    innerCtx.ReadSequenceLength();
-                    Hash256 path = innerCtx.DecodeKeccak();
-                    byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
-                    return new PathWithStorageSlot(in path.ValueHash256, value);
-                }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
-            message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+            try
+            {
+                ctx.ReadSequenceLength();
+                message.RequestId = ctx.DecodeLong();
 
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                message.Slots = ctx.DecodeArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(static (ref Rlp.ValueDecoderContext outerCtx) =>
+                    outerCtx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext innerCtx) =>
+                    {
+                        innerCtx.ReadSequenceLength();
+                        Hash256 path = innerCtx.DecodeKeccak();
+                        byte[] value = innerCtx.DecodeByteArray(StorageSlotValueRlpLimit);
+                        return new PathWithStorageSlot(in path.ValueHash256, value);
+                    }, limit: SnapMessageLimits.StorageRangeSlotsPerAccountRlpLimit), limit: SnapMessageLimits.StorageRangeAccountsRlpLimit);
+                message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
 
-            return message;
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+
+                return message;
+            }
+            catch
+            {
+                message.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
 
         private static (int contentLength, int allSlotsLength, int[] accountSlotsLengths) CalculateLengths(StorageRangeMessage message)

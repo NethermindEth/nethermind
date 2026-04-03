@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Processing
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<ProcessingStats>();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -85,15 +85,15 @@ namespace Nethermind.Consensus.Processing
 
         public void CaptureStartStats()
         {
-            _startSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            _startSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            _startCallOps = Evm.Metrics.ThreadLocalCalls;
-            _startEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            _startCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            _startCreateOps = Evm.Metrics.ThreadLocalCreates;
-            _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
-            _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            _startSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            _startCallOps = Evm.Metrics.MainThreadCalls;
+            _startEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            _startCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            _startContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            _startCreateOps = Evm.Metrics.MainThreadCreates;
+            _startSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            _startOpCodes = Evm.Metrics.MainThreadOpCodes;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -115,15 +115,15 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCreateOps = _startCreateOps;
             blockData.StartSelfDestructOps = _startSelfDestructOps;
             blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
-            blockData.CurrentOpCodes = Evm.Metrics.ThreadLocalOpCodes;
-            blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
-            blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            blockData.CurrentCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
-            blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            blockData.CurrentOpCodes = Evm.Metrics.MainThreadOpCodes;
+            blockData.CurrentSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            blockData.CurrentSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            blockData.CurrentCallOps = Evm.Metrics.MainThreadCalls;
+            blockData.CurrentEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            blockData.CurrentCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
+            blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
 
             CaptureReportData(blockData);
         }

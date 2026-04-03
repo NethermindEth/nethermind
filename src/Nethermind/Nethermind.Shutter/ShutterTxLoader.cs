@@ -43,7 +43,7 @@ public class ShutterTxLoader(
     private bool _loadFromReceipts = false;
     private readonly int _maxTransactions = cfg.EncryptedGasLimit / 21000;
     private readonly ShutterTxFilter _txFilter = new(specProvider, logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterTxLoader>();
 
     public ShutterTransactions LoadTransactions(Block? head, BlockHeader parentHeader, IShutterKeyValidator.ValidatedKeys keys)
     {

@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -61,7 +62,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private long? LastBlockThatEnabledFullSync { get; set; }
         private int TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
-        private readonly CancellationTokenSource _cancellation = new();
+        private CancellationTokenSource? _cancellation = new();
 
         public event EventHandler<SyncModeChangedEventArgs>? Preparing;
         public event EventHandler<SyncModeChangedEventArgs>? Changing;
@@ -77,7 +78,7 @@ namespace Nethermind.Synchronization.ParallelSync
             IBetterPeerStrategy betterPeerStrategy,
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<MultiSyncModeSelector>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -93,12 +94,12 @@ namespace Nethermind.Synchronization.ParallelSync
 
             _isSnapSyncDisabledAfterAnyStateSync = _syncProgressResolver.FindBestFullState() != 0;
 
-            _ = StartAsync(_cancellation.Token);
+            _ = StartAsync(_cancellation?.Token ?? CancellationToken.None);
         }
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {
-            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs));
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
@@ -121,7 +122,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public Task StopAsync()
         {
-            return _cancellation.CancelAsync();
+            return _cancellation?.CancelAsync() ?? Task.CompletedTask;
         }
 
         string IStoppableService.Description => "sync mode selector";
@@ -697,7 +698,10 @@ namespace Nethermind.Synchronization.ParallelSync
             return (maxPeerDifficulty, number);
         }
 
-        public void Dispose() => _cancellation.Dispose();
+        public void Dispose()
+        {
+            CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
+        }
 
         private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
         {

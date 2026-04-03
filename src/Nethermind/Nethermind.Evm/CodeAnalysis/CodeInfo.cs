@@ -34,6 +34,13 @@ public class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _analyzer = null;
     }
 
+    protected CodeInfo(IPrecompile precompile, ReadOnlyMemory<byte> code)
+    {
+        Precompile = precompile;
+        Code = code;
+        _analyzer = null;
+    }
+
     public ReadOnlyMemory<byte> Code { get; }
     public ReadOnlySpan<byte> CodeSpan => Code.Span;
 

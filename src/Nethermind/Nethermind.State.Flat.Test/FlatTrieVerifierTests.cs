@@ -3,19 +3,16 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -33,7 +30,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     private RawScopedTrieStore _trieStore = null!;
     private StateTree _stateTree = null!;
     private ILogManager _logManager = null!;
-    private TestMemColumnsDb<FlatDbColumns> _columnsDb = null!;
+    private SnapshotableMemColumnsDb<FlatDbColumns> _columnsDb = null!;
     private IPersistence _persistence = null!;
 
     [SetUp]
@@ -44,7 +41,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         _stateTree = new StateTree(_trieStore, LimboLogs.Instance);
         _logManager = LimboLogs.Instance;
 
-        _columnsDb = new TestMemColumnsDb<FlatDbColumns>();
+        _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _persistence = layout == FlatLayout.PreimageFlat
             ? new PreimageRocksdbPersistence(_columnsDb)
             : new RocksDbPersistence(_columnsDb);
@@ -82,7 +79,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
     {
-        TestMemDb storageDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Storage);
+        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
 
         ValueHash256 addrHash;
         ValueHash256 slotHash;
@@ -111,7 +108,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
 
     private void CorruptAccountInFlat(Address address, Account corruptedAccount)
     {
-        TestMemDb accountDb = (TestMemDb)_columnsDb.GetColumnDb(FlatDbColumns.Account);
+        IDb accountDb = _columnsDb.GetColumnDb(FlatDbColumns.Account);
         ValueHash256 addrKey = layout == FlatLayout.PreimageFlat
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);

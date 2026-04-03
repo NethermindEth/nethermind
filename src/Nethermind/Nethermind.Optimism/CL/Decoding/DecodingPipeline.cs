@@ -15,7 +15,7 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
     private readonly Channel<DaDataSource> _inputChannel = Channel.CreateUnbounded<DaDataSource>();
     private readonly Channel<(BatchV1, ulong)> _outputChannel = Channel.CreateUnbounded<(BatchV1, ulong)>();
     private readonly IFrameQueue _frameQueue = new FrameQueue(logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DecodingPipeline>();
 
     public ChannelWriter<DaDataSource> DaDataWriter => _inputChannel.Writer;
     public ChannelReader<(BatchV1, ulong)> DecodedBatchesReader => _outputChannel.Reader;

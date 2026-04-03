@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain
         public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, ILogManager? logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ReceiptCanonicalityMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _receiptStorage.NewCanonicalReceipts += OnBlockAddedToMain;
         }
 

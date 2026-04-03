@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.Exists(FilePath).Returns(true);
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
-            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
+            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
             filter.AcceptMethod(methodName).Should().Be(expectedResult);
         }
 
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.Exists(FilePath).Returns(true);
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { "eth*", "debug*" });
 
-            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
+            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
             filter.AcceptMethod("eth_blockNumber").Should().BeTrue();
             filter.AcceptMethod("debug_trace").Should().BeTrue();
         }
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             fileSystemSub.File.Exists(FilePath).Returns(true);
             fileSystemSub.File.ReadLines(FilePath).Returns(new[] { regex });
 
-            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger());
+            RpcMethodFilter filter = new(FilePath, fileSystemSub, LimboLogs.Instance.GetClassLogger<RpcMethodFilterTests>());
             filter.AcceptMethod(method).Should().Be(expectedResult);
         }
     }
