@@ -269,7 +269,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
                     _ => throw new ArgumentOutOfRangeException(nameof(synchronizerType), synchronizerType, null)
                 };
 
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<ContainerDependencies>();
             ISyncConfig syncConfig = GetSyncConfig();
             IMergeConfig mergeConfig = new MergeConfig();
             IPruningConfig pruningConfig = new PruningConfig()

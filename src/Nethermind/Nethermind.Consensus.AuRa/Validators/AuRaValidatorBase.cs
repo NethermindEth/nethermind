@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AuRaValidatorBase>() ?? throw new ArgumentNullException(nameof(logManager));
             InitBlockNumber = startBlockNumber;
             ForSealing = forSealing;
         }

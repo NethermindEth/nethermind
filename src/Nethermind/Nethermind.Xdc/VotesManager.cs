@@ -15,6 +15,7 @@ using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -138,35 +139,48 @@ internal class VotesManager(
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
-    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc) => VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc);
-    public bool VerifyVotingRules(XdcBlockHeader header) => VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert);
-    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc)
+    public bool VerifyVotingRules(BlockRoundInfo roundInfo, QuorumCertificate qc, out string? error) =>
+        VerifyVotingRules(roundInfo.Hash, roundInfo.BlockNumber, roundInfo.Round, qc, out error);
+
+    public bool VerifyVotingRules(XdcBlockHeader header, [NotNullWhen(false)] out string? error) =>
+        VerifyVotingRules(header.Hash, header.Number, header.ExtraConsensusData.BlockRound, header.ExtraConsensusData.QuorumCert, out error);
+
+    public bool VerifyVotingRules(Hash256 blockHash, long blockNumber, ulong roundNumber, QuorumCertificate qc, out string? error)
     {
         if ((long)_ctx.CurrentRound <= _highestVotedRound)
         {
+            error = $"Already voted at round {_highestVotedRound}, current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (roundNumber != _ctx.CurrentRound)
         {
+            error = $"Vote round {roundNumber} does not match current round {_ctx.CurrentRound}";
             return false;
         }
 
         if (_ctx.LockQC is null)
         {
+            error = null;
             return true;
         }
 
         if (qc.ProposedBlockInfo.Round > _ctx.LockQC.ProposedBlockInfo.Round)
         {
+            error = null;
             return true;
         }
 
-        if (!IsExtendingFromAncestor(blockHash, blockNumber, _ctx.LockQC.ProposedBlockInfo))
+        BlockRoundInfo locked = _ctx.LockQC.ProposedBlockInfo;
+        if (!IsExtendingFromAncestor(blockHash, blockNumber, locked))
         {
+            error =
+                $"Block {blockHash} (number {blockNumber}, round {roundNumber}) does not extend from locked QC block " +
+                $"{locked.Hash}(number {locked.BlockNumber}, round {locked.Round})";
             return false;
         }
 
+        error = null;
         return true;
     }
 

@@ -20,6 +20,7 @@ using Nethermind.Xdc.Types;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Xdc.Test.P2P;
 
@@ -41,10 +42,17 @@ public class XdcProtocolHandlerTests
         INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
         nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(Substitute.For<INodeStats>());
 
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        var headHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        var headBlock = Build.A.Block.WithHeader(headHeader).TestObject;
+        blockTree.Head.Returns(headBlock);
+        blockTree.FindBestSuggestedHeader().Returns(headHeader);
+
         XdcProtocolHandler handler = new(
             timeoutManager,
             votesManager,
             syncInfoManager,
+            blockTree,
             session,
             serializer,
             nodeStatsManager,

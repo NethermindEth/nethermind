@@ -21,7 +21,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
         {
             _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SubscriptionManager>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)

@@ -31,7 +31,8 @@ namespace Nethermind.Consensus.Processing
             : IBlockProductionTransactionsExecutor
         {
             private readonly IBlockAccessListBuilder? _balBuilder = stateProvider as IBlockAccessListBuilder;
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
+            private readonly IReadOnlyStateProvider _txSelectionStateProvider = stateProvider.GetUntrackedReader();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
@@ -96,7 +97,7 @@ namespace Nethermind.Consensus.Processing
                 ProcessingOptions processingOptions,
                 HashSet<Transaction> transactionsInBlock)
             {
-                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);
+                AddingTxEventArgs args = txPicker.CanAddTransaction(block, currentTx, transactionsInBlock, _txSelectionStateProvider);
 
                 if (args.Action != TxAction.Add)
                 {

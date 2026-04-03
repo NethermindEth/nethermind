@@ -6,12 +6,16 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
+using Nethermind.Int256;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -81,49 +85,26 @@ public partial class DebugRpcModuleTests
             response);
     }
 
+    [Test]
+    public async Task Debug_traceBlockByHash_does_not_fail_bal_validation_when_tracing_osaka_block()
+    {
+        using Context context = await Context.Create(new TestSingleReleaseSpecProvider(Osaka.Instance));
+
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        Hash256 blockHash = context.Blockchain.BlockTree.Head!.Hash!;
+        JsonRpcResponse response = await RpcTest.TestRequest(
+            context.DebugRpcModule,
+            "debug_traceBlockByHash",
+            blockHash,
+            new GethTraceOptions { Tracer = NativePrestateTracer.PrestateTracer });
+
+        Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+    }
+
     private static IEnumerable<TestCaseData> TraceBlockSource()
     {
-        Func<TestRpcBlockchain, Transaction[]> transactions = b =>
-        {
-            var nonce = b.ReadOnlyState.GetNonce(TestItem.AddressA);
-            var contract = Prepare.EvmCode
-                .PushData(0)
-                .PushData(32)
-                .Op(Instruction.SSTORE)
-                .Op(Instruction.STOP)
-                .Done;
-
-            var salt = new byte[32];
-            var deployment = Prepare.EvmCode
-                .Create2(contract, salt, 0)
-                .Op(Instruction.STOP)
-                .Done;
-
-            Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
-            Address deploymentAddress = ContractAddress.From(deployingContractAddress, salt, contract);
-
-            var call = Prepare.EvmCode
-                .Call(deploymentAddress, 100000)
-                .Op(Instruction.STOP)
-                .Done;
-
-            return
-            [
-                Build.A.Transaction
-                    .WithNonce(nonce)
-                    .WithCode(deployment)
-                    .WithGasLimit(100000)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
-                    .TestObject,
-
-                Build.A.Transaction
-                    .WithNonce(nonce + 1)
-                    .WithCode(call)
-                    .WithGasLimit(100000)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
-                    .TestObject,
-            ];
-        };
+        Func<TestRpcBlockchain, Transaction[]> transactions = CreateTraceBlockTransactions;
 
         yield return new TestCaseData(
             transactions,
@@ -344,6 +325,48 @@ public partial class DebugRpcModuleTests
             """
         )
         { TestName = "Contract with " + NativePrestateTracer.PrestateTracer };
+    }
+
+    private static Transaction[] CreateTraceBlockTransactions(TestRpcBlockchain blockchain)
+    {
+        UInt256 nonce = blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        byte[] contract = Prepare.EvmCode
+            .PushData(0)
+            .PushData(32)
+            .Op(Instruction.SSTORE)
+            .Op(Instruction.STOP)
+            .Done;
+
+        byte[] salt = new byte[32];
+        byte[] deployment = Prepare.EvmCode
+            .Create2(contract, salt, 0)
+            .Op(Instruction.STOP)
+            .Done;
+
+        Address deployingContractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, nonce);
+        Address deploymentAddress = ContractAddress.From(deployingContractAddress, salt, contract);
+
+        byte[] call = Prepare.EvmCode
+            .Call(deploymentAddress, 100000)
+            .Op(Instruction.STOP)
+            .Done;
+
+        return
+        [
+            Build.A.Transaction
+                .WithNonce(nonce)
+                .WithCode(deployment)
+                .WithGasLimit(100000)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject,
+
+            Build.A.Transaction
+                .WithNonce(nonce + 1)
+                .WithCode(call)
+                .WithGasLimit(100000)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject,
+        ];
     }
 
 }

@@ -24,7 +24,7 @@ namespace Nethermind.JsonRpc.Client
         { }
         public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager, TimeSpan timeout)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<BasicJsonRpcClient>() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonSerializer = jsonSerializer;
 
             _client = new HttpClient { BaseAddress = uri };

@@ -95,6 +95,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns storage values for multiple slots across multiple accounts in a single request. Total slot count across all addresses must not exceed 1024.",
+            IsSharable = true,
+            ExampleResponse = "{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x00000000000000000000000000000000000000000000000000000000000f4240\"]}")]
+        ResultWrapper<StorageValuesResult> eth_getStorageValues([JsonRpcParameter(ExampleValue = "[{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x0000000000000000000000000000000000000000000000000000000000000002\"]}]")] StorageValuesRequest requests, BlockParameter blockParameter);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
             IsSharable = true,
             ExampleResponse = "0x3e")]

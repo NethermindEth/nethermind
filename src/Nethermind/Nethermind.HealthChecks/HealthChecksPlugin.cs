@@ -40,7 +40,7 @@ namespace Nethermind.HealthChecks
             _api = api;
             _healthChecksConfig = _api.Config<IHealthChecksConfig>();
             _mergeConfig = _api.Config<IMergeConfig>();
-            _logger = api.LogManager.GetClassLogger();
+            _logger = api.LogManager.GetClassLogger<HealthChecksPlugin>();
 
             //will throw an exception and close app or block until enough disk space is available (LowStorageCheckAwaitOnStartup)
             EnsureEnoughFreeSpace();

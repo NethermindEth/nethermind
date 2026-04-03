@@ -29,7 +29,7 @@ namespace Nethermind.Stats
         public NodeStatsManager(ITimerFactory timerFactory, ILogManager logManager, int maxCount = 10000)
         {
             _maxCount = maxCount;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NodeStatsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _cleanupTimer = timerFactory.CreateTimer(TimeSpan.FromMinutes(10));
             _cleanupTimer.Elapsed += CleanupTimerOnElapsed;
