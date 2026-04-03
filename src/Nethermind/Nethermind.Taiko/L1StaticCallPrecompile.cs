@@ -4,10 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Evm.Precompiles;
+namespace Nethermind.Taiko;
 
 /// <summary>
 /// L1STATICCALL precompile - execute arbitrary read-only calls against L1 contracts.
@@ -26,6 +27,8 @@ namespace Nethermind.Evm.Precompiles;
 public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
 {
     public static readonly L1StaticCallPrecompile Instance = new();
+
+    private const string L1CallFailed = "l1 call failed";
 
     private L1StaticCallPrecompile()
     {
@@ -50,7 +53,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        Metrics.L1StaticCallPrecompile++;
+        L1PrecompileMetrics.L1StaticCallPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: precompile called, input_len={inputData.Length}");
 
         if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
@@ -69,13 +72,13 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
         if (result is null)
         {
             if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: call returned null for target={target}, block={blockNumber}");
-            return Errors.L1CallFailed;
+            return L1CallFailed;
         }
 
         if (result.Length > L1PrecompileConstants.L1StaticCallMaxReturnDataSize)
         {
             if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: return data too large ({result.Length} bytes, max {L1PrecompileConstants.L1StaticCallMaxReturnDataSize})");
-            return Errors.L1CallFailed;
+            return L1CallFailed;
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: success target={target}, block={blockNumber}, return_len={result.Length}");

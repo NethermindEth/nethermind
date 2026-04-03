@@ -16,7 +16,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
@@ -162,6 +162,7 @@ public class TaikoModule : Module
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
 
+            .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())

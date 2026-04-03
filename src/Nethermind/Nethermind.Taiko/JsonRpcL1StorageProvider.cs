@@ -8,7 +8,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
-using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Taiko;
 

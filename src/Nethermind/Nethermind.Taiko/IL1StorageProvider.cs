@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Precompiles;
+namespace Nethermind.Taiko;
 
 /// <summary>
 /// Interface for L1 storage providers that can retrieve storage values from L1 contracts.

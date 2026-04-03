@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;

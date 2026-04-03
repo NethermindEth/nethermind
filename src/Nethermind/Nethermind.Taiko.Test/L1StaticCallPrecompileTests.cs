@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Specs;
+using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test;
+namespace Nethermind.Taiko.Test;
 
 [TestFixture]
 public class L1StaticCallPrecompileTests
@@ -21,7 +20,7 @@ public class L1StaticCallPrecompileTests
     public void Setup()
     {
         _precompile = L1StaticCallPrecompile.Instance;
-        _spec = new ReleaseSpec { IsL1StaticCallEnabled = true };
+        _spec = new TaikoReleaseSpec { IsL1StaticCallEnabled = true, TaikoL2Address = Address.Zero };
         // ILogger is a struct; default value has all Is* = false, so logging is safely no-op.
         L1StaticCallPrecompile.Logger = default;
     }
@@ -74,7 +73,7 @@ public class L1StaticCallPrecompileTests
     {
         byte[] input = new byte[L1PrecompileConstants.AddressBytes]; // 20 bytes, below 52
 
-        (byte[] result, bool success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
@@ -89,7 +88,7 @@ public class L1StaticCallPrecompileTests
         byte[] calldata = [0xDE, 0xAD];
         byte[] input = CreateValidInput(Address.FromNumber(42), (UInt256)1000, calldata);
 
-        (byte[] result, bool success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.True);
         Assert.That(result, Is.EqualTo(expectedReturn));
@@ -102,7 +101,7 @@ public class L1StaticCallPrecompileTests
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        (byte[] result, bool success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
@@ -115,7 +114,7 @@ public class L1StaticCallPrecompileTests
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        (byte[] result, bool success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
@@ -131,11 +130,11 @@ public class L1StaticCallPrecompileTests
         L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning(returnData);
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
 
-        (byte[] result, bool success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.EqualTo(expectedSuccess));
         if (expectedSuccess)
-            Assert.That(result.Length, Is.EqualTo(returnSize));
+            Assert.That(result!.Length, Is.EqualTo(returnSize));
         else
             Assert.That(result, Is.Empty);
     }
@@ -143,8 +142,8 @@ public class L1StaticCallPrecompileTests
     [Test]
     public void IsPrecompile_Active_With_L1StaticCall()
     {
-        IReleaseSpec enabledSpec = new ReleaseSpec { IsL1StaticCallEnabled = true };
-        IReleaseSpec disabledSpec = new ReleaseSpec { IsL1StaticCallEnabled = false };
+        IReleaseSpec enabledSpec = new TaikoReleaseSpec { IsL1StaticCallEnabled = true, TaikoL2Address = Address.Zero };
+        IReleaseSpec disabledSpec = new TaikoReleaseSpec { IsL1StaticCallEnabled = false, TaikoL2Address = Address.Zero };
 
         Address precompileAddress = L1StaticCallPrecompile.Address;
 

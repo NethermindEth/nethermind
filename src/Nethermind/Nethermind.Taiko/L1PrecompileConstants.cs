@@ -3,7 +3,7 @@
 
 using System;
 
-namespace Nethermind.Core;
+namespace Nethermind.Taiko;
 
 /// <summary>
 /// Shared constants for L1SLOAD/L1CALL precompile operations.

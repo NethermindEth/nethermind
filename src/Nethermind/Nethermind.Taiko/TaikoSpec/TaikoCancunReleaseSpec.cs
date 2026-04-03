@@ -15,6 +15,8 @@ public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
     public bool IsShastaEnabled { get; set; }
     public bool UseSurgeGasPriceOracle { get; set; }
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
+    public bool IsRip7728Enabled { get; set; }
+    public bool IsL1StaticCallEnabled { get; set; }
 }
 
 public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec

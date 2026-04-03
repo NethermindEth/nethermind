@@ -4,10 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Evm.Precompiles;
+namespace Nethermind.Taiko;
 
 /// <summary>
 /// L1SLOAD precompile - read storage values from L1 contracts (RIP-7728).
@@ -27,6 +28,8 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
     public static readonly L1SloadPrecompile Instance = new();
 
+    private const string L1StorageAccessFailed = "l1 storage access failed";
+
     private L1SloadPrecompile()
     {
     }
@@ -43,6 +46,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        L1PrecompileMetrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
 
         if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
@@ -61,7 +65,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         if (storageValue is null)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
-            return Errors.L1StorageAccessFailed;
+            return L1StorageAccessFailed;
         }
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: success contract={contractAddress}, key={storageKey}, block={blockNumber}, value={storageValue.Value}");
@@ -72,13 +76,6 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         return output;
     }
 
-    /// <summary>
-    /// Retrieves L1 storage value for the specified contract address, storage key, and block number.
-    /// </summary>
-    /// <param name="contractAddress">The L1 contract address to read storage from</param>
-    /// <param name="storageKey">The storage key to read from the L1 contract</param>
-    /// <param name="blockNumber">The L1 block number to read the storage state from</param>
-    /// <returns>The storage value, or null if access fails</returns>
     private UInt256? GetL1StorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         try

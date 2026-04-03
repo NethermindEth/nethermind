@@ -123,8 +123,6 @@ public class ReleaseSpec : IReleaseSpec
     Array? IReleaseSpec.EvmInstructionsNoTrace { get; set; }
     Array? IReleaseSpec.EvmInstructionsTraced { get; set; }
     public bool IsEip7939Enabled { get; set; }
-    public bool IsRip7728Enabled { get; set; }
-    public bool IsL1StaticCallEnabled { get; set; }
     private FrozenSet<AddressAsKey>? _precompiles;
     FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompilesCache();
     private SpecGasCosts? _gasCosts;
@@ -161,8 +159,6 @@ public class ReleaseSpec : IReleaseSpec
         }
 
         if (IsRip7212Enabled || IsEip7951Enabled) cache.Add(PrecompiledAddresses.P256Verify);
-        if (IsRip7728Enabled) cache.Add(PrecompiledAddresses.L1Sload);
-        if (IsL1StaticCallEnabled) cache.Add(PrecompiledAddresses.L1StaticCall);
 
         return cache.ToFrozenSet();
     }

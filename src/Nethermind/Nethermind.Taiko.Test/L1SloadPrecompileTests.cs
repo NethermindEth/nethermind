@@ -4,12 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
-using Nethermind.Specs;
+using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test;
+namespace Nethermind.Taiko.Test;
 
 [TestFixture]
 public class L1SloadPrecompileTests
@@ -21,7 +20,7 @@ public class L1SloadPrecompileTests
     public void Setup()
     {
         _precompile = L1SloadPrecompile.Instance;
-        _spec = new ReleaseSpec { IsRip7728Enabled = true };
+        _spec = new TaikoReleaseSpec { IsRip7728Enabled = true, TaikoL2Address = Address.Zero };
     }
 
     [Test]
@@ -55,7 +54,7 @@ public class L1SloadPrecompileTests
     {
         // Input too short
         var input = new byte[L1PrecompileConstants.AddressBytes];
-        var (result, success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
@@ -80,12 +79,12 @@ public class L1SloadPrecompileTests
         {
             var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 
-            var (result, success) = _precompile.Run(input, _spec);
+            (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
             Assert.That(success, Is.True);
-            Assert.That(result.Length, Is.EqualTo(32)); // Single storage value (32 bytes)
+            Assert.That(result!.Length, Is.EqualTo(32)); // Single storage value (32 bytes)
 
-            var returnedValue = new UInt256(result.AsSpan(0, 32), isBigEndian: true);
+            var returnedValue = new UInt256(result!.AsSpan(0, 32), isBigEndian: true);
             Assert.That(returnedValue, Is.EqualTo(expectedValue));
         }
         finally
@@ -97,7 +96,7 @@ public class L1SloadPrecompileTests
     [Test]
     public void Run_With_Disabled_Spec_Should_Fail()
     {
-        var disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
+        var disabledSpec = new TaikoReleaseSpec { IsRip7728Enabled = false, TaikoL2Address = Address.Zero };
 
         var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 
@@ -113,7 +112,7 @@ public class L1SloadPrecompileTests
         L1SloadPrecompile.L1StorageProvider = null;
         var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 
-        var (result, success) = _precompile.Run(input, _spec);
+        (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
         Assert.That(success, Is.False);
         Assert.That(result, Is.Empty);
@@ -128,7 +127,7 @@ public class L1SloadPrecompileTests
         {
             var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 
-            var (result, success) = _precompile.Run(input, _spec);
+            (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
             Assert.That(success, Is.False);
             Assert.That(result, Is.Empty);
@@ -142,8 +141,8 @@ public class L1SloadPrecompileTests
     [Test]
     public void IsPrecompile_Active_With_Rip7728()
     {
-        IReleaseSpec enabledSpec = new ReleaseSpec { IsRip7728Enabled = true };
-        IReleaseSpec disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
+        IReleaseSpec enabledSpec = new TaikoReleaseSpec { IsRip7728Enabled = true, TaikoL2Address = Address.Zero };
+        IReleaseSpec disabledSpec = new TaikoReleaseSpec { IsRip7728Enabled = false, TaikoL2Address = Address.Zero };
 
         Address? precompileAddress = L1SloadPrecompile.Address;
 
