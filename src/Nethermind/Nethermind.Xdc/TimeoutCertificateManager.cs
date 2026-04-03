@@ -72,7 +72,8 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
         var CertificateThreshold = spec.CertificateThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
+        var uniqueSignerCount = collectedTimeouts.Where(t => t.Signer is not null).Select(t => t.Signer).Distinct().Count();
+        if (uniqueSignerCount >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
         {
             OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
@@ -90,9 +91,17 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     private void OnTimeoutPoolThresholdReached(IEnumerable<Timeout> timeouts, Timeout timeout)
     {
-        Signature[] signatures = timeouts.Select(t => t.Signature).ToArray();
+        var seenSigners = new HashSet<Address>();
+        var signatures = new List<Signature>();
+        foreach (var t in timeouts)
+        {
+            if (t.Signer is not null && seenSigners.Add(t.Signer))
+    {
+                signatures.Add(t.Signature);
+            }
+        }
 
-        var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
+        var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures.ToArray(), timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
     }
@@ -130,7 +139,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
         var nextEpochCandidates = new HashSet<Address>(snapshot.NextEpochCandidates);
 
-        var signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
         var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
@@ -139,27 +147,23 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
-        {
-            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
-            return false;
-        }
 
         ValueHash256 timeoutMsgHash = ComputeTimeoutMsgHash(timeoutCertificate.Round, timeoutCertificate.GapNumber);
-        bool allValid = true;
-        Parallel.ForEach(signatures,
-            (signature, state) =>
+        HashSet<Address> uniqueSigners = new();
+        foreach (Signature signature in timeoutCertificate.Signatures)
             {
                 Address signer = _ethereumEcdsa.RecoverAddress(signature, in timeoutMsgHash);
                 if (!nextEpochCandidates.Contains(signer))
                 {
-                    allValid = false;
-                    state.Stop();
+                errorMessage = "One or more invalid signatures";
+                return false;
+            }
+            uniqueSigners.Add(signer);
                 }
-            });
-        if (!allValid)
+
+        if (uniqueSigners.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = "One or more invalid signatures";
+            errorMessage = $"Number of unique signers {uniqueSigners.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 
