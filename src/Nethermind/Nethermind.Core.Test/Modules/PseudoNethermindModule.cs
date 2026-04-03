@@ -81,7 +81,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {
                 // Dont want to make it very slow
-                flatDbConfig.TrieWarmerWorkerCount = 2;
+                flatDbConfig.TrieWarmerWorkerCount = 0;
             })
 
             // Rpc
