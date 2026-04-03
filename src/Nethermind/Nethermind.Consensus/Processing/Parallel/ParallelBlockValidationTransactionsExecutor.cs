@@ -86,9 +86,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
     {
         Evm.Metrics.ResetBlockStats();
-        _context.AccountOverlay.Clear();
-        _context.StorageOverlay.Clear();
-        _context.CodeOverlay.Clear();
 
         int txCount = block.Transactions.Length;
         if (txCount == 0) return [];
