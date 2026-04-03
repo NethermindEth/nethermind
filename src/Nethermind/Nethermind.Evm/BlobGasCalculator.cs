@@ -41,9 +41,8 @@ public static class BlobGasCalculator
 
     public static bool TryCalculateFeePerBlobGas(BlockHeader header, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
     {
-        feePerBlobGas = UInt256.MaxValue;
-        return header.ExcessBlobGas is not null
-            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out feePerBlobGas);
+        // null ExcessBlobGas treated as 0 for consistency with CalculateExcessBlobGas
+        return TryCalculateFeePerBlobGas(header.ExcessBlobGas ?? 0, blobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
     public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, UInt256 blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
@@ -117,7 +116,7 @@ public static class BlobGasCalculator
 
         if (releaseSpec.IsEip7918Enabled)
         {
-            TryCalculateFeePerBlobGas(parentBlockHeader, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+            TryCalculateFeePerBlobGas(excessBlobGas, releaseSpec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
             UInt256 floorCost = Eip7918Constants.BlobBaseCost * parentBlockHeader.BaseFeePerGas;
             UInt256 targetCost = Eip4844Constants.GasPerBlob * feePerBlobGas;
 
