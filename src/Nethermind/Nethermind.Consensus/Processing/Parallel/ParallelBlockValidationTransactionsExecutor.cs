@@ -23,7 +23,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Metrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing.Parallel;
 
@@ -102,7 +101,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
 
     public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
     {
-        Metrics.ResetBlockStats();
+        Evm.Metrics.ResetBlockStats();
 
         int txCount = block.Transactions.Length;
         if (txCount == 0) return [];
@@ -199,9 +198,12 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
             bool hasConflict = !parallel.Success
                 || HasConflict(diff, committedWrites, committedStorageWrites);
 
+            Metrics.ParallelStateDiffMergeAttempts++;
+
             if (hasConflict)
             {
                 conflictCount++;
+                Metrics.ParallelStateDiffMergeConflicts++;
 
                 // Re-execute on main world state; capture actual writes via main recorder
                 _mainRecorder.Reset();
@@ -335,7 +337,7 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
 
     private TxReceipt[] FallbackSequentialExecution(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer)
     {
-        Metrics.ResetBlockStats();
+        Evm.Metrics.ResetBlockStats();
 
         for (int i = 0; i < block.Transactions.Length; i++)
         {
