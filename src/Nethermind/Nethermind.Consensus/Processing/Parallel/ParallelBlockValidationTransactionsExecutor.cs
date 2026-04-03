@@ -9,7 +9,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -36,7 +35,6 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
     private readonly IWorldState _mainWorldState;
     private readonly ITransactionProcessorAdapter _mainTransactionProcessor;
     private readonly ISpecProvider _specProvider;
-    private readonly IBlockTree _blockTree;
     private readonly StateDiffRecorder _mainRecorder;
     private readonly ILogger _logger;
     private readonly Worker[] _workers;
@@ -49,19 +47,19 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         IWorldState mainWorldState,
         ITransactionProcessorAdapter mainTransactionProcessor,
         ISpecProvider specProvider,
-        IBlockTree blockTree,
         StateDiffRecorder mainRecorder,
         ILogManager logManager)
     {
         _mainWorldState = mainWorldState;
         _mainTransactionProcessor = mainTransactionProcessor;
         _specProvider = specProvider;
-        _blockTree = blockTree;
         _mainRecorder = mainRecorder;
         _logger = logManager.GetClassLogger<ParallelBlockValidationTransactionsExecutor>();
 
         int parallelismFactor = Environment.ProcessorCount;
         _workers = new Worker[parallelismFactor];
+
+        if (_logger.IsInfo) _logger.Info($"Parallel block validation executor created with {parallelismFactor} workers");
 
         for (int i = 0; i < parallelismFactor; i++)
         {
@@ -107,12 +105,10 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         if (txCount == 0) return [];
 
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-        BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        if (parentHeader is null)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Cannot find parent header for block {block.Number}, falling back to sequential execution");
-            return FallbackSequentialExecution(block, processingOptions, receiptsTracer);
-        }
+
+        // The main world state is already scoped at the parent's state root by BranchProcessor.
+        // Use its current state root to open parallel worker scopes at the same base state.
+        BlockHeader parentHeader = new() { StateRoot = _mainWorldState.StateRoot };
 
         Stopwatch totalSw = Stopwatch.StartNew();
 
@@ -328,27 +324,12 @@ public class ParallelBlockValidationTransactionsExecutor : IBlockProcessor.IBloc
         if (diff.CoinbaseBalanceDelta > UInt256.Zero)
             _mainWorldState.AddToBalance(_coinbaseAddress, diff.CoinbaseBalanceDelta, spec, out _);
 
-        _mainWorldState.Commit(spec, NullStateTracer.Instance);
+        _mainWorldState.Commit(spec, NullStateTracer.Instance, commitRoots: false);
     }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction tx, int index) =>
         throw new InvalidTransactionException(header, $"Transaction {tx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
-
-    private TxReceipt[] FallbackSequentialExecution(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer)
-    {
-        Evm.Metrics.ResetBlockStats();
-
-        for (int i = 0; i < block.Transactions.Length; i++)
-        {
-            Transaction currentTx = block.Transactions[i];
-            TransactionResult result = _mainTransactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _mainWorldState);
-            if (!result)
-                ThrowInvalidTransactionException(result, block.Header, currentTx, i);
-        }
-
-        return [.. receiptsTracer.TxReceipts];
-    }
 
     private readonly record struct ParallelTxResult(bool Success, TransactionResult Result, CapturedReceipt Receipt, TransactionStateDiff Diff);
     private readonly record struct Worker(ILifetimeScope Scope, IWorldState WorldState, ITransactionProcessorAdapter TxProcessor, StateDiffRecorder Recorder);
