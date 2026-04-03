@@ -126,7 +126,50 @@
     "eip158Block": 3,
     "byzantiumBlock": 4,
     "depositContractAddress": "0x0000000000000000000000000000000000000088",
-    "eip1559ElasticityMultiplier": "0x1"
+    "eip1559ElasticityMultiplier": "0x1",
+
+    "eip160Transition": 0,
+
+    "eip145Transition": 0,
+    "eip1014Transition": 0,
+    "eip1052Transition": 0,
+    "eip1234Transition": 0,
+    "eip1283Transition": 0,
+
+    "eip152Transition": 23779191,
+    "eip1108Transition": 23779191,
+    "eip1344Transition": 23779191,
+    "eip1884Transition": 23779191,
+    "eip2028Transition": 999999999999,
+    "eip2200Transition": 23779191,
+
+    "eip2565Transition": 61290000,
+    "eip2718Transition": 61290000,
+    "eip2930Transition": 61290000,
+
+    "eip1559Transition": 71550000,
+    "eip2929Transition": 61290000,
+    "eip3198Transition": 61290000,
+    "eip3529Transition": 61290000,
+    "eip3541Transition": 61290000,
+    "eip3554Transition": 61290000,
+
+    "eip4399Transition": 61290000,
+
+    "eip3651Transition": 61290000,
+    "eip3855Transition": 61290000,
+    "eip3860Transition": 61290000,
+    "eip6049Transition": 61290000,
+
+    "eip1153Transition": 71551800,
+    "eip4844Transition": 71551800,
+    "eip5656Transition": 71551800,
+    "eip6780Transition": 71551800,
+    "eip7516Transition": 71551800,
+
+    "MaxCodeSizeTransition": 3,
+    "MaxCodeSize": 24576,
+    "TipTrc21Fee": 23779191
   },
   "genesis": {
     "nonce": "0x0",
