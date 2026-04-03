@@ -315,7 +315,7 @@ public class Startup : IStartup
                     // Authenticated single responses bypass buffering to avoid double-copy
                     bool bufferResponse = _jsonRpcConfig.BufferResponses && !(jsonRpcUrl.IsAuthenticated && !result.IsCollection);
                     await using Stream stream = bufferResponse ? RecyclableStream.GetStream("http") : null;
-                    CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                    CountingWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingStreamPipeWriter(ctx.Response.Body);
                     try
                     {
                         ctx.Response.ContentType = "application/json";
