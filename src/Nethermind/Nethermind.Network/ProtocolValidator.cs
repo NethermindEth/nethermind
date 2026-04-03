@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -11,7 +12,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using System;
 using System.Text.RegularExpressions;
 
 namespace Nethermind.Network

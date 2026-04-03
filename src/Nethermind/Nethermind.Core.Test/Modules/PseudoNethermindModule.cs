@@ -20,7 +20,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NUnit.Framework;
@@ -81,7 +80,7 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
             .Intercept<IFlatDbConfig>((flatDbConfig) =>
             {
                 // Dont want to make it very slow
-                flatDbConfig.TrieWarmerWorkerCount = 2;
+                flatDbConfig.TrieWarmerWorkerCount = 0;
             })
 
             // Rpc

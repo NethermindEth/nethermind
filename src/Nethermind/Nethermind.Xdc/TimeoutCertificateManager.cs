@@ -36,7 +36,15 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ITimeoutTimer timeoutTimer, ISyncPeerPool syncPeerPool, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISigner signer)
+    public TimeoutCertificateManager(
+        IXdcConsensusContext context,
+        ITimeoutTimer timeoutTimer,
+        ISyncPeerPool syncPeerPool,
+        ISnapshotManager snapshotManager,
+        IEpochSwitchManager epochSwitchManager,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        ISigner signer)
     {
         _consensusContext = context;
         this._timeoutTimer = timeoutTimer;
@@ -113,7 +121,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
     {
-        if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
+        ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeoutCertificate.GapNumber);
@@ -243,8 +251,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         long gapNumber = 0;
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
         if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _consensusContext.CurrentRound);
-        if (_epochSwitchManager.IsEpochSwitchAtRound(_consensusContext.CurrentRound, currentHeader))
+        ulong currentRound = _consensusContext.CurrentRound;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
+        if (_epochSwitchManager.IsEpochSwitchAtRound(currentRound, currentHeader))
         {
             var currentNumber = currentHeader.Number + 1;
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
@@ -259,14 +268,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }
 
-        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, (ulong)gapNumber);
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
-        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, (ulong)gapNumber, isMyVote: true);
+        var timeoutMsg = new Timeout(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
-
-        //TODO: Broadcast _ctx.HighestTC
     }
 
     // Returns true if the signer is within the master node list

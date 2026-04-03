@@ -14,7 +14,6 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Taiko.Config;

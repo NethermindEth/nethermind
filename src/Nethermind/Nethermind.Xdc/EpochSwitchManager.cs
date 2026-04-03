@@ -101,7 +101,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
-        if (_epochSwitches.TryGet(header.Hash, out var epochSwitchInfo))
+        Hash256 headerHash = header.Hash;
+        if (_epochSwitches.TryGet(headerHash, out var epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
@@ -155,7 +156,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             epochSwitchInfo.EpochSwitchParentBlockInfo = header.ExtraConsensusData.QuorumCert.ProposedBlockInfo;
         }
 
-        _epochSwitches.Set(header.Hash, epochSwitchInfo);
+        _epochSwitches.Set(headerHash, epochSwitchInfo);
         return epochSwitchInfo;
     }
 

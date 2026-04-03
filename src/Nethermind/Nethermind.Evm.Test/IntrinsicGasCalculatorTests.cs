@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
