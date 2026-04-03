@@ -6,7 +6,6 @@ using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
 using Nethermind.Trie.Pruning;
-using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Modules;
 

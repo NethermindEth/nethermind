@@ -22,11 +22,8 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test
