@@ -58,6 +58,17 @@
 
 Blob Transaction Ordering, Multiple Accounts (Cancun) (nethermind)
 Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=False, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=False, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=True, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Timestamp, EmptyTxs=False, CanonicalReOrg=True, Invalid P8 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction Nonce, EmptyTxs=False, CanonicalReOrg=False, Invalid P9 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction Signature, EmptyTxs=False, CanonicalReOrg=True, Invalid P9 (Cancun) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction Signature, EmptyTxs=False, CanonicalReOrg=True, Invalid P9 (Paris) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction Nonce, EmptyTxs=False, CanonicalReOrg=False, Invalid P9 (Paris) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction Gas, EmptyTxs=False, CanonicalReOrg=False, Invalid P9 (Paris) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Transaction GasPrice, EmptyTxs=False, CanonicalReOrg=True, Invalid P9 (Paris) (nethermind)
+Invalid Missing Ancestor Syncing ReOrg, Incomplete Transactions, EmptyTxs=False, CanonicalReOrg=True, Invalid P9 (Paris) (nethermind)
 
 #devp2p
 
