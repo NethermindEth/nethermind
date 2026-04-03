@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(CopyTreeVisitor<>));
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
             _progressTracker = new VisitorProgressTracker("Full Pruning", logManager);

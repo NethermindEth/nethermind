@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.StateSync
 
         public StateSyncDownloader(ILogManager logManager)
         {
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger<StateSyncDownloader>();
         }
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)

@@ -66,7 +66,7 @@ public class BlockchainProcessorTests
 
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
-                _logger = logManager.GetClassLogger();
+                _logger = logManager.GetClassLogger<BranchProcessorMock>();
                 stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
@@ -151,7 +151,7 @@ public class BlockchainProcessorTests
 
         private class RecoveryStepMock(ILogManager logManager) : IBlockPreprocessorStep
         {
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<RecoveryStepMock>();
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
@@ -216,7 +216,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext(bool startProcessor)
         {
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
 
             _blockTree = Build.A.BlockTree()
@@ -461,7 +461,7 @@ public class BlockchainProcessorTests
         {
             private const int IgnoreWait = 200;
 
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<AfterBlock>();
 
             public ProcessingTestContext BecomesGenesis()
             {

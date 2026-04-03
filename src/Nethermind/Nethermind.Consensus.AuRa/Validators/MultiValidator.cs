@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _forSealing = forSealing;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<MultiValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _validators = validator.Validators?.Count > 0
                 ? validator.Validators

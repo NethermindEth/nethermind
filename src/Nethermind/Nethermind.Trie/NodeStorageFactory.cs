@@ -17,7 +17,7 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<NodeStorageFactory>();
         _preferredKeyScheme = preferredKeyScheme;
         _currentKeyScheme = null;
     }

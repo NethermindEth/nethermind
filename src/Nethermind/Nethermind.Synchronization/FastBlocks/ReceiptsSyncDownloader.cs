@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public ReceiptsSyncDispatcher(ILogManager logManager)
         {
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger<ReceiptsSyncDispatcher>();
         }
 
         public async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)

@@ -89,7 +89,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer.Elapsed += CleanupOldPayloads;
         _timer.Start();
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<PayloadPreparationService>();
     }
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)

@@ -17,7 +17,7 @@ public abstract class GetPayloadBodiesByRangeHandler<TResult>(IBlockTree blockTr
 {
     private const int MaxCount = 1024;
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByRangeHandler<>));
 
     public Task<ResultWrapper<IEnumerable<TResult?>>> Handle(long start, long count)
     {
