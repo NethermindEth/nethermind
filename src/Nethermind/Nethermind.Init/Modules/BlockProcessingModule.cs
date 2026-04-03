@@ -122,6 +122,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
         // When Blocks.ParallelBlockValidation is enabled, a ParallelBlockValidationModule is added as an additional
         // IBlockValidationModule. Its registrations load after StandardBlockValidationModule and override it.
         builder.AddSingleton<IBlockValidationModule, StandardBlockValidationModule>();
+        if (blocksConfig.ParallelBlockValidation)
+        {
+            builder.AddSingleton<IMainProcessingModule, Consensus.Processing.Parallel.ParallelBlockValidationModule>();
+        }
 
         if (initConfig.ExitOnInvalidBlock) builder.AddStep(typeof(ExitOnInvalidBlock));
     }

@@ -10,9 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Consensus.Processing.Parallel;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -61,11 +59,6 @@ public class NethermindModule(ChainSpec chainSpec, IConfigProvider configProvide
             .AddSource(new ConfigRegistrationSource())
             .AddModule(new BlockProcessingModule(configProvider.GetConfig<IInitConfig>(), configProvider.GetConfig<IBlocksConfig>()))
             ;
-
-        if (configProvider.GetConfig<IBlocksConfig>().ParallelBlockValidation)
-        {
-            builder.AddSingleton<IBlockValidationModule, Consensus.Processing.Parallel.ParallelBlockValidationModule>();
-        }
 
         builder
             .AddModule(new BlockTreeModule(configProvider.GetConfig<IReceiptConfig>(), configProvider.GetConfig<ILogIndexConfig>()))

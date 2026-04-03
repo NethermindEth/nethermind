@@ -14,11 +14,10 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// Replaces <see cref="BlockProcessor.BlockValidationTransactionsExecutor"/> with
 /// <see cref="ParallelBlockValidationTransactionsExecutor"/>.
 /// </summary>
-public class ParallelBlockValidationModule : Module, IBlockValidationModule
+public class ParallelBlockValidationModule : Module, IMainProcessingModule
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, ParallelBlockValidationTransactionsExecutor>()
         .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>()
-        .AddScoped<StateDiffRecorder>()
-        .AddDecorator<IWorldStateScopeProvider, StateDiffScopeProviderDecorator>();
+        .AddScoped<StateDiffRecorder>();
 }

@@ -19,15 +19,32 @@ namespace Nethermind.Consensus.Processing.Parallel;
 /// writes delegate to the inner scope normally.
 /// </para>
 /// </summary>
-public class StateDiffScopeProviderDecorator(
-    IWorldStateScopeProvider inner,
-    StateDiffRecorder recorder,
-    bool bufferOnly = false) : IWorldStateScopeProvider
+public class StateDiffScopeProviderDecorator : IWorldStateScopeProvider
 {
-    public bool HasRoot(BlockHeader? baseBlock) => inner.HasRoot(baseBlock);
+    private readonly IWorldStateScopeProvider _inner;
+    private readonly StateDiffRecorder _recorder;
+    private readonly bool _bufferOnly;
+
+    /// <summary>
+    /// Constructor used by Autofac decorator resolution (main scope, bufferOnly = false).
+    /// </summary>
+    public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder)
+        : this(inner, recorder, bufferOnly: false) { }
+
+    /// <summary>
+    /// Constructor for manual creation (parallel workers, bufferOnly = true).
+    /// </summary>
+    public StateDiffScopeProviderDecorator(IWorldStateScopeProvider inner, StateDiffRecorder recorder, bool bufferOnly)
+    {
+        _inner = inner;
+        _recorder = recorder;
+        _bufferOnly = bufferOnly;
+    }
+
+    public bool HasRoot(BlockHeader? baseBlock) => _inner.HasRoot(baseBlock);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock) =>
-        new DecoratedScope(inner.BeginScope(baseBlock), recorder, bufferOnly);
+        new DecoratedScope(_inner.BeginScope(baseBlock), _recorder, _bufferOnly);
 
     private class DecoratedScope : IWorldStateScopeProvider.IScope
     {
