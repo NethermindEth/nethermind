@@ -142,10 +142,10 @@ public class JsonRpcValidatorTests
         var sb = new StringBuilder("[");
         foreach (var item in items)
         {
-            sb.Append(item.ToJsonString()).Append(",");
+            sb.Append(item.ToJsonString()).Append(',');
         }
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
-        sb.Append("]");
+        sb.Append(']');
 
         var json = sb.ToString();
 
@@ -171,10 +171,10 @@ public class JsonRpcValidatorTests
         var sb = new StringBuilder("[");
         foreach (var item in items)
         {
-            sb.Append(item.ToJsonString()).Append(",");
+            sb.Append(item.ToJsonString()).Append(',');
         }
         sb.Remove(sb.Length - 1, 1); // Remove the last comma
-        sb.Append("]");
+        sb.Append(']');
 
         var json = sb.ToString();
 
