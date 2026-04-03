@@ -49,6 +49,16 @@ namespace Nethermind.Core.Caching;
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
 ///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
 /// </list>
+///
+/// <para><b>Why <c>TValue : class?</c>:</b> The seqlock read path copies entry fields (Key, Value)
+/// without holding a lock, then validates via sequence number. A reference-type Value is a single
+/// pointer-width store/load — atomic on both x64 and ARM64. A multi-byte value struct (e.g. 72-byte
+/// AccountStruct) is NOT atomic: a concurrent reader could observe a partially-written struct where
+/// some fields belong to the old value and others to the new. The seqlock retry would usually catch
+/// this, but if the writer completes the struct write and bumps the closing sequence between the
+/// reader's first and last field copies, the reader sees a valid sequence with torn data.
+/// Use <see cref="ClockCache{TKey,TValue}"/> for value-type TValues (it uses an McsLock that
+/// makes reads and writes mutually exclusive, preventing tearing).</para>
 /// </summary>
 public sealed class AssociativeCache<TKey, TValue>
     where TKey : struct, IHash64bit<TKey>
