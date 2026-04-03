@@ -1593,7 +1593,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
+        iLogger.Received().Warn(
             Arg.Is<string>(static a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }
