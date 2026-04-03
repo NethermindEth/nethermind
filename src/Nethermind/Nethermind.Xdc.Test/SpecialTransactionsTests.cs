@@ -54,11 +54,14 @@ internal class SpecialTransactionsTests
 
     private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
     {
+        UInt256 nonce = chain.TxPool.GetLatestPendingNonce(source.Address);
+
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
             .WithValue(amount)
             .WithType(TxType.Legacy)
+            .WithNonce(nonce)
             .TestObject;
 
         var signer = new Signer(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
