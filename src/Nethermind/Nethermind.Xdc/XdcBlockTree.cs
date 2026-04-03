@@ -77,4 +77,34 @@ internal class XdcBlockTree : BlockTree
         return AddBlockResult.InvalidBlock;
     }
 
+    protected override bool HeadImprovementRequirementsSatisfied(BlockHeader header)
+    {
+        if (base.HeadImprovementRequirementsSatisfied(header))
+            return true;
+
+        return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader headBlock &&
+            IsSameTdButSelfMined(newBlock, headBlock);
+    }
+
+    protected override bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+    {
+        if (base.BestSuggestedImprovementRequirementsSatisfied(header))
+            return true;
+
+        return header is XdcBlockHeader newBlock && BestSuggestedBody?.Header is XdcBlockHeader bestBlock &&
+            IsSameTdButSelfMined(newBlock, bestBlock);
+    }
+
+    public override bool IsBetterThanHead(BlockHeader? header)
+    {
+        if (base.IsBetterThanHead(header))
+            return true;
+
+        return header is XdcBlockHeader newBlock && Head?.Header is XdcBlockHeader bestBlock &&
+            IsSameTdButSelfMined(newBlock, bestBlock);
+    }
+
+    // Allow overriding head with self-mined blocks with the same TD
+    private static bool IsSameTdButSelfMined(XdcBlockHeader newHeader, XdcBlockHeader oldHeader) =>
+        newHeader.TotalDifficulty == oldHeader.TotalDifficulty && newHeader.IsSelfMined;
 }
