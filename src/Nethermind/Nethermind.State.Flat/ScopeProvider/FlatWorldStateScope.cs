@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -17,12 +18,16 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrieWarmer.IAddressWarmer
 {
+    private static readonly StringLabel _stateWarmerLabel = new("state");
+    private static readonly StringLabel _stateWarmerSkippedLabel = new("state_skipped");
+
     private readonly SnapshotBundle _snapshotBundle;
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
+    private readonly bool _recordDetailedMetrics;
 
     private readonly ConcurrencyController _concurrencyQuota;
     private readonly PatriciaTree _warmupStateTree;
@@ -71,6 +76,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _configuration = configuration;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _recordDetailedMetrics = Nethermind.Db.Metrics.DetailedMetricsEnabled;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -119,11 +125,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public bool WarmUpStateTrie(Address address, int sequenceId)
     {
-        if (_hintSequenceId != sequenceId || _pausePrewarmer) return false;
+        if (_hintSequenceId != sequenceId || _pausePrewarmer)
+        {
+            if (_recordDetailedMetrics)
+                Metrics.TrieWarmerJobTime.Observe(0, _stateWarmerSkippedLabel);
+            return false;
+        }
 
         // Note: tree root not changed after writing batch. Also, not cleared. So the result is not correct.
         // this is just for warming up
+        long sw = _recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         _warmupStateTree.WarmUpPath(address.ToAccountPath.Bytes);
+        if (_recordDetailedMetrics)
+            Metrics.TrieWarmerJobTime.Observe(Stopwatch.GetTimestamp() - sw, _stateWarmerLabel);
 
         return true;
     }

@@ -37,6 +37,8 @@ public sealed class ReadOnlySnapshotBundle(
     private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
     private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
     private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
+    private static readonly StringLabel _readStateRlpWarmerLabel = new("state_rlp_warmer");
+    private static readonly StringLabel _readStorageRlpWarmerLabel = new("storage_rlp_warmer");
 
     public Account? GetAccount(Address address) => GetAccount(address, address);
 
@@ -192,6 +194,30 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
+
+        return value;
+    }
+
+    public byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpWarmerLabel);
+
+        return value;
+    }
+
+    public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        Nethermind.Trie.Pruning.Metrics.LoadedFromDbNodesCount++;
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpWarmerLabel);
 
         return value;
     }

@@ -304,6 +304,20 @@ public sealed class SnapshotBundle : IDisposable
         return _readOnlySnapshotBundle.TryLoadStorageRlp(address, path, hash, flags);
     }
 
+    public byte[]? TryLoadStateRlpForWarmer(in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStateRlpForWarmer(path, hash, flags);
+    }
+
+    public byte[]? TryLoadStorageRlpForWarmer(Hash256 address, in TreePath path, Hash256 hash, ReadFlags flags)
+    {
+        GuardDispose();
+
+        return _readOnlySnapshotBundle.TryLoadStorageRlpForWarmer(address, path, hash, flags);
+    }
+
     // This is called only during trie commit
     public void SetStateNode(in TreePath path, TrieNode newNode)
     {
