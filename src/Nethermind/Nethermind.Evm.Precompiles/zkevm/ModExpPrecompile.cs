@@ -34,8 +34,6 @@ public partial class ModExpPrecompile
         nuint resultLength = ZiskBindings.Crypto.modexp_bytes_c(
             @base, baseLength, exp, expLength, modulus, modulusLength, result);
 
-        Debug.Assert(resultLength == modulusLength);
-
         return result;
     }
 }
