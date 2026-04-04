@@ -32,6 +32,11 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
 env:
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
   TERM: xterm
@@ -135,6 +140,25 @@ jobs:
           docker-hub-username: ${{ secrets.DOCKER_HUB_USERNAME }}
           docker-hub-password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
+  post-start-comment:
+    needs: [resolve-inputs]
+    if: needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-slim
+    steps:
+      - name: Post starting comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const filter = '${{ needs.resolve-inputs.outputs.filter }}';
+            const filterText = filter ? ` with filter: \`${filter}\`` : '';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🚀 **Gas Benchmark Starting**\n\nGas benchmarks are now running${filterText}...\n\n⏳ This may take a while. Results will be posted when complete.\n\n[View workflow run](${context.payload.repository.html_url}/actions/runs/${context.runId})`
+            });
+
   setup:
     needs: [resolve-inputs]
     if: needs.resolve-inputs.outputs.should-run == 'true'
@@ -223,6 +247,43 @@ jobs:
           postgresTable: ${{ secrets.GAS_BENCHMARKS_DB_TABLE }}
           postgresUser: ${{ secrets.GAS_BENCHMARKS_DB_USER }}
           postgresPassword: ${{ secrets.GAS_BENCHMARKS_DB_PASSWORD }}
+
+  post-results-comment:
+    needs: [resolve-inputs, gas-benchmark]
+    if: always() && needs.resolve-inputs.outputs.should-run == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-slim
+    steps:
+      - name: Post results comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const benchmarkStatus = '${{ needs.gas-benchmark.result }}';
+            const filter = '${{ needs.resolve-inputs.outputs.filter }}';
+            const filterText = filter ? ` with filter: \`${filter}\`` : '';
+            const workflowUrl = `${context.payload.repository.html_url}/actions/runs/${context.runId}`;
+
+            let emoji, title, message;
+
+            if (benchmarkStatus === 'success') {
+              emoji = '✅';
+              title = 'Gas Benchmark Complete';
+              message = `Gas benchmarks have completed successfully${filterText}!`;
+            } else if (benchmarkStatus === 'failure') {
+              emoji = '❌';
+              title = 'Gas Benchmark Failed';
+              message = `Gas benchmarks failed${filterText}. Please check the workflow logs for details.`;
+            } else {
+              emoji = '⚠️';
+              title = 'Gas Benchmark Cancelled';
+              message = `Gas benchmarks were cancelled${filterText}.`;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `${emoji} **${title}**\n\n${message}\n\n📊 [View workflow run and artifacts](${workflowUrl})`
+            });
 
   cleanup:
     needs: [resolve-inputs, setup, gas-benchmark]
