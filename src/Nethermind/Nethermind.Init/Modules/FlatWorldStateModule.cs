@@ -25,6 +25,7 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
@@ -82,6 +83,9 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .Intercept<ISyncConfig>((syncConfig) =>
             {
                 syncConfig.SnapServingEnabled ??= true;
+
+                if (syncConfig.SnapServingMaxPathsPerGroup > 0)
+                    SnapMessageLimits.RaisePathsPerGroupLimit(syncConfig.SnapServingMaxPathsPerGroup);
             })
             .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
 
