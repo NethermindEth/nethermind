@@ -15,6 +15,13 @@ namespace Nethermind.Stateless.Execution;
 /// </summary>
 public static class InputSerializer
 {
+    private const int _minSerializedLength =
+        sizeof(ulong) + // chain id
+        sizeof(int) +  // block length
+        sizeof(int) +  // codes length
+        sizeof(int) +  // headers length
+        sizeof(int);   // state length
+
     public static byte[] Serialize(Block block, Witness witness, ulong chainId)
     {
         ArgumentNullException.ThrowIfNull(block);
@@ -24,7 +31,7 @@ public static class InputSerializer
         var codesLen = GetSerializedLength(witness.Codes);
         var headersLen = GetSerializedLength(witness.Headers);
         var stateLen = GetSerializedLength(witness.State);
-        var outputLen = MinSerializedLength +
+        var outputLen = _minSerializedLength +
             blockLen + codesLen + headersLen + stateLen;
 
         byte[] output = GC.AllocateUninitializedArray<byte>(outputLen);
@@ -52,7 +59,7 @@ public static class InputSerializer
 
     public static (Block, Witness, ulong) Deserialize(ReadOnlySpan<byte> input)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, MinSerializedLength);
+        ArgumentOutOfRangeException.ThrowIfLessThan(input.Length, _minSerializedLength);
 
         var offset = 0;
         var chainId = ReadUInt64(input, ref offset);
@@ -171,11 +178,4 @@ public static class InputSerializer
 
         return len;
     }
-
-    private static int MinSerializedLength =>
-        sizeof(ulong) + // chain id
-        sizeof(int) +  // block length
-        sizeof(int) +  // codes length
-        sizeof(int) +  // headers length
-        sizeof(int);   // state length
 }
