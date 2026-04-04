@@ -21,12 +21,18 @@ internal static class InputGenerator
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
 
-        (Block? block, Witness? witness, ulong? chainId) = await FetchData(blockParam, host);
+        byte[] data;
+        Witness? witness;
 
-        if (block is null || witness is null || chainId is null)
-            return 1;
+        (Block? block, witness, ulong? chainId) = await FetchData(blockParam, host);
 
-        byte[] data = InputSerializer.Serialize(block, witness, chainId.Value);
+        using (witness)
+        {
+            if (block is null || witness is null || chainId is null)
+                return 1;
+
+            data = InputSerializer.Serialize(block, witness, chainId.Value);
+        }
 
         if (forZisk)
         {
