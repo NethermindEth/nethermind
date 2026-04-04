@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -31,8 +30,7 @@ public partial class ModExpPrecompile
             .SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength);
         byte[] result = new byte[modulusLength];
 
-        nuint resultLength = ZiskBindings.Crypto.modexp_bytes_c(
-            @base, baseLength, exp, expLength, modulus, modulusLength, result);
+        ZiskBindings.Crypto.modexp_bytes_c(@base, baseLength, exp, expLength, modulus, modulusLength, result);
 
         return result;
     }
