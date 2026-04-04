@@ -6,7 +6,10 @@ using System;
 namespace Nethermind.Serialization.Ssz;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-public class SszSerializableAttribute : Attribute;
+public class SszSerializableAttribute(bool isCollectionItself = false) : Attribute
+{
+    public bool IsCollectionItself { get; } = isCollectionItself;
+}
 
 [AttributeUsage(AttributeTargets.Property)]
 public class SszListAttribute(int limit) : Attribute

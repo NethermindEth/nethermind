@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core.Authentication;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.JsonRpc
@@ -22,6 +23,7 @@ namespace Nethermind.Runner.JsonRpc
         public EthereumJsonSerializer? JsonSerializer { private get; set; }
         public IJsonRpcLocalStats? JsonRpcLocalStats { private get; set; }
         public IRpcAuthentication? JsonRpcAuthentication { private get; set; }
+        public SszRestHandler? SszRestHandler { get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
@@ -30,6 +32,8 @@ namespace Nethermind.Runner.JsonRpc
             services.AddSingleton(JsonSerializer!);
             services.AddSingleton(JsonRpcLocalStats!);
             services.AddSingleton(JsonRpcAuthentication!);
+            if (SszRestHandler is not null)
+                services.AddSingleton(SszRestHandler);
         }
     }
 }

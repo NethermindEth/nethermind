@@ -35,6 +35,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 
@@ -143,6 +144,49 @@ public class Startup : IStartup
         _jsonRpcConfig = jsonRpcConfig;
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
+
+        // EIP-8161: SSZ-REST Engine API on the same port as JSON-RPC.
+        // Requests to /engine/* paths on the authenticated engine port are handled by SSZ-REST.
+        SszRestHandler? sszRestHandler = app.ApplicationServices.GetService<SszRestHandler>();
+        if (sszRestHandler is not null)
+        {
+            app.Use(async (ctx, next) =>
+            {
+                if ((ctx.Request.Path.Value?.StartsWith("/engine/", StringComparison.OrdinalIgnoreCase) ?? false) &&
+                    jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl engineUrl) &&
+                    engineUrl.IsAuthenticated)
+                {
+                    // JWT authentication for SSZ-REST (same as JSON-RPC)
+                    if (!await _rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
+                    {
+                        ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                        ctx.Response.ContentType = "application/json";
+                        await ctx.Response.WriteAsync("{\"code\":-32001,\"message\":\"Unauthorized\"}");
+                        return;
+                    }
+
+                    // Read body and delegate to the SSZ-REST handler
+                    byte[] body;
+                    using (var ms = new System.IO.MemoryStream())
+                    {
+                        await ctx.Request.Body.CopyToAsync(ms);
+                        body = ms.ToArray();
+                    }
+
+                    SszRestResponse response = await sszRestHandler.HandleAsync(
+                        ctx.Request.Method, ctx.Request.Path.Value!, body);
+
+                    ctx.Response.StatusCode = response.StatusCode;
+                    ctx.Response.ContentType = response.ContentType;
+                    ctx.Response.ContentLength = response.Body.Length;
+                    await ctx.Response.Body.WriteAsync(response.Body);
+                    return;
+                }
+
+                await next();
+            });
+            if (_logger.IsInfo) _logger.Info("SSZ-REST Engine API routes registered on Engine API port (EIP-8161)");
+        }
 
         // Engine API fast lane: authenticated engine port POST requests bypass
         // routing, CORS, compression, and WebSocket middleware
