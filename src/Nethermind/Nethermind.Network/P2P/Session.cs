@@ -336,18 +336,19 @@ namespace Nethermind.Network.P2P
             }
             else if (handshakeRemoteNodeId is not null && RemoteNodeId != handshakeRemoteNodeId)
             {
-                if (Direction == ConnectionDirection.Out)
+                // Static/bootnode peers have operator-verified identities — a mismatch is suspicious.
+                if (Direction == ConnectionDirection.Out && (Node?.IsStatic == true || Node?.IsBootnode == true))
                 {
                     if (_logger.IsDebug) DebugUnexpectedNodeId(handshakeRemoteNodeId);
                     InitiateDisconnect(DisconnectReason.UnexpectedIdentity, $"expected {RemoteNodeId}, received {handshakeRemoteNodeId}");
+                    return;
                 }
-                else
-                {
-                    if (_logger.IsTrace) TraceDifferentNodeId(handshakeRemoteNodeId);
-                    ObsoleteRemoteNodeId = RemoteNodeId;
-                    RemoteNodeId = handshakeRemoteNodeId;
-                    Node = new Node(RemoteNodeId, RemoteHost, RemotePort);
-                }
+
+                // Discovered peers frequently have stale identity data — accept the new identity.
+                if (_logger.IsTrace) TraceDifferentNodeId(handshakeRemoteNodeId);
+                ObsoleteRemoteNodeId = RemoteNodeId;
+                RemoteNodeId = handshakeRemoteNodeId;
+                Node = new Node(RemoteNodeId, RemoteHost, RemotePort);
             }
 
             Metrics.Handshakes++;
@@ -358,7 +359,7 @@ namespace Nethermind.Network.P2P
             void TraceHandshakeCalled() => _logger.Trace($"{nameof(Handshake)} called on {this}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugUnexpectedNodeId(PublicKey remoteNodeId) => _logger.Debug($"Unexpected remote node id in handshake: expected {RemoteNodeId}, received {remoteNodeId}");
+            void DebugUnexpectedNodeId(PublicKey remoteNodeId) => _logger.Debug($"Unexpected remote node id in handshake with static/bootnode peer: expected {RemoteNodeId}, received {remoteNodeId}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDifferentNodeId(PublicKey remoteNodeId) => _logger.Trace($"Different NodeId received in handshake: old: {RemoteNodeId}, new: {remoteNodeId}");
