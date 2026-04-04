@@ -12,9 +12,13 @@ should_not_pass=()
 
 for passed in "true" "false"; do
   tmp=()
-  mapfile tmp < <(jq '.testCases
+  # Prefix test names with "suite/" for sync suites (snapsync, sync) to
+  # disambiguate tests that share the same name across different suites.
+  mapfile tmp < <(jq '
+    (.name) as $suite
+    | .testCases
     | map_values(select(.summaryResult.pass == $p))
-    | map(.name)
+    | map(if $suite == "snapsync" or $suite == "sync" then ($suite + "/" + .name) else .name end)
     | .[]' \
     --argjson p "$passed" -r $1)
   IFS=$'\n' results=($(sort -f <<<"${tmp[*]}")); unset IFS
