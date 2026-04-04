@@ -27,7 +27,5 @@ internal sealed class UnknownNodeResolver : ITrieNodeResolver
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags) => null;
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => this;
-
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
 }

@@ -993,6 +993,7 @@ namespace Nethermind.Trie
             Hash256? storageAddress,
             ref TreePath currentPath,
             ITrieNodeResolver resolver,
+            ITrieNodeResolverFactory factory,
             bool skipPersisted,
             in ILogger logger,
             int maxPathLength = Int32.MaxValue,
@@ -1020,7 +1021,7 @@ namespace Nethermind.Trie
                     {
                         if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                         currentPath.SetLast(i);
-                        child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger,
+                        child.CallRecursively(action, storageAddress, ref currentPath, resolver, factory, skipPersisted, logger,
                             maxPathLength, resolveStorageRoot);
                     }
                 }
@@ -1033,7 +1034,7 @@ namespace Nethermind.Trie
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
                     int previousLength = AppendChildPath(ref currentPath, 0);
-                    child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger,
+                    child.CallRecursively(action, storageAddress, ref currentPath, resolver, factory, skipPersisted, logger,
                         maxPathLength, resolveStorageRoot);
                     currentPath.TruncateMut(previousLength);
                 }
@@ -1042,7 +1043,7 @@ namespace Nethermind.Trie
             {
                 TrieNode? storageRoot = leafData.StorageRoot;
                 if (resolveStorageRoot && (storageRoot is not null ||
-                                           TryResolveStorageRoot(resolver, ref currentPath, out storageRoot)))
+                                           TryResolveStorageRoot(resolver, factory, ref currentPath, out storageRoot)))
                 {
                     if (logger.IsTrace)
                         logger.Trace($"Persist recursively on storage root {leafData.StorageRoot} of {this}");
@@ -1060,7 +1061,8 @@ namespace Nethermind.Trie
                         action,
                         storagePathAddr,
                         ref emptyPath,
-                        resolver.GetStorageTrieNodeResolver(storagePathAddr),
+                        factory.GetStorageTrieNodeResolver(storagePathAddr),
+                        factory,
                         skipPersisted,
                         logger);
                 }
@@ -1074,6 +1076,7 @@ namespace Nethermind.Trie
             Hash256? storageAddress,
             ref TreePath currentPath,
             ITrieNodeResolver resolver,
+            ITrieNodeResolverFactory factory,
             ILogger logger)
         {
             if (IsPersisted)
@@ -1099,6 +1102,7 @@ namespace Nethermind.Trie
                     storageAddress,
                     currentPath,
                     resolver,
+                    factory,
                     logger);
             }
             else
@@ -1108,6 +1112,7 @@ namespace Nethermind.Trie
                     storageAddress,
                     currentPath,
                     resolver,
+                    factory,
                     leafData,
                     logger);
             }
@@ -1118,6 +1123,7 @@ namespace Nethermind.Trie
             Hash256? storageAddress,
             TreePath currentPath,
             ITrieNodeResolver resolver,
+            ITrieNodeResolverFactory factory,
             ILogger logger)
         {
             if (_nodeData is BranchData branchData)
@@ -1128,7 +1134,7 @@ namespace Nethermind.Trie
                     {
                         if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
                         int previousLength = AppendChildPath(ref currentPath, i);
-                        await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, logger);
+                        await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, factory, logger);
                         currentPath.TruncateMut(previousLength);
                     }
                 }
@@ -1139,7 +1145,7 @@ namespace Nethermind.Trie
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on child 0 {child} of {this}");
                     int previousLength = AppendChildPath(ref currentPath, 0);
-                    await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, logger);
+                    await child.CallRecursivelyAsync(action, storageAddress, ref currentPath, resolver, factory, logger);
                     currentPath.TruncateMut(previousLength);
                 }
             }
@@ -1152,11 +1158,12 @@ namespace Nethermind.Trie
             Hash256? storageAddress,
             TreePath currentPath,
             ITrieNodeResolver resolver,
+            ITrieNodeResolverFactory factory,
             LeafData leafData,
             ILogger logger)
         {
             TrieNode? storageRoot = leafData.StorageRoot;
-            if (storageRoot is not null || TryResolveStorageRoot(resolver, ref currentPath, out storageRoot))
+            if (storageRoot is not null || TryResolveStorageRoot(resolver, factory, ref currentPath, out storageRoot))
             {
                 if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {storageRoot} of {this}");
                 Hash256 storagePathAddr;
@@ -1172,7 +1179,8 @@ namespace Nethermind.Trie
                     action,
                     storagePathAddr,
                     ref emptyPath,
-                    resolver.GetStorageTrieNodeResolver(storagePathAddr),
+                    factory.GetStorageTrieNodeResolver(storagePathAddr),
+                    factory,
                     logger);
             }
 
@@ -1248,7 +1256,7 @@ namespace Nethermind.Trie
             // }
         }
 
-        internal bool TryResolveStorageRoot(ITrieNodeResolver resolver, ref TreePath currentPath,
+        internal bool TryResolveStorageRoot(ITrieNodeResolver resolver, ITrieNodeResolverFactory factory, ref TreePath currentPath,
             out TrieNode? storageRoot)
         {
             bool hasStorage = false;
@@ -1274,7 +1282,7 @@ namespace Nethermind.Trie
 
                         hasStorage = true;
                         TreePath emptyPath = TreePath.Empty;
-                        data.StorageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
+                        data.StorageRoot = storageRoot = factory.GetStorageTrieNodeResolver(storagePath)
                             .FindCachedOrUnknown(in emptyPath, storageRootKey);
                     }
                 }

@@ -751,8 +751,6 @@ public class PatriciaTreeBulkSetterTests
 
         public byte[] TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
 
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => baseTrieStore.GetStorageTrieNodeResolver(address);
-
         public INodeStorage.KeyScheme Scheme => baseTrieStore.Scheme;
 
         public ICommitter BeginCommit(TrieNode root, WriteFlags writeFlags = WriteFlags.None) => baseTrieStore.BeginCommit(root, writeFlags);
