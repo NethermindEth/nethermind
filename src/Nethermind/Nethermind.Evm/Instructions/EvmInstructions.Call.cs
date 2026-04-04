@@ -13,7 +13,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
@@ -324,7 +324,7 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     }
 
-    private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
+    public static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
         if (accessTracer.WarmUpLargeContract(codeAddress))

@@ -1355,7 +1355,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
     }
 
-    private void AddTransferLog(VmState<TGasPolicy> currentState)
+    public void AddTransferLog(VmState<TGasPolicy> currentState)
     {
         // DELEGATECALL: no value transfer (inherits from parent)
         // CALLCODE: value is transferred from ExecutingAccount to ExecutingAccount (self-transfer), so no log
