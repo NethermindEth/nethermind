@@ -35,5 +35,11 @@ namespace Ethereum.Test.Base
         public double TimeInMs { get; set; }
 
         public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
+
+        /// <summary>
+        /// The actual validation error string returned by the engine for each payload.
+        /// Populated only for engine tests. Allows consume direct to perform exception mapping.
+        /// </summary>
+        public string? EngineValidationError { get; set; }
     }
 }

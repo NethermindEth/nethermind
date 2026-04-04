@@ -29,9 +29,10 @@ namespace Nethermind.Test.Runner
         private readonly string? _filter;
         private readonly ulong _chainId;
         private readonly bool _enableWarmup;
+        private readonly bool _suppressOutput;
         private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false)
+        public StateTestsRunner(ITestSourceLoader testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack, ulong chainId, string? filter = null, bool enableWarmup = false, bool suppressOutput = false)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _whenTrace = whenTrace;
@@ -40,12 +41,14 @@ namespace Nethermind.Test.Runner
             _filter = filter;
             _chainId = chainId;
             _enableWarmup = enableWarmup;
+            _suppressOutput = suppressOutput;
             Setup(null);
         }
 
         private void WriteOut(List<EthereumTestResult> testResult)
         {
-            Console.Out.Write(_serializer.Serialize(testResult, true));
+            if (!_suppressOutput)
+                Console.Out.Write(_serializer.Serialize(testResult, true));
         }
 
         private void WriteErr(StateTestTxTrace txTrace)

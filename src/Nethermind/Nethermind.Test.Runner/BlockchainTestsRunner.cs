@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
@@ -15,11 +16,14 @@ public class BlockchainTestsRunner(
     ulong chainId,
     bool trace = false,
     bool traceMemory = false,
-    bool traceNoStack = false)
+    bool traceNoStack = false,
+    bool jsonOutput = false,
+    bool suppressOutput = false)
     : BlockchainTestBase, IBlockchainTestRunner
 {
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+    private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
@@ -29,7 +33,7 @@ public class BlockchainTestsRunner(
         {
             if (loadedTest as FailedToLoadTest is not null)
             {
-                WriteRed(loadedTest.LoadFailure);
+                if (!jsonOutput && !suppressOutput) WriteRed(loadedTest.LoadFailure);
                 testResults.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure));
                 continue;
             }
@@ -43,10 +47,11 @@ public class BlockchainTestsRunner(
 
             if (filter is not null && test.Name is not null && !Regex.Match(test.Name, $"^({filter})").Success)
                 continue;
-            Console.Write($"{test,-120} ");
+
+            if (!jsonOutput && !suppressOutput) Console.Write($"{test,-120} ");
             if (test.LoadFailure is not null)
             {
-                WriteRed(test.LoadFailure);
+                if (!jsonOutput && !suppressOutput) WriteRed(test.LoadFailure);
                 testResults.Add(new EthereumTestResult(test.Name, test.LoadFailure));
             }
             else
@@ -55,11 +60,19 @@ public class BlockchainTestsRunner(
 
                 EthereumTestResult result = await RunTest(test, tracer: tracer);
                 testResults.Add(result);
-                if (result.Pass)
-                    WriteGreen("PASS");
-                else
-                    WriteRed("FAIL");
+                if (!jsonOutput && !suppressOutput)
+                {
+                    if (result.Pass)
+                        WriteGreen("PASS");
+                    else
+                        WriteRed("FAIL");
+                }
             }
+        }
+
+        if (jsonOutput && !suppressOutput)
+        {
+            Console.Out.Write(_serializer.Serialize(testResults, true));
         }
 
         return testResults;

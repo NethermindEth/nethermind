@@ -351,16 +351,20 @@ public abstract class BlockchainTestBase
             // RPC-level errors (e.g. wrong payload version) are valid for negative tests
             if (npResponse is JsonRpcErrorResponse errorResponse)
             {
-                Assert.That(validationError, Is.Not.Null,
-                    $"engine_newPayloadV{newPayloadVersion} RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
+                if (validationError is null)
+                    throw new Exception(
+                        $"engine_newPayloadV{newPayloadVersion} unexpected RPC error: {errorResponse.Error?.Code} {errorResponse.Error?.Message}");
                 continue;
             }
 
             PayloadStatusV1 payloadStatus = (PayloadStatusV1)((JsonRpcSuccessResponse)npResponse).Result!;
             string expectedStatus = validationError is null ? PayloadStatus.Valid : PayloadStatus.Invalid;
-            Assert.That(payloadStatus.Status, Is.EqualTo(expectedStatus),
-                $"engine_newPayloadV{newPayloadVersion} returned {payloadStatus.Status}, expected {expectedStatus}. " +
-                $"ValidationError: {payloadStatus.ValidationError}");
+            if (payloadStatus.Status != expectedStatus)
+                throw new Exception(
+                    $"engine_newPayloadV{newPayloadVersion}: expected {expectedStatus} status" +
+                    (validationError is not null ? $" for validation error \"{validationError}\"" : "") +
+                    $", got {payloadStatus.Status}" +
+                    (payloadStatus.ValidationError is not null ? $" (err: {payloadStatus.ValidationError})" : ""));
 
             if (payloadStatus.Status == PayloadStatus.Valid)
             {
@@ -383,8 +387,13 @@ public abstract class BlockchainTestBase
 
     private static void AssertRpcSuccess(JsonRpcResponse response)
     {
-        Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(),
-            response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
+        if (response is not JsonRpcSuccessResponse)
+        {
+            string message = response is JsonRpcErrorResponse err
+                ? $"RPC error: {err.Error?.Code} {err.Error?.Message}"
+                : "unexpected response type";
+            throw new Exception(message);
+        }
     }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
