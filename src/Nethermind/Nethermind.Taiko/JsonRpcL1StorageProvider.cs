@@ -23,7 +23,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 
     public JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager)
     {
-        _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
+        _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager, L1PrecompileConstants.L1RpcTimeout);
         _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
     }
 

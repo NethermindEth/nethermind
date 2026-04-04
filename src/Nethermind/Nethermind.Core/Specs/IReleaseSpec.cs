@@ -448,6 +448,11 @@ namespace Nethermind.Core.Specs
         public bool IsRip7728Enabled { get; }
 
         /// <summary>
+        /// L1STATICCALL precompile for executing read-only calls against L1 contracts
+        /// </summary>
+        public bool IsL1StaticCallEnabled { get; }
+
+        /// <summary>
         /// EIP-7928: Block-Level Access Lists
         /// </summary>
         public bool IsEip7928Enabled { get; }

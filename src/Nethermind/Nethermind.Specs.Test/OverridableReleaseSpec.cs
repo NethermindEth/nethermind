@@ -121,6 +121,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7939Enabled { get; set; } = spec.IsEip7939Enabled;
         public bool IsEip7907Enabled { get; set; } = spec.IsEip7907Enabled;
         public bool IsRip7728Enabled { get; set; } = spec.IsRip7728Enabled;
+        public bool IsL1StaticCallEnabled { get; set; } = spec.IsL1StaticCallEnabled;
         public bool IsEip7928Enabled { get; set; } = spec.IsEip7928Enabled;
         public bool IsEip8037Enabled { get; set; } = spec.IsEip8037Enabled;
         public bool IsEip7708Enabled { get; set; } = spec.IsEip7708Enabled;

@@ -13,3 +13,11 @@ public interface IL1StorageProvider
 {
     UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber);
 }
+
+/// <summary>
+/// Interface for L1 call providers that can execute read-only calls against L1 contracts.
+/// </summary>
+public interface IL1CallProvider
+{
+    byte[]? ExecuteStaticCall(Address target, UInt256 blockNumber, byte[] calldata);
+}

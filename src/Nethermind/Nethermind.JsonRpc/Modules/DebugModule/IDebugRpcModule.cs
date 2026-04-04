@@ -127,4 +127,7 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);
+
+    [JsonRpcMethod(Description = "Generates an execution witness for a single call at a specific block, capturing all state accessed during the call.")]
+    ResultWrapper<Witness> debug_executionWitnessCall(TransactionForRpc callRequest, BlockParameter? blockParameter = null);
 }

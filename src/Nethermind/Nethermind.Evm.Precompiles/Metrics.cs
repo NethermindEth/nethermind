@@ -75,4 +75,8 @@ public class Metrics
     [CounterMetric]
     [Description("Number of L1SLOAD precompile calls.")]
     public static long L1SloadPrecompile { get; set; }
+
+    [CounterMetric]
+    [Description("Number of L1STATICCALL precompile calls.")]
+    public static long L1StaticCallPrecompile { get; set; }
 }
