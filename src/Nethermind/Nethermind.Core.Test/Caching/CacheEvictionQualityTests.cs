@@ -3,8 +3,6 @@
 
 using System;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching;
@@ -17,8 +15,6 @@ namespace Nethermind.Core.Test.Caching;
 [Explicit("Eviction quality measurement; no assertions, not suitable as CI pass/fail signal.")]
 public class CacheEvictionQualityTests
 {
-    // Use a key type that implements IHash64bit for AssociativeCache
-    // and IEquatable for LruCache/ClockCache
     private AddressAsKey[] _keys = null!;
     private Account[] _values = null!;
 
@@ -27,14 +23,7 @@ public class CacheEvictionQualityTests
     [OneTimeSetUp]
     public void Setup()
     {
-        _keys = new AddressAsKey[KeyPoolSize];
-        _values = new Account[KeyPoolSize];
-
-        for (int i = 0; i < KeyPoolSize; i++)
-        {
-            _keys[i] = Build.An.Address.FromNumber(i).TestObject;
-            _values[i] = Build.An.Account.WithBalance((UInt256)(ulong)i).TestObject;
-        }
+        (_keys, _values) = CacheTestData.Build(KeyPoolSize);
     }
 
     [Test]

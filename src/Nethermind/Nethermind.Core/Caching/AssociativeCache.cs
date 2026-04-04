@@ -407,44 +407,8 @@ public sealed class AssociativeCache<TKey, TValue>
         }
     }
 
-    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Contains(in TKey key)
-    {
-        if (_setCount == 0) return false;
-
-        long hashCode = key.GetHashCode64();
-        int setIndex = (int)hashCode & _setMask;
-        int baseIdx = setIndex << WayShift;
-
-        long epochTag = ReadEpoch(ref _epochAndCount);
-        long hashPart = ExtractHashPart(hashCode, _hashShift);
-        long expectedTag = epochTag | hashPart | OccupiedBit;
-
-        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
-
-        for (int i = 0; i < Ways; i++)
-        {
-            ref Entry e = ref Unsafe.Add(ref entries, baseIdx + i);
-            long h1 = Volatile.Read(ref e.Header);
-
-            if ((h1 & (TagMask | LockMarker)) != expectedTag) continue;
-
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-            TKey storedKey = e.Key;
-            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
-
-            long h2 = Volatile.Read(ref e.Header);
-            if (h1 == h2 && storedKey.Equals(in key))
-            {
-                // See TryGetCore comment: bare store is safe, race only affects eviction ranking.
-                e.Ticker = Interlocked.Increment(ref _ticker);
-                return true;
-            }
-        }
-
-        return false;
-    }
+    public bool Contains(in TKey key) => TryGetNoRefresh(in key, out _);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static int Pick3RandomEvictEntry(ref Entry entries, int baseIdx, long now)

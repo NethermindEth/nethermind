@@ -24,10 +24,6 @@ public class SyncedTxGossipPolicy : ITxGossipPolicy, IDisposable
 
     private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e)
     {
-        bool shouldListen = (e.Current & SyncMode.WaitingForBlock) != 0;
-        if (shouldListen != _shouldListen)
-        {
-            _shouldListen = shouldListen;
-        }
+        _shouldListen = (e.Current & SyncMode.WaitingForBlock) != 0;
     }
 }
