@@ -96,11 +96,39 @@ public class FlatDbManagerTests
     }
 
     [Test]
-    public async Task HasStateForBlock_NotFound_ReturnsFalse()
+    public async Task HasStateForBlock_AbovePersistedAndNotInRepository_ReturnsFalse()
     {
         StateId stateId = CreateStateId(10);
         _snapshotRepository.HasState(stateId).Returns(false);
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(5));
+
+        await using FlatDbManager manager = CreateManager();
+        bool result = manager.HasStateForBlock(stateId);
+
+        Assert.That(result, Is.False);
+    }
+
+    [Test]
+    public async Task HasStateForBlock_BelowPersistedBlockNumber_ReturnsTrue()
+    {
+        // During catch-up without FCU, force-persistence removes in-memory snapshots.
+        // Any state at or below the persisted block number is available via persistence.
+        StateId stateId = CreateStateId(5, rootByte: 0xAA);
+        _snapshotRepository.HasState(stateId).Returns(false);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(10, rootByte: 0xBB));
+
+        await using FlatDbManager manager = CreateManager();
+        bool result = manager.HasStateForBlock(stateId);
+
+        Assert.That(result, Is.True);
+    }
+
+    [Test]
+    public async Task HasStateForBlock_PreGenesisPersisted_ReturnsFalse()
+    {
+        StateId stateId = CreateStateId(5);
+        _snapshotRepository.HasState(stateId).Returns(false);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(StateId.PreGenesis);
 
         await using FlatDbManager manager = CreateManager();
         bool result = manager.HasStateForBlock(stateId);

@@ -430,7 +430,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     public bool HasStateForBlock(in StateId stateId)
     {
         if (_snapshotRepository.HasState(stateId)) return true;
-        if (_persistenceManager.GetCurrentPersistedStateId() == stateId) return true;
+
+        // Any state at or below the persisted block number is fully available via persistence.
+        // The previous exact-match check caused NewPayload to return SYNCING during catch-up
+        // without FCU: force-persistence removes in-memory snapshots, and the exact persisted
+        // StateId advances past the parent block, making HasStateForBlock return false.
+        StateId persistedStateId = _persistenceManager.GetCurrentPersistedStateId();
+        if (persistedStateId != StateId.PreGenesis && stateId.BlockNumber <= persistedStateId.BlockNumber) return true;
+
         return false;
     }
 
