@@ -73,3 +73,7 @@ TalkRequest (nethermind)
 SimultaneousRequests (nethermind)
 TestBlobTxWithMismatchedSidecar (nethermind)
 TestBlobTxWithoutSidecar (nethermind)
+
+#sync
+
+sync nethermind from nethermind
