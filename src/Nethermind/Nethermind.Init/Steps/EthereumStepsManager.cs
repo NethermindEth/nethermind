@@ -42,20 +42,19 @@ namespace Nethermind.Init.Steps
 
         public async Task InitializeAll(CancellationToken cancellationToken)
         {
-            List<Task> allRequiredSteps = CreateAndExecuteSteps(cancellationToken);
-            if (allRequiredSteps.Count == 0)
-                return;
-            do
-            {
-                Task current = await Task.WhenAny(allRequiredSteps);
-                ReviewFailedAndThrow(current);
-                if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
-                allRequiredSteps.Remove(current);
-            } while (allRequiredSteps.Any(s => !s.IsCompleted));
+            Dictionary<Type, StepWrapper> graph = BuildStepGraph(cancellationToken);
+            Type defaultRoot = FindDefaultCommandStep(graph);
+            await ExecuteFromRoot(defaultRoot, graph, cancellationToken);
         }
 
+        public async Task InitializeCommand(string commandName, CancellationToken cancellationToken)
+        {
+            Dictionary<Type, StepWrapper> graph = BuildStepGraph(cancellationToken);
+            Type commandRoot = FindCommandStep(commandName, graph);
+            await ExecuteFromRoot(commandRoot, graph, cancellationToken);
+        }
 
-        private List<Task> CreateAndExecuteSteps(CancellationToken cancellationToken)
+        private Dictionary<Type, StepWrapper> BuildStepGraph(CancellationToken cancellationToken)
         {
             Dictionary<Type, StepWrapper> stepInfoMap = [];
 
@@ -71,6 +70,11 @@ namespace Nethermind.Init.Steps
 
             foreach ((Type key, StepWrapper stepWrapper) in stepInfoMap)
             {
+                // Command steps don't push their dependents into other steps.
+                // They are inert in normal mode and only activate when invoked as a command root.
+                if (stepWrapper.StepInfo.CommandName is not null)
+                    continue;
+
                 foreach (Type type in stepWrapper.StepInfo.Dependents)
                 {
                     if (stepInfoMap.TryGetValue(type, out StepWrapper? dependent))
@@ -82,9 +86,12 @@ namespace Nethermind.Init.Steps
                         throw new StepDependencyException($"The dependent step {type.Name} for {stepWrapper.StepInfo.StepBaseType.Name} is missing.");
                     }
                 }
+            }
 
+            foreach ((Type key, StepWrapper stepWrapper) in stepInfoMap)
+            {
                 // Remove absent optional dependencies
-                for (var i = 0; i < stepWrapper.Dependencies.Count; i++)
+                for (int i = 0; i < stepWrapper.Dependencies.Count; i++)
                 {
                     Type dep = stepWrapper.Dependencies[i];
                     if (!stepInfoMap.ContainsKey(dep))
@@ -103,16 +110,98 @@ namespace Nethermind.Init.Steps
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
-            List<Task> allRequiredSteps = new();
-            foreach (StepWrapper stepWrapper in stepInfoMap.Values)
+            return stepInfoMap;
+        }
+
+        private static HashSet<Type> ComputeTransitiveClosure(Type rootType, Dictionary<Type, StepWrapper> graph)
+        {
+            HashSet<Type> closure = [];
+            Queue<Type> queue = new();
+            queue.Enqueue(rootType);
+
+            while (queue.Count > 0)
+            {
+                Type current = queue.Dequeue();
+                if (!closure.Add(current))
+                    continue;
+
+                if (graph.TryGetValue(current, out StepWrapper? wrapper))
+                {
+                    foreach (Type dep in wrapper.Dependencies)
+                    {
+                        queue.Enqueue(dep);
+                    }
+                }
+            }
+
+            return closure;
+        }
+
+        private async Task ExecuteFromRoot(Type rootType, Dictionary<Type, StepWrapper> fullGraph, CancellationToken cancellationToken)
+        {
+            HashSet<Type> closure = ComputeTransitiveClosure(rootType, fullGraph);
+
+            // Filter graph to only steps in the closure
+            Dictionary<Type, StepWrapper> graph = [];
+            foreach ((Type key, StepWrapper wrapper) in fullGraph)
+            {
+                if (closure.Contains(key))
+                {
+                    graph.Add(key, wrapper);
+                }
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(graph)}");
+
+            List<Task> allRequiredSteps = [];
+            foreach (StepWrapper stepWrapper in graph.Values)
             {
                 StepInfo stepInfo = stepWrapper.StepInfo;
-                Task task = ExecuteStep(stepWrapper, stepInfoMap, cancellationToken);
+                Task task = ExecuteStep(stepWrapper, graph, cancellationToken);
                 if (_logger.IsDebug) _logger.Debug($"Executing step: {stepInfo}");
                 allRequiredSteps.Add(task);
             }
-            return allRequiredSteps;
+
+            if (allRequiredSteps.Count == 0)
+                return;
+
+            do
+            {
+                Task current = await Task.WhenAny(allRequiredSteps);
+                ReviewFailedAndThrow(current);
+                if (current.IsCanceled && _logger.IsDebug) _logger.Debug("A required step was cancelled!");
+                allRequiredSteps.Remove(current);
+            } while (allRequiredSteps.Any(s => !s.IsCompleted));
+        }
+
+        private static Type FindDefaultCommandStep(Dictionary<Type, StepWrapper> graph)
+        {
+            foreach ((Type key, StepWrapper wrapper) in graph)
+            {
+                if (wrapper.StepInfo.IsDefaultCommand)
+                    return key;
+            }
+
+            throw new StepDependencyException("No default command step found. Ensure a step is annotated with [RunnerCommand(IsDefault = true)].");
+        }
+
+        private static Type FindCommandStep(string commandName, Dictionary<Type, StepWrapper> graph)
+        {
+            foreach ((Type key, StepWrapper wrapper) in graph)
+            {
+                if (wrapper.StepInfo.CommandName == commandName)
+                    return key;
+            }
+
+            List<string> availableCommands = [];
+            foreach (StepWrapper wrapper in graph.Values)
+            {
+                if (wrapper.StepInfo.CommandName is not null && !wrapper.StepInfo.IsDefaultCommand)
+                    availableCommands.Add(wrapper.StepInfo.CommandName);
+            }
+
+            throw new StepDependencyException(
+                $"Command '{commandName}' not found. Available commands: {string.Join(", ", availableCommands)}");
         }
 
         private async Task ExecuteStep(StepWrapper stepWrapper, Dictionary<Type, StepWrapper> stepBaseTypeMap, CancellationToken cancellationToken)

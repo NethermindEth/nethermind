@@ -8,7 +8,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies]
+    // Uses dependents instead of being listed in NethermindClientStep's dependencies
+    // because StartGrpc is only registered when gRPC is enabled (see StartRpcStepsModule).
+    [RunnerStepDependencies(
+        dependencies: [],
+        dependents: [typeof(NethermindClientStep)]
+    )]
     public class StartGrpc(GrpcRunner grpcRunner, ILogManager logManager) : IStep
     {
         public async Task Execute(CancellationToken cancellationToken)

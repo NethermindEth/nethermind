@@ -29,6 +29,13 @@ public class EthereumRunner(INethermindApi api, EthereumStepsManager stepsManage
         if (_logger.IsInfo) _logger.Info(infoScreen);
     }
 
+    public async Task StartCommand(string commandName, CancellationToken cancellationToken)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Starting command: {commandName}");
+
+        await stepsManager.InitializeCommand(commandName, cancellationToken);
+    }
+
     public async Task StopAsync()
     {
         await serviceStopper.StopAllServices();

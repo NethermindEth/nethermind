@@ -17,7 +17,8 @@ public class StartRpcStepsModule(IGrpcConfig grpcConfig) : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddStep(typeof(StartRpc));
+            .AddStep(typeof(StartRpc))
+            .AddStep(typeof(NethermindClientStep));
 
         if (grpcConfig.Enabled)
         {
