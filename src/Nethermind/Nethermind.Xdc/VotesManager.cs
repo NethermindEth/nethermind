@@ -249,6 +249,7 @@ internal class VotesManager(
     private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
         var masternodeSet = new HashSet<Address>(masternodes);
+        var seenSigners = new HashSet<Address>();
         var signatures = new List<Signature>();
         foreach (var vote in votes)
         {
@@ -257,7 +258,7 @@ internal class VotesManager(
                 vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
             }
 
-            if (masternodeSet.Contains(vote.Signer))
+            if (masternodeSet.Contains(vote.Signer) && seenSigners.Add(vote.Signer))
             {
                 signatures.Add(vote.Signature);
             }

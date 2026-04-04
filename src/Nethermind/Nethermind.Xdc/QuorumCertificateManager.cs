@@ -12,6 +12,7 @@ using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
@@ -180,34 +181,28 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        //Possible optimize here
-        Signature[] uniqueSignatures = qc.Signatures.Distinct().ToArray();
-
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
         double certificateThreshold = spec.CertificateThreshold;
         double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
-        if ((qcRound > 0) && (uniqueSignatures.Length < required))
-        {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
-            return false;
-        }
 
         ValueHash256 voteHash = VoteHash(qc.ProposedBlockInfo, qc.GapNumber);
-        bool allValid = true;
-        Parallel.ForEach(uniqueSignatures, (s, state) =>
+        var masternodeSet = new HashSet<Address>(epochSwitchInfo.Masternodes);
+        HashSet<Address> uniqueSigners = new();
+        foreach (Signature s in qc.Signatures)
         {
             Address signer = _ethereumEcdsa.RecoverAddress(s, voteHash);
-            if (!epochSwitchInfo.Masternodes.Contains(signer))
+            if (!masternodeSet.Contains(signer))
             {
-                allValid = false;
-                state.Stop();
+                error = $"Quorum certificate contains one or more invalid vote signatures";
+                return false;
             }
-        });
+            uniqueSigners.Add(signer);
+            }
 
-        if (!allValid)
+        if ((qcRound > 0) && (uniqueSigners.Count < required))
         {
-            error = $"Quorum certificate contains one or more invalid vote signatures";
+            error = $"Number of unique signers ({uniqueSigners.Count}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
             return false;
         }
 
