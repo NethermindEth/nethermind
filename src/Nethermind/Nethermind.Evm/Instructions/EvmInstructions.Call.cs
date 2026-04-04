@@ -150,22 +150,15 @@ internal static partial class EvmInstructions
             ? codeSource
             : env.ExecutingAccount;
 
-        IReleaseSpec spec = vm.Spec;
-
-        IWorldState state = vm.WorldState;
-
-        // Charge additional gas if the target account is new or considered empty.
-        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
-        {
-            false => !state.AccountExists(target),
-            true => transferValue != 0 && state.IsDeadAccount(target),
-        };
-
         // Add extra gas cost if value is transferred.
         if (!transferValue.IsZero)
         {
             if (!TGasPolicy.ConsumeCallValueTransfer(ref gas)) goto OutOfGas;
         }
+
+        IReleaseSpec spec = vm.Spec;
+
+        IWorldState state = vm.WorldState;
 
         // Update gas: call cost and memory expansion for input and output.
         if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
@@ -184,6 +177,13 @@ internal static partial class EvmInstructions
             if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                     vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
         }
+
+        // Charge additional gas if the target account is new or considered empty.
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
+        {
+            false => !state.AccountExists(target),
+            true => transferValue != 0 && state.IsDeadAccount(target),
+        };
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
