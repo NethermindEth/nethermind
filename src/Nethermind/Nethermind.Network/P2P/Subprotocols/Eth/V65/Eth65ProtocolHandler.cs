@@ -98,7 +98,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             foreach (Hash256 hash in hashes)
             {
-                NotifiedTransactions.Set(hash);
+                if (hash is not null)
+                {
+                    NotifiedTransactions.Set(hash.ValueHash256);
+                }
             }
         }
 

@@ -22,10 +22,10 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
     {
         get
         {
-            ITxGossipPolicy[] p = policies.Value;
-            for (int i = 0; i < p.Length; i++)
+            ITxGossipPolicy[] policy = policies.Value;
+            for (int i = 0; i < policy.Length; i++)
             {
-                if (!p[i].ShouldListenToGossipedTransactions)
+                if (!policy[i].ShouldListenToGossipedTransactions)
                     return false;
             }
             return true;
@@ -36,10 +36,10 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
     {
         get
         {
-            ITxGossipPolicy[] p = policies.Value;
-            for (int i = 0; i < p.Length; i++)
+            ITxGossipPolicy[] policy = policies.Value;
+            for (int i = 0; i < policy.Length; i++)
             {
-                if (!p[i].CanGossipTransactions)
+                if (!policy[i].CanGossipTransactions)
                     return false;
             }
             return true;
@@ -48,10 +48,10 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        ITxGossipPolicy[] p = policies.Value;
-        for (int i = 0; i < p.Length; i++)
+        ITxGossipPolicy[] policy = policies.Value;
+        for (int i = 0; i < policy.Length; i++)
         {
-            if (!p[i].ShouldGossipTransaction(tx))
+            if (!policy[i].ShouldGossipTransaction(tx))
                 return false;
         }
         return true;

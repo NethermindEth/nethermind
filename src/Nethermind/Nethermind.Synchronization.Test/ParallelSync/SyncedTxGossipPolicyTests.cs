@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Threading.Tasks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -26,4 +28,47 @@ public class SyncedTxGossipPolicyTests
     [TestCase(SyncMode.UpdatingPivot, ExpectedResult = false)]
     public bool can_gossip(SyncMode mode) =>
         ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
+
+    [Test]
+    public void Composite_reflects_sync_mode_transitions()
+    {
+        MutableSelector selector = new(SyncMode.FastSync);
+        SyncedTxGossipPolicy syncPolicy = new(selector);
+        CompositeTxGossipPolicy composite = new(new Lazy<ITxGossipPolicy[]>([syncPolicy]));
+
+        // During sync: gossip disabled
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
+        Assert.That(composite.CanGossipTransactions, Is.True);
+
+        // Transition to synced: gossip must become enabled
+        selector.Current = SyncMode.WaitingForBlock;
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.True);
+
+        // Transition back to sync: gossip must become disabled again
+        selector.Current = SyncMode.SnapSync;
+        Assert.That(composite.ShouldListenToGossipedTransactions, Is.False);
+    }
+
+    private class MutableSelector(SyncMode initial) : ISyncModeSelector
+    {
+        private SyncMode _current = initial;
+
+        public SyncMode Current
+        {
+            get => _current;
+            set
+            {
+                SyncMode previous = _current;
+                _current = value;
+                Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, value));
+            }
+        }
+
+        public event EventHandler<SyncModeChangedEventArgs> Preparing { add { } remove { } }
+        public event EventHandler<SyncModeChangedEventArgs> Changing { add { } remove { } }
+        public event EventHandler<SyncModeChangedEventArgs>? Changed;
+        public Task StopAsync() => Task.CompletedTask;
+        public void Update() { }
+        public void Dispose() { }
+    }
 }
