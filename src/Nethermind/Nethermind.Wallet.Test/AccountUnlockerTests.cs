@@ -66,13 +66,6 @@ namespace Nethermind.Wallet.Test
                     Passwords = new[] { "A", "B" },
                     ExpectedPasswords = new[] { "A", "B" },
                 };
-
-                yield return new UnlockAccountsTest()
-                {
-                    UnlockAccounts = new[] { TestItem.AddressA, TestItem.AddressB },
-                    Passwords = new[] { "A", "B" },
-                    ExpectedPasswords = new[] { "A", "B" },
-                };
             }
         }
 
