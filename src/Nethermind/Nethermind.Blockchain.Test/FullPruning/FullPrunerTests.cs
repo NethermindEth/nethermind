@@ -176,6 +176,25 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         test.FullPruningDb[key].Should().BeEquivalentTo(key);
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task additional_roots_provider_called_during_full_pruning()
+    {
+        TestContext test = CreateTest();
+        await test.RunFullPruning();
+        test.AdditionalRootsProvider.Received(1).CopyAdditionalStatesToNodeStorage(Arg.Any<INodeStorage>(), Arg.Any<long>());
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task additional_roots_provider_not_called_when_pruning_is_cancelled()
+    {
+        using CancellationTokenSource cts = new CancellationTokenSource();
+        cts.Cancel();
+        TestContext test = new(true, false, FullPruningCompletionBehavior.None, fullPrunerMemoryBudgetMb, degreeOfParallelism, processExitCts: cts);
+        TestFullPruningDb.TestPruningContext context = await test.WaitForPruningStart();
+        await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
+        test.AdditionalRootsProvider.DidNotReceiveWithAnyArgs().CopyAdditionalStatesToNodeStorage(default!, null);
+    }
+
     private TestContext CreateTest(
         bool successfulPruning = true,
         bool clearPrunedDb = false,
@@ -204,6 +223,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
 
         public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
+        public IAdditionalRootsProvider AdditionalRootsProvider { get; } = Substitute.For<IAdditionalRootsProvider>();
 
         public TestContext(
             bool successfulPruning,
@@ -212,7 +232,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             int fullScanMemoryBudgetMb = 0,
             int degreeOfParallelism = 0,
             INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
-            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
+            INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current,
+            CancellationTokenSource? processExitCts = null)
         {
             BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
             _clearPrunedDb = clearPrunedDb;
@@ -228,6 +249,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
+
+            if (processExitCts is not null)
+                ProcessExitSource.Token.Returns(processExitCts.Token);
 
             var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
             StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
@@ -249,7 +273,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 _chainEstimations,
                 DriveInfo,
                 trieStore,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new Lazy<IAdditionalRootsProvider>(() => AdditionalRootsProvider));
         }
 
         public async Task RunFullPruning()

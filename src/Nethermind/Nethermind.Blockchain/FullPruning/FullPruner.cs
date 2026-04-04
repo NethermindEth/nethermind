@@ -39,6 +39,8 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
 
+        private readonly Lazy<IAdditionalRootsProvider>? _additionalRootsProvider;
+
         public FullPruner(
             IFullPruningDb fullPruningDb,
             INodeStorageFactory nodeStorageFactory,
@@ -51,7 +53,8 @@ namespace Nethermind.Blockchain.FullPruning
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
             IPruningTrieStore trieStore,
-            ILogManager logManager)
+            ILogManager logManager,
+            Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null)
         {
             _fullPruningDb = fullPruningDb;
             _nodeStorageFactory = nodeStorageFactory;
@@ -64,6 +67,7 @@ namespace Nethermind.Blockchain.FullPruning
             _logManager = logManager;
             _chainEstimations = chainEstimations;
             _trieStore = trieStore;
+            _additionalRootsProvider = additionalRootsProvider;
             _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger<FullPruner>();
@@ -270,6 +274,11 @@ namespace Nethermind.Blockchain.FullPruning
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     visitor.Finish();
+
+                    // Preserve additional state roots required by external components (e.g. Arbitrum validator).
+                    // Pass the base block number used for pruning.
+                    if (baseBlock is not null)
+                        _additionalRootsProvider?.Value?.CopyAdditionalStatesToNodeStorage(targetNodeStorage, baseBlock.Number);
 
                     using (_trieStore.PrepareStableState(cancellationToken))
                     {

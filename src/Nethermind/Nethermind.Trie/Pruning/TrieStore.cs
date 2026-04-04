@@ -63,6 +63,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
+    private readonly Lazy<IAdditionalRootsProvider>? _additionalRootsProvider;
+
+    /// <summary>
+    /// Resolves the lazy <see cref="IAdditionalRootsProvider"/> while the DI container is still alive,
+    /// so that the cached value is used safely during <see cref="Dispose"/> without container access.
+    /// </summary>
+    public void WarmUpAdditionalRootsProvider() => _ = _additionalRootsProvider?.Value;
 
     private bool _lastPersistedReachedReorgBoundary;
     private long _toBePersistedBlockNumber = -1;
@@ -77,8 +84,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         IPersistenceStrategy persistenceStrategy,
         IFinalizedStateProvider finalizedStateProvider,
         IPruningConfig pruningConfig,
-        ILogManager logManager)
+        ILogManager logManager,
+        Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null)
     {
+        _additionalRootsProvider = additionalRootsProvider;
         _logger = logManager.GetClassLogger<TrieStore>();
         _nodeStorage = nodeStorage;
         _pruningStrategy = pruningStrategy;
@@ -1254,31 +1263,41 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
-        if (_commitSetQueue.IsEmpty) return;
+        bool persistedCommitSets = false;
 
-        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-        using var _ = candidateSets;
-        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
+        if (!_commitSetQueue.IsEmpty)
         {
-            // No commit set to persist, likely as not enough block was processed to reached prune boundary
-            // This happens when node is shutdown right after sync.
-            // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
-            // at all. This come at a risk that this commit set is not canon though.
-            candidateSets.Add(anyCommitSet);
-            if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
+            (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+            using var _ = candidateSets;
+            if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
+            {
+                // No commit set to persist, likely as not enough block was processed to reached prune boundary
+                // This happens when node is shutdown right after sync.
+                // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
+                // at all. This come at a risk that this commit set is not canon though.
+                candidateSets.Add(anyCommitSet);
+                if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
+            }
+
+            if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
+
+            for (int index = 0; index < candidateSets.Count; index++)
+            {
+                BlockCommitSet blockCommitSet = candidateSets[index];
+                if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
+                ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
+            }
+
+            persistedCommitSets = candidateSets.Count > 0;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
-
-        for (int index = 0; index < candidateSets.Count; index++)
-        {
-            BlockCommitSet blockCommitSet = candidateSets[index];
-            if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-            ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
-        }
+        // Always copy additional state roots (e.g. Arbitrum validator last-valid state) and flush,
+        // even when the commit queue was empty (e.g. shutdown after a failed full pruning run whose
+        // PersistCache already drained the queue but whose CopyTrie never completed).
+        _additionalRootsProvider?.Value?.CopyAdditionalStatesToNodeStorage(_nodeStorage);
         _nodeStorage.Flush(onlyWal: false);
 
-        if (candidateSets.Count == 0)
+        if (!persistedCommitSets)
         {
             if (_logger.IsDebug) _logger.Debug("No commit set to persist at all.");
         }
