@@ -25,6 +25,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Metrics = Nethermind.Blockchain.Metrics;
+using static Nethermind.Core.Threading.ProcessingThread;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -33,8 +34,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2048; // adjust based on tx or gas
 
-    private static readonly AsyncLocal<bool> _isMainProcessingThread = new();
-    public static bool IsMainProcessingThread => _isMainProcessingThread.Value;
+    public static bool IsMainProcessingThread => IsBlockProcessingThread;
     public bool IsMainProcessor { get; init; }
 
     public ITracerBag Tracers => _compositeBlockTracer;
@@ -101,7 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
         _recoveryStep = recoveryStep;
@@ -301,8 +301,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private async Task RunProcessing()
     {
-        _isMainProcessingThread.Value = IsMainProcessor;
-
         try
         {
             await RunProcessingLoop();
@@ -333,12 +331,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;
+            bool previousMainThread = IsBlockProcessingThread;
+            IsBlockProcessingThread = IsMainProcessor;
             try
             {
                 ProcessBlocks();
             }
             finally
             {
+                IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
             }
 

@@ -143,8 +143,8 @@ public interface IDbConfig : IConfig
     string? FlatStorageNodesDbRocksDbOptions { get; set; }
     string? FlatStorageNodesDbAdditionalRocksDbOptions { get; set; }
 
-    string? FlatFallbackNodesNodesDbRocksDbOptions { get; set; }
-    string? FlatFallbackNodesNodesDbAdditionalRocksDbOptions { get; set; }
+    string? FlatFallbackNodesDbRocksDbOptions { get; set; }
+    string? FlatFallbackNodesDbAdditionalRocksDbOptions { get; set; }
 
     string? PreimageDbRocksDbOptions { get; set; }
     public string? PreimageDbAdditionalRocksDbOptions { get; set; }

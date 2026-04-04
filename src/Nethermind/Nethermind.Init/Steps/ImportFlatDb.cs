@@ -10,7 +10,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.Monitoring;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 

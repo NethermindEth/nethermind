@@ -33,7 +33,7 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        foreach (var property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
+        foreach (PropertyDeclarationSyntax property in typeDeclaration.Members.OfType<PropertyDeclarationSyntax>()
             .Where(prop =>
                 prop.Modifiers.Any(SyntaxKind.PublicKeyword) &&
                 prop.AccessorList?.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration && !a.Modifiers.Any(m => m.IsKind(SyntaxKind.PrivateKeyword))) == true &&

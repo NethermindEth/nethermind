@@ -71,7 +71,7 @@ namespace Nethermind.Runner.Ethereum
             _jsonRpcProcessor = jsonRpcProcessor;
             _webSocketsManager = webSocketsManager;
             _jsonRpcServices = jsonRpcServices;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<JsonRpcRunner>();
             _txPool = txPool;
             _specProvider = specProvider;
             _receiptFinder = receiptFinder;

@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;

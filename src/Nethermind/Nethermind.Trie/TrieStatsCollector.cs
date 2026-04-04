@@ -68,7 +68,7 @@ namespace Nethermind.Trie
         protected TrieStatsCollector(IKeyValueStore codeKeyValueStore, ILogManager logManager, string progressTrackerName, CancellationToken cancellationToken, bool expectAccounts)
         {
             _codeKeyValueStore = codeKeyValueStore ?? throw new ArgumentNullException(nameof(codeKeyValueStore));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<TrieStatsCollector>();
             ExpectAccounts = expectAccounts;
             _cancellationToken = cancellationToken;
             _progressTracker = new VisitorProgressTracker(progressTrackerName, logManager);

@@ -24,7 +24,7 @@ public class DerivationPipeline(
     ulong chainId,
     ILogManager logManager) : IDerivationPipeline
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DerivationPipeline>();
 
     public async IAsyncEnumerable<PayloadAttributesRef> DerivePayloadAttributes(L2Block l2Parent, BatchV1 batch,
         [EnumeratorCancellation] CancellationToken token)

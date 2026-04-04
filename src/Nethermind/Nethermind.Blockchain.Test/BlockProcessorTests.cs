@@ -23,7 +23,6 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -243,6 +242,28 @@ public class BlockProcessorTests
         }
     }
 
+    [TestCase(2_000, false)]
+    [TestCase(1_999, true)]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void ParallelWorldState_bal_read_budget_uses_eip_7928_item_cost(long gasRemaining, bool shouldThrow)
+    {
+        ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
+        BlockAccessList suggestedBlockAccessList = new();
+        suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
+        stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, gasRemaining);
+
+        TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, gasRemaining);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
+        }
+        else
+        {
+            Assert.That(act, Throws.Nothing);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()
     {
@@ -284,14 +305,14 @@ public class BlockProcessorTests
 
         BlockProcessor.BlockProductionTransactionPicker txPicker = new(specProvider, transactionWithNetworkForm.GetLength(true) / 1.KiB - 1);
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
-        WorldStateStab stateProvider = new();
+        IWorldState stateProvider = new WorldStateStab();
 
         using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;
 
-        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider);
+        txPicker.CanAddTransaction(newBlock, transactionWithNetworkForm, new HashSet<Transaction>(), stateProvider.GetUntrackedReader());
 
         Assert.That(addedTransaction, Is.EqualTo(transactionWithNetworkForm));
     }
@@ -312,6 +333,7 @@ public class BlockProcessorTests
         }
 
         public CacheType ClearCaches() => default;
+        public void Dispose() { }
     }
 
     private sealed class TrackingBlockAccessListWorldState(IWorldState innerWorldState)

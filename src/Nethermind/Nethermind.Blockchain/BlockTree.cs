@@ -601,7 +601,7 @@ namespace Nethermind.Blockchain
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = (BestKnownBeaconNumber > BestKnownNumber && header.Number > BestKnownNumber);  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
-                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
+                    if (!createLevelIfMissing || isSearchingForBeaconBlock)
                     {
                         if (Logger.IsInfo) Logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindHeader)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {header.ToString(BlockHeader.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }
@@ -1025,8 +1025,11 @@ namespace Nethermind.Blockchain
             }
 
             // Clear stale canonical markers above the new head left by beacon sync.
-            // Covers both same-height FCU (previousHeadNumber <= lastNumber) and ePBS FCU to ancestor.
-            ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
+            // Only needed on FCU reorgs (forceUpdateHeadBlock == true). During forward sync
+            // (BlockDownloader) and forward processing (BlockchainProcessor), the markers above
+            // are either not yet set or belong to the same chain and must not be cleared.
+            if (forceUpdateHeadBlock)
+                ClearStaleMarkersAbove(Math.Max(previousHeadNumber, lastNumber), batch);
 
             for (int i = 0; i < blocks.Count; i++)
             {
@@ -1143,7 +1146,7 @@ namespace Nethermind.Blockchain
         }
 
 
-        public bool IsBetterThanHead(BlockHeader? header) =>
+        public virtual bool IsBetterThanHead(BlockHeader? header) =>
             header is not null // null is never better
             && ((header.IsGenesis && Genesis is null) // is genesis
                 || header.TotalDifficulty >= SpecProvider.TerminalTotalDifficulty // is post-merge block, we follow engine API
@@ -1236,7 +1239,7 @@ namespace Nethermind.Blockchain
             return preMergeImprovementRequirementSatisfied || postMergeImprovementRequirementSatisfied;
         }
 
-        private bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
+        protected virtual bool BestSuggestedImprovementRequirementsSatisfied(BlockHeader header)
         {
             if (BestSuggestedHeader is null) return true;
 
@@ -1473,7 +1476,7 @@ namespace Nethermind.Blockchain
                     // TODO: would be great to remove it, he?
                     // TODO: we should remove it - readonly method modifies DB
                     bool isSearchingForBeaconBlock = BestKnownBeaconNumber > BestKnownNumber && block.Number > BestKnownNumber;  // if we're searching for beacon block we don't want to create level. We're creating it in different place with beacon metadata
-                    if (createLevelIfMissing == false || isSearchingForBeaconBlock)
+                    if (!createLevelIfMissing || isSearchingForBeaconBlock)
                     {
                         if (Logger.IsInfo) Logger.Info($"Missing block info - ignoring creation of the level in {nameof(FindBlock)} scope when head is {Head?.ToString(Block.Format.Short)}. BlockHeader {block.ToString(Block.Format.FullHashAndNumber)}, CreateLevelIfMissing: {createLevelIfMissing}. BestKnownBeaconNumber: {BestKnownBeaconNumber}, BestKnownNumber: {BestKnownNumber}");
                     }

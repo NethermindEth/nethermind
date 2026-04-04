@@ -16,7 +16,7 @@ public class OptimismBlockProductionTransactionPicker : BlockProcessor.BlockProd
     }
 
     public override BlockProcessor.AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx,
-        IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
+        IReadOnlySet<Transaction> transactionsInBlock, IReadOnlyStateProvider stateProvider)
     {
         if (!currentTx.IsDeposit())
             return base.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider);

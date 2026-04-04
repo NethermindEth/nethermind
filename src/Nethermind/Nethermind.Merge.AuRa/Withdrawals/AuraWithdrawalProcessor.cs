@@ -3,7 +3,6 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,7 +25,7 @@ public class AuraWithdrawalProcessor : IWithdrawalProcessor
         ArgumentNullException.ThrowIfNull(logManager);
 
         _contract = contract ?? throw new ArgumentNullException(nameof(contract));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<AuraWithdrawalProcessor>();
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)

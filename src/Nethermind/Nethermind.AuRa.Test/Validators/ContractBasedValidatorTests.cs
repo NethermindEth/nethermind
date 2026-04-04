@@ -99,6 +99,7 @@ public class ContractBasedValidatorTests
     public void TearDown()
     {
         _blockFinalizationManager?.Dispose();
+        _readOnlyTxProcessorSource?.Dispose();
     }
 
     [Test]
