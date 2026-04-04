@@ -166,6 +166,7 @@ public class ChainSpecParamsJson
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
+    public ulong? Eip7782TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
     public ulong? Eip7825TransitionTimestamp { get; set; }

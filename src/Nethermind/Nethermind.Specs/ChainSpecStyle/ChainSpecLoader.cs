@@ -166,6 +166,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7918TransitionTimestamp = chainSpecJson.Params.Eip7918TransitionTimestamp,
             Eip7907TransitionTimestamp = chainSpecJson.Params.Eip7907TransitionTimestamp,
             Eip7823TransitionTimestamp = chainSpecJson.Params.Eip7823TransitionTimestamp,
+            Eip7782TransitionTimestamp = chainSpecJson.Params.Eip7782TransitionTimestamp,
             Eip7825TransitionTimestamp = chainSpecJson.Params.Eip7825TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
             Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,

@@ -475,6 +475,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip7954Enabled { get; }
 
         /// <summary>
+        /// EIP-7782:Reduce Block Latency
+        /// </summary>
+        public bool IsEip7782Enabled { get; }
+
+        /// <summary>
         /// Precomputed gas cost and refund constants derived from this spec.
         /// Values are cached per spec instance (singletons per fork) to avoid
         /// repeated interface dispatch on the EVM opcode hot path.

@@ -211,13 +211,20 @@ namespace Nethermind.Consensus.Producers
         {
             ulong timestamp = payloadAttributes?.Timestamp ?? Math.Max(parent.Timestamp + 1, Timestamper.UnixTime.Seconds);
             Address blockAuthor = payloadAttributes?.SuggestedFeeRecipient ?? Sealer.Address;
+            IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
+            IReleaseSpec newSpec = _specProvider.GetSpec(parent.Number + 1, timestamp);
+            long gasLimit = payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent);
+            if (newSpec.IsEip7782Enabled && !parentSpec.IsEip7782Enabled)
+            {
+                gasLimit = parent.GasLimit / 2;
+            }
             BlockHeader header = new(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GetGasLimit() ?? GasLimitCalculator.GetGasLimit(parent),
+                gasLimit,
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {

@@ -9,10 +9,13 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,7 +33,8 @@ public partial class BlockProducerBaseTests
         IGasLimitCalculator gasLimitCalculator,
         ITimestamper timestamper,
         ILogManager logManager,
-        IBlocksConfig blocksConfig)
+        IBlocksConfig blocksConfig,
+        ISpecProvider? specProvider = null)
         : BlockProducerBase(txSource,
             processor,
             sealer,
@@ -38,7 +42,7 @@ public partial class BlockProducerBaseTests
             stateProvider,
             gasLimitCalculator,
             timestamper,
-            MainnetSpecProvider.Instance,
+            specProvider ?? MainnetSpecProvider.Instance,
             logManager,
             new TimestampDifficultyCalculator(),
             blocksConfig)
@@ -95,4 +99,33 @@ public partial class BlockProducerBaseTests
         Block block = producerUnderTest.Prepare(Build.A.BlockHeader.WithTimestamp(futureTime).TestObject);
         new UInt256(block.Timestamp).Should().BeEquivalentTo(block.Difficulty);
     }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip7782_transition_block_gas_limit_is_halved()
+    {
+        const long parentGasLimit = 30_000_000;
+        const long forkBlockNumber = 5;
+
+        OverridableReleaseSpec preFork = new(Prague.Instance) { IsEip7782Enabled = false };
+        OverridableReleaseSpec postFork = new(Prague.Instance) { IsEip7782Enabled = true };
+        TestSpecProvider specProvider = new(preFork) { NextForkSpec = postFork, ForkOnBlockNumber = forkBlockNumber };
+
+        ProducerUnderTest producerUnderTest = new(
+            EmptyTxSource.Instance,
+            Substitute.For<IBlockchainProcessor>(),
+            NullSealEngine.Instance,
+            Build.A.BlockTree().TestObject,
+            Substitute.For<IWorldState>(),
+            Substitute.For<IGasLimitCalculator>(),
+            new IncrementalTimestamper(),
+            LimboLogs.Instance,
+            new BlocksConfig(),
+            specProvider);
+
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(forkBlockNumber - 1).WithGasLimit(parentGasLimit).TestObject;
+        Block block = producerUnderTest.Prepare(parent);
+
+        block.GasLimit.Should().Be(parentGasLimit / 2);
+    }
+
 }

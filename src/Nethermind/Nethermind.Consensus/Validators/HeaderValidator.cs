@@ -259,6 +259,21 @@ namespace Nethermind.Consensus.Validators
 
         protected virtual bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
         {
+            if (spec.IsEip7782Enabled)
+            {
+                IReleaseSpec parentSpec = _specProvider.GetSpec(parent);
+                if (!parentSpec.IsEip7782Enabled)
+                {
+                    long expectedGasLimit = parent.GasLimit / 2;
+                    if (header.GasLimit != expectedGasLimit)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas limit should be half of parent gas limit when EIP-7782 is enabled. Expected gas limit: {expectedGasLimit}, actual gas limit: {header.GasLimit}");
+                        error = BlockErrorMessages.InvalidGasLimit;
+                        return false;
+                    }
+                    return true;
+                }
+            }
             long adjustedParentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
             long maxGasLimitDifference = adjustedParentGasLimit / spec.GasLimitBoundDivisor;
 
