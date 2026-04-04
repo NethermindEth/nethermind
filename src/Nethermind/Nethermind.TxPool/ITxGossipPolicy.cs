@@ -18,11 +18,33 @@ public interface ITxGossipPolicy
 // not yet available during init step construction.
 public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGossipPolicy
 {
-    private bool? _canGossipTransactions;
-    private bool? _shouldListenToGossipedTransactions;
+    public bool ShouldListenToGossipedTransactions
+    {
+        get
+        {
+            ITxGossipPolicy[] policy = policies.Value;
+            for (int i = 0; i < policy.Length; i++)
+            {
+                if (!policy[i].ShouldListenToGossipedTransactions)
+                    return false;
+            }
+            return true;
+        }
+    }
 
-    public bool ShouldListenToGossipedTransactions => _shouldListenToGossipedTransactions ??= CalcautateShouldListen();
-    public bool CanGossipTransactions => _canGossipTransactions ??= CalculateCanGossip();
+    public bool CanGossipTransactions
+    {
+        get
+        {
+            ITxGossipPolicy[] policy = policies.Value;
+            for (int i = 0; i < policy.Length; i++)
+            {
+                if (!policy[i].CanGossipTransactions)
+                    return false;
+            }
+            return true;
+        }
+    }
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
@@ -30,28 +52,6 @@ public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGoss
         for (int i = 0; i < policy.Length; i++)
         {
             if (!policy[i].ShouldGossipTransaction(tx))
-                return false;
-        }
-        return true;
-    }
-
-    private bool CalcautateShouldListen()
-    {
-        ITxGossipPolicy[] policy = policies.Value;
-        for (int i = 0; i < policy.Length; i++)
-        {
-            if (!policy[i].ShouldListenToGossipedTransactions)
-                return false;
-        }
-        return true;
-    }
-
-    private bool CalculateCanGossip()
-    {
-        ITxGossipPolicy[] policy = policies.Value;
-        for (int i = 0; i < policy.Length; i++)
-        {
-            if (!policy[i].CanGossipTransactions)
                 return false;
         }
         return true;

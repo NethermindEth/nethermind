@@ -318,8 +318,7 @@ namespace Nethermind.TxPool
             _timer.Enabled = true;
         }
 
-        private bool? _canGossipTransactions;
-        private bool CanGossipTransactions => _canGossipTransactions ??= _txGossipPolicy.CanGossipTransactions;
+        private bool CanGossipTransactions => _txGossipPolicy.CanGossipTransactions;
 
         private void Notify(ITxPoolPeer peer, IEnumerable<Transaction> txs, bool sendFullTx)
         {
