@@ -15,7 +15,8 @@ namespace Nethermind.State.Flat.Test.Persistence;
 public class WriteBufferAdjusterTests
 {
     private const long MinWriteBufferSize = 16L * 1024 * 1024;
-    private const long MaxWriteBufferSize = 256L * 1024 * 1024;
+    private const long AccountMaxWriteBufferSize = 32L * 1024 * 1024;
+    private const long StorageMaxWriteBufferSize = 64L * 1024 * 1024;
 
     private IColumnsDb<FlatDbColumns> _db = null!;
     private IDb _columnDb = null!;
@@ -81,6 +82,26 @@ public class WriteBufferAdjusterTests
         }
 
         _columnDb.Received(expectedSetWriteBufferCallCount).SetWriteBuffer(Arg.Any<long>());
+    }
+
+    [Test]
+    public void AdjustWriteBuffer_RespectsPerColumnCap()
+    {
+        WriteBufferAdjuster.CountingWriteBatch store =
+            (WriteBufferAdjuster.CountingWriteBatch)_sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.None);
+        store.Set(new byte[200 * 1024 * 1024], null);
+        _sut.OnBatchDisposed();
+
+        _columnDb.Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+    }
+
+    [Test]
+    public void Wrap_DisableWAL_UsesPerColumnCaps()
+    {
+        _sut.Wrap(_batch, FlatDbColumns.Account, WriteFlags.DisableWAL);
+
+        _columnDb.Received(1).SetWriteBuffer(AccountMaxWriteBufferSize);
+        _columnDb.Received(3).SetWriteBuffer(StorageMaxWriteBufferSize);
     }
 
     private sealed class StubWriteBatch : IWriteBatch
