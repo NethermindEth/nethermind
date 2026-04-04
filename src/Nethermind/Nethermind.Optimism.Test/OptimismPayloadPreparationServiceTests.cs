@@ -43,11 +43,11 @@ public class OptimismPayloadPreparationServiceTests
             yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], NoTxPool = noTxPool }, new EIP1559Parameters(0, 2, 10));
             yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(0, 250, 6));
 
-            // V1
-            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 8, 2, 0));
-            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 2, 255));
-            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10, 255, 255, 255, 255, 255, 255, 255, 255], NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 10, ulong.MaxValue));
-            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 0));
+            // V1: 8-byte EIP1559Params + separate MinBaseFee
+            yield return (new() { EIP1559Params = [0, 0, 0, 8, 0, 0, 0, 2], MinBaseFee = 0, NoTxPool = noTxPool }, new EIP1559Parameters(1, 8, 2, 0));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 2], MinBaseFee = 255, NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 2, 255));
+            yield return (new() { EIP1559Params = [0, 0, 0, 2, 0, 0, 0, 10], MinBaseFee = ulong.MaxValue, NoTxPool = noTxPool }, new EIP1559Parameters(1, 2, 10, ulong.MaxValue));
+            yield return (new() { EIP1559Params = [0, 0, 0, 0, 0, 0, 0, 0], MinBaseFee = 0, NoTxPool = noTxPool }, new EIP1559Parameters(1, 250, 6, 0));
         }
     }
     [TestCaseSource(nameof(TestCases))]

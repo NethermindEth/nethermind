@@ -253,6 +253,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsOpGraniteEnabled = (chainSpec.Parameters.OpGraniteTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpHoloceneEnabled = (chainSpec.Parameters.OpHoloceneTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsOpIsthmusEnabled = (chainSpec.Parameters.OpIsthmusTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsOpJovianEnabled = (chainSpec.Parameters.OpJovianTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4844TransitionTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp ?? ulong.MaxValue;
             releaseSpec.IsEip5656Enabled = (chainSpec.Parameters.Eip5656Transition ?? long.MaxValue) <= releaseStartBlock ||
                                            (chainSpec.Parameters.Eip5656TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;

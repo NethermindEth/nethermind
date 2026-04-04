@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -50,7 +51,10 @@ public class L2Api(
         OptimismPayloadAttributes payloadAttributes = new()
         {
             NoTxPool = true,
-            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..],
+            EIP1559Params = block.ExtraData.Length == 0 ? null : block.ExtraData[1..Math.Min(9, block.ExtraData.Length)],
+            MinBaseFee = block.ExtraData.Length >= 17
+                ? BinaryPrimitives.ReadUInt64BigEndian(block.ExtraData.AsSpan(9, 8))
+                : null,
             GasLimit = block.GasLimit,
             ParentBeaconBlockRoot = block.ParentBeaconBlockRoot,
             PrevRandao = block.MixHash!,

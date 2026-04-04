@@ -131,28 +131,20 @@ public static class EIP1559ParametersExtensions
 
         ReadOnlySpan<byte> data = attributes.EIP1559Params;
         int dataLength = data.Length;
-        if (dataLength == 0)
+        if (dataLength != 8)
         {
-            error = $"{nameof(attributes.EIP1559Params)} must not be empty";
+            error = $"{nameof(attributes.EIP1559Params)} must be 8 bytes, got {dataLength}";
             return false;
         }
 
-        int version = Array.IndexOf(EIP1559Parameters.ByteLengthByVersion, (byte)(dataLength + 1));
-        if (version < 0)
+        UInt32 denominator = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(0, sizeof(UInt32)));
+        UInt32 elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.Slice(4, sizeof(UInt32)));
+
+        if (attributes.MinBaseFee.HasValue)
         {
-            error = $"{nameof(attributes.EIP1559Params)} has invalid length";
-            return false;
+            return EIP1559Parameters.TryCreateV1(denominator, elasticity, attributes.MinBaseFee.Value, out parameters, out error);
         }
 
-        UInt32 denominator = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
-        UInt32 elasticity = BinaryPrimitives.ReadUInt32BigEndian(data.TakeAndMove(sizeof(UInt32)));
-
-        if (version == 0)
-        {
-            return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
-        }
-
-        UInt64 minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(data.TakeAndMove(sizeof(UInt64)));
-        return EIP1559Parameters.TryCreateV1(denominator, elasticity, minBaseFee, out parameters, out error);
+        return EIP1559Parameters.TryCreateV0(denominator, elasticity, out parameters, out error);
     }
 }
