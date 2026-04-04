@@ -255,6 +255,10 @@ jobs:
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
           - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - name: Free up disk space
         if: runner.os == 'Linux' && startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
         uses: jlumbroso/free-disk-space@v1.3.1

@@ -349,6 +349,10 @@ public class BaseMergePluginModule : Module
                         ctx.Resolve<ILogManager>());
                 })
                 .AddSingleton<IHttpClient, DefaultHttpClient>()
+                .AddSingleton<IGasLimitCalculator, TargetAdjustedGasLimitCalculator>()
+
+            // Testing rpc
+            .RegisterSingletonJsonRpcModule<ITestingRpcModule, TestingRpcModule>()
             ;
     }
 

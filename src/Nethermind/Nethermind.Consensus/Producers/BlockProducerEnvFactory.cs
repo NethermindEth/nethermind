@@ -36,9 +36,8 @@ namespace Nethermind.Consensus.Producers
                 ConfigureBuilder(builder)
                     .AddScoped(worldState));
 
-            rootLifetime.Disposer.AddInstanceForAsyncDisposal(lifetimeScope);
-
-            return lifetimeScope.Resolve<IBlockProducerEnv>();
+            BlockProducerEnv env = (BlockProducerEnv)lifetimeScope.Resolve<IBlockProducerEnv>();
+            return env with { Scope = lifetimeScope };
         }
     }
 }
