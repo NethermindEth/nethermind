@@ -1,25 +1,20 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
+public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
     public static readonly ECRecoverPrecompile Instance = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
 
-    private ECRecoverPrecompile()
-    {
-    }
+    private ECRecoverPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(1);
 
@@ -33,7 +28,9 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+#if !ZK_EVM
         Metrics.ECRecoverPrecompile++;
+#endif
         return inputData.Length >= 128 ? RunInternal(inputData.Span) : RunInternal(inputData);
     }
 
@@ -50,33 +47,18 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
     {
         ReadOnlySpan<byte> vBytes = inputDataSpan.Slice(32, 32);
 
-        // TEST: CALLCODEEcrecoverV_prefixedf0_d0g0v0
-        // TEST: CALLCODEEcrecoverV_prefixedf0_d1g0v0
         if (!Bytes.AreEqual(_zero31, vBytes[..31]))
-        {
             return Empty;
-        }
 
         byte v = vBytes[31];
+
         if (v != 27 && v != 28)
-        {
             return Empty;
-        }
 
-        Span<byte> publicKey = stackalloc byte[65];
-        if (!EthereumEcdsa.RecoverAddressRaw(inputDataSpan.Slice(64, 64), Signature.GetRecoveryId(v),
-                inputDataSpan[..32], publicKey))
-        {
-            return Empty;
-        }
+        ReadOnlySpan<byte> message = inputDataSpan[..32];
+        ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
+        byte recoveryId = Signature.GetRecoveryId(v);
 
-        byte[] result = new byte[32];
-        ref byte refResult = ref MemoryMarshal.GetArrayDataReference(result);
-
-        KeccakCache.ComputeTo(publicKey.Slice(1, 64), out Unsafe.As<byte, ValueHash256>(ref refResult));
-
-        // Clear first 12 bytes, as address is last 20 bytes of the hash
-        Unsafe.InitBlockUnaligned(ref refResult, 0, 12);
-        return result;
+        return Recover(signature, recoveryId, message);
     }
 }

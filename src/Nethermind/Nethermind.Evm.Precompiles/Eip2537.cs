@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using System;
+using Nethermind.Core;
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -11,7 +11,7 @@ namespace Nethermind.Evm.Precompiles;
 /// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-2537" />
 /// </summary>
-internal static class Eip2537
+internal static partial class Eip2537
 {
     internal const bool DisableConcurrency = false;
     internal const bool DisableSubgroupChecks = false;

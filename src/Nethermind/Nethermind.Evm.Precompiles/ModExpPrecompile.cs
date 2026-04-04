@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -10,21 +10,19 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.GmpBindings;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Precompiles;
 
 /// <summary>
-/// https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
+/// <see href="https://eips.ethereum.org/EIPS/eip-198" />
 /// </summary>
-public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
+public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 {
-    public static readonly ModExpPrecompile Instance = new();
     /// <summary>
     /// Maximum input size (in bytes) for the modular exponentiation operation under EIP-7823.
     /// This constant defines the upper limit for the size of the input data that can be processed.
-    /// For more details, see: https://eips.ethereum.org/EIPS/eip-7823
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7823" />
     /// </summary>
     public const uint ModExpMaxInputSizeEip7823 = 1024;
 
@@ -34,9 +32,12 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     private const int StartModLength = 64;
     private const int LengthsLengths = StartModLength + LengthSize;
 
-    private ModExpPrecompile()
-    {
-    }
+    private static readonly ulong IterationCountMultiplierEip2565 = 8;
+    private static readonly ulong IterationCountMultiplierEip7883 = 16;
+
+    public static readonly ModExpPrecompile Instance = new();
+
+    private ModExpPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(5);
 
@@ -45,7 +46,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => 0L;
 
     /// <summary>
-    /// https://github.com/ethereum/EIPs/pull/2892
+    /// <see href="https://eips.ethereum.org/EIPS/eip-2565" />
     /// ADJUSTED_EXPONENT_LENGTH is defined as follows.
     /// If length_of_EXPONENT &lt;= 32, and all bits in EXPONENT are 0, return 0
     /// If length_of_EXPONENT &lt;= 32, then return the index of the highest bit in EXPONENT (eg. 1 -> 0, 2 -> 1, 3 -> 1, 255 -> 7, 256 -> 8).
@@ -75,6 +76,8 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             return long.MaxValue;
         }
     }
+
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static long DataGasCostShortInternal(ReadOnlySpan<byte> inputData, IReleaseSpec releaseSpec)
@@ -117,6 +120,76 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
             : Math.Max(releaseSpec.IsEip7883Enabled ? GasCostOf.MinModExpEip7883 : GasCostOf.MinModExpEip2565, (long)result);
     }
 
+    /// <summary>
+    /// def calculate_multiplication_complexity(base_length, modulus_length):
+    /// max_length = max(base_length, modulus_length)
+    /// words = math.ceil(max_length / 8)
+    /// return words**2
+    /// </summary>
+    /// <returns></returns>
+    private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
+    {
+        // Pick the larger of the two
+        uint max = baseLength > modulusLength ? baseLength : modulusLength;
+
+        // Compute ceil(max/8) via a single add + shift
+        // (max + 7) >> 3  ==  (max + 7) / 8, rounding up
+        ulong words = ((ulong)max + 7u) >> 3;
+
+        // Square it once
+        ulong sq = words * words;
+
+        // If EIP-7883 => small-case = 16, else 2*sq when max>32
+        if (isEip7883Enabled)
+        {
+            return max > LengthSize
+                ? (sq << 1)    // 2 * words * words
+                : 16UL;        // constant floor
+        }
+
+        // Otherwise plain square
+        return sq;
+    }
+
+    /// <summary>
+    /// def calculate_iteration_count(exponent_length, exponent):
+    /// iteration_count = 0
+    /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
+    /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
+    /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
+    /// return max(iteration_count, 1)
+    /// </summary>
+    /// <param name="exponentLength"></param>
+    /// <param name="exponent"></param>
+    /// <param name="isEip7883Enabled"></param>
+    /// <returns></returns>
+    private static UInt256 CalculateIterationCount(uint exponentLength, UInt256 exponent, bool isEip7883Enabled)
+    {
+        ulong iterationCount;
+        uint overflow = 0;
+        if (exponentLength <= LengthSize)
+        {
+            iterationCount = (uint)Math.Max(1, exponent.BitLen - 1);
+        }
+        else
+        {
+            uint bitLength = (uint)exponent.BitLen;
+            if (bitLength > 0)
+            {
+                bitLength--;
+            }
+
+            ulong multiplicationResult = (exponentLength - LengthSize) * (isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565);
+            iterationCount = multiplicationResult + bitLength;
+            if (iterationCount < multiplicationResult)
+            {
+                overflow = 1;
+            }
+        }
+
+        return new UInt256(iterationCount, overflow);
+    }
+
     private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)
     {
         return releaseSpec.IsEip7823Enabled
@@ -125,7 +198,7 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
+    private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)
     {
         Debug.Assert(inputData.Length < LengthsLengths);
 
@@ -230,135 +303,34 @@ public class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return (0, uint.MaxValue, 0);
     }
 
-    public unsafe Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryPrepareInput(
+        ReadOnlyMemory<byte> inputData,
+        IReleaseSpec releaseSpec,
+        out ReadOnlySpan<byte> inputSpan,
+        out uint baseLength,
+        out uint expLength,
+        out uint modulusLength,
+        out Result<byte[]> result)
     {
-        Metrics.ModExpPrecompile++;
-
-        ReadOnlySpan<byte> inputSpan = inputData.Span;
-        (uint baseLength, uint expLength, uint modulusLength) = inputSpan.Length >= LengthsLengths
-                ? GetInputLengths(inputSpan)
-                : GetInputLengthsShort(inputSpan);
+        inputSpan = inputData.Span;
+        (baseLength, expLength, modulusLength) = inputSpan.Length >= LengthsLengths
+            ? GetInputLengths(inputSpan)
+            : GetInputLengthsShort(inputSpan);
 
         if (ExceedsMaxInputSize(releaseSpec, baseLength, expLength, modulusLength))
-            return "one or more of base/exponent/modulus length exceeded 1024 bytes";
+        {
+            result = "one or more of base/exponent/modulus length exceeded 1024 bytes";
+            return false;
+        }
 
-        // if both are 0, then expLength can be huge, which leads to a potential buffer too big exception
         if (baseLength == 0 && modulusLength == 0)
-            return Bytes.Empty;
-
-        using var modulusInt = mpz_t.Create();
-
-        ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength);
-        if (modulusDataSpan.Length > 0)
         {
-            fixed (byte* modulusData = &MemoryMarshal.GetReference(modulusDataSpan))
-                Gmp.mpz_import(modulusInt, modulusLength, 1, 1, 1, nuint.Zero, (nint)modulusData);
+            result = Bytes.Empty;
+            return false;
         }
 
-        if (Gmp.mpz_sgn(modulusInt) == 0)
-            return new byte[modulusLength];
-
-        using var baseInt = mpz_t.Create();
-        using var expInt = mpz_t.Create();
-        using var powmResult = mpz_t.Create();
-
-        ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96, (int)baseLength);
-        if (baseDataSpan.Length > 0)
-        {
-            fixed (byte* baseData = &MemoryMarshal.GetReference(baseDataSpan))
-                Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, (nint)baseData);
-        }
-
-        ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)expLength);
-        if (expDataSpan.Length > 0)
-        {
-            fixed (byte* expData = &MemoryMarshal.GetReference(expDataSpan))
-                Gmp.mpz_import(expInt, expLength, 1, 1, 1, nuint.Zero, (nint)expData);
-        }
-
-        Gmp.mpz_powm(powmResult, baseInt, expInt, modulusInt);
-
-        nint powmResultLen = (nint)(Gmp.mpz_sizeinbase(powmResult, 2) + 7) / 8;
-        nint offset = (int)modulusLength - powmResultLen;
-
-        byte[] result = new byte[modulusLength];
-        fixed (byte* ptr = &MemoryMarshal.GetArrayDataReference(result))
-            Gmp.mpz_export((nint)(ptr + offset), out _, 1, 1, 1, nuint.Zero, powmResult);
-
-        return result;
-    }
-
-    /// <summary>
-    /// def calculate_multiplication_complexity(base_length, modulus_length):
-    /// max_length = max(base_length, modulus_length)
-    /// words = math.ceil(max_length / 8)
-    /// return words**2
-    /// </summary>
-    /// <returns></returns>
-    private static ulong MultComplexity(uint baseLength, uint modulusLength, bool isEip7883Enabled)
-    {
-        // Pick the larger of the two
-        uint max = baseLength > modulusLength ? baseLength : modulusLength;
-
-        // Compute ceil(max/8) via a single add + shift
-        // (max + 7) >> 3  ==  (max + 7) / 8, rounding up
-        ulong words = ((ulong)max + 7u) >> 3;
-
-        // Square it once
-        ulong sq = words * words;
-
-        // If EIP-7883 => small-case = 16, else 2*sq when max>32
-        if (isEip7883Enabled)
-        {
-            return max > LengthSize
-                ? (sq << 1)    // 2 * words * words
-                : 16UL;        // constant floor
-        }
-
-        // Otherwise plain square
-        return sq;
-    }
-
-    static readonly ulong IterationCountMultiplierEip2565 = 8;
-
-    static readonly ulong IterationCountMultiplierEip7883 = 16;
-
-    /// <summary>
-    /// def calculate_iteration_count(exponent_length, exponent):
-    /// iteration_count = 0
-    /// if exponent_length &lt;= 32 and exponent == 0: iteration_count = 0
-    /// elif exponent_length &lt;= 32: iteration_count = exponent.bit_length() - 1
-    /// elif exponent_length > 32: iteration_count = (8 * (exponent_length - 32)) + ((exponent & (2**256 - 1)).bit_length() - 1)
-    /// return max(iteration_count, 1)
-    /// </summary>
-    /// <param name="exponentLength"></param>
-    /// <param name="exponent"></param>
-    /// <param name="isEip7883Enabled"></param>
-    /// <returns></returns>
-    private static UInt256 CalculateIterationCount(uint exponentLength, UInt256 exponent, bool isEip7883Enabled)
-    {
-        ulong iterationCount;
-        uint overflow = 0;
-        if (exponentLength <= LengthSize)
-        {
-            iterationCount = (uint)Math.Max(1, exponent.BitLen - 1);
-        }
-        else
-        {
-            uint bitLength = (uint)exponent.BitLen;
-            if (bitLength > 0)
-            {
-                bitLength--;
-            }
-
-            ulong multiplicationResult = (exponentLength - LengthSize) * (isEip7883Enabled ? IterationCountMultiplierEip7883 : IterationCountMultiplierEip2565);
-            iterationCount = multiplicationResult + bitLength;
-            if (iterationCount < multiplicationResult)
-            {
-                overflow = 1;
-            }
-        }
-
-        return new UInt256(iterationCount, overflow);
+        result = default;
+        return true;
     }
 }

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Nethermind/">
+    <Project Path="../../src/Nethermind/Nethermind.Facade/Nethermind.Facade.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.JsonRpc/Nethermind.JsonRpc.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.KeyStore/Nethermind.KeyStore.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Network/Nethermind.Network.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Sockets/Nethermind.Sockets.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
+    <Project Path="../../src/Nethermind/Nethermind.Wallet/Nethermind.Wallet.csproj" />
+  </Folder>
+  <Project Path="StatelessInputGen.csproj" />
+</Solution>

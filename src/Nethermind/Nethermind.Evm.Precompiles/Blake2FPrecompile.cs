@@ -1,56 +1,71 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto.Blake2;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
+/// <summary>
+/// <see href="https://eips.ethereum.org/EIPS/eip-152" />
+/// </summary>
+public partial class Blake2FPrecompile : IPrecompile<Blake2FPrecompile>
 {
     private const int RequiredInputLength = 213;
 
-    private readonly Blake2Compression _blake = new();
-
     public static readonly Blake2FPrecompile Instance = new();
+
+    private Blake2FPrecompile() { }
 
     public static Address Address { get; } = Address.FromNumber(9);
 
     public static string Name => "BLAKE2F";
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
+    public long BaseGasCost(IReleaseSpec _) => 0;
 
-    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (inputData.Length != RequiredInputLength)
-        {
             return 0;
-        }
 
-        byte finalByte = inputData.Span[212];
-        if (finalByte != 0 && finalByte != 1)
-        {
+        byte finalBlock = inputData.Span[212];
+
+        if (finalBlock != 0 && finalBlock != 1)
             return 0;
-        }
 
-        uint rounds = inputData[..4].Span.ReadEthUInt32();
+        uint rounds = BinaryPrimitives.ReadUInt32BigEndian(inputData[..4].Span);
 
         return rounds;
     }
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryPrepareInput(
+        ReadOnlyMemory<byte> inputData,
+        out ReadOnlySpan<byte> inputSpan,
+        out Result<byte[]> result)
     {
-        if (inputData.Length != RequiredInputLength) return Errors.InvalidInputLength;
+        inputSpan = inputData.Span;
 
-        byte finalByte = inputData.Span[212];
-        if (finalByte != 0 && finalByte != 1) return Errors.InvalidFinalFlag;
+        if (inputData.Length != RequiredInputLength)
+        {
+            result = Errors.InvalidInputLength;
+            return false;
+        }
 
-        byte[] result = new byte[64];
-        _blake.Compress(inputData.Span, result);
+        byte finalBlock = inputSpan[212];
 
-        return result;
+        if (finalBlock != 0 && finalBlock != 1)
+        {
+            result = Errors.InvalidFinalBlockFlag;
+            return false;
+        }
+
+        result = default;
+        return true;
     }
 }
