@@ -46,7 +46,7 @@ public class SigningTxCache : ISigningTxCache
         if (e.Block.Header is not XdcBlockHeader xdcHeader)
             return;
 
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData.BlockRound);
         _ = CacheSigningTransactions(e.Block.Hash!, e.Block, spec!);
     }
 

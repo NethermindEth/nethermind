@@ -88,7 +88,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     private bool CommitBlock(XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert, [NotNullWhen(false)] out string? error)
     {
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, proposedRound);
         //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
 
         if ((proposedBlockHeader.Number - 2) <= spec.SwitchBlock)
@@ -250,7 +250,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     public void Initialize(XdcBlockHeader current)
     {
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(current);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(current, current.ExtraConsensusData.BlockRound);
         QuorumCertificate latestQc;
         if (current.Number == spec.SwitchBlock)
         {

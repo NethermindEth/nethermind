@@ -41,7 +41,7 @@ public class XdcStateSyncSnapshotManager
 
     public XdcBlockHeader[] GetGapBlocks(XdcBlockHeader pivotHeader)
     {
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(pivotHeader, pivotHeader.ExtraConsensusData.BlockRound);
 
         XdcBlockHeader epochSwitchHeader = pivotHeader;
 

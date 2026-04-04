@@ -250,7 +250,7 @@ internal class VotesManager(
     {
         var masternodeSet = new HashSet<Address>(masternodes);
         var signatures = new List<Signature>();
-        foreach (var vote in votes)
+        foreach (Vote vote in votes)
         {
             if (vote.Signer is null)
             {

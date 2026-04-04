@@ -42,7 +42,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
             return false;
         }
 
-        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader); // will throw if no spec found
+        IXdcReleaseSpec xdcSpec = specProvider.GetXdcSpec(xdcHeader, extraFieldsV2.BlockRound); // will throw if no spec found
 
         Address[] masternodes;
 
