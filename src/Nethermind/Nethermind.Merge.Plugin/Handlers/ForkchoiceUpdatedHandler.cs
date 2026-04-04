@@ -351,13 +351,13 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
     {
-        bool isSyncInitialized = _mergeSyncController.TryInitBeaconHeaderSync(blockHeader);
+        _mergeSyncController.InitBeaconHeaderSync(blockHeader);
         _beaconPivot.ProcessDestination = blockHeader;
         _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
         _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
         _blockCacheService.HeadBlockHash = forkchoiceState.HeadBlockHash;
 
-        if (isSyncInitialized && _logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
+        if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
     }
 
     private bool IsInconsistent(Hash256 blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);

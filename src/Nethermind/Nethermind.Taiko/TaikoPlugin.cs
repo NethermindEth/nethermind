@@ -144,12 +144,6 @@ public class TaikoModule : Module
             // Sync modification
             .AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance)
             .AddSingleton<StartingSyncPivotUpdater, UnsafeStartingSyncPivotUpdater>()
-            .AddDecorator<BeaconSync>((_, strategy) =>
-            {
-                // Normally not turned on at start because `StartingSyncPivotUpdater` waiting for pivot
-                strategy.AllowBeaconHeaderSync();
-                return strategy;
-            })
 
             // Validators
             .AddSingleton<IBlockValidator, TaikoBlockValidator>()
