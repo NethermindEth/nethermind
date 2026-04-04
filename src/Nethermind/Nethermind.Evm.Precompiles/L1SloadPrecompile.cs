@@ -43,6 +43,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
+        Metrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
 
         if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
