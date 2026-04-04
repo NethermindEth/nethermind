@@ -1,0 +1,146 @@
+name: Sync Smoke Test
+
+on:
+  pull_request:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  sync-hoodi:
+    name: "Sync hoodi (${{ matrix.mode }})"
+    runs-on: ubuntu-arm64-8-core
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [HalfPath, Flat]
+        include:
+          - mode: HalfPath
+            flatdb: false
+          - mode: Flat
+            flatdb: true
+
+    steps:
+      - name: Authenticate App
+        id: gh-app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: "nethermind,post-merge-smoke-tests"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Checkout tests repository
+        uses: actions/checkout@v6
+        with:
+          repository: NethermindEth/post-merge-smoke-tests
+          path: tests
+          token: ${{ steps.gh-app.outputs.token }}
+          clean: true
+
+      - name: Cache apt packages
+        uses: awalsh128/cache-apt-pkgs-action@v1
+        with:
+          packages: make build-essential jq zip
+          version: 1.0
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+          check-latest: true
+          cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.X"
+
+      - name: Cache Sedge binary
+        id: cache-sedge
+        uses: actions/cache@v4
+        with:
+          path: sedge/build/sedge
+          key: sedge-core-${{ runner.arch }}
+
+      - name: Install Sedge
+        if: steps.cache-sedge.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          cd sedge
+          make compile
+
+      - name: Generate and run Sedge
+        working-directory: sedge
+        run: |
+          node_name="SyncSmokeTest-hoodi-${{ matrix.mode }}-${GITHUB_RUN_ID}"
+
+          ./build/sedge deps install
+
+          mkdir -p execution-data/logs/configs
+          mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
+
+          ./build/sedge generate \
+            --logging none \
+            -p $GITHUB_WORKSPACE/sedge \
+            full-node \
+            -c lodestar:chainsafe/lodestar:latest \
+            -e nethermind:nethermindeth/nethermind:master \
+            --map-all \
+            --no-mev-boost \
+            --no-validator \
+            --network hoodi \
+            --el-extra-flag FlatDb.Enabled=${{ matrix.flatdb }} \
+            --el-extra-flag Sync.NonValidatorNode=true \
+            --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+            --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+            --el-extra-flag Sync.VerifyTrieOnStateSyncFinished=true \
+            --el-extra-flag loggerConfigSource=/nethermind/data/logs/configs/customNLog.config \
+            --el-extra-flag Sync.SnapSync=true \
+            --el-extra-flag "Metrics.NodeName=${node_name}" \
+            --el-extra-flag Metrics.Enabled=true \
+            --el-extra-flag "Seq.ServerUrl=https://seq.nethermind.io" \
+            --el-extra-flag "Seq.ApiKey=${{ secrets.SEQ_API_KEY }}" \
+            --el-extra-flag Seq.MinLevel=Info \
+            --el-extra-flag "Metrics.PushGatewayUrl=${{ secrets.GRAFANA_CONNECTION_STRING }}" \
+            --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
+
+          docker compose up -d
+
+      - name: Wait for hoodi to sync
+        env:
+          NETWORK: hoodi
+          SYNC_MODE: ${{ matrix.mode }}
+        run: python scripts/wait-for-sync.py
+
+      - name: Get Nethermind Debug Logs
+        if: failure() || cancelled()
+        run: |
+          target_dir=$(find . -type d -name "*execution-data*" | head -n 1)
+          cd "$target_dir/logs"
+          log_file=$(find . -type f -name "*.log" | head -n 1)
+          echo "Found log file: $log_file"
+          artifact_name=$(basename "$log_file")-hoodi-${{ matrix.mode }}-${{ github.run_id }}
+          zip "${artifact_name}.zip" "$log_file"
+          echo "artifact_name=$artifact_name" >> $GITHUB_ENV
+          echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
+
+      - name: Upload Nethermind Debug logs artifact
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.artifact_name }}
+          path: ${{ env.artifact_path }}
+          retention-days: 7
+
+      - name: Get Consensus Logs
+        if: always()
+        run: docker logs sedge-consensus-client
+
+      - name: Check size of DB
+        if: always()
+        run: du -h $GITHUB_WORKSPACE/sedge
