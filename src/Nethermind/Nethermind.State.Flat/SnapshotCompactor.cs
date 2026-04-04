@@ -18,6 +18,8 @@ public class SnapshotCompactor : ISnapshotCompactor
 {
     private readonly int _compactSize;
     private readonly int _minCompactSize;
+    private readonly int _midCompactSize;
+    private readonly bool _useLogarithmicCompaction;
     private readonly ILogger _logger;
     private readonly IResourcePool _resourcePool;
     private readonly ISnapshotRepository _snapshotRepository;
@@ -27,17 +29,28 @@ public class SnapshotCompactor : ISnapshotCompactor
         ISnapshotRepository snapshotRepository,
         ILogManager logManager)
     {
-        if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
-            throw new ArgumentException("Compact size must be a power of 2");
-        if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
-            throw new ArgumentException("Min compact size must be a power of 2");
-        if (config.MinCompactSize > config.CompactSize)
-            throw new ArgumentException("Min compact size must be <= compact size");
+        _useLogarithmicCompaction = config.UseLogarithmicCompaction;
+
+        if (_useLogarithmicCompaction)
+        {
+            if (config.CompactSize > 1 && (config.CompactSize & (config.CompactSize - 1)) != 0)
+                throw new ArgumentException("Compact size must be a power of 2");
+            if (config.MinCompactSize > 1 && (config.MinCompactSize & (config.MinCompactSize - 1)) != 0)
+                throw new ArgumentException("Min compact size must be a power of 2");
+            if (config.MinCompactSize > config.CompactSize)
+                throw new ArgumentException("Min compact size must be <= compact size");
+        }
+        else
+        {
+            if (config.CompactSize % config.MidCompactSize != 0)
+                throw new ArgumentException("Compact size must be divisible by mid compact size");
+        }
 
         _resourcePool = resourcePool;
         _snapshotRepository = snapshotRepository;
         _compactSize = config.CompactSize;
         _minCompactSize = Math.Max(config.MinCompactSize, 2);
+        _midCompactSize = config.MidCompactSize;
         _logger = logManager.GetClassLogger<SnapshotCompactor>();
     }
 
@@ -77,23 +90,52 @@ public class SnapshotCompactor : ISnapshotCompactor
         long blockNumber = snapshot.To.BlockNumber;
         if (blockNumber == 0) return SnapshotPooledList.Empty();
 
-        int compactSize = (int)Math.Min(blockNumber & -blockNumber, _compactSize);
-        if (compactSize < _minCompactSize) return SnapshotPooledList.Empty();
-        bool isFullCompaction = compactSize == _compactSize;
+        long startingBlockNumber;
+        int actualCompactSize;
 
-        if (!isFullCompaction)
+        if (_useLogarithmicCompaction)
         {
-            // Save memory by removing the compacted state from previous compaction
-            foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
+            int compactSize = (int)Math.Min(blockNumber & -blockNumber, _compactSize);
+            if (compactSize < _minCompactSize) return SnapshotPooledList.Empty();
+            bool isFullCompaction = compactSize == _compactSize;
+
+            if (!isFullCompaction)
             {
-                if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
+                // Save memory by removing the compacted state from previous compaction
+                foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _compactSize))
                 {
+                    if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
+                    {
+                    }
                 }
             }
+
+            startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
+            actualCompactSize = compactSize;
+        }
+        else
+        {
+            bool isFullCompaction = blockNumber % _compactSize == 0;
+            bool isMidCompaction = !isFullCompaction && blockNumber % _midCompactSize == 0;
+            if (!isFullCompaction && !isMidCompaction) return SnapshotPooledList.Empty();
+
+            if (isMidCompaction)
+            {
+                // Save memory by removing the compacted state from previous mid compaction
+                foreach (StateId id in _snapshotRepository.GetStatesAtBlockNumber(blockNumber - _midCompactSize))
+                {
+                    if (_snapshotRepository.RemoveAndReleaseCompactedKnownState(id))
+                    {
+                    }
+                }
+            }
+
+            // Always anchor to the last compactSize-aligned block
+            startingBlockNumber = ((blockNumber - 1) / _compactSize) * _compactSize;
+            actualCompactSize = (int)(blockNumber - startingBlockNumber);
         }
 
-        long startingBlockNumber = ((blockNumber - 1) / compactSize) * compactSize;
-        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, compactSize);
+        SnapshotPooledList snapshots = _snapshotRepository.AssembleSnapshotsUntil(snapshot.To, startingBlockNumber, actualCompactSize);
 
         bool snapshotsOk = false;
         try
@@ -125,8 +167,18 @@ public class SnapshotCompactor : ISnapshotCompactor
         StateId to = snapshots[^1].To;
         StateId from = snapshots[0].From;
 
-        int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
-        ResourcePool.Usage usage = ResourcePool.CompactUsage(compactSize);
+        ResourcePool.Usage usage;
+        if (_useLogarithmicCompaction)
+        {
+            int compactSize = (int)Math.Min(to.BlockNumber & -to.BlockNumber, _compactSize);
+            usage = ResourcePool.CompactUsage(compactSize);
+        }
+        else
+        {
+            usage = (to.BlockNumber % _compactSize == 0)
+                ? ResourcePool.Usage.Compactor
+                : ResourcePool.Usage.MidCompactor;
+        }
 
         Snapshot snapshot = _resourcePool.CreateSnapshot(from, to, usage);
         ConcurrentDictionary<HashedKey<Address>, Account?> accounts = snapshot.Content.Accounts;

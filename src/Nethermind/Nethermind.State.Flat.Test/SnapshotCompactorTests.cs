@@ -569,4 +569,117 @@ public class SnapshotCompactorTests
         int actualCompactSize = (int)Math.Min(blockNumber & -blockNumber, 16);
         Assert.That(actualCompactSize, Is.EqualTo(expectedCompactSize));
     }
+
+    // --- Growing-window (non-logarithmic) compaction tests ---
+
+    [TestCase(2, 2)]   // start=0, size=2
+    [TestCase(4, 4)]   // start=0, size=4
+    [TestCase(6, 6)]   // start=0, size=6
+    [TestCase(8, 8)]   // start=0, size=8 (full)
+    [TestCase(10, 2)]  // start=8, size=2
+    [TestCase(12, 4)]  // start=8, size=4
+    [TestCase(14, 6)]  // start=8, size=6
+    [TestCase(16, 8)]  // start=8, size=8 (full)
+    public void GetSnapshotsToCompact_GrowingWindow_ReturnsCorrectCount(long blockNumber, int expectedCount)
+    {
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 8, MidCompactSize = 2, UseLogarithmicCompaction = false };
+        ResourcePool pool = new ResourcePool(config);
+        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
+        SnapshotCompactor compactor = new SnapshotCompactor(config, pool, repo, LimboLogs.Instance);
+
+        for (long i = 0; i < blockNumber; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot snapshot = pool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAddSnapshot(snapshot);
+            repo.AddStateId(to);
+        }
+
+        StateId targetTo = CreateStateId(blockNumber);
+        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+
+        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
+
+        Assert.That(snapshots.Count, Is.EqualTo(expectedCount));
+        targetSnapshot!.Dispose();
+    }
+
+    [TestCase(1)]
+    [TestCase(3)]
+    [TestCase(5)]
+    [TestCase(7)]
+    [TestCase(9)]
+    public void GetSnapshotsToCompact_GrowingWindow_OddBlock_ReturnsEmpty(long blockNumber)
+    {
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 8, MidCompactSize = 2, UseLogarithmicCompaction = false };
+        ResourcePool pool = new ResourcePool(config);
+        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
+        SnapshotCompactor compactor = new SnapshotCompactor(config, pool, repo, LimboLogs.Instance);
+
+        for (long i = 0; i < blockNumber; i++)
+        {
+            StateId from = CreateStateId(i);
+            StateId to = CreateStateId(i + 1);
+            Snapshot snapshot = pool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+            repo.TryAddSnapshot(snapshot);
+            repo.AddStateId(to);
+        }
+
+        StateId targetTo = CreateStateId(blockNumber);
+        repo.TryLeaseState(targetTo, out Snapshot? targetSnapshot);
+
+        using SnapshotPooledList snapshots = compactor.GetSnapshotsToCompact(targetSnapshot!);
+
+        Assert.That(snapshots.Count, Is.EqualTo(0));
+        targetSnapshot!.Dispose();
+    }
+
+    [Test]
+    public void GetSnapshotsToCompact_GrowingWindow_FullCompaction_UsesCompactorUsage()
+    {
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 8, MidCompactSize = 2, UseLogarithmicCompaction = false };
+        ResourcePool pool = new ResourcePool(config);
+        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
+        SnapshotCompactor compactor = new SnapshotCompactor(config, pool, repo, LimboLogs.Instance);
+
+        StateId from = new StateId(0, Keccak.Zero);
+        StateId to = new StateId(8, Keccak.Zero);
+
+        using Snapshot snapshot = pool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        SnapshotPooledList snapshots = new SnapshotPooledList(1);
+        snapshots.Add(snapshot);
+
+        using Snapshot compacted = compactor.CompactSnapshotBundle(snapshots);
+
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.Compactor));
+    }
+
+    [Test]
+    public void GetSnapshotsToCompact_GrowingWindow_MidCompaction_UsesMidCompactorUsage()
+    {
+        FlatDbConfig config = new FlatDbConfig { CompactSize = 8, MidCompactSize = 2, UseLogarithmicCompaction = false };
+        ResourcePool pool = new ResourcePool(config);
+        SnapshotRepository repo = new SnapshotRepository(LimboLogs.Instance);
+        SnapshotCompactor compactor = new SnapshotCompactor(config, pool, repo, LimboLogs.Instance);
+
+        StateId from = new StateId(0, Keccak.Zero);
+        StateId to = new StateId(6, Keccak.Zero);
+
+        using Snapshot snapshot = pool.CreateSnapshot(from, to, ResourcePool.Usage.ReadOnlyProcessingEnv);
+
+        SnapshotPooledList snapshots = new SnapshotPooledList(1);
+        snapshots.Add(snapshot);
+
+        using Snapshot compacted = compactor.CompactSnapshotBundle(snapshots);
+
+        Assert.That(compacted.Usage, Is.EqualTo(ResourcePool.Usage.MidCompactor));
+    }
+
+    [Test]
+    public void Constructor_GrowingWindow_CompactSizeNotDivisibleByMidCompactSize_Throws() =>
+        Assert.Throws<ArgumentException>(() =>
+            new SnapshotCompactor(new FlatDbConfig { CompactSize = 10, MidCompactSize = 3, UseLogarithmicCompaction = false },
+                _resourcePool, _snapshotRepository, LimboLogs.Instance));
 }
