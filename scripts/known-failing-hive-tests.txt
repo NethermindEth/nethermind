@@ -76,4 +76,4 @@ TestBlobTxWithoutSidecar (nethermind)
 
 #sync
 
-sync nethermind from nethermind
+snapsync/sync nethermind from nethermind
