@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -560,7 +561,6 @@ public class SyncServerTests
     }
 
     [Test]
-    [Retry(3)]
     [Parallelizable(ParallelScope.None)]
     public void Broadcast_BlockRangeUpdate_when_latest_increased_enough()
     {
@@ -580,29 +580,39 @@ public class SyncServerTests
         ctx.PeerPool.PeerCount.Returns(peers.Length);
 
         const int blocksCount = 100;
-        var startBlock = (int)localBlockTree.Head!.Number;
+        int startBlock = (int)localBlockTree.Head!.Number;
         localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
 
-        (long earliest, int latest)[] expectedUpdates = Enumerable.Range(startBlock + 1, blocksCount)
-            .Where(x => x % frequency == 0)
-            .Select(x => (earliest: localBlockTree.Genesis!.Number, latest: x))
-            .ToArray()[^2..];
+        // Derive valid notification values from the actual head after building branches,
+        // since AddBranch(branchLength, ...) only builds blocks up to branchLength - 1.
+        // frequency matches SyncServer.NewHeadBlockRangeUpdateFrequency (private const).
+        long headNumber = localBlockTree.Head!.Number;
+        long expectedGenesis = localBlockTree.Genesis!.Number;
+        HashSet<long> validLatestValues = [];
+        for (long b = frequency; b <= headNumber; b += frequency)
+            validLatestValues.Add(b);
+
+        long expectedFinalLatest = validLatestValues.Max();
+
+        (long earliest, long latest)[] GetNotifications(PeerInfo peer) =>
+            peer.SyncPeer.ReceivedCalls()
+                .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                .Select(a => (earliest: a[0], latest: a[1])).ToArray();
 
         foreach (PeerInfo peerInfo in peers)
         {
-            Assert.That(
-                () =>
-                {
-                    var arr = peerInfo.SyncPeer.ReceivedCalls()
-                        .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                        .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                        .Select(a => (earliest: a[0], latest: a[1])).ToArray();
-                    return arr.Length >= 2 ? arr[^2..] : arr;
-                },
-                Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
-            );
+            // Wait for the final broadcast to arrive
+            Assert.That(() => GetNotifications(peerInfo).LastOrDefault(),
+                Is.EqualTo((expectedGenesis, expectedFinalLatest)).After(15000, 50));
+
+            // Intermediate notifications may be coalesced by the async cancellation logic,
+            // so just verify every received notification has valid values.
+            Assert.That(GetNotifications(peerInfo),
+                Has.All.Matches<(long earliest, long latest)>(
+                    x => x.earliest == expectedGenesis && validLatestValues.Contains(x.latest)));
         }
     }
 
