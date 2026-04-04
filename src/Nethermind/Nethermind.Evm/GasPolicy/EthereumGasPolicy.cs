@@ -304,7 +304,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
                           + CreateCost(tx, spec)
                           + IGasPolicy<EthereumGasPolicy>.AccessListCost(tx, spec)
                           + authRegularCost;
-        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tokensInCallData, spec);
+        long floorCost = IGasPolicy<EthereumGasPolicy>.CalculateFloorCost(tx, spec, tokensInCallData);
         long createStateCost = CreateStateCost(tx, spec);
         long totalStateCost = authStateCost + createStateCost;
         return spec.IsEip8037Enabled
