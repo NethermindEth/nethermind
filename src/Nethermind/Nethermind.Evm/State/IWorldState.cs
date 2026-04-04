@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -23,6 +24,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     const BlockHeader? PreGenesis = null;
 
     IDisposable BeginScope(BlockHeader? baseBlock);
+    void HintBal(BlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);

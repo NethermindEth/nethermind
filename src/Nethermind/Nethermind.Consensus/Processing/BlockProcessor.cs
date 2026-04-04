@@ -67,6 +67,9 @@ public partial class BlockProcessor(
             }
         }
 
+        if (suggestedBlock.BlockAccessList is not null)
+            _stateProvider.HintBal(suggestedBlock.BlockAccessList);
+
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
