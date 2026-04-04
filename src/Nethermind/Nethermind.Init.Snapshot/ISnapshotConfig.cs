@@ -21,4 +21,7 @@ public interface ISnapshotConfig : IConfig
 
     [ConfigItem(Description = "The name of the snapshot file.", DefaultValue = "snapshot.zip")]
     public string SnapshotFileName { get; set; }
+
+    [ConfigItem(Description = "Number of leading path components to strip when extracting a tar archive (passed as --strip-components to tar). Set this to match the depth of the snapshot path embedded in the archive.", DefaultValue = "1")]
+    public int StripComponents { get; set; }
 }
