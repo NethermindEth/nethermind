@@ -82,8 +82,24 @@ public class FlatStateRootIndex : IFlatStateRootIndex, IDisposable
 
     public bool HasStateRoot(Hash256 stateRoot) => _availableStateRoots.ContainsKey(stateRoot);
 
-    public bool TryGetStateId(Hash256 stateRoot, out StateId stateId) =>
-        _availableStateRoots.TryGetValue(stateRoot, out stateId);
+    public bool TryGetStateId(Hash256 stateRoot, out StateId stateId)
+    {
+        if (_availableStateRoots.TryGetValue(stateRoot, out stateId))
+            return true;
+
+        // Fallback: flat DB has exactly one state (HEAD). Serve it for any requested root.
+        // This allows snap serving for roots slightly ahead of chain head (e.g. when a peer's
+        // pivot block is beyond our head on a stopped devnet). The requesting peer validates
+        // trie node hashes independently, so serving stale data is safe — mismatches are
+        // simply discarded by the peer.
+        if (_blockTree.Head?.Header is { StateRoot: not null } headHeader)
+        {
+            stateId = new StateId(headHeader);
+            return true;
+        }
+
+        return false;
+    }
 
     public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }

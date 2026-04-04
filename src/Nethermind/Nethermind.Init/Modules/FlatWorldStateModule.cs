@@ -19,10 +19,12 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
 using Nethermind.State.Flat.Sync.Snap;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
@@ -42,6 +44,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
             .AddSingleton<IStateReader, FlatStateReader>()
+            .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer!)
 
             // Disable some pruning trie store specific  components
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
@@ -79,7 +82,10 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
             .Intercept<ISyncConfig>((syncConfig) =>
             {
-                syncConfig.SnapServingEnabled = true;
+                syncConfig.SnapServingEnabled ??= true;
+
+                if (syncConfig.SnapServingMaxPathsPerGroup > 0)
+                    SnapMessageLimits.RaisePathsPerGroupLimit(syncConfig.SnapServingMaxPathsPerGroup);
             })
             .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
 

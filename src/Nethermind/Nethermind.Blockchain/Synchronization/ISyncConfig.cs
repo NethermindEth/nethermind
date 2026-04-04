@@ -135,6 +135,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "The maximum depth (in blocks) for serving snap sync requests. Higher values allow serving requests for older blocks, useful for networks with fast block times like Arbitrum.", DefaultValue = "128")]
     int SnapServingMaxDepth { get; set; }
 
+    [ConfigItem(Description = "_Technical._ Override the max trie paths per group accepted in snap GetTrieNodes messages. 0 means use the default (1024). Raise only if peers send slightly larger groups (e.g. Geth sends 1025).", DefaultValue = "0", HiddenFromDocs = true)]
+    int SnapServingMaxPathsPerGroup { get; set; }
+
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
 

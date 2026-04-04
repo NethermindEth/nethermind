@@ -1130,6 +1130,13 @@
           "System.IO.Hashing": "[10.0.5, )"
         }
       },
+      "nethermind.statecomposition": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Trie": "[1.37.0-unstable, )"
+        }
+      },
       "nethermind.synchronization": {
         "type": "Project",
         "dependencies": {
