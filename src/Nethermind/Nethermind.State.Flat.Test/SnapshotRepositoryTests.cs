@@ -366,4 +366,123 @@ public class SnapshotRepositoryTests
     }
 
     #endregion
+
+    #region RemoveStatesFrom
+
+    [Test]
+    public void RemoveStatesFrom_RemovesSnapshotsAtAndAboveBlockNumber()
+    {
+        BuildSnapshotChain(0, 5); // blocks 0→1, 1→2, 2→3, 3→4, 4→5
+
+        _repository.RemoveStatesFrom(3);
+
+        Assert.That(_repository.HasState(CreateStateId(1)), Is.True);
+        Assert.That(_repository.HasState(CreateStateId(2)), Is.True);
+        Assert.That(_repository.HasState(CreateStateId(3)), Is.False);
+        Assert.That(_repository.HasState(CreateStateId(4)), Is.False);
+        Assert.That(_repository.HasState(CreateStateId(5)), Is.False);
+        Assert.That(_repository.SnapshotCount, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void RemoveStatesFrom_LeavesCompactedSnapshotsIntact()
+    {
+        AddSnapshotToRepository(0, 2, compacted: true);
+        AddSnapshotToRepository(2, 4, compacted: true);
+        AddSnapshotToRepository(4, 6, compacted: true);
+
+        _repository.RemoveStatesFrom(4);
+
+        // Compacted snapshots are not removed — they span ranges and are cleaned by persistence
+        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void RemoveStatesFrom_RemovesSnapshotButNotCompactedAtSameHeight()
+    {
+        AddSnapshotToRepository(0, 1);
+        AddSnapshotToRepository(0, 1, compacted: true);
+
+        _repository.RemoveStatesFrom(1);
+
+        Assert.That(_repository.SnapshotCount, Is.EqualTo(0));
+        Assert.That(_repository.CompactedSnapshotCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void RemoveStatesFrom_NoOpWhenNoSnapshotsAtOrAbove()
+    {
+        BuildSnapshotChain(0, 3); // blocks 0→1, 1→2, 2→3
+
+        _repository.RemoveStatesFrom(10);
+
+        Assert.That(_repository.SnapshotCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void RemoveStatesFrom_EmptyRepository_NoOp()
+    {
+        _repository.RemoveStatesFrom(0);
+
+        Assert.That(_repository.SnapshotCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void RemoveStatesFrom_SameBlockDifferentHash_RemovesOldFork()
+    {
+        // Simulate: block 5 processed with root A, then block 5 reprocessed with root B
+        StateId from = CreateStateId(4);
+        StateId toForkA = new(5, new ValueHash256(new byte[] { 0xAA, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }));
+        StateId toForkB = new(5, new ValueHash256(new byte[] { 0xBB, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }));
+
+        Snapshot snapshotA = CreateSnapshot(from, toForkA);
+        _repository.TryAddSnapshot(snapshotA);
+        _repository.AddStateId(toForkA);
+
+        Assert.That(_repository.HasState(toForkA), Is.True);
+
+        // New block at same height removes old fork
+        _repository.RemoveStatesFrom(5);
+
+        Assert.That(_repository.HasState(toForkA), Is.False);
+
+        // Now add fork B
+        Snapshot snapshotB = CreateSnapshot(from, toForkB);
+        Assert.That(_repository.TryAddSnapshot(snapshotB), Is.True);
+    }
+
+    [Test]
+    public void HasCompactedStateAtOrAbove_ReturnsTrueWhenCompactedExists()
+    {
+        AddSnapshotToRepository(0, 4, compacted: true);
+
+        Assert.That(_repository.HasCompactedStateAtOrAbove(4), Is.True);
+        Assert.That(_repository.HasCompactedStateAtOrAbove(3), Is.True);
+        Assert.That(_repository.HasCompactedStateAtOrAbove(5), Is.False);
+    }
+
+    [Test]
+    public void HasCompactedStateAtOrAbove_EmptyRepository_ReturnsFalse()
+    {
+        Assert.That(_repository.HasCompactedStateAtOrAbove(0), Is.False);
+    }
+
+    [Test]
+    public void RemoveStatesFrom_CleansSortedStateIds()
+    {
+        BuildSnapshotChain(0, 5);
+
+        _repository.RemoveStatesFrom(3);
+
+        // Verify sorted set is clean by checking GetStatesAtBlockNumber
+        using ArrayPoolList<StateId> statesAt3 = _repository.GetStatesAtBlockNumber(3);
+        using ArrayPoolList<StateId> statesAt4 = _repository.GetStatesAtBlockNumber(4);
+        using ArrayPoolList<StateId> statesAt2 = _repository.GetStatesAtBlockNumber(2);
+
+        Assert.That(statesAt3.Count, Is.EqualTo(0));
+        Assert.That(statesAt4.Count, Is.EqualTo(0));
+        Assert.That(statesAt2.Count, Is.EqualTo(1));
+    }
+
+    #endregion
 }

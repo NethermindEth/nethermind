@@ -200,6 +200,17 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
 
     public bool HasState(in StateId stateId) => _snapshots.ContainsKey(stateId);
 
+    public bool HasStatesAtBlockNumber(long blockNumber)
+    {
+        foreach (StateId key in _snapshots.Keys)
+        {
+            if (key.BlockNumber == blockNumber)
+                return true;
+        }
+
+        return false;
+    }
+
     public ArrayPoolList<StateId> GetSnapshotBeforeStateId(StateId stateId)
     {
         if (stateId.BlockNumber < 0)
@@ -220,5 +231,55 @@ public class SnapshotRepository(ILogManager logManager) : ISnapshotRepository
             RemoveAndReleaseCompactedKnownState(stateToRemove);
             RemoveAndReleaseKnownState(stateToRemove);
         }
+    }
+
+    public bool HasCompactedStateAtOrAbove(long blockNumber)
+    {
+        foreach (StateId key in _compactedSnapshots.Keys)
+        {
+            if (key.BlockNumber >= blockNumber)
+                return true;
+        }
+
+        return false;
+    }
+
+    public void RemoveStatesFrom(long blockNumber)
+    {
+        // Scan _snapshots directly for the fast check since _sortedSnapshotStateIds is populated
+        // asynchronously by the compactor and may lag behind.
+        bool hasAny = false;
+        foreach (StateId key in _snapshots.Keys)
+        {
+            if (key.BlockNumber >= blockNumber)
+            {
+                hasAny = true;
+                break;
+            }
+        }
+
+        if (!hasAny) return;
+
+        // Remove from _snapshots and track metrics. Avoids per-item write locks on the sorted set
+        // by doing a single batched cleanup at the end.
+        foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
+        {
+            if (kvp.Key.BlockNumber >= blockNumber && _snapshots.TryRemove(kvp.Key, out Snapshot? existingState))
+            {
+                Metrics.SnapshotCount--;
+
+                long totalBytes = existingState.EstimateMemory();
+                Metrics.SnapshotMemory -= totalBytes;
+                Metrics.TotalSnapshotMemory -= totalBytes;
+
+                existingState.Dispose();
+            }
+        }
+
+        // Also defensively drop any sorted-set entry whose snapshot no longer exists in _snapshots.
+        // The compactor calls AddStateId asynchronously, so stale IDs can be re-introduced after
+        // removal if the compactor job was already queued for a removed snapshot.
+        using ReadWriteLockBox<SortedSet<StateId>>.Lock _ = _sortedSnapshotStateIds.EnterWriteLock(out SortedSet<StateId> sortedSnapshots);
+        sortedSnapshots.RemoveWhere(id => id.BlockNumber >= blockNumber || !_snapshots.ContainsKey(id));
     }
 }

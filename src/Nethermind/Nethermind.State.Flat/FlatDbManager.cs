@@ -336,6 +336,23 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
             return;
         }
 
+        // Fast path: if the latest snapshot is the parent block, this is sequential — no fork.
+        // GetLastSnapshotId is O(log n) read-lock on the sorted set.
+        StateId? lastSnapshotId = _snapshotRepository.GetLastSnapshotId();
+        if (lastSnapshotId is null || lastSnapshotId.Value == startingBlock)
+        {
+            // Sequential chain or first snapshot — skip fork detection.
+        }
+        else if (!_snapshotRepository.HasState(endBlock)
+            && _snapshotRepository.HasStatesAtBlockNumber(endBlock.BlockNumber)
+            && !_snapshotRepository.HasCompactedStateAtOrAbove(endBlock.BlockNumber))
+        {
+            // Fork change: a different state root exists at this height. Remove old fork's
+            // non-compacted snapshots. Skip if compacted snapshots exist at or above this
+            // height — removing sorted-set IDs without compacted entries would orphan them.
+            _snapshotRepository.RemoveStatesFrom(endBlock.BlockNumber);
+        }
+
         if (!_snapshotRepository.TryAddSnapshot(snapshot))
         {
             if (_logger.IsWarn) _logger.Warn($"State {snapshot.To} already added");
