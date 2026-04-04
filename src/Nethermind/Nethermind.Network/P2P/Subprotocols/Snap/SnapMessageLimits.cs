@@ -21,7 +21,8 @@ internal static class SnapMessageLimits
     public static readonly RlpLimit GetByteCodesHashesRlpLimit = RlpLimit.For<GetByteCodesMessage>(MaxRequestHashes, nameof(GetByteCodesMessage.Hashes));
     public static readonly RlpLimit GetStorageRangeAccountsRlpLimit = RlpLimit.For<GetStorageRangeMessage>(MaxRequestAccounts, nameof(GetStorageRangeMessage.StorageRange));
     public static readonly RlpLimit GetTrieNodesPathGroupsRlpLimit = RlpLimit.For<GetTrieNodesMessage>(MaxRequestPathGroups, nameof(GetTrieNodesMessage.Paths));
-    public static readonly RlpLimit GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(MaxRequestPathsPerGroup, nameof(PathGroup.Group));
+    public static RlpLimit GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(MaxRequestPathsPerGroup, nameof(PathGroup.Group));
+
     public static readonly RlpLimit AccountRangeEntriesRlpLimit = RlpLimit.For<AccountRangeMessage>(MaxResponseAccounts, nameof(AccountRangeMessage.PathsWithAccounts));
     public static readonly RlpLimit StorageRangeAccountsRlpLimit = RlpLimit.For<StorageRangeMessage>(MaxRequestAccounts, nameof(StorageRangeMessage.Slots));
     public static readonly RlpLimit StorageRangeSlotsPerAccountRlpLimit = RlpLimit.For<PathWithStorageSlot>(MaxResponseSlotsPerAccount, nameof(StorageRangeMessage.Slots));
