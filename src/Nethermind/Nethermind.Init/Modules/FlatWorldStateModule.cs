@@ -20,6 +20,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
@@ -43,6 +44,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
             .AddSingleton<IStateReader, FlatStateReader>()
+            .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer!)
 
             // Disable some pruning trie store specific  components
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
