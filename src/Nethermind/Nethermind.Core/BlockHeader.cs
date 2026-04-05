@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
-using System.Threading;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -48,7 +46,7 @@ public static class Out
     public static void LogAlways(string log)
     {
         if (TraceShowStackTrace)
-            Console.WriteLine(GetCallStackString(out var isWarmup));
+            Console.WriteLine(GetCallStackString());
 
         Console.WriteLine("w " + log);
     }
@@ -58,11 +56,10 @@ public static class Out
         if (!IsTargetBlock)
             return;
 
-        bool isWarmup = false;
         if (TraceShowStackTrace)
-            Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
+            Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex}, {GetCallStackString()}");
 
-        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex} {log}");
+        Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex} {log}");
     }
 
     public static void LogFast(string log)
@@ -70,9 +67,7 @@ public static class Out
         if (!IsTargetBlock)
             return;
 
-        _ = GetCallStackString(out var isWarmup);
-
-        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex} {log}");
+        Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex} {log}");
     }
 
     public static void Log(string scope, string key, string value)
@@ -80,11 +75,10 @@ public static class Out
         if (!IsTargetBlock)
             return;
 
-        bool isWarmup = false;
         if (TraceShowStackTrace)
-            Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={CurrentTransactionIndex}, {GetCallStackString(out isWarmup)}");
+            Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex}, {GetCallStackString()}");
 
-        Console.WriteLine($"b={CurrentBlockNumber}, tid={Thread.CurrentThread.ManagedThreadId}, t={(isWarmup ? "w " : "")}{CurrentTransactionIndex}, s={scope}: {key} {value}");
+        Console.WriteLine($"b={CurrentBlockNumber}, t={CurrentTransactionIndex}, s={scope}: {key} {value}");
     }
 
     private static List<StackFrame> GetCallStack(int skipFrames = 2, int maxDepth = 20)
@@ -149,10 +143,9 @@ public static class Out
         return frames;
     }
 
-    private static string GetCallStackString(out bool isWarmup, int skipFrames = 3)
+    private static string GetCallStackString(int skipFrames = 3)
     {
-        isWarmup = false;
-        var frames = GetCallStack(skipFrames);
+        List<StackFrame> frames = GetCallStack(skipFrames);
         if (frames.Count == 0) return string.Empty;
 
         var sb = new StringBuilder(frames.Count * 30);
@@ -162,7 +155,7 @@ public static class Out
             if (i > 0)
                 sb.Append(" → ");
 
-            var frame = frames[i];
+            StackFrame frame = frames[i];
 
             // Format: file:line [ClassName.]MethodName
             if (!string.IsNullOrEmpty(frame.File))
@@ -179,9 +172,6 @@ public static class Out
                 sb.Append('.');
             }
             sb.Append(frame.MethodName);
-
-            if (!isWarmup && frame.MethodName.Contains("Warmup", StringComparison.OrdinalIgnoreCase))
-                isWarmup = true;
         }
 
         return sb.ToString();
