@@ -16,11 +16,13 @@ namespace Nethermind.Serialization.Rlp
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
         private readonly bool _skipStateAndStatus;
+        private readonly bool _skipBloom;
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
-        public ReceiptMessageDecoder(bool skipStateAndStatus = false)
+        public ReceiptMessageDecoder(bool skipStateAndStatus = false, bool skipBloom = false)
         {
             _skipStateAndStatus = skipStateAndStatus;
+            _skipBloom = skipBloom;
         }
         protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -55,7 +57,9 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = ctx.DecodePositiveLong();
             }
 
-            txReceipt.Bloom = ctx.DecodeBloom();
+            if (!_skipBloom)
+                txReceipt.Bloom = ctx.DecodeBloom();
+            // When _skipBloom is true (slim receipt), bloom is absent from the stream — nothing to skip.
 
             int lastCheck = ctx.ReadSequenceLength() + ctx.Position;
 
@@ -98,7 +102,8 @@ namespace Nethermind.Serialization.Rlp
 
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
+            if (!_skipBloom)
+                contentLength += Rlp.LengthOf(item.Bloom);
 
             int logsLength = GetLogsLength(item);
             contentLength += Rlp.LengthOfSequence(logsLength);
@@ -193,7 +198,8 @@ namespace Nethermind.Serialization.Rlp
             }
 
             rlpStream.Encode(item.GasUsedTotal);
-            rlpStream.Encode(item.Bloom);
+            if (!_skipBloom)
+                rlpStream.Encode(item.Bloom);
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;

@@ -778,6 +778,24 @@
           "Snappier": "[1.3.0, )"
         }
       },
+      "nethermind.erae": {
+        "type": "Project",
+        "dependencies": {
+          "CommunityToolkit.HighPerformance": "[8.4.0, )",
+          "Nethermind.Api": "[1.37.0-unstable, )",
+          "Nethermind.Blockchain": "[1.37.0-unstable, )",
+          "Nethermind.Consensus": "[1.37.0-unstable, )",
+          "Nethermind.Core": "[1.37.0-unstable, )",
+          "Nethermind.Era1": "[1.37.0-unstable, )",
+          "Nethermind.History": "[1.37.0-unstable, )",
+          "Nethermind.JsonRpc": "[1.37.0-unstable, )",
+          "Nethermind.Merkleization": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Rlp": "[1.37.0-unstable, )",
+          "Nethermind.Serialization.Ssz": "[1.37.0-unstable, )",
+          "Nethermind.State": "[1.37.0-unstable, )",
+          "Snappier": "[1.3.0, )"
+        }
+      },
       "nethermind.ethstats": {
         "type": "Project",
         "dependencies": {
@@ -879,6 +897,7 @@
           "Nethermind.Db.Rocks": "[1.37.0-unstable, )",
           "Nethermind.Db.Rpc": "[1.37.0-unstable, )",
           "Nethermind.Era1": "[1.37.0-unstable, )",
+          "Nethermind.EraE": "[1.37.0-unstable, )",
           "Nethermind.Network.Discovery": "[1.37.0-unstable, )",
           "Nethermind.Network.Dns": "[1.37.0-unstable, )",
           "Nethermind.Network.Enr": "[1.37.0-unstable, )",
