@@ -11,6 +11,7 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTest : EthereumTest
     {
+        public string? ForkName { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
         public ForkActivation? TransitionForkActivation { get; set; }

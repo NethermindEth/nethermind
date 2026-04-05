@@ -253,8 +253,7 @@ namespace Ethereum.Test.Base
                 {
                     GeneralStateTest test = new()
                     {
-                        Name = Path.GetFileName(name) +
-                                    $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_",
+                        Name = name,
                         Category = category,
                         ForkName = postStateBySpec.Key,
                         Fork = SpecNameParser.Parse(postStateBySpec.Key),
@@ -276,10 +275,6 @@ namespace Ethereum.Test.Base
                         Transaction = Convert(stateJson, testJson.Transaction)
                     };
 
-                    if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
-                    {
-                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
-                    }
                     blockchainTests.Add(test);
                     ++iterationNumber;
                 }
@@ -299,6 +294,7 @@ namespace Ethereum.Test.Base
             {
                 Name = name,
                 Category = category,
+                ForkName = testJson.Network,
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
@@ -331,6 +327,20 @@ namespace Ethereum.Test.Base
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
 
+            return ConvertStateTestFromDict(testsInFile);
+        }
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(byte[] utf8Json)
+        {
+            Dictionary<string, GeneralStateTestJson> testsInFile =
+                JsonSerializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(
+                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+
+            return ConvertStateTestFromDict(testsInFile);
+        }
+
+        private static IEnumerable<GeneralStateTest> ConvertStateTestFromDict(Dictionary<string, GeneralStateTestJson> testsInFile)
+        {
             List<GeneralStateTest> tests = [];
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
@@ -359,6 +369,35 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            return ConvertBlockchainTestsFromDict(testsInFile);
+        }
+
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(byte[] utf8Json)
+        {
+            Dictionary<string, BlockchainTestJson> testsInFile;
+            try
+            {
+                testsInFile = JsonSerializer.Deserialize<Dictionary<string, BlockchainTestJson>>(
+                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+            }
+            catch (Exception)
+            {
+                // Fall back to HalfBlockchainTestJson for legacy formats
+                Dictionary<string, HalfBlockchainTestJson> half =
+                    JsonSerializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(
+                        utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+                testsInFile = [];
+                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
+                {
+                    testsInFile[pair.Key] = pair.Value;
+                }
+            }
+
+            return ConvertBlockchainTestsFromDict(testsInFile);
+        }
+
+        private static IEnumerable<BlockchainTest> ConvertBlockchainTestsFromDict(Dictionary<string, BlockchainTestJson> testsInFile)
+        {
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {
@@ -403,7 +442,8 @@ namespace Ethereum.Test.Base
             {
                 return (key, "");
             }
-            var name = key.Substring(index + 5);
+            // Use the full fixture key as the name (matches geth/erigon output)
+            var name = key;
             string category = key.Substring(0, index);
             int startIndex = 0;
             for (var i = 0; i < 3; i++)

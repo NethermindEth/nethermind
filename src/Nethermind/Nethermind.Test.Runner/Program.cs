@@ -2,11 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 
 namespace Nethermind.Test.Runner;
@@ -16,13 +21,19 @@ internal class Program
     public class Options
     {
         public static Option<string> Input { get; } =
-            new("--input", "-i") { Description = "Set the state test input file or directory. Either 'input' or 'stdin' is required." };
+            new("--input", "-i") { Description = "Set the test input file or directory." };
 
         public static Option<string> Filter { get; } =
-            new("--filter", "-f") { Description = "Set the test name that you want to run. Could also be a regular expression." };
+            new("--run", "--filter", "-f") { Description = "Run only those tests matching the regular expression." };
+
+        public static Option<bool> StateTest { get; } =
+            new("--stateTest") { Description = "Run as state test." };
 
         public static Option<bool> BlockTest { get; } =
-            new("--blockTest", "-b") { Description = "Set test as blockTest. if not, it will be by default assumed a state test." };
+            new("--blockTest", "-b") { Description = "Run as blockchain test." };
+
+        public static Option<bool> EngineTest { get; } =
+            new("--engineTest", "-e") { Description = "Run as engine test (blockchain_test_engine fixtures)." };
 
         public static Option<bool> TraceAlways { get; } =
             new("--trace", "-t") { Description = "Set to always trace (by default traces are only generated for failing tests)." };
@@ -40,14 +51,22 @@ internal class Program
             new("--wait", "-w") { Description = "Wait for input after the test run." };
 
         public static Option<bool> Stdin { get; } =
-            new("--stdin", "-x") { Description = "If stdin is used, the state runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
+            new("--stdin", "-x") { Description = "If stdin is used, the runner will read inputs (filenames) from stdin, and continue executing until empty line is read." };
 
         public static Option<bool> GnosisTest { get; } =
             new("--gnosisTest", "-g") { Description = "Set test as gnosisTest. if not, it will be by default assumed a mainnet test." };
 
         public static Option<bool> EnableWarmup { get; } =
             new("--warmup", "-wu") { Description = "Enable warmup for benchmarking purposes." };
+
+        public static Option<bool> JsonOutput { get; } =
+            new("--jsonout", "-j") { Description = "Output results as JSON array instead of human-readable format." };
+
+        public static Option<int> Workers { get; } =
+            new("--workers", "-p") { Description = "Number of parallel workers for processing fixture files.", DefaultValueFactory = _ => 1 };
     }
+
+    private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
 
     public static async Task<int> Main(params string[] args)
     {
@@ -55,7 +74,9 @@ internal class Program
         [
             Options.Input,
             Options.Filter,
+            Options.StateTest,
             Options.BlockTest,
+            Options.EngineTest,
             Options.TraceAlways,
             Options.TraceNever,
             Options.ExcludeMemory,
@@ -64,6 +85,8 @@ internal class Program
             Options.Stdin,
             Options.GnosisTest,
             Options.EnableWarmup,
+            Options.JsonOutput,
+            Options.Workers,
         ];
         rootCommand.SetAction(Run);
 
@@ -72,71 +95,243 @@ internal class Program
 
     private static async Task<int> Run(ParseResult parseResult, CancellationToken cancellationToken)
     {
+        bool isStateTest = parseResult.GetValue(Options.StateTest);
+        bool isBlockTest = parseResult.GetValue(Options.BlockTest);
+        bool isEngineTest = parseResult.GetValue(Options.EngineTest);
+
+        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0);
+        if (testTypeCount != 1)
+        {
+            Console.WriteLine("Please specify one of: --stateTest, --blockTest, or --engineTest");
+            return 0;
+        }
+
         WhenTrace whenTrace = WhenTrace.WhenFailing;
-
-        if (parseResult.GetValue(Options.TraceNever))
-            whenTrace = WhenTrace.Never;
-
-        if (parseResult.GetValue(Options.TraceAlways))
-            whenTrace = WhenTrace.Always;
+        if (parseResult.GetValue(Options.TraceNever)) whenTrace = WhenTrace.Never;
+        if (parseResult.GetValue(Options.TraceAlways)) whenTrace = WhenTrace.Always;
 
         string input = parseResult.GetValue(Options.Input);
+        if (parseResult.GetValue(Options.Stdin)) input = Console.ReadLine();
 
-        if (parseResult.GetValue(Options.Stdin))
-            input = Console.ReadLine();
         ulong chainId = parseResult.GetValue(Options.GnosisTest) ? GnosisSpecProvider.Instance.ChainId : MainnetSpecProvider.Instance.ChainId;
+        bool jsonOutput = parseResult.GetValue(Options.JsonOutput);
+        int workers = Math.Max(1, parseResult.GetValue(Options.Workers));
+        string filter = parseResult.GetValue(Options.Filter);
+        bool trace = parseResult.GetValue(Options.TraceAlways);
+        bool traceMemory = !parseResult.GetValue(Options.ExcludeMemory);
+        bool traceStack = parseResult.GetValue(Options.ExcludeStack);
+        bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
 
+        // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
+        // Cap at processor count to avoid thermal throttling on laptops.
+        if (workers > 1)
+        {
+            ThreadPool.GetMinThreads(out int currentMinWorker, out int currentMinIO);
+            int cpuCap = Environment.ProcessorCount;
+            int desiredMin = Math.Min(Math.Max(currentMinWorker, workers * 2), cpuCap);
+            int desiredMinIO = Math.Min(Math.Max(currentMinIO, workers), cpuCap);
+            ThreadPool.SetMinThreads(desiredMin, desiredMinIO);
+        }
 
         while (!string.IsNullOrWhiteSpace(input))
         {
-            if (parseResult.GetValue(Options.BlockTest))
+            List<string> files = CollectFiles(input);
+
+            if (isEngineTest || isBlockTest)
             {
-                await RunBlockTest(input, source => new BlockchainTestsRunner(
-                    source,
-                    parseResult.GetValue(Options.Filter),
-                    chainId,
-                    parseResult.GetValue(Options.TraceAlways),
-                    !parseResult.GetValue(Options.ExcludeMemory),
-                    parseResult.GetValue(Options.ExcludeStack)));
+                bool forceJson = isEngineTest || jsonOutput;
+                var results = await RunBlockTestFiles(files, filter, chainId, trace, traceMemory, traceStack, forceJson, workers);
+                if (forceJson)
+                    Console.Out.Write(_serializer.Serialize(results, true));
             }
-            else
+            else if (isStateTest)
             {
-                RunStateTest(input, source => new StateTestsRunner(
-                    source,
-                    whenTrace,
-                    !parseResult.GetValue(Options.ExcludeMemory),
-                    !parseResult.GetValue(Options.ExcludeStack),
-                    chainId,
-                    parseResult.GetValue(Options.Filter),
-                    parseResult.GetValue(Options.EnableWarmup)));
+                var results = RunStateTestFiles(files, whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, workers);
+                Console.Out.Write(_serializer.Serialize(results, true));
             }
 
-
-            if (!parseResult.GetValue(Options.Stdin))
-                break;
-
+            if (!parseResult.GetValue(Options.Stdin)) break;
             input = Console.ReadLine();
         }
 
-        if (parseResult.GetValue(Options.Wait))
-            Console.ReadLine();
+        if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
         return 0;
     }
 
-    private static async Task RunBlockTest(string path, Func<ITestSourceLoader, IBlockchainTestRunner> testRunnerBuilder)
+    private static List<string> CollectFiles(string path)
     {
-        ITestSourceLoader source = Path.HasExtension(path)
-            ? new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), path)
-            : new TestsSourceLoader(new LoadBlockchainTestsStrategy(), path);
-        await testRunnerBuilder(source).RunTestsAsync();
+        if (File.Exists(path))
+            return [path];
+
+        if (Directory.Exists(path))
+            return Directory.GetFiles(path, "*.json", SearchOption.AllDirectories)
+                .Where(f => !f.Contains("/.meta/") && !f.Contains("\\.meta\\"))
+                .OrderBy(f => f)
+                .ToList();
+
+        return [];
     }
 
-    private static void RunStateTest(string path, Func<ITestSourceLoader, IStateTestRunner> testRunnerBuilder)
+    private static async Task<List<EthereumTestResult>> RunBlockTestFiles(
+        List<string> files, string filter, ulong chainId,
+        bool trace, bool traceMemory, bool traceStack,
+        bool jsonOutput, int workers)
     {
-        ITestSourceLoader source = Path.HasExtension(path)
-            ? new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), path)
-            : new TestsSourceLoader(new LoadGeneralStateTestsStrategy(), path);
-        testRunnerBuilder(source).RunTests();
+        await KzgPolynomialCommitments.InitializeAsync();
+
+        if (workers <= 1)
+        {
+            List<EthereumTestResult> allResults = [];
+            foreach (string file in files)
+            {
+                try
+                {
+                    var source = new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), file);
+                    var runner = new BlockchainTestsRunner(source, filter, chainId, trace, traceMemory, traceStack, jsonOutput: jsonOutput, suppressOutput: true);
+                    var results = await runner.RunTestsAsync();
+                    allResults.AddRange(results);
+                }
+                catch (Exception ex)
+                {
+                    var name = Path.GetFileNameWithoutExtension(file);
+                    allResults.Add(new EthereumTestResult(name, ex.Message));
+                }
+            }
+            return allResults;
+        }
+
+        var bag = new System.Collections.Concurrent.ConcurrentBag<(int index, IEnumerable<EthereumTestResult> results)>();
+        await Parallel.ForEachAsync(
+            files.Select((file, index) => (file, index)),
+            new ParallelOptions { MaxDegreeOfParallelism = workers },
+            async (item, ct) =>
+            {
+                try
+                {
+                    var source = new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), item.file);
+                    var runner = new BlockchainTestsRunner(source, filter, item.file.Contains("chain") ? chainId : chainId, trace: false, traceMemory, traceStack, jsonOutput: true, suppressOutput: true);
+                    var results = await runner.RunTestsAsync();
+                    bag.Add((item.index, results));
+                }
+                catch (Exception ex)
+                {
+                    var name = Path.GetFileNameWithoutExtension(item.file);
+                    bag.Add((item.index, [new EthereumTestResult(name, ex.Message)]));
+                }
+            });
+
+        return bag.OrderBy(x => x.index).SelectMany(x => x.results).ToList();
+    }
+
+    private static List<BlockchainTest> ParseBlockchainTestFile(string file, Regex? filterRegex)
+    {
+        var tests = new List<BlockchainTest>();
+        try
+        {
+            var source = new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), file);
+            foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
+            {
+                if (loadedTest is FailedToLoadTest)
+                {
+                    tests.Add(null);
+                    continue;
+                }
+
+                if (loadedTest is not BlockchainTest bt) continue;
+
+                if (filterRegex is not null && bt.Name is not null && !filterRegex.Match(bt.Name).Success)
+                    continue;
+
+                tests.Add(bt);
+            }
+        }
+        catch (Exception)
+        {
+            tests.Add(null);
+        }
+
+        return tests;
+    }
+
+    private static List<EthereumTestResult> RunStateTestFiles(
+        List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,
+        ulong chainId, string filter, bool enableWarmup, int workers)
+    {
+        // Compile filter regex once
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        // Phase 1: Parse files in parallel
+        int parseWorkers = Math.Min(workers, files.Count);
+        var perFileResults = new List<GeneralStateTest>[files.Count];
+
+        if (parseWorkers > 1 && files.Count > 1)
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = parseWorkers }, i =>
+            {
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+            });
+        }
+        else
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+            }
+        }
+
+        // Flatten
+        var testCases = new List<(int index, GeneralStateTest test)>();
+        int idx = 0;
+        for (int i = 0; i < perFileResults.Length; i++)
+        {
+            foreach (var test in perFileResults[i])
+            {
+                testCases.Add((idx++, test));
+            }
+        }
+
+        if (workers <= 1)
+        {
+            List<EthereumTestResult> allResults = [];
+            foreach (var (index, test) in testCases)
+            {
+                var runner = new StateTestsRunner(
+                    new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), "dummy"),
+                    whenTrace, traceMemory, traceStack, chainId, filter, enableWarmup, suppressOutput: true);
+                var result = runner.RunSingleTest(test);
+                allResults.Add(result);
+            }
+            return allResults;
+        }
+
+        // Phase 2: Execute in parallel with pre-allocated array
+        var results = new EthereumTestResult[testCases.Count];
+        Parallel.ForEach(
+            testCases,
+            new ParallelOptions { MaxDegreeOfParallelism = workers },
+            item =>
+            {
+                var runner = new StateTestsRunner(
+                    new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), "dummy"),
+                    WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
+                var result = runner.RunSingleTest(item.test);
+                results[item.index] = result;
+            });
+
+        return results.ToList();
+    }
+
+    private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)
+    {
+        var tests = new List<GeneralStateTest>();
+        var source = new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file);
+        foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
+        {
+            if (filterRegex is not null && !filterRegex.Match(test.Name).Success)
+                continue;
+            tests.Add(test);
+        }
+        return tests;
     }
 }
