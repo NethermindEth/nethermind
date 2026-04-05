@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
 
             if (types.Count != sizes.Count || types.Count != hashes.Count)
-                throw new RlpException($"Different lengths of NewPooledTransactionHashes arrays: {types.Count}, {sizes.Count}, {hashes.Count}");
+                throw new RlpException($"Different lengths of {nameof(Eth68MessageCode.NewPooledTransactionHashes)} arrays: {types.Count}, {sizes.Count}, {hashes.Count}");
 
             return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
         }
