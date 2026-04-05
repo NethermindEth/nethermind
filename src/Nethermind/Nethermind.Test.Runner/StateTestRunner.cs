@@ -111,5 +111,11 @@ namespace Nethermind.Test.Runner
 
             return results;
         }
+
+        public EthereumTestResult RunSingleTest(GeneralStateTest test)
+        {
+            test.ChainId = _chainId;
+            return RunTest(test, NullTxTracer.Instance);
+        }
     }
 }

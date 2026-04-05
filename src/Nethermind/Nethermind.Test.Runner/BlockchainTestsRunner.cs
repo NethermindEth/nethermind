@@ -78,6 +78,12 @@ public class BlockchainTestsRunner(
         return testResults;
     }
 
+    public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
+    {
+        test.ChainId = chainId;
+        return await RunTest(test);
+    }
+
     private void WriteRed(string text)
     {
         Console.ForegroundColor = ConsoleColor.Red;
