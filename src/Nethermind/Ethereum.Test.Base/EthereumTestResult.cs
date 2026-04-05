@@ -40,12 +40,14 @@ namespace Ethereum.Test.Base
         [JsonIgnore]
         public double TimeInMs { get; set; }
 
-        public Hash256 StateRoot { get; set; } = Keccak.EmptyTreeHash;
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Hash256? StateRoot { get; set; }
 
-        /// <summary>
-        /// The actual validation error string returned by the engine for each payload.
-        /// Populated only for engine tests. Allows consume direct to perform exception mapping.
-        /// </summary>
-        public string? EngineValidationError { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Hash256? LastBlockHash { get; set; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LastPayloadStatus { get; set; }
+
     }
 }

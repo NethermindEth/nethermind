@@ -294,6 +294,7 @@ namespace Ethereum.Test.Base
             {
                 Name = name,
                 Category = category,
+                ForkName = testJson.Network,
                 Network = testJson.EthereumNetwork,
                 NetworkAfterTransition = testJson.EthereumNetworkAfterTransition,
                 TransitionForkActivation = testJson.TransitionForkActivation,
