@@ -191,7 +191,8 @@ namespace Ethereum.Test.Base
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {
                 TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
-                StateRoot = stateProvider.StateRoot
+                StateRoot = stateProvider.StateRoot,
+                Error = differences.Count > 0 ? string.Join("; ", differences) : ""
             };
 
             if (differences.Count > 0)

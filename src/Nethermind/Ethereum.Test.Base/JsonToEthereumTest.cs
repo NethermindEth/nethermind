@@ -253,8 +253,7 @@ namespace Ethereum.Test.Base
                 {
                     GeneralStateTest test = new()
                     {
-                        Name = Path.GetFileName(name) +
-                                    $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}_",
+                        Name = name,
                         Category = category,
                         ForkName = postStateBySpec.Key,
                         Fork = SpecNameParser.Parse(postStateBySpec.Key),
@@ -276,10 +275,6 @@ namespace Ethereum.Test.Base
                         Transaction = Convert(stateJson, testJson.Transaction)
                     };
 
-                    if (testJson.Info?.Labels?.ContainsKey(iterationNumber.ToString()) ?? false)
-                    {
-                        test.Name += testJson.Info?.Labels?[iterationNumber.ToString()]?.Replace(":label ", string.Empty);
-                    }
                     blockchainTests.Add(test);
                     ++iterationNumber;
                 }
