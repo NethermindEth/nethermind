@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
@@ -11,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 
@@ -122,6 +122,17 @@ internal class Program
         bool traceStack = parseResult.GetValue(Options.ExcludeStack);
         bool enableWarmup = parseResult.GetValue(Options.EnableWarmup);
 
+        // Pre-warm the thread pool to avoid ramp-up delay (default adds 1 thread/500ms).
+        // Cap at processor count to avoid thermal throttling on laptops.
+        if (workers > 1)
+        {
+            ThreadPool.GetMinThreads(out int currentMinWorker, out int currentMinIO);
+            int cpuCap = Environment.ProcessorCount;
+            int desiredMin = Math.Min(Math.Max(currentMinWorker, workers * 2), cpuCap);
+            int desiredMinIO = Math.Min(Math.Max(currentMinIO, workers), cpuCap);
+            ThreadPool.SetMinThreads(desiredMin, desiredMinIO);
+        }
+
         while (!string.IsNullOrWhiteSpace(input))
         {
             List<string> files = CollectFiles(input);
@@ -167,42 +178,39 @@ internal class Program
         bool trace, bool traceMemory, bool traceStack,
         bool jsonOutput, int workers)
     {
-        // Parse all files into a flat list of individual test cases
-        Regex? filterRegex = filter is not null ? new Regex($"^({filter})") : null;
+        // Pre-initialize KZG once for all tests (avoids per-test initialization check)
+        await KzgPolynomialCommitments.InitializeAsync();
+
+        // Compile filter regex once (Compiled flag enables JIT compilation for faster matching)
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        // Phase 1: Parse all files in parallel into per-file test lists
+        int parseWorkers = Math.Min(workers, files.Count);
+        var perFileResults = new List<BlockchainTest>[files.Count];
+
+        if (parseWorkers > 1 && files.Count > 1)
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = parseWorkers }, i =>
+            {
+                perFileResults[i] = ParseBlockchainTestFile(files[i], filterRegex);
+            });
+        }
+        else
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                perFileResults[i] = ParseBlockchainTestFile(files[i], filterRegex);
+            }
+        }
+
+        // Flatten into indexed test case list
         var testCases = new List<(int index, BlockchainTest test)>();
         int idx = 0;
-        foreach (string file in files)
+        for (int i = 0; i < perFileResults.Length; i++)
         {
-            try
+            foreach (var test in perFileResults[i])
             {
-                var source = new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), file);
-                foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
-                {
-                    if (loadedTest is FailedToLoadTest)
-                    {
-                        testCases.Add((idx++, null));
-                        // Record the failure inline below during execution
-                        continue;
-                    }
-
-                    if (loadedTest is not BlockchainTest bt) continue;
-
-                    if (filterRegex is not null && bt.Name is not null && !filterRegex.Match(bt.Name).Success)
-                        continue;
-
-                    if (bt.LoadFailure is not null)
-                    {
-                        testCases.Add((idx++, bt));
-                        continue;
-                    }
-
-                    testCases.Add((idx++, bt));
-                }
-            }
-            catch (Exception)
-            {
-                var name = Path.GetFileNameWithoutExtension(file);
-                testCases.Add((idx++, null));
+                testCases.Add((idx++, test));
             }
         }
 
@@ -219,9 +227,7 @@ internal class Program
 
                 try
                 {
-                    var runner = new BlockchainTestsRunner(
-                        new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), "dummy"),
-                        filter, chainId, trace, traceMemory, traceStack, jsonOutput: jsonOutput, suppressOutput: true);
+                    var runner = new BlockchainTestsRunner(filter, chainId, trace, traceMemory, traceStack, jsonOutput: jsonOutput, suppressOutput: true);
                     var result = await runner.RunSingleTestAsync(test);
                     allResults.Add(result);
                 }
@@ -233,8 +239,8 @@ internal class Program
             return allResults;
         }
 
-        // Parallel execution by individual test case
-        var bag = new ConcurrentBag<(int index, EthereumTestResult result)>();
+        // Phase 2: Execute tests in parallel — use pre-allocated array instead of ConcurrentBag
+        var results = new EthereumTestResult[testCases.Count];
         await Parallel.ForEachAsync(
             testCases,
             new ParallelOptions { MaxDegreeOfParallelism = workers },
@@ -242,44 +248,89 @@ internal class Program
             {
                 if (item.test is null || item.test.LoadFailure is not null)
                 {
-                    bag.Add((item.index, new EthereumTestResult(item.test?.Name, item.test?.LoadFailure ?? "Failed to load test")));
+                    results[item.index] = new EthereumTestResult(item.test?.Name, item.test?.LoadFailure ?? "Failed to load test");
                     return;
                 }
 
                 try
                 {
                     // Each parallel task creates its own runner since BlockchainTestBase has mutable state
-                    var runner = new BlockchainTestsRunner(
-                        new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), "dummy"),
-                        filter, chainId, trace: false, traceMemory, traceStack, jsonOutput: true, suppressOutput: true);
+                    var runner = new BlockchainTestsRunner(filter, chainId, trace: false, traceMemory, traceStack, jsonOutput: true, suppressOutput: true);
                     var result = await runner.RunSingleTestAsync(item.test);
-                    bag.Add((item.index, result));
+                    results[item.index] = result;
                 }
                 catch (Exception)
                 {
-                    bag.Add((item.index, new EthereumTestResult(item.test.Name, "Exception during test")));
+                    results[item.index] = new EthereumTestResult(item.test.Name, "Exception during test");
                 }
             });
 
-        return bag.OrderBy(b => b.index).Select(b => b.result).ToList();
+        return results.ToList();
+    }
+
+    private static List<BlockchainTest> ParseBlockchainTestFile(string file, Regex? filterRegex)
+    {
+        var tests = new List<BlockchainTest>();
+        try
+        {
+            var source = new TestsSourceLoader(new LoadBlockchainTestFileStrategy(), file);
+            foreach (EthereumTest loadedTest in source.LoadTests<EthereumTest>())
+            {
+                if (loadedTest is FailedToLoadTest)
+                {
+                    tests.Add(null);
+                    continue;
+                }
+
+                if (loadedTest is not BlockchainTest bt) continue;
+
+                if (filterRegex is not null && bt.Name is not null && !filterRegex.Match(bt.Name).Success)
+                    continue;
+
+                tests.Add(bt);
+            }
+        }
+        catch (Exception)
+        {
+            tests.Add(null);
+        }
+
+        return tests;
     }
 
     private static List<EthereumTestResult> RunStateTestFiles(
         List<string> files, WhenTrace whenTrace, bool traceMemory, bool traceStack,
         ulong chainId, string filter, bool enableWarmup, int workers)
     {
-        // Parse all files into a flat list of individual test cases
-        Regex? filterRegex = filter is not null ? new Regex($"^({filter})") : null;
+        // Compile filter regex once
+        Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
+
+        // Phase 1: Parse files in parallel
+        int parseWorkers = Math.Min(workers, files.Count);
+        var perFileResults = new List<GeneralStateTest>[files.Count];
+
+        if (parseWorkers > 1 && files.Count > 1)
+        {
+            Parallel.For(0, files.Count, new ParallelOptions { MaxDegreeOfParallelism = parseWorkers }, i =>
+            {
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+            });
+        }
+        else
+        {
+            for (int i = 0; i < files.Count; i++)
+            {
+                perFileResults[i] = ParseStateTestFile(files[i], filterRegex);
+            }
+        }
+
+        // Flatten
         var testCases = new List<(int index, GeneralStateTest test)>();
         int idx = 0;
-        foreach (string file in files)
+        for (int i = 0; i < perFileResults.Length; i++)
         {
-            var source = new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file);
-            foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
+            foreach (var test in perFileResults[i])
             {
-                if (filterRegex is not null && !filterRegex.Match(test.Name).Success)
-                    continue;
-
                 testCases.Add((idx++, test));
             }
         }
@@ -298,21 +349,33 @@ internal class Program
             return allResults;
         }
 
-        // Parallel execution by individual test case
-        var bag = new ConcurrentBag<(int index, EthereumTestResult result)>();
+        // Phase 2: Execute in parallel with pre-allocated array
+        var results = new EthereumTestResult[testCases.Count];
         Parallel.ForEach(
             testCases,
             new ParallelOptions { MaxDegreeOfParallelism = workers },
             item =>
             {
-                // Each parallel task creates its own runner since GeneralStateTestBase has mutable state
                 var runner = new StateTestsRunner(
                     new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), "dummy"),
                     WhenTrace.Never, traceMemory, traceStack, chainId, filter, enableWarmup: false, suppressOutput: true);
                 var result = runner.RunSingleTest(item.test);
-                bag.Add((item.index, result));
+                results[item.index] = result;
             });
 
-        return bag.OrderBy(b => b.index).Select(b => b.result).ToList();
+        return results.ToList();
+    }
+
+    private static List<GeneralStateTest> ParseStateTestFile(string file, Regex? filterRegex)
+    {
+        var tests = new List<GeneralStateTest>();
+        var source = new TestsSourceLoader(new LoadGeneralStateTestFileStrategy(), file);
+        foreach (GeneralStateTest test in source.LoadTests<GeneralStateTest>())
+        {
+            if (filterRegex is not null && !filterRegex.Match(test.Name).Success)
+                continue;
+            tests.Add(test);
+        }
+        return tests;
     }
 }

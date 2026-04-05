@@ -331,6 +331,20 @@ namespace Ethereum.Test.Base
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
 
+            return ConvertStateTestFromDict(testsInFile);
+        }
+
+        public static IEnumerable<GeneralStateTest> ConvertStateTest(byte[] utf8Json)
+        {
+            Dictionary<string, GeneralStateTestJson> testsInFile =
+                JsonSerializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(
+                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+
+            return ConvertStateTestFromDict(testsInFile);
+        }
+
+        private static IEnumerable<GeneralStateTest> ConvertStateTestFromDict(Dictionary<string, GeneralStateTestJson> testsInFile)
+        {
             List<GeneralStateTest> tests = [];
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
@@ -359,6 +373,35 @@ namespace Ethereum.Test.Base
                 }
             }
 
+            return ConvertBlockchainTestsFromDict(testsInFile);
+        }
+
+        public static IEnumerable<BlockchainTest> ConvertToBlockchainTests(byte[] utf8Json)
+        {
+            Dictionary<string, BlockchainTestJson> testsInFile;
+            try
+            {
+                testsInFile = JsonSerializer.Deserialize<Dictionary<string, BlockchainTestJson>>(
+                    utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+            }
+            catch (Exception)
+            {
+                // Fall back to HalfBlockchainTestJson for legacy formats
+                Dictionary<string, HalfBlockchainTestJson> half =
+                    JsonSerializer.Deserialize<Dictionary<string, HalfBlockchainTestJson>>(
+                        utf8Json.AsSpan(), EthereumJsonSerializer.JsonOptions);
+                testsInFile = [];
+                foreach (KeyValuePair<string, HalfBlockchainTestJson> pair in half)
+                {
+                    testsInFile[pair.Key] = pair.Value;
+                }
+            }
+
+            return ConvertBlockchainTestsFromDict(testsInFile);
+        }
+
+        private static IEnumerable<BlockchainTest> ConvertBlockchainTestsFromDict(Dictionary<string, BlockchainTestJson> testsInFile)
+        {
             List<BlockchainTest> testsByName = [];
             foreach ((string testName, BlockchainTestJson testSpec) in testsInFile)
             {

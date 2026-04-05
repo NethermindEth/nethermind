@@ -10,25 +10,65 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
-public class BlockchainTestsRunner(
-    ITestSourceLoader testsSource,
-    string? filter,
-    ulong chainId,
-    bool trace = false,
-    bool traceMemory = false,
-    bool traceNoStack = false,
-    bool jsonOutput = false,
-    bool suppressOutput = false)
-    : BlockchainTestBase, IBlockchainTestRunner
+public class BlockchainTestsRunner : BlockchainTestBase, IBlockchainTestRunner
 {
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
-    private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+    private readonly ITestSourceLoader? _testsSource;
     private static readonly IJsonSerializer _serializer = new EthereumJsonSerializer();
+    private readonly string? filter;
+    private readonly ulong chainId;
+    private readonly bool trace;
+    private readonly bool traceMemory;
+    private readonly bool traceNoStack;
+    private readonly bool jsonOutput;
+    private readonly bool suppressOutput;
+
+    public BlockchainTestsRunner(
+        ITestSourceLoader testsSource,
+        string? filter,
+        ulong chainId,
+        bool trace = false,
+        bool traceMemory = false,
+        bool traceNoStack = false,
+        bool jsonOutput = false,
+        bool suppressOutput = false)
+    {
+        _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+        this.filter = filter;
+        this.chainId = chainId;
+        this.trace = trace;
+        this.traceMemory = traceMemory;
+        this.traceNoStack = traceNoStack;
+        this.jsonOutput = jsonOutput;
+        this.suppressOutput = suppressOutput;
+    }
+
+    /// <summary>
+    /// Lightweight constructor for RunSingleTestAsync — skips ITestSourceLoader allocation.
+    /// </summary>
+    public BlockchainTestsRunner(
+        string? filter,
+        ulong chainId,
+        bool trace = false,
+        bool traceMemory = false,
+        bool traceNoStack = false,
+        bool jsonOutput = false,
+        bool suppressOutput = false)
+    {
+        _testsSource = null;
+        this.filter = filter;
+        this.chainId = chainId;
+        this.trace = trace;
+        this.traceMemory = traceMemory;
+        this.traceNoStack = traceNoStack;
+        this.jsonOutput = jsonOutput;
+        this.suppressOutput = suppressOutput;
+    }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
         List<EthereumTestResult> testResults = [];
-        IEnumerable<EthereumTest> tests = _testsSource.LoadTests<EthereumTest>();
+        IEnumerable<EthereumTest> tests = _testsSource!.LoadTests<EthereumTest>();
         foreach (EthereumTest loadedTest in tests)
         {
             if (loadedTest as FailedToLoadTest is not null)
