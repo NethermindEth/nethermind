@@ -38,7 +38,6 @@ public sealed class EraWriter : IDisposable
 
     private readonly HeaderDecoder _headerDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = new();
-    private readonly ReceiptMessageDecoder _slimReceiptDecoder = new(skipBloom: true);
     private readonly E2StoreWriter _e2StoreWriter;
     private readonly ISpecProvider _specProvider;
     private readonly IBeaconRootsProvider? _beaconRootsProvider;
@@ -142,10 +141,7 @@ public sealed class EraWriter : IDisposable
             _bodies.Add(bodyRlp.AsMemory().ToArray());
         }
 
-        using (NettyRlpStream receiptsRlp = _slimReceiptDecoder.EncodeToNewNettyStream(receipts, rlpBehaviors))
-        {
-            _receipts.Add(receiptsRlp.AsMemory().ToArray());
-        }
+        _receipts.Add(EncodeGethSlimReceipts(receipts, spec.IsEip658Enabled));
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
@@ -284,6 +280,76 @@ public sealed class EraWriter : IDisposable
         _bodyOffsets.Dispose();
         _receiptsOffsets.Dispose();
         _totalDifficulties.Dispose();
+    }
+
+    /// <summary>
+    /// Encodes receipts in the go-ethereum slim format used by EraE files:
+    /// rlp([txType, postStateOrStatus, cumulativeGas, logs]) per receipt, no bloom.
+    /// txType is empty-bytes for legacy (type 0), single byte otherwise.
+    /// postStateOrStatus is the 32-byte state root pre-EIP-658, or 0x01/empty for success/failure post-EIP-658.
+    /// </summary>
+    private static byte[] EncodeGethSlimReceipts(TxReceipt[] receipts, bool isEip658)
+    {
+        int totalLength = 0;
+        foreach (TxReceipt receipt in receipts)
+            totalLength += Rlp.LengthOfSequence(GetGethReceiptContentLength(receipt, isEip658));
+
+        RlpStream stream = new(Rlp.LengthOfSequence(totalLength));
+        stream.StartSequence(totalLength);
+        foreach (TxReceipt receipt in receipts)
+            WriteGethReceipt(stream, receipt, isEip658);
+        return stream.Data.ToArray() ?? [];
+    }
+
+    private static int GetGethReceiptContentLength(TxReceipt receipt, bool isEip658)
+    {
+        int logsLength = 0;
+        if (receipt.Logs is not null)
+            foreach (LogEntry log in receipt.Logs)
+                logsLength += LogEntryDecoder.Instance.GetLength(log);
+
+        // txType: 0x80 (empty = legacy) or single self-encoding byte (type 1/2/3) — always 1 byte
+        int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
+
+        return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
+    }
+
+    private static void WriteGethReceipt(RlpStream stream, TxReceipt receipt, bool isEip658)
+    {
+        int logsLength = 0;
+        if (receipt.Logs is not null)
+        {
+            foreach (LogEntry log in receipt.Logs)
+                logsLength += LogEntryDecoder.Instance.GetLength(log);
+        }
+
+        int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
+        int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
+
+        stream.StartSequence(contentLength);
+
+        // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
+        if (receipt.TxType == TxType.Legacy)
+            stream.Encode(Array.Empty<byte>());
+        else
+            stream.WriteByte((byte)receipt.TxType);
+
+        // postStateOrStatus: 32-byte hash (pre-EIP-658), 0x01 (success), or empty (failure)
+        if (!isEip658)
+            stream.Encode(receipt.PostTransactionState);
+        else if (receipt.StatusCode == 0)
+            stream.Encode(Array.Empty<byte>());
+        else
+            stream.WriteByte(receipt.StatusCode);
+
+        stream.Encode(receipt.GasUsedTotal);
+
+        stream.StartSequence(logsLength);
+        if (receipt.Logs is not null)
+        {
+            foreach (LogEntry log in receipt.Logs)
+                LogEntryDecoder.Instance.Encode(stream, log);
+        }
     }
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)
