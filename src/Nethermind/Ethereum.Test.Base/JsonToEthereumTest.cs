@@ -441,7 +441,8 @@ namespace Ethereum.Test.Base
             {
                 return (key, "");
             }
-            var name = key.Substring(index + 5);
+            // Use the full fixture key as the name (matches geth/erigon output)
+            var name = key;
             string category = key.Substring(0, index);
             int startIndex = 0;
             for (var i = 0; i < 3; i++)
