@@ -416,8 +416,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
     {
-        XdcBlockHeader xdcHeader = (XdcBlockHeader)BlockTree.Head!.Header;
-        reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec(xdcHeader, xdcHeader.ExtraConsensusData!.BlockRound));
+        reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec((XdcBlockHeader)BlockTree.Head!.Header));
     }
 
     public void StartHotStuffModule()
