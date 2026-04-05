@@ -6,8 +6,6 @@ namespace Nethermind.EraE.Archive;
 
 internal sealed class EraSlimReceiptDecoder
 {
-    private readonly ReceiptMessageDecoder _inner = new(skipBloom: true);
-
     public TxReceipt[] Decode(Memory<byte> buffer)
     {
         Rlp.ValueDecoderContext ctx = new(buffer.Span);
@@ -19,7 +17,7 @@ internal sealed class EraSlimReceiptDecoder
         TxReceipt[] receipts = new TxReceipt[count];
         for (int i = 0; i < count; i++)
         {
-            receipts[i] = DecodeOne(ref ctx);
+            receipts[i] = DecodeSlimReceipt(ref ctx);
         }
 
         if (ctx.Position != outerEnd)
@@ -28,24 +26,7 @@ internal sealed class EraSlimReceiptDecoder
         return receipts;
     }
 
-    private TxReceipt DecodeOne(ref Rlp.ValueDecoderContext ctx)
-    {
-        // Nethermind typed receipt: encoded as an RLP byte-array (not a sequence)
-        if (!ctx.IsSequenceNext())
-            return _inner.Decode(ref ctx);
-
-        int savedPosition = ctx.Position;
-        int sequenceLength = ctx.ReadSequenceLength();
-        int receiptEnd = ctx.Position + sequenceLength;
-        int fieldCount = ctx.PeekNumberOfItemsRemaining(receiptEnd);
-        ctx.Position = savedPosition;
-
-        return fieldCount == 4
-            ? DecodeGoEthereumSlimReceipt(ref ctx)
-            : _inner.Decode(ref ctx);
-    }
-
-    private static TxReceipt DecodeGoEthereumSlimReceipt(ref Rlp.ValueDecoderContext ctx)
+    private static TxReceipt DecodeSlimReceipt(ref Rlp.ValueDecoderContext ctx)
     {
         int sequenceLength = ctx.ReadSequenceLength();
         int receiptEnd = ctx.Position + sequenceLength;
