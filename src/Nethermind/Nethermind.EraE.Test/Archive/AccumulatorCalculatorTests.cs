@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Crypto;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
-using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Archive;
