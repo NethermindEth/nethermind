@@ -8,8 +8,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Core
 {
-    public class ProgressLogger
+    public class ProgressLogger : IDisposable
     {
+        public static readonly ProgressLogger Disabled = new ProgressLogger("Disabled", NullLogManager.Instance);
+
         public const int QueuePaddingLength = 8;
         public const int SkippedPaddingLength = 7;
         public const int SpeedPaddingLength = 7;
@@ -21,6 +23,7 @@ namespace Nethermind.Core
         private string _prefix;
         private (long, long, long, long) _lastReportState = (0, 0, 0, 0);
         private Func<ProgressLogger, string>? _formatter;
+        private bool _isDisposing = false;
 
         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
         {
@@ -163,7 +166,7 @@ namespace Nethermind.Core
         public void LogProgress()
         {
             (long, long, long, long) reportState = (CurrentValue, TargetValue, CurrentQueued, _skipped);
-            if (reportState != _lastReportState)
+            if (reportState != _lastReportState || _isDisposing)
             {
                 string reportString = _formatter is not null ? _formatter(this) : DefaultFormatter();
                 _lastReportState = reportState;
@@ -191,6 +194,14 @@ namespace Nethermind.Core
                 skippedStr +
                 speedStr;
             return receiptsReport;
+        }
+
+        public void Dispose()
+        {
+            _isDisposing = true;
+            MarkEnd();
+            LogProgress();
+            GC.SuppressFinalize(this);
         }
     }
 }
