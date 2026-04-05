@@ -101,7 +101,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _branchProcessor = branchProcessor;
         _recoveryStep = recoveryStep;

@@ -6,7 +6,6 @@ using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat;
 using Nethermind.Trie.Pruning;
-using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Modules;
 
@@ -17,31 +16,28 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="flatDbManager"></param>
 internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbManager
 {
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage)
     {
-        IgnoreOnInvalidState(baseBlock);
-        return flatDbManager.GatherSnapshotBundle(baseBlock, usage);
+        return flatDbManager.GatherSnapshotBundle(NormalizeState(stateId), usage);
     }
 
-    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock)
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId stateId)
     {
-        IgnoreOnInvalidState(baseBlock);
-        return flatDbManager.GatherReadOnlySnapshotBundle(baseBlock);
+        return flatDbManager.GatherReadOnlySnapshotBundle(NormalizeState(stateId));
     }
 
     public bool HasStateForBlock(in StateId stateId)
     {
-        IgnoreOnInvalidState(stateId);
+        if (stateId.StateRoot == Keccak.EmptyTreeHash) return true;
         return flatDbManager.HasStateForBlock(stateId);
     }
 
-    private void IgnoreOnInvalidState(StateId stateId)
+    private StateId NormalizeState(StateId stateId)
     {
         if (stateId.StateRoot == Keccak.EmptyTreeHash && stateId.BlockNumber != -1 &&
             !flatDbManager.HasStateForBlock(stateId))
-        {
-            Assert.Ignore("Incompatible test");
-        }
+            return StateId.PreGenesis;
+        return stateId;
     }
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);

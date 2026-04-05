@@ -244,7 +244,7 @@ namespace Nethermind.PerfTest
         {
             /* logging & instrumentation */
             _logManager = new NLogManager("perfTest.log", null);
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<Program>();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");
 

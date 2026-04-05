@@ -62,7 +62,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
         _blockProcessor = blockProcessor;
         _blockCensorshipThreshold = censorshipDetectorConfig.BlockCensorshipThreshold;
         _cacheSize = (int)(4 * _blockCensorshipThreshold);
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CensorshipDetector>() ?? throw new ArgumentNullException(nameof(logManager));
 
         if (censorshipDetectorConfig.AddressesForCensorshipDetection is not null)
         {

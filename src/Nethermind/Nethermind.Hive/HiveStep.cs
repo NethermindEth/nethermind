@@ -19,7 +19,7 @@ public class HiveStep(
     ILogManager logManager
 ) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<HiveStep>();
 
     public async Task Execute(CancellationToken cancellationToken)
     {

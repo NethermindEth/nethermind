@@ -88,7 +88,11 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public void Cache(Block block)
     {
-        _blockCache.Set(block.Hash, block);
+        // Cache a sanitized copy to avoid retaining large BAL/account-change
+        // structures, without mutating the original block instance which may
+        // still be used by downstream consumers (e.g., TxPool reads and
+        // disposes AccountChanges after this call).
+        _blockCache.Set(block.Hash, new(block.Header, block.Body));
     }
 
     void IClearableCache.ClearCache()

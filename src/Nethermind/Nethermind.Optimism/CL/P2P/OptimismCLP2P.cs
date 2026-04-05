@@ -63,7 +63,7 @@ public class OptimismCLP2P : IDisposable
         IPAddress externalIp,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
         _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();

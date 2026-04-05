@@ -37,7 +37,7 @@ public class TransactionReceiptsSubscription : Subscription
 
         _receiptMonitor = receiptCanonicalityMonitor;
         _blockTree = blockTree;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TransactionReceiptsSubscription>();
 
         // Validate max 200 hashes
         if (filter?.TransactionHashes is not null && filter.TransactionHashes.Count > 200)

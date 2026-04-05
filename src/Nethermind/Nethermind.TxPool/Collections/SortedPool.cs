@@ -60,7 +60,7 @@ namespace Nethermind.TxPool.Collections
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, EnhancedSortedSet<TValue>>();
             _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger(typeof(SortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>

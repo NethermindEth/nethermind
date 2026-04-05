@@ -78,7 +78,7 @@ namespace Nethermind.Network
             ArgumentNullException.ThrowIfNull(networkConfig);
             ArgumentNullException.ThrowIfNull(logManager);
 
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
             _stats = stats;
             _networkConfig = networkConfig;

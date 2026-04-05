@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Analyzers
 
         public DisconnectsAnalyzer(ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DisconnectsAnalyzer>() ?? throw new ArgumentNullException(nameof(logManager));
             _disconnects = _disconnectsA;
 
             _timer = new Timer(10000);

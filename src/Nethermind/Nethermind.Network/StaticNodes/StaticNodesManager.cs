@@ -16,7 +16,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.StaticNodes;
 
-public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger()), IStaticNodesManager
+public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger<StaticNodesManager>()), IStaticNodesManager
 {
     public IEnumerable<NetworkNode> Nodes => _nodes.Values;
 

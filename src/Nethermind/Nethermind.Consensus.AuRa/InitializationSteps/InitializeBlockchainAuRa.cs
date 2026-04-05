@@ -106,7 +106,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
 
     private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {
-        ILogger logger = api.LogManager.GetClassLogger();
+        ILogger logger = api.LogManager.GetClassLogger<InitializeBlockchainAuRa>();
 
         if (localDataSource?.FilePath is not null)
         {

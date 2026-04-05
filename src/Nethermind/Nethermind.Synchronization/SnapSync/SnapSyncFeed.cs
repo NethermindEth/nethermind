@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
         public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
         {
             _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<SnapSyncFeed>();
         }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)

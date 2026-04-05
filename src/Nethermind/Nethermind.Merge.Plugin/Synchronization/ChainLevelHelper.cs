@@ -33,7 +33,7 @@ public class ChainLevelHelper : IChainLevelHelper
         _blockTree = blockTree;
         _beaconPivot = beaconPivot;
         _syncConfig = syncConfig;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<ChainLevelHelper>();
     }
 
     private void OnMissingBeaconHeader(long blockNumber)

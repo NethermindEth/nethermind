@@ -12,7 +12,7 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class DerivedBlocksVerifier(ILogManager logManager) : IDerivedBlocksVerifier
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DerivedBlocksVerifier>();
 
     public bool ComparePayloadAttributes(OptimismPayloadAttributes expected, OptimismPayloadAttributes actual, ulong blockNumber)
     {
