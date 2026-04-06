@@ -26,8 +26,6 @@ internal static class XdcTestHelper
 
     public static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        var qcEncoder = new VoteDecoder();
-
         IEnumerable<Signature> signatures = CreateVoteSignatures(roundInfo, gapNumber, keys);
 
         return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);

@@ -76,7 +76,7 @@ namespace Nethermind.Db
                     return bytes;
 
                 // no suffix found, return as is
-                if (bytes.EndsWith(EmptyCodeHashStorageRoot) == false)
+                if (!bytes.EndsWith(EmptyCodeHashStorageRoot))
                 {
                     return bytes;
                 }

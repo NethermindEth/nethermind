@@ -40,7 +40,7 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
     public void Start()
     {
         _postMergeProducerRunner.Start();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducerRunner)
+        if (!_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducerRunner)
         {
             _preMergeProducerRunner!.Start();
         }
@@ -55,7 +55,7 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
 
     public bool IsProducingBlocks(ulong? maxProducingInterval)
     {
-        return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducerRunner == false
+        return _poSSwitcher.HasEverReachedTerminalBlock() || !HasPreMergeProducerRunner
             ? _postMergeProducerRunner.IsProducingBlocks(maxProducingInterval)
             : _preMergeProducerRunner!.IsProducingBlocks(maxProducingInterval);
     }

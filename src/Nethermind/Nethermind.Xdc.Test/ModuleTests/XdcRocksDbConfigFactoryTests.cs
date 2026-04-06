@@ -3,14 +3,11 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
-using Nethermind.Xdc;
 using NSubstitute;
 using NUnit.Framework;
-using System;
 
 namespace Nethermind.Xdc.Test.ModuleTests
 {
