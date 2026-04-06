@@ -64,6 +64,8 @@ public class FlatWorldStateManager(
         remove => flatDbManager.ReorgBoundaryReached -= value;
     }
 
+    public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
+
     public IOverridableWorldScope CreateOverridableWorldScope() =>
         overridableWorldScopeFactory();
 
