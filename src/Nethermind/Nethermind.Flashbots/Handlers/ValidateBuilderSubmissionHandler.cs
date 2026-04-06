@@ -55,7 +55,7 @@ public class ValidateSubmissionHandler
         _ethereumEcdsa = ethereumEcdsa;
         _flashbotsConfig = flashbotsConfig;
         _headerValidator = headerValidator;
-        _logger = logManager!.GetClassLogger();
+        _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
         _specProvider = specProvider;
         _blockProcessorEnv = blockProcessorEnv;
     }

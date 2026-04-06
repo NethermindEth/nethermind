@@ -307,11 +307,15 @@ public static class ContainerBuilderExtensions
         return builder.AddScoped<T, IComponentContext>(factoryMethod);
     }
 
-    public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder, bool externallyOwned = false) where T : class
     {
-        builder.RegisterType<T>()
-            .CommonNethermindConfig()
-            .As<T>();
+        IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> registration =
+            builder.RegisterType<T>()
+                .CommonNethermindConfig()
+                .As<T>();
+
+        if (externallyOwned)
+            registration.ExternallyOwned();
 
         return builder;
     }

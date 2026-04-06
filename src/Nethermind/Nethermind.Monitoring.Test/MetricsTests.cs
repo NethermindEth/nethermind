@@ -14,7 +14,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
-using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using NUnit.Framework;
@@ -163,7 +162,6 @@ public class MetricsTests
             typeof(History.Metrics)
         ];
         MetricsController metricsController = new(metricsConfig);
-        MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
         List<Type> metrics = [.. TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics))];
         metrics.AddRange(knownMetricsTypes);
 

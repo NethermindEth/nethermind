@@ -12,6 +12,8 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -28,7 +30,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction;
 /// </summary>
 public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 {
-    private readonly CancellationTokenSource _shutdown = new();
+    private CancellationTokenSource? _shutdown = new();
     private readonly IBlockProducer _blockProducer;
     private readonly ITxPool _txPool;
     private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
@@ -87,7 +89,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
         _timer.Elapsed += CleanupOldPayloads;
         _timer.Start();
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<PayloadPreparationService>();
     }
 
     public string StartPreparingPayload(BlockHeader parentHeader, PayloadAttributes payloadAttributes)
@@ -99,7 +101,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             long startTimestamp = Stopwatch.GetTimestamp();
             Block emptyBlock = ProduceEmptyBlock(payloadId, parentHeader, payloadAttributes);
             if (_logger.IsInfo) _logger.Info($" Produced (Empty)    {emptyBlock.ToString(emptyBlock.Difficulty != 0 ? Block.Format.HashNumberDiffAndTx : Block.Format.HashNumberMGasAndTx)} | {Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,8:N2} ms");
-            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token));
+            ImproveBlock(payloadId, parentHeader, payloadAttributes, emptyBlock, DateTimeOffset.UtcNow, default, new SharedCancellationTokenSource(CancellationTokenSource.CreateLinkedTokenSource(_shutdown?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken)));
         }
         else if (_logger.IsInfo)
         {
@@ -136,7 +138,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             => _logger.Trace($"Prepared empty block from payload {payloadId} block: {emptyBlock}");
     }
 
-    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts) =>
+    protected virtual void ImproveBlock(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts) =>
         _payloadStorage.AddOrUpdate(payloadId,
             id => CreateBlockImprovementContext(id, parentHeader, payloadAttributes, currentBestBlock, startDateTime, currentBlockFees, cts),
             (id, currentContext) =>
@@ -168,25 +170,26 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             });
 
 
-    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+    private IBlockImprovementContext CreateBlockImprovementContext(string payloadId, BlockHeader parentHeader, PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
     {
         if (_logger.IsTrace) _logger.Trace($"Start improving block from payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         long startTimestamp = Stopwatch.GetTimestamp();
+        CancellationToken token = cts.Token;
         long added = _txPool.PendingTransactionsAdded;
         IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
         blockImprovementContext.ImprovementTask.ContinueWith(
-            (b) =>
+            b =>
             {
-                if (!cts.IsCancellationRequested)
+                if (!token.IsCancellationRequested)
                 {
                     LogProductionResult(b, currentBestBlock, blockImprovementContext.BlockFees, Stopwatch.GetElapsedTime(startTimestamp));
                 }
             },
             TaskContinuationOptions.RunContinuationsAsynchronously);
-        blockImprovementContext.ImprovementTask.ContinueWith(async b =>
+
+        blockImprovementContext.ImprovementTask.ContinueWith(async _ =>
         {
-            CancellationToken token = cts.Token;
             do
             {
                 if (token.IsCancellationRequested)
@@ -203,11 +206,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 }
 
                 // If we reach here, we still have time for an improvement build (which still responds to cancellation)
-                try
-                {
-                    await Task.Delay(dynamicDelay, token);
-                }
-                catch (OperationCanceledException) { }
+                await Core.Extensions.TaskExtensions.DelaySafe(dynamicDelay, token);
 
                 // Loop the delay if no new txs have been added, and while not cancelled.
                 // Is no point in rebuilding an identical block.
@@ -329,7 +328,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
-                        context.Dispose();
+                        context.DisposeAndCancelOngoingImprovements();
                         if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
@@ -389,7 +388,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     {
         if (_payloadStorage.TryGetValue(payloadId, out IBlockImprovementContext? blockContext))
         {
-            using (blockContext)
+            try
             {
                 bool currentBestBlockIsEmpty = blockContext.CurrentBestBlock?.Transactions.Length == 0;
                 if (currentBestBlockIsEmpty && !blockContext.ImprovementTask.IsCompleted)
@@ -404,7 +403,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         Task completedTask = await Task.WhenAny(blockContext.ImprovementTask, timeout);
                         if (completedTask != timeout)
                         {
-                            cts.Cancel();
+                            await cts.CancelAsync();
                         }
                     }
                     else
@@ -412,13 +411,13 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                         await blockContext.ImprovementTask;
                     }
                 }
-                else
-                {
-                    // Stop any on-going improvements as they won't be used
-                    blockContext.CancelOngoingImprovements();
-                }
 
                 return blockContext;
+            }
+            finally
+            {
+                // Stop any on-going improvements as they won't be used
+                blockContext.DisposeAndCancelOngoingImprovements();
             }
         }
 
@@ -428,7 +427,15 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
     public void Dispose()
     {
         _timer.Stop();
-        _shutdown.Cancel();
+        CancellationTokenExtensions.CancelDisposeAndClear(ref _shutdown);
+
+        foreach (KeyValuePair<string, IBlockImprovementContext> payload in _payloadStorage)
+        {
+            if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
+            {
+                context.DisposeAndCancelOngoingImprovements();
+            }
+        }
     }
 
     public void CancelBlockProduction(string payloadId)

@@ -42,7 +42,8 @@ internal class XdcBlockProcessor : BlockProcessor
             bh.Number,
             bh.GasLimit,
             bh.Timestamp,
-            bh.ExtraData
+            bh.ExtraData,
+            bh.IsSelfMined
         )
         {
             Bloom = Bloom.Empty,

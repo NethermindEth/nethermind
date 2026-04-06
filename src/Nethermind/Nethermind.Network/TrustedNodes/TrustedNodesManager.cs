@@ -16,7 +16,7 @@ using System.Threading.Tasks;
 namespace Nethermind.Network;
 
 public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager)
-    : NodesManager(trustedNodesPath, logManager.GetClassLogger()), ITrustedNodesManager
+    : NodesManager(trustedNodesPath, logManager.GetClassLogger<TrustedNodesManager>()), ITrustedNodesManager
 {
     private readonly Channel<Node> _nodeChannel = Channel.CreateBounded<Node>(
     new BoundedChannelOptions(1 << 16)  // capacity of 2^16 = 65536

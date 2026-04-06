@@ -55,7 +55,7 @@ public sealed class OptimismCL : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         ArgumentNullException.ThrowIfNull(engineParameters.L2BlockTime);
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismCL>();
         _engineParameters = engineParameters;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
         _l2GenesisTimestamp = l2GenesisTimestamp;

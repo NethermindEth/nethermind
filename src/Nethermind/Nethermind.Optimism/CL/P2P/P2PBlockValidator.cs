@@ -29,7 +29,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         _chainId = chainId.ToBigEndian();
         _sequencerP2PAddress = sequencerP2PAddress;
         _timestamper = timestamper;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<P2PBlockValidator>();
     }
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)

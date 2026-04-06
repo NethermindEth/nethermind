@@ -123,4 +123,27 @@ public class ColumnsDbTests
         snapshot.GetColumn(ReceiptsColumns.Blocks)
             .Get(TestItem.KeccakA).Should().BeEquivalentTo(TestItem.KeccakA.BytesToArray());
     }
+
+    [Test]
+    public void Snapshot_DoubleDispose_DoesNotThrow()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.Dispose()).Should().NotThrow();
+    }
+
+    [Test]
+    public void Snapshot_GetColumn_AfterDispose_ThrowsObjectDisposedException()
+    {
+        IColumnsDb<ReceiptsColumns> asColumnsDb = _db;
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = asColumnsDb.CreateSnapshot();
+
+        snapshot.Dispose();
+
+        FluentActions.Invoking(() => snapshot.GetColumn(ReceiptsColumns.Blocks))
+            .Should().Throw<ObjectDisposedException>();
+    }
 }

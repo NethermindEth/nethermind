@@ -12,7 +12,7 @@ namespace Nethermind.Init.Steps;
 
 public class LogHardwareInfo(ILogManager logManager) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<LogHardwareInfo>();
 
     public bool MustInitialize => false;
 

@@ -245,21 +245,25 @@ namespace Nethermind.Synchronization
         {
             _syncCancellation?.Cancel();
 
-            Task timeout = Task.Delay(FeedsTerminationTimeout);
-            Task completedFirst = await Task.WhenAny(
-                timeout,
-                Task.WhenAll(
-                    fullSyncComponent.Feed.FeedTask,
-                    fastSyncComponent.Feed.FeedTask,
-                    stateSyncComponent.Feed.FeedTask,
-                    snapSyncComponent.Feed.FeedTask,
-                    fastHeaderComponent.Feed.FeedTask,
-                    oldBodiesComponent.Feed.FeedTask,
-                    oldReceiptsComponent.Feed.FeedTask));
+            using CancellationTokenSource timeoutCts = new();
+            Task timeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            Task feedsTask = Task.WhenAll(
+                fullSyncComponent.Feed.FeedTask,
+                fastSyncComponent.Feed.FeedTask,
+                stateSyncComponent.Feed.FeedTask,
+                snapSyncComponent.Feed.FeedTask,
+                fastHeaderComponent.Feed.FeedTask,
+                oldBodiesComponent.Feed.FeedTask,
+                oldReceiptsComponent.Feed.FeedTask);
+            Task completedFirst = await Task.WhenAny(timeout, feedsTask);
 
             if (completedFirst == timeout)
             {
                 if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+            }
+            else
+            {
+                timeoutCts.Cancel();
             }
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);

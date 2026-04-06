@@ -427,6 +427,24 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
         return ResultWrapper<UInt256?>.Success(blockId);
     }
 
+    public ResultWrapper<UInt256?> taikoAuth_lastCertainBlockIDByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        return ResultWrapper<UInt256?>.Success(blockId);
+    }
+
+    public ResultWrapper<L1Origin?> taikoAuth_lastCertainL1OriginByBatchID(UInt256 batchId)
+    {
+        UInt256? blockId = l1OriginStore.ReadBatchToLastBlockID(batchId);
+        if (blockId is null)
+        {
+            return ResultWrapper<L1Origin?>.Success(null);
+        }
+
+        L1Origin? origin = l1OriginStore.ReadL1Origin(blockId.Value);
+        return ResultWrapper<L1Origin?>.Success(origin);
+    }
+
     /// <summary>
     /// Traverses the blockchain backwards to find the last Shasta block of the given batch ID.
     /// </summary>
@@ -481,7 +499,8 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
 
     private static bool HasAnchorV4Prefix(ReadOnlyMemory<byte> data)
     {
-        return data.Length >= 4 && AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4]);
+        return data.Length >= 4 && (AnchorV4Selector.AsSpan().SequenceEqual(data.Span[..4])
+            || AnchorV4WithSignalSlotsSelector.AsSpan().SequenceEqual(data.Span[..4]));
     }
 
     /// <inheritdoc />

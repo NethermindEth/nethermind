@@ -28,7 +28,6 @@ class SszProperty
             {
                 result.Length = vectorAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
             }
-
             AttributeData? listAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszListAttribute");
             if (listAttr is not null)
             {

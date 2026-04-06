@@ -158,6 +158,11 @@ public class BatchedTrieVisitor<TNodeContext>
         }
     }
 
+    /// <summary>
+    /// Pops items from a partition stack and returns them as a new batch.
+    /// Returns null when all jobs are complete or a failure has occurred.
+    /// The caller owns the returned list and must dispose it.
+    /// </summary>
     ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? GetNextBatch()
     {
         CompactStack<Job>? theStack;
@@ -305,73 +310,72 @@ public class BatchedTrieVisitor<TNodeContext>
             using ArrayPoolListRef<int> resolveOrdering = new(_maxBatchSize);
             TreePath emptyPath = TreePath.Empty;
             while (GetNextBatch() is { } currentBatch)
-            {
-                // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
-                // but the path ordering is important for read amplification
-                resolveOrdering.Clear();
-                for (int i = 0; i < currentBatch.Count; i++)
+                using (currentBatch)
                 {
-                    (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
-
-                    cur.ResolveKey(_resolver, ref emptyPath);
-
-                    if (cur.FullRlp.IsNotNull) continue;
-                    if (cur.Keccak is null)
-                        ThrowUnableToResolve(ctx);
-
-                    resolveOrdering.Add(i);
-                }
-
-                // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
-                // take about 0.1% of the time, so not very cpu intensive in this case.
-                resolveOrdering
-                    .AsSpan()
-                    .Sort((item1, item2) =>
-                        currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
-
-                ReadFlags flags = ReadFlags.None;
-                if (resolveOrdering.Count > _readAheadThreshold)
-                {
-                    flags = ReadFlags.HintReadAhead;
-                }
-
-                // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
-                for (int i = 0; i < resolveOrdering.Count; i++)
-                {
-                    int idx = resolveOrdering[i];
-
-                    (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
-                    try
+                    // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
+                    // but the path ordering is important for read amplification
+                    resolveOrdering.Clear();
+                    for (int i = 0; i < currentBatch.Count; i++)
                     {
-                        Hash256 theKeccak = nodeToResolve.Keccak;
-                        nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
-                        nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                        (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
+
+                        cur.ResolveKey(_resolver, ref emptyPath);
+
+                        if (cur.FullRlp.IsNotNull) continue;
+                        if (cur.Keccak is null)
+                            ThrowUnableToResolve(ctx);
+
+                        resolveOrdering.Add(i);
                     }
-                    catch (TrieException)
+
+                    // This innocent looking sort is surprisingly effective when batch size is large enough. The sort itself
+                    // take about 0.1% of the time, so not very cpu intensive in this case.
+                    resolveOrdering
+                        .AsSpan()
+                        .Sort((item1, item2) =>
+                            currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
+
+                    ReadFlags flags = ReadFlags.None;
+                    if (resolveOrdering.Count > _readAheadThreshold)
                     {
-                        _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                        flags = ReadFlags.HintReadAhead;
                     }
-                }
 
-                // Going in reverse to reduce memory
-                for (int i = currentBatch.Count - 1; i >= 0; i--)
-                {
-                    (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
-
-                    nextToProcesses.Clear();
-                    if (nodeToResolve.FullRlp.IsNull)
+                    // This loop is about 60 to 70% of the time spent. If you set very high memory budget, this drop to about 50MB.
+                    for (int i = 0; i < resolveOrdering.Count; i++)
                     {
-                        // Still need to decrement counter
+                        int idx = resolveOrdering[i];
+
+                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                        try
+                        {
+                            Hash256 theKeccak = nodeToResolve.Keccak;
+                            nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
+                            nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
+                        }
+                        catch (TrieException)
+                        {
+                            _visitor.VisitMissingNode(nodeContext, nodeToResolve.Keccak);
+                        }
+                    }
+
+                    // Going in reverse to reduce memory
+                    for (int i = currentBatch.Count - 1; i >= 0; i--)
+                    {
+                        (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
+
+                        nextToProcesses.Clear();
+                        if (nodeToResolve.FullRlp.IsNull)
+                        {
+                            // Still need to decrement counter
+                            QueueNextNodes(ref nextToProcesses);
+                            return; // missing node
+                        }
+
+                        AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
                         QueueNextNodes(ref nextToProcesses);
-                        return; // missing node
                     }
-
-                    AcceptResolvedNode(nodeToResolve, nodeContext, _resolver, ctx, ref nextToProcesses);
-                    QueueNextNodes(ref nextToProcesses);
                 }
-
-                currentBatch.Dispose();
-            }
         }
         finally
         {

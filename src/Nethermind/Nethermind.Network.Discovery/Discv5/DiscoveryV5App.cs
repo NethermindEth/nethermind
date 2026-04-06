@@ -60,7 +60,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
         [KeyFilter(DbNames.DiscoveryNodes)] IDb legacyDiscoveryDb,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DiscoveryV5App>();
         _discoveryDb = discoveryDb;
         _legacyDiscoveryDb = legacyDiscoveryDb;
         _logManager = logManager;
