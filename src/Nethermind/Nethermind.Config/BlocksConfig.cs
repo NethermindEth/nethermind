@@ -100,5 +100,7 @@ namespace Nethermind.Config
         public long BlockProductionMaxTxKilobytes { get; set; } = DefaultMaxTxKilobytes;
 
         public int? BlockProductionBlobLimit { get; set; }
+
+        public bool ParallelBlockValidation { get; set; }
     }
 }

@@ -19,6 +19,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -205,6 +206,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
+        configProvider.GetConfig<IBlocksConfig>().ParallelBlockValidation = true;
+
         var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
