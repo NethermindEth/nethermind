@@ -11,7 +11,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;

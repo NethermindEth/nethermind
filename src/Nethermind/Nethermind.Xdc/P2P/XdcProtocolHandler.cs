@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Caching;
@@ -24,6 +25,7 @@ internal class XdcProtocolHandler(
     ITimeoutCertificateManager timeoutCertificateManager,
     IVotesManager votesManager,
     ISyncInfoManager syncInfoManager,
+    IBlockTree blockTree,
     ISession session,
     IMessageSerializationService serializer,
     INodeStatsManager nodeStatsManager,
@@ -37,6 +39,7 @@ internal class XdcProtocolHandler(
 {
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;
+    private readonly IBlockTree _blockTree = blockTree;
     private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
     private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
@@ -54,6 +57,13 @@ internal class XdcProtocolHandler(
         var size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
+
+        (bool isSyncing, _, _) = _blockTree.IsSyncing();
+        if (isSyncing) // ignore XDC updates while syncing
+        {
+            base.HandleMessage(message);
+            return;
+        }
 
         switch (packetType)
         {

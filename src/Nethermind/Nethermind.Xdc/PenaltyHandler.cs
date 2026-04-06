@@ -11,7 +11,6 @@ using Nethermind.Xdc.Spec;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
