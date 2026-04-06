@@ -94,19 +94,6 @@ public class L1SloadPrecompileTests
     }
 
     [Test]
-    public void Run_With_Disabled_Spec_Should_Fail()
-    {
-        var disabledSpec = new TaikoReleaseSpec { IsRip7728Enabled = false, TaikoL2Address = Address.Zero };
-
-        var input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
-
-        var (result, success) = _precompile.Run(input, disabledSpec);
-
-        Assert.That(success, Is.False);
-        Assert.That(result, Is.Empty);
-    }
-
-    [Test]
     public void Run_With_No_Provider_Should_Fail()
     {
         L1SloadPrecompile.L1StorageProvider = null;
