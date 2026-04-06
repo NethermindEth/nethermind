@@ -32,7 +32,7 @@ public interface IWorldStateManager
     /// For trie mode, returns the existing read-only trie store.
     /// For flat mode, returns an adapter over the flat DB's trie node data.
     /// </summary>
-    IReadOnlyTrieStore CreateReadOnlyTrieStore() => throw new NotSupportedException();
+    IReadOnlyTrieStore CreateReadOnlyTrieStore();
 
     /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
