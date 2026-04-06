@@ -1123,73 +1123,82 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         var opcodeArray = _opcodeMethods;
-        fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
+        int opCodeCount = 0;
+        try
         {
-            int opCodeCount = 0;
-            ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
-            // Iterate over the instructions using a while loop because opcodes may modify the program counter.
-            while ((uint)programCounter < (uint)codeSection.Length)
+            fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
             {
-#if DEBUG
-                // Allow the debugger to inspect and possibly pause execution for debugging purposes.
-                debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-#endif
-                // Fetch the current instruction from the code section.
-                Instruction instruction = Unsafe.Add(ref code, programCounter);
-
-                // If cancellation is enabled and cancellation has been requested, throw an exception.
-                if (TCancelable.IsActive && _txTracer.IsCancelled)
-                    ThrowOperationCanceledException();
-
-                // Call gas policy hook before instruction execution.
-                TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
-
-                // If tracing is enabled, start an instruction trace.
-                if (TTracingInst.IsActive)
-                    StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
-
-                // Advance the program counter to point to the next instruction.
-                programCounter++;
-                opCodeCount++;
-
-                // For the very common POP opcode, use an inlined implementation to reduce overhead.
-                if (Instruction.POP == instruction)
+                ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
+                // Iterate over the instructions using a while loop because opcodes may modify the program counter.
+                while ((uint)programCounter < (uint)codeSection.Length)
                 {
-                    exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+    #if DEBUG
+                    // Allow the debugger to inspect and possibly pause execution for debugging purposes.
+                    debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
+    #endif
+                    // Fetch the current instruction from the code section.
+                    Instruction instruction = Unsafe.Add(ref code, programCounter);
+
+                    // If cancellation is enabled and cancellation has been requested, throw an exception.
+                    if (TCancelable.IsActive && _txTracer.IsCancelled)
+                        ThrowOperationCanceledException();
+
+                    // Call gas policy hook before instruction execution.
+                    TGasPolicy.OnBeforeInstructionTrace(in gas, programCounter, instruction, VmState.Env.CallDepth);
+
+                    // If tracing is enabled, start an instruction trace.
+                    if (TTracingInst.IsActive)
+                        StartInstructionTrace(instruction, TGasPolicy.GetRemainingGas(in gas), programCounter, in stack);
+
+                    // Advance the program counter to point to the next instruction.
+                    programCounter++;
+                    opCodeCount++;
+
+                    // For the very common POP opcode, use an inlined implementation to reduce overhead.
+                    if (Instruction.POP == instruction)
+                    {
+                        exceptionType = EvmInstructions.InstructionPop(this, ref stack, ref gas, ref programCounter);
+                    }
+                    else
+                    {
+                        // Retrieve the opcode function pointer corresponding to the current instruction.
+                        var opcodeMethod = opcodeMethods[(int)instruction];
+                        // Invoke the opcode method, which may modify the stack, gas, and program counter.
+                        // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
+                        exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
+                    }
+
+                    // If gas is exhausted, jump to the out-of-gas handler.
+                    if (TGasPolicy.GetRemainingGas(in gas) < 0)
+                    {
+                        OpCodeCount += opCodeCount;
+                        goto OutOfGas;
+                    }
+
+                    // Call gas policy hook after instruction execution.
+                    TGasPolicy.OnAfterInstructionTrace(in gas);
+
+                    // If an exception occurred, exit the loop.
+                    if (exceptionType != EvmExceptionType.None)
+                        break;
+
+                    // If tracing is enabled, complete the trace for the current instruction.
+                    if (TTracingInst.IsActive)
+                        EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
+
+                    // If return data has been set, exit the loop to process the returned value.
+                    if (ReturnData is not null)
+                        break;
                 }
-                else
-                {
-                    // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
-                    // Invoke the opcode method, which may modify the stack, gas, and program counter.
-                    // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
-                    exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
-                }
-
-                // If gas is exhausted, jump to the out-of-gas handler.
-                if (TGasPolicy.GetRemainingGas(in gas) < 0)
-                {
-                    OpCodeCount += opCodeCount;
-                    goto OutOfGas;
-                }
-
-                // Call gas policy hook after instruction execution.
-                TGasPolicy.OnAfterInstructionTrace(in gas);
-
-                // If an exception occurred, exit the loop.
-                if (exceptionType != EvmExceptionType.None)
-                    break;
-
-                // If tracing is enabled, complete the trace for the current instruction.
-                if (TTracingInst.IsActive)
-                    EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
-
-                // If return data has been set, exit the loop to process the returned value.
-                if (ReturnData is not null)
-                    break;
             }
-            OpCodeCount += opCodeCount;
         }
+        catch (Exception ex) when (ex is EvmException or OverflowException)
+        {
+            OpCodeCount += opCodeCount;
+            UpdateCurrentState(programCounter, in gas, stack.Head);
+            throw;
+        }
+        OpCodeCount += opCodeCount;
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)

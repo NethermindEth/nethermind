@@ -112,7 +112,7 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
     /// initcode state gas, so block_state must return to zero.
     /// </summary>
     [Test]
-    public void Eip8037_code_deposit_failure_must_discard_initcode_state_gas_from_block_accumulator()
+    public void Eip8037_code_deposit_failure_must_keep_initcode_state_gas_in_state_dimension()
     {
         // Initcode:
         //   1) CALL a dead account with value=1 - charges NewAccountState (131,488)
@@ -138,7 +138,8 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
         Assert.That(tracer.GasConsumedResult.EffectiveBlockGas,
             Is.EqualTo(gasLimit - GasCostOf.CreateState - GasCostOf.NewAccountState));
-        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.Zero);
+        Assert.That(tracer.GasConsumedResult.BlockStateGas,
+            Is.EqualTo(GasCostOf.CreateState + GasCostOf.NewAccountState));
         Assert.That(TestState.AccountExists(TestItem.AddressC), Is.False,
             "The initcode CALL target must be reverted together with its state gas.");
     }
@@ -239,6 +240,33 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         Assert.That(TestState.Get(new StorageCell(Recipient, 1)).ToArray(), Is.EqualTo(new byte[] { 1 }));
         Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo(UInt256.Zero));
         Assert.That(TestState.AccountExists(createdAddress), Is.False);
+    }
+
+    [Test]
+    public void Eip8037_top_level_exceptional_halt_must_keep_reverted_state_gas_out_of_block_regular()
+    {
+        Prepare codeBuilder = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE);
+
+        for (int i = 0; i < 1_025; i++)
+        {
+            codeBuilder.Op(Instruction.PUSH0);
+        }
+
+        const long gasLimit = 100_000;
+        byte[] code = codeBuilder.Done;
+
+        TestAllTracerWithOutput tracer = Execute(Activation, gasLimit, code);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+        Assert.That(tracer.Error, Is.EqualTo(nameof(EvmExceptionType.StackOverflow)));
+        Assert.That(tracer.GasConsumedResult.SpentGas, Is.EqualTo(gasLimit));
+        Assert.That(tracer.GasConsumedResult.BlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.EqualTo(gasLimit - GasCostOf.SSetState));
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.EqualTo(GasCostOf.SSetState));
+        AssertStorage(new StorageCell(Recipient, 0), UInt256.Zero);
     }
 
     [Test]
