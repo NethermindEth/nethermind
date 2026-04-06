@@ -41,8 +41,7 @@ namespace Nethermind.Trie.Test.Pruning
             IKeyValueStoreWithBatching? kvStore = null,
             IPersistenceStrategy? persistenceStrategy = null,
             IPruningConfig? pruningConfig = null,
-            IFinalizedStateProvider? finalizedStateProvider = null,
-            Lazy<IAdditionalRootsProvider>? additionalRootsProvider = null
+            IFinalizedStateProvider? finalizedStateProvider = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -60,8 +59,7 @@ namespace Nethermind.Trie.Test.Pruning
                 persistenceStrategy,
                 finalizedStateProvider,
                 pruningConfig,
-                _logManager,
-                additionalRootsProvider);
+                _logManager);
             if (finalizedStateProvider is TestFinalizedStateProvider testFinalizedStateProvider) testFinalizedStateProvider.TrieStore = trieStore;
 
             return trieStore;
@@ -70,16 +68,6 @@ namespace Nethermind.Trie.Test.Pruning
         [SetUp]
         public void Setup()
         {
-        }
-
-        [Test]
-        public void additional_roots_provider_called_on_dispose()
-        {
-            IAdditionalRootsProvider additionalRootsProvider = Substitute.For<IAdditionalRootsProvider>();
-            TrieStore trieStore = CreateTrieStore(
-                additionalRootsProvider: new Lazy<IAdditionalRootsProvider>(() => additionalRootsProvider));
-            trieStore.Dispose();
-            additionalRootsProvider.Received(1).CopyAdditionalStatesToNodeStorage(Arg.Any<INodeStorage>());
         }
 
         [Test]
