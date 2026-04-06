@@ -1118,7 +1118,27 @@ public class TraceRpcModuleTests
         result.Result.Error.Should().Contain("not canonical", "error message must identify the cause so callers can distinguish this from a missing block");
     }
 
-    private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash)
+    [Test]
+    public void trace_transaction_WhenTraceNonCanonicalAndReceiptPointsToNonCanonicalBlock_ProceedsBeyondCanonicalCheck()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA, traceNonCanonical: true);
+
+        result.Result.Error.Should().NotContain("not canonical", "traceNonCanonical=true must bypass the canonical block check");
+    }
+
+    [Test]
+    public void trace_replayTransaction_WhenTraceNonCanonicalAndReceiptPointsToNonCanonicalBlock_ProceedsBeyondCanonicalCheck()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
+
+        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
+
+        result.Result.Error.Should().NotContain("not canonical", "traceNonCanonical=true must bypass the canonical block check");
+    }
+
+    private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
     {
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.FindBlockHash(txHash).Returns(nonCanonicalBlockHash);
@@ -1127,7 +1147,8 @@ public class TraceRpcModuleTests
         blockFinder.HeadHash.Returns(TestItem.KeccakC);
         blockFinder.FindBlock(nonCanonicalBlockHash, BlockTreeLookupOptions.RequireCanonical, Arg.Any<long?>())
             .Returns((Block?)null);
-        blockFinder.FindHeader(nonCanonicalBlockHash).Returns(Build.A.BlockHeader.TestObject);
+        if (!traceNonCanonical)
+            blockFinder.FindHeader(nonCanonicalBlockHash).Returns(Build.A.BlockHeader.TestObject);
 
         return new TraceRpcModule(
             receiptFinder,
