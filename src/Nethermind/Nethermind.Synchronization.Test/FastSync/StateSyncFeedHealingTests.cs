@@ -13,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
-using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;

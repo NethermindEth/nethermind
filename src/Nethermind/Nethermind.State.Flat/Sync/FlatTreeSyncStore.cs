@@ -1,14 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
