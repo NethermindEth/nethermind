@@ -25,7 +25,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Nethermind
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
@@ -83,3 +83,13 @@ jobs:
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make run INPUT="${{ matrix.input }}"
+
+  status:
+    name: Status
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          [[ "${{ needs.test.result }}" == "success" ]]
