@@ -3,6 +3,7 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
+using Nethermind.Core.Attributes;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -24,6 +25,7 @@ public class TraceStorePruner : IDisposable
     {
     }
 
+    [ConstructorWithSideEffect]
     public TraceStorePruner(IBlockTree blockTree, IDb db, int blockToKeep, ILogManager logManager)
     {
         _blockTree = blockTree;
