@@ -14,6 +14,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -62,72 +63,62 @@ namespace Nethermind.Hive.Tests
                 .WithTimestamp(genesis.Header.Timestamp + 2)
                 .TestObject;
 
-            string blocksDir = Path.Combine(Path.GetTempPath(), nameof(HivePluginTests), Guid.NewGuid().ToString("N"));
-            Directory.CreateDirectory(blocksDir);
+            using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
+            Directory.CreateDirectory(blocksDir.Path);
 
-            try
-            {
-                File.WriteAllBytes(Path.Combine(blocksDir, "0001.rlp"), Rlp.Encode(invalidBlock).Bytes);
-                File.WriteAllBytes(Path.Combine(blocksDir, "0002.rlp"), Rlp.Encode(validSibling).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(invalidBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(validSibling).Bytes);
 
-                IBlockTree blockTree = Substitute.For<IBlockTree>();
-                IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
-                IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
-                IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
 
-                blockTree.Genesis.Returns(genesis.Header);
-                blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
-                    .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
-                fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
+            blockTree.Genesis.Returns(genesis.Header);
+            blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(new ValueTask<AddBlockResult>(AddBlockResult.AlreadyKnown));
+            fileSystem.File.Exists(Arg.Any<string>()).Returns(false);
 
-                blockValidator
-                    .ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string>())
-                    .Returns(callInfo =>
-                    {
-                        Block block = callInfo.ArgAt<Block>(0);
-                        bool isValid = block.Hash == validSibling.Hash;
-                        callInfo[2] = isValid ? null : "invalid";
-                        return isValid;
-                    });
-
-                HiveRunner hiveRunner = new(
-                    blockTree,
-                    blockProcessingQueue,
-                    new HiveConfig
-                    {
-                        BlocksDir = blocksDir,
-                        ChainFile = Path.Combine(blocksDir, "missing.rlp"),
-                    },
-                    LimboLogs.Instance,
-                    fileSystem,
-                    blockValidator);
-
-                await hiveRunner.Start(CancellationToken.None);
-
-                Received.InOrder(() =>
+            blockValidator
+                .ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string>())
+                .Returns(callInfo =>
                 {
-                    blockValidator.ValidateSuggestedBlock(
-                        Arg.Is<Block>(b => b.Hash == invalidBlock.Hash),
-                        Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
-                        out Arg.Any<string>());
-                    blockValidator.ValidateSuggestedBlock(
-                        Arg.Is<Block>(b => b.Hash == validSibling.Hash),
-                        Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
-                        out Arg.Any<string>());
+                    Block block = callInfo.ArgAt<Block>(0);
+                    bool isValid = block.Hash == validSibling.Hash;
+                    callInfo[2] = isValid ? null : "invalid";
+                    return isValid;
                 });
 
-                _ = blockTree.DidNotReceive()
-                    .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
-                _ = blockTree.Received(1)
-                    .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSibling.Hash), Arg.Any<BlockTreeSuggestOptions>());
-            }
-            finally
-            {
-                if (Directory.Exists(blocksDir))
+            HiveRunner hiveRunner = new(
+                blockTree,
+                blockProcessingQueue,
+                new HiveConfig
                 {
-                    Directory.Delete(blocksDir, recursive: true);
-                }
-            }
+                    BlocksDir = blocksDir.Path,
+                    ChainFile = Path.Combine(blocksDir.Path, "missing.rlp"),
+                },
+                LimboLogs.Instance,
+                fileSystem,
+                blockValidator);
+
+            await hiveRunner.Start(CancellationToken.None);
+
+            Received.InOrder(() =>
+            {
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == invalidBlock.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+                blockValidator.ValidateSuggestedBlock(
+                    Arg.Is<Block>(b => b.Hash == validSibling.Hash),
+                    Arg.Is<BlockHeader>(h => h.Hash == genesis.Header.Hash),
+                    out Arg.Any<string>());
+            });
+
+            _ = blockTree.DidNotReceive()
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == invalidBlock.Hash), Arg.Any<BlockTreeSuggestOptions>());
+            _ = blockTree.Received(1)
+                .SuggestBlockAsync(Arg.Is<Block>(b => b.Hash == validSibling.Hash), Arg.Any<BlockTreeSuggestOptions>());
         }
     }
 }
