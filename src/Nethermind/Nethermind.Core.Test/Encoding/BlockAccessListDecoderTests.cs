@@ -143,7 +143,6 @@ public class BlockAccessListDecoderTests
         Assert.That(slotChanges, Is.EqualTo(slotChangesDecoded));
 
         StorageRead storageRead = new(0xbababa);
-        StorageRead storageRead2 = new(0xcacaca);
         byte[] storageReadBytes = Rlp.Encode(storageRead, RlpBehaviors.None).Bytes;
         StorageRead storageReadDecoded = Rlp.Decode<StorageRead>(storageReadBytes, RlpBehaviors.None);
         Assert.That(storageRead, Is.EqualTo(storageReadDecoded));
