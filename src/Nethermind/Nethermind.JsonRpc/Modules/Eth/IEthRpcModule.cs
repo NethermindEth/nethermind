@@ -149,6 +149,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Hash256>> eth_sendTransaction([JsonRpcParameter(ExampleValue = "[{\"From\": \"0xc2208fe87805279b03c1a8a78d7ee4bfdb0e48ee\", \"Gas\":\"21000\",\"GasPrice\":\"20000000000\", \"Nonce\":\"23794\", \"To\":\"0x2d44c0e097f6cd0f514edac633d82e01280b4a5c\"}]")] TransactionForRpc rpcTx);
 
         [JsonRpcMethod(IsImplemented = true,
+            Description = "Fills the missing fields of the transaction with defaults and returns it without signing or submitting",
+            IsSharable = false)]
+        Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc transactionCall);
+
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Send a raw transaction to the tx pool and broadcasting",
             IsSharable = true,
             ExampleResponse = "0x7a5a94d5b5e3ce017ce2c2022f02ec5db10611c43695c3256861bdb19317ab0e"

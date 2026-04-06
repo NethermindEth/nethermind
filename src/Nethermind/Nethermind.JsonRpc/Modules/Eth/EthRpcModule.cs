@@ -356,6 +356,59 @@ public partial class EthRpcModule(
         return SendTx(tx, options);
     }
 
+    public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(TransactionForRpc transactionCall)
+    {
+        if (transactionCall is LegacyTransactionForRpc rpcTx && rpcTx.Nonce is null)
+        {
+            Address from = rpcTx.From ?? Address.Zero;
+            rpcTx.Nonce = _txPool.GetLatestPendingNonce(from);
+        }
+
+        if (transactionCall is EIP1559TransactionForRpc eip1559Tx)
+        {
+            if (eip1559Tx.MaxFeePerGas is null || eip1559Tx.MaxPriorityFeePerGas is null)
+            {
+                UInt256 gasPriceEstimate = await _gasPriceOracle.GetGasPriceEstimate();
+                eip1559Tx.MaxPriorityFeePerGas ??= gasPriceEstimate;
+                // MaxFeePerGas must be >= MaxPriorityFeePerGas
+                eip1559Tx.MaxFeePerGas ??= UInt256.Max(eip1559Tx.MaxPriorityFeePerGas.Value, gasPriceEstimate);
+            }
+        }
+        else if (transactionCall is LegacyTransactionForRpc legacyTx && legacyTx.GasPrice is null)
+        {
+            legacyTx.GasPrice = await _gasPriceOracle.GetGasPriceEstimate();
+        }
+
+        if (transactionCall.Gas is null)
+        {
+            // eth_estimateGas mutates transactionCall.Gas to block gas limit as a side effect;
+            // the actual estimate is in gasEstimate.Data, which we assign below.
+            ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(transactionCall, BlockParameter.Latest);
+            if (gasEstimate.Result.ResultType == ResultType.Failure)
+            {
+                return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error!, gasEstimate.ErrorCode);
+            }
+            if (gasEstimate.Data is not null)
+            {
+                transactionCall.Gas = (long)gasEstimate.Data.Value;
+            }
+        }
+
+        Result<Transaction> txResult = transactionCall.ToTransaction(validateUserInput: true);
+        if (!txResult.Success(out Transaction tx, out string error))
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+        }
+
+        tx.ChainId = _blockchainBridge.GetChainId();
+
+        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(tx, RlpBehaviors.SkipTypedWrapping);
+        byte[] raw = stream.AsSpan().ToArray();
+
+        TransactionForRpc filledTx = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(_specProvider.ChainId));
+        return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult(raw, filledTx));
+    }
+
     public virtual async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
         try
