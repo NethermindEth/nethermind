@@ -111,7 +111,7 @@ public class Era1ModuleTests
             int i = 0;
             await foreach ((Block b, TxReceipt[] r) in exportedToImported)
             {
-                Assert.That(i, Is.LessThan(readFromFile.Count()), "Exceeded the block count read from the file.");
+                Assert.That(i, Is.LessThan(readFromFile.Count), "Exceeded the block count read from the file.");
                 b.ToString(Block.Format.Full).Should().BeEquivalentTo(readFromFile[i].b.ToString(Block.Format.Full));
                 r.Should().BeEquivalentTo(readFromFile[i].r);
                 i++;

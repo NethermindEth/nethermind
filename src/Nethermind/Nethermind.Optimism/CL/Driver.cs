@@ -38,7 +38,7 @@ public class Driver : IDisposable
         ArgumentNullException.ThrowIfNull(engineParameters.SystemConfigProxy);
         _l1Bridge = l1Bridge;
         _l2BlockTime = engineParameters.L2BlockTime.Value;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<Driver>();
         _l2Api = l2Api;
         _decodingPipeline = decodingPipeline;
         _systemConfigDeriver = new SystemConfigDeriver(engineParameters.SystemConfigProxy);

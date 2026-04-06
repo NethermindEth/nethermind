@@ -52,7 +52,7 @@ public abstract class BlockchainTestBase
     static BlockchainTestBase()
     {
         DifficultyCalculator = new DifficultyCalculatorWrapper();
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<BlockchainTestBase>();
     }
 
     private class DifficultyCalculatorWrapper : IDifficultyCalculator

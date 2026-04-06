@@ -13,7 +13,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -27,7 +26,7 @@ public class BranchProcessor(
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
     private const int MaxUncommittedBlocks = 64;

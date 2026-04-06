@@ -47,7 +47,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         _applicationServices = applicationServices;
         _config = config;
         _startup = startup;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<WebHost>();
         _logManager = logManager;
     }
 

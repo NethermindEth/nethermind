@@ -17,7 +17,6 @@ using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
-using Nethermind.Logging;
 using Nethermind.History;
 using Nethermind.State.Repositories;
 using Nethermind.TxPool;

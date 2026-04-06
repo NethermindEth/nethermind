@@ -76,7 +76,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
         MigrateSecondsPerSlot(_blocksConfig, mergeConfig);
 
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = _api.LogManager.GetClassLogger<MergePlugin>();
 
         EnsureNotConflictingSettings();
 
@@ -139,7 +139,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void EnsureReceiptAvailable()
     {
-        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
+        if (!HasTtd()) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
 
         if (_syncConfig.FastSync)
@@ -155,7 +155,7 @@ public partial class MergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig) 
 
     private void EnsureJsonRpcUrl()
     {
-        if (HasTtd() == false) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
+        if (!HasTtd()) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
 
         IJsonRpcConfig jsonRpcConfig = _api.Config<IJsonRpcConfig>();

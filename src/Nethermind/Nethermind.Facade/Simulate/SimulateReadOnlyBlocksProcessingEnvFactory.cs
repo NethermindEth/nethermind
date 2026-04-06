@@ -110,11 +110,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
-        public ILogger GetClassLogger(string filePath = "")
-        {
-            return baseLogManager.GetClassLogger(filePath);
-        }
-
         public ILogger GetLogger(string loggerName)
         {
             return baseLogManager.GetLogger(loggerName);

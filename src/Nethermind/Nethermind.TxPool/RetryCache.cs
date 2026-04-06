@@ -34,7 +34,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
     public RetryCache(ILogManager logManager, int timeoutMs = 2500, int requestingCacheSize = 1024, int expiringQueueLimit = 10000, int maxRetryRequests = 8, CancellationToken token = default)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger(typeof(RetryCache<,>));
 
         _timeoutMs = timeoutMs;
         _token = token;

@@ -17,7 +17,7 @@ namespace Nethermind.EthStats.Senders
         public MessageSender(string instanceId, ILogManager logManager)
         {
             _instanceId = instanceId;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<MessageSender>();
         }
 
         public Task SendAsync<T>(IWebsocketClient? client, T message, string? type = null) where T : IMessage

@@ -59,7 +59,7 @@ public class DiscoveryApp : IDiscoveryApp
         NodeFilter? inboundMessageFilter = null)
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        _logger = _logManager.GetClassLogger();
+        _logger = _logManager.GetClassLogger<DiscoveryApp>();
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));

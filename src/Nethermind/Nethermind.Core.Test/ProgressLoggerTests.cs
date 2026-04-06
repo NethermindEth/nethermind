@@ -155,7 +155,7 @@ public class ProgressLoggerTests
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsInfo.Returns(true);
         ILogger logger = new(iLogger);
-        logManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+        logManager.GetClassLogger<ProgressLogger>().Returns(logger);
 
         ProgressLogger measuredProgress = new("Progress", logManager, manualTimestamper);
 

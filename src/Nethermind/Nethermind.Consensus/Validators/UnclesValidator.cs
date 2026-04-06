@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.Validators
 
         public UnclesValidator(IBlockTree? blockTree, IHeaderValidator? headerValidator, ILogManager? logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<UnclesValidator>() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }

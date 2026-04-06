@@ -166,7 +166,7 @@ namespace Nethermind.Evm.Test
         [TestCase(MainnetSpecProvider.ParisBlockNumber + 10, MainnetSpecProvider.AmsterdamBlockTimestamp)]
         public void Test(long blockNumber, ulong? timestamp = null)
         {
-            ILogger logger = _logManager.GetClassLogger();
+            ILogger logger = _logManager.GetClassLogger<InvalidOpcodeTests>();
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
