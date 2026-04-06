@@ -1254,36 +1254,31 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void PersistOnShutdown()
     {
-        bool persistedCommitSets = false;
+        if (_commitSetQueue.IsEmpty) return;
 
-        if (!_commitSetQueue.IsEmpty)
+        (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
+        using var _ = candidateSets;
+        if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
-            (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-            using var _ = candidateSets;
-            if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
-            {
-                // No commit set to persist, likely as not enough block was processed to reached prune boundary
-                // This happens when node is shutdown right after sync.
-                // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
-                // at all. This come at a risk that this commit set is not canon though.
-                candidateSets.Add(anyCommitSet);
-                if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
-            }
+            // No commit set to persist, likely as not enough block was processed to reached prune boundary
+            // This happens when node is shutdown right after sync.
+            // we need to persist at least something or in case of fresh sync or the best persisted state will not be set
+            // at all. This come at a risk that this commit set is not canon though.
+            candidateSets.Add(anyCommitSet);
+            if (_logger.IsDebug) _logger.Debug($"Force persisting commit set {anyCommitSet} on shutdown.");
+        }
 
-            if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
+        if (_logger.IsDebug) _logger.Debug($"On shutdown persisting {candidateSets.Count} commit sets. Finalized block is {finalizedBlockNumber}.");
 
-            for (int index = 0; index < candidateSets.Count; index++)
-            {
-                BlockCommitSet blockCommitSet = candidateSets[index];
-                if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
-                ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
-            }
-
-            persistedCommitSets = candidateSets.Count > 0;
+        for (int index = 0; index < candidateSets.Count; index++)
+        {
+            BlockCommitSet blockCommitSet = candidateSets[index];
+            if (_logger.IsDebug) _logger.Debug($"Persisting on disposal {blockCommitSet} (cache memory at {MemoryUsedByDirtyCache})");
+            ParallelPersistBlockCommitSet(blockCommitSet, _persistedNodeRecorderNoop);
         }
         _nodeStorage.Flush(onlyWal: false);
 
-        if (!persistedCommitSets)
+        if (candidateSets.Count == 0)
         {
             if (_logger.IsDebug) _logger.Debug("No commit set to persist at all.");
         }
