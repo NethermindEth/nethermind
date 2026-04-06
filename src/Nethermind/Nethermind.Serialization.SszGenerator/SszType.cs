@@ -1,4 +1,3 @@
-using System;
 using Microsoft.CodeAnalysis;
 
 class SszType
