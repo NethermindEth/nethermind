@@ -79,6 +79,10 @@ public class FullPruningDiskTest
             // Reenable rocksdb
             base.ConfigureContainer(builder, configProvider)
                 .AddSingleton<IDbFactory, RocksDbFactory>()
+                .Intercept<IFlatDbConfig>((flatDbConfig) =>
+                {
+                    flatDbConfig.Enabled = false;
+                })
                 .Intercept<IInitConfig>((initConfig) =>
                 {
                     initConfig.BaseDbPath = TempDirectory.Path;
