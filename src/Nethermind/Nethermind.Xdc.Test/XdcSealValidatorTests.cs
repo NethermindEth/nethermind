@@ -63,7 +63,7 @@ internal class XdcSealValidatorTests
     {
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        yield return new TestCaseData(header, new byte[0]);
+        yield return new TestCaseData(header, Array.Empty<byte>());
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
