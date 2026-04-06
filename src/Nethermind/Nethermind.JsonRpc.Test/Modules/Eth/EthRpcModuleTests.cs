@@ -446,7 +446,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_get_storage_at_missing_trie_node()
     {
-        using Context ctx = await Context.Create(configurer: b => b.Intercept<IFlatDbConfig>(c => c.Enabled = false));
+        if (new FlatDbConfig().Enabled) Assert.Ignore("Test requires TrieStore — tests trie-specific missing node error");
+        using Context ctx = await Context.Create();
         await Task.Delay(100); // Wait a bit for pruning
         ctx.Test.WorldStateManager.FlushCache(CancellationToken.None);
         ctx.Test.StateDb.Clear();

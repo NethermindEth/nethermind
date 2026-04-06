@@ -194,7 +194,8 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_missing_state_after_fast_sync()
     {
-        using Context ctx = await Context.Create(configurer: b => b.Intercept<IFlatDbConfig>(c => c.Enabled = false));
+        if (new FlatDbConfig().Enabled) Assert.Ignore("Test requires TrieStore — directly resolves MainPruningTrieStoreFactory");
+        using Context ctx = await Context.Create();
         LegacyTransactionForRpc transaction = new(new Transaction(), new(BlockchainIds.Mainnet))
         {
             From = TestItem.AddressA,
