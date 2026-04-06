@@ -370,7 +370,7 @@ public class ArrayPoolListTests
     {
         static void CreateAndDrop()
         {
-            ArrayPoolList<int> list = new(1);
+            _ = new ArrayPoolList<int>(1);
         }
 
         bool exception = false;

@@ -35,7 +35,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         private bool _disposed = false;
         public ValueTask DisposeAsync()
         {
-            if (Interlocked.CompareExchange(ref _disposed, true, false) == true) return ValueTask.CompletedTask;
+            if (Interlocked.CompareExchange(ref _disposed, true, false)) return ValueTask.CompletedTask;
             BufferOwner.Dispose();
             return ValueTask.CompletedTask;
         }

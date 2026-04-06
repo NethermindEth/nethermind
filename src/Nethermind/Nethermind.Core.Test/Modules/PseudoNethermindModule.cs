@@ -20,7 +20,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using NUnit.Framework;

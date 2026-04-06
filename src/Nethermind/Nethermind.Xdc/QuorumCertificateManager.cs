@@ -168,10 +168,8 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
     public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string error)
     {
-        if (qc is null)
-            throw new ArgumentNullException(nameof(qc));
-        if (certificateTarget is null)
-            throw new ArgumentNullException(nameof(certificateTarget));
+        ArgumentNullException.ThrowIfNull(qc);
+        ArgumentNullException.ThrowIfNull(certificateTarget);
         if (qc.Signatures is null)
             throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 

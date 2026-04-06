@@ -9,13 +9,19 @@ using Autofac;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Facade;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
+using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core.Crypto;
@@ -30,6 +36,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
 using Nethermind.State;
+using Nethermind.State.OverridableEnv;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -1087,4 +1094,68 @@ public class TraceRpcModuleTests
         traces.Data.Action!.Gas.Should().BeLessThan(gasCap);
     }
 
+    [Test]
+    public void trace_transaction_WhenReceiptPointsToNonCanonicalBlock_ReturnsNotCanonicalError()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure, "must not proceed on a block that is not on the canonical chain");
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput, "non-canonical block lookup should signal an invalid request, not a server error");
+        result.Result.Error.Should().Contain("not canonical", "error message must identify the cause so callers can distinguish this from a missing block");
+    }
+
+    [Test]
+    public void trace_replayTransaction_WhenReceiptPointsToNonCanonicalBlock_ReturnsNotCanonicalError()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB);
+
+        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"]);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure, "must not proceed on a block that is not on the canonical chain");
+        result.ErrorCode.Should().Be(ErrorCodes.InvalidInput, "non-canonical block lookup should signal an invalid request, not a server error");
+        result.Result.Error.Should().Contain("not canonical", "error message must identify the cause so callers can distinguish this from a missing block");
+    }
+
+    [Test]
+    public void trace_transaction_WhenTraceNonCanonicalAndReceiptPointsToNonCanonicalBlock_ProceedsBeyondCanonicalCheck()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
+
+        ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = module.trace_transaction(TestItem.KeccakA, traceNonCanonical: true);
+
+        result.Result.Error.Should().NotContain("not canonical", "traceNonCanonical=true must bypass the canonical block check");
+    }
+
+    [Test]
+    public void trace_replayTransaction_WhenTraceNonCanonicalAndReceiptPointsToNonCanonicalBlock_ProceedsBeyondCanonicalCheck()
+    {
+        TraceRpcModule module = BuildModuleWithNonCanonicalReceipt(TestItem.KeccakA, TestItem.KeccakB, traceNonCanonical: true);
+
+        ResultWrapper<ParityTxTraceFromReplay> result = module.trace_replayTransaction(TestItem.KeccakA, ["trace"], traceNonCanonical: true);
+
+        result.Result.Error.Should().NotContain("not canonical", "traceNonCanonical=true must bypass the canonical block check");
+    }
+
+    private static TraceRpcModule BuildModuleWithNonCanonicalReceipt(Hash256 txHash, Hash256 nonCanonicalBlockHash, bool traceNonCanonical = false)
+    {
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.FindBlockHash(txHash).Returns(nonCanonicalBlockHash);
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.HeadHash.Returns(TestItem.KeccakC);
+        blockFinder.FindBlock(nonCanonicalBlockHash, BlockTreeLookupOptions.RequireCanonical, Arg.Any<long?>())
+            .Returns((Block?)null);
+        if (!traceNonCanonical)
+            blockFinder.FindHeader(nonCanonicalBlockHash).Returns(Build.A.BlockHeader.TestObject);
+
+        return new TraceRpcModule(
+            receiptFinder,
+            Substitute.For<IOverridableEnv<ITracer>>(),
+            blockFinder,
+            new JsonRpcConfig(),
+            Substitute.For<IBlockchainBridge>(),
+            Substitute.For<IBlocksConfig>());
+    }
 }
