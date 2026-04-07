@@ -14,16 +14,20 @@ namespace Nethermind.Init.Snapshot;
 /// Manually follows HTTP redirects to preserve the Range header, which standard
 /// HttpClient strips on auto-redirect.
 /// </summary>
-internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory timerFactory)
+internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory timerFactory) : IDisposable
 {
     private const int BufferSize = 65536;
     private const int MaxRedirects = 10;
 
+    // A single HttpClient is shared for all retries to preserve the connection pool.
+    private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotDownloader>();
 
     /// <summary>
     /// Downloads the snapshot to <paramref name="destinationPath"/>, resuming from the
-    /// existing file size if a partial download is already present.
+    /// existing file size if a partial download is already present and the server honors
+    /// the Range header (HTTP 206). If the server returns HTTP 200 instead, the partial
+    /// file is discarded and the download restarts from the beginning.
     /// </summary>
     public async Task DownloadAsync(string url, string destinationPath, CancellationToken cancellationToken)
     {
@@ -41,9 +45,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
             await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
         }
 
-        // HttpClient must outlive the response stream — do not dispose before the copy finishes.
-        using HttpClient httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
-        using HttpResponseMessage response = await SendWithRangeAsync(httpClient, url, existingSize, cancellationToken).ConfigureAwait(false);
+        using HttpResponseMessage response = await SendWithRangeAsync(_httpClient, url, existingSize, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
             _logger.Info($"Server response: {response.StatusCode}, ETag: {response.Headers.ETag}, Last-Modified: {response.Content.Headers.LastModified}");
@@ -55,39 +57,35 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
             return;
         }
 
-        (FileMode fileMode, long bytesToSkip, long? totalSize) = response.StatusCode switch
-        {
-            // Server honored the Range request — append the remaining bytes.
-            HttpStatusCode.PartialContent =>
-                (FileMode.Append, 0L, existingSize + response.Content.Headers.ContentLength),
+        (FileMode fileMode, long? totalSize) = ResolveCopyStrategy(response.StatusCode, existingSize, response.Content.Headers.ContentLength);
 
-            // Server returned the full file, but we already have part of it —
-            // skip the already-downloaded portion in the stream and append the rest.
-            HttpStatusCode.OK when existingSize > 0 =>
-                (FileMode.Append, existingSize, response.Content.Headers.ContentLength),
-
-            HttpStatusCode.OK =>
-                (FileMode.Create, 0L, response.Content.Headers.ContentLength),
-
-            _ => throw new IOException($"Unexpected HTTP status: {response.StatusCode}")
-        };
-
-        if (bytesToSkip > 0 && _logger.IsWarn)
-            _logger.Warn($"Server does not support range requests. Consuming {bytesToSkip} already-downloaded bytes to resume.");
+        if (response.StatusCode == HttpStatusCode.OK && existingSize > 0 && _logger.IsWarn)
+            _logger.Warn("Server does not support range requests. Restarting download from the beginning.");
 
         await using Stream contentStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
-        using ProgressTracker progressTracker = new(logManager, timerFactory, TimeSpan.FromSeconds(5), existingSize, totalSize);
-
-        if (bytesToSkip > 0)
-            await SkipBytesAsync(contentStream, bytesToSkip, cancellationToken).ConfigureAwait(false);
+        long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
+        using ProgressTracker progressTracker = new(logManager, timerFactory, TimeSpan.FromSeconds(5), initialProgress, totalSize);
 
         await CopyWithProgressAsync(contentStream, fileStream, progressTracker, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
             _logger.Info($"Snapshot downloaded to {destinationPath}.");
     }
+
+    public void Dispose() => _httpClient.Dispose();
+
+    private static (FileMode fileMode, long? totalSize) ResolveCopyStrategy(
+        HttpStatusCode statusCode, long existingSize, long? contentLength) =>
+        statusCode switch
+        {
+            // Server honored the Range request — append the remaining bytes.
+            HttpStatusCode.PartialContent => (FileMode.Append, existingSize + contentLength),
+            // Server returned the full file (range not supported or no partial file) — create/overwrite.
+            HttpStatusCode.OK => (FileMode.Create, contentLength),
+            _ => throw new IOException($"Unexpected HTTP status: {statusCode}")
+        };
 
     private static async Task<HttpResponseMessage> SendWithRangeAsync(
         HttpClient httpClient, string url, long existingSize, CancellationToken cancellationToken)
@@ -127,26 +125,6 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
         }
 
         throw new IOException("Too many redirects while downloading snapshot.");
-    }
-
-    private static async Task SkipBytesAsync(Stream stream, long bytesToSkip, CancellationToken cancellationToken)
-    {
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-        try
-        {
-            long remaining = bytesToSkip;
-            while (remaining > 0)
-            {
-                int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, remaining)), cancellationToken).ConfigureAwait(false);
-                if (read == 0)
-                    throw new IOException($"Stream ended prematurely while skipping: {remaining} of {bytesToSkip} bytes remaining.");
-                remaining -= read;
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
     }
 
     private static async Task CopyWithProgressAsync(

@@ -48,7 +48,10 @@ public class InitDatabaseSnapshot : InitDatabase
             ?? throw new InvalidOperationException("Snapshot download URL is not configured.");
         string snapshotPath = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
 
-        SnapshotCheckpoint checkpoint = new(snapshotConfig);
+        if (snapshotConfig.StripComponents < 0)
+            throw new InvalidOperationException($"Snapshot.StripComponents must be non-negative, got {snapshotConfig.StripComponents}.");
+
+        SnapshotCheckpoint checkpoint = new(snapshotConfig, _api.LogManager);
 
         if (Path.Exists(dbPath))
         {
@@ -69,15 +72,15 @@ public class InitDatabaseSnapshot : InitDatabase
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        await DownloadWithRetryAsync(snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
+        using SnapshotDownloader downloader = new(_api.LogManager, _api.TimerFactory);
+        await DownloadWithRetryAsync(downloader, snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
 
         bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);
         if (!checksumPassed)
         {
             if (_logger.IsWarn)
                 _logger.Warn($"Deleting invalid snapshot file '{snapshotPath}' and resetting checkpoint for re-download on next run.");
-            if (File.Exists(snapshotPath))
-                File.Delete(snapshotPath);
+            File.Delete(snapshotPath);
             checkpoint.Advance(SnapshotStage.Started);
             return;
         }
@@ -95,12 +98,13 @@ public class InitDatabaseSnapshot : InitDatabase
     }
 
     private async Task DownloadWithRetryAsync(
-        string url, string destinationPath, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
+        SnapshotDownloader downloader, string url, string destinationPath, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)
     {
         if (checkpoint.Read() >= SnapshotStage.Downloaded)
             return;
 
-        SnapshotDownloader downloader = new(_api.LogManager, _api.TimerFactory);
+        TimeSpan retryDelay = TimeSpan.FromSeconds(5);
+        const double maxRetryDelaySeconds = 300;
 
         while (true)
         {
@@ -111,7 +115,8 @@ public class InitDatabaseSnapshot : InitDatabase
             }
             catch (HttpRequestException e) when (
                 e.StatusCode is >= HttpStatusCode.BadRequest and < HttpStatusCode.InternalServerError
-                    and not HttpStatusCode.TooManyRequests)
+                    and not HttpStatusCode.TooManyRequests
+                    and not HttpStatusCode.RequestedRangeNotSatisfiable)
             {
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed with permanent HTTP error {(int?)e.StatusCode}. Aborting.");
@@ -120,8 +125,9 @@ public class InitDatabaseSnapshot : InitDatabase
             catch (Exception e) when (e is IOException or HttpRequestException)
             {
                 if (_logger.IsError)
-                    _logger.Error($"Snapshot download failed. Retrying in 5 seconds. Error: {e}");
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                    _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e}");
+                await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
+                retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, maxRetryDelaySeconds));
             }
         }
 
@@ -144,11 +150,13 @@ public class InitDatabaseSnapshot : InitDatabase
             if (_logger.IsInfo)
                 _logger.Info($"Verifying snapshot checksum {config.Checksum}.");
 
-            bool valid = await ComputeAndCompareChecksumAsync(snapshotPath, config.Checksum, cancellationToken).ConfigureAwait(false);
-            if (!valid)
+            byte[] expected = Bytes.FromHexString(config.Checksum);
+            byte[] actual = await ComputeChecksumAsync(snapshotPath, cancellationToken).ConfigureAwait(false);
+
+            if (!Bytes.AreEqual(actual, expected))
             {
                 if (_logger.IsError)
-                    _logger.Error("Snapshot checksum verification failed. Aborting snapshot initialization, but the node will continue running.");
+                    _logger.Error($"Snapshot checksum verification failed. Expected: {config.Checksum}, actual: {Convert.ToHexString(actual).ToLowerInvariant()}. Aborting snapshot initialization, but the node will continue running.");
                 return false;
             }
 
@@ -166,17 +174,25 @@ public class InitDatabaseSnapshot : InitDatabase
         if (checkpoint.Read() >= SnapshotStage.Extracted)
             return;
 
+        CheckDiskSpace(dbPath, snapshotPath);
+
         SnapshotExtractor extractor = new(_api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
 
-    private static async Task<bool> ComputeAndCompareChecksumAsync(
-        string filePath, string expectedChecksum, CancellationToken cancellationToken)
+    private static void CheckDiskSpace(string dbPath, string snapshotPath)
     {
-        byte[] expected = Bytes.FromHexString(expectedChecksum);
+        long snapshotSize = new FileInfo(snapshotPath).Length;
+        string root = Path.GetPathRoot(dbPath) ?? "/";
+        DriveInfo drive = new(root);
+        if (drive.AvailableFreeSpace < snapshotSize)
+            throw new IOException($"Insufficient disk space to extract snapshot: need {snapshotSize} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
+    }
+
+    private static async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
+    {
         await using FileStream fileStream = File.OpenRead(filePath);
-        byte[] actual = await SHA256.HashDataAsync(fileStream, cancellationToken).ConfigureAwait(false);
-        return Bytes.AreEqual(actual, expected);
+        return await SHA256.HashDataAsync(fileStream, cancellationToken).ConfigureAwait(false);
     }
 }

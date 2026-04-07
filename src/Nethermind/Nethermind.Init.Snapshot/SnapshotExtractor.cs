@@ -32,7 +32,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         string innerExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(archivePath)).ToLowerInvariant();
 
         if (IsZip(extension))
-            ExtractZip(archivePath, destinationPath);
+            ExtractZip(archivePath, destinationPath, cancellationToken);
         else if (IsTarArchive(extension, innerExtension))
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
@@ -43,10 +43,15 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         extension is ".zip";
 
     private static bool IsTarArchive(string extension, string innerExtension) =>
-        extension is ".tar" or ".zst" or ".zstd" or ".gz" || innerExtension == ".tar";
+        extension is ".tar" or ".zst" or ".zstd" or ".gz" or ".bz2" or ".xz" || innerExtension == ".tar";
 
-    private static void ExtractZip(string archivePath, string destinationPath) =>
+    private static void ExtractZip(string archivePath, string destinationPath, CancellationToken cancellationToken)
+    {
+        // ZipFile.ExtractToDirectory has no overload accepting a CancellationToken,
+        // so check before entering the uncooperative call.
+        cancellationToken.ThrowIfCancellationRequested();
         ZipFile.ExtractToDirectory(archivePath, destinationPath);
+    }
 
     private static void ExtractTar(string archivePath, string destinationPath, string extension, int stripComponents, CancellationToken cancellationToken)
     {
@@ -84,6 +89,8 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         {
             ".zst" or ".zstd" => new DecompressionStream(fileStream),
             ".gz" => new GZipStream(fileStream, CompressionMode.Decompress),
+            // .bz2 and .xz are matched by IsTarArchive but have no decompression support in .NET BCL.
+            ".bz2" or ".xz" => throw new NotSupportedException($"Tar compression format '{extension}' is not supported. Use .gz or .zst instead."),
             _ => fileStream
         };
 

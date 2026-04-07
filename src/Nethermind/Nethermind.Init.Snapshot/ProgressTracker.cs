@@ -30,7 +30,7 @@ public class ProgressTracker : IDisposable
 
     public void AddProgress(long count)
     {
-        _current += count;
+        Interlocked.Add(ref _current, count);
         _timer.Enabled = true;
     }
 
@@ -53,9 +53,10 @@ public class ProgressTracker : IDisposable
     {
         if (_logger.IsInfo)
         {
+            long current = Interlocked.Read(ref _current);
             _logger.Info(_total is null
-                ? $"Snapshot download progress {HumanReadableSize(_current)}"
-                : $"Snapshot download progress {HumanReadableSize(_current)} out of {HumanReadableSize(_total.Value)}");
+                ? $"Snapshot download progress {HumanReadableSize(current)}"
+                : $"Snapshot download progress {HumanReadableSize(current)} out of {HumanReadableSize(_total.Value)}");
         }
 
         _timer.Enabled = true;
