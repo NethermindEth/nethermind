@@ -185,11 +185,7 @@ internal static partial class EvmInstructions
             true => transferValue != 0 && state.IsDeadAccount(target),
         };
 
-        bool newAccountOutOfGas = chargesNewAccount && !(TEip8037.IsActive switch
-        {
-            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
-            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-        });
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
 

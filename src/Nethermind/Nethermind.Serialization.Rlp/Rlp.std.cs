@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#if !ZK_EVM
 using System;
 using System.Collections.Frozen;
 using System.Reflection;
@@ -104,4 +103,3 @@ public readonly partial struct RlpDecoderKey
 {
     public override int GetHashCode() => HashCode.Combine(_type, MemoryMarshal.AsBytes(_key.AsSpan()).FastHash());
 }
-#endif

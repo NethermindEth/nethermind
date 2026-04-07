@@ -30,7 +30,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
     {
         _chainId = chainId;
         _payloadDecoder = payloadDecoder;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<PayloadByNumberProtocol>();
     }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)

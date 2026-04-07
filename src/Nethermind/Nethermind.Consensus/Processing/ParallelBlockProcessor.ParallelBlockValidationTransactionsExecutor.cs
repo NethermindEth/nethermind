@@ -12,8 +12,6 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Logging;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -23,7 +21,6 @@ public partial class ParallelBlockProcessor
         IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
         ISpecProvider specProvider,
-        ILogManager logManager,
         IBlocksConfig blocksConfig,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
@@ -81,14 +78,8 @@ public partial class ParallelBlockProcessor
         private TxReceipt[] ProcessTransactionsParallel(Block block, ProcessingOptions processingOptions, CancellationToken token)
         {
             int len = block.Transactions.Length;
-            TransientStorageProvider[] transientStorageProviders = new TransientStorageProvider[len + 2];
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
             TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
-
-            for (int i = 0; i < len + 2; i++)
-            {
-                transientStorageProviders[i] = new(logManager);
-            }
 
             for (int i = 0; i < len; i++)
             {

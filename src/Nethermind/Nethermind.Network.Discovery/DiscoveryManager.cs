@@ -52,7 +52,7 @@ public class DiscoveryManager : IDiscoveryManager
         INetworkConfig networkConfig,
         ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<DiscoveryManager>() ?? throw new ArgumentNullException(nameof(logManager));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory ?? throw new ArgumentNullException(nameof(nodeLifecycleManagerFactory));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));

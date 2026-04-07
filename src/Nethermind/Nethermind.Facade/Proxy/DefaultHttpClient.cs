@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<DefaultHttpClient>() ?? throw new ArgumentNullException(nameof(logManager));
             _retries = retries;
             _retryDelayMilliseconds = retryDelayMilliseconds;
         }
@@ -67,7 +67,7 @@ namespace Nethermind.Facade.Proxy
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {endpoint} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
-                    await Task.Delay(_retryDelayMilliseconds);
+                    await Task.Delay(_retryDelayMilliseconds, cancellationToken);
                 }
             } while (currentRetry <= _retries);
 

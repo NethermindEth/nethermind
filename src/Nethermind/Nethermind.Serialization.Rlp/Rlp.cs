@@ -1463,25 +1463,53 @@ namespace Nethermind.Serialization.Rlp
                 int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
                 GuardLimit(count, limit);
                 ArrayPoolList<T> result = new(count, count);
-                for (int i = 0; i < result.Count; i++)
+                int i = 0;
+                try
                 {
-                    if (PeekByte() == OfEmptyList[0])
+                    for (; i < result.Count; i++)
                     {
-                        result[i] = defaultElement;
-                        Position++;
+                        if (PeekByte() == OfEmptyList[0])
+                        {
+                            result[i] = defaultElement;
+                            Position++;
+                        }
+                        else
+                        {
+                            result[i] = decodeItem(ref this);
+                        }
                     }
-                    else
+
+                    if (checkPositions)
                     {
-                        result[i] = decodeItem(ref this);
+                        Check(positionCheck);
                     }
+
+                    return result;
+                }
+                catch
+                {
+                    try
+                    {
+                        DisposeDecodedItems(result, i);
+                    }
+                    finally
+                    {
+                        result.Dispose();
+                    }
+
+                    throw;
                 }
 
-                if (checkPositions)
+                static void DisposeDecodedItems(ArrayPoolList<T> list, int count)
                 {
-                    Check(positionCheck);
+                    for (int j = 0; j < count; j++)
+                    {
+                        if (list[j] is IDisposable disposable)
+                        {
+                            disposable.Dispose();
+                        }
+                    }
                 }
-
-                return result;
             }
 
             public readonly bool IsNextItemEmptyByteArray() => PeekByte() is EmptyByteArrayByte;
@@ -1741,7 +1769,7 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-        private static ILogger _logger = Static.LogManager.GetClassLogger();
+        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)

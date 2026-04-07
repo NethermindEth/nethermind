@@ -53,7 +53,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _syncConfig = syncConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BeaconPivot>();
             _poSSwitcher = poSSwitcher;
             LoadBeaconPivot();
         }

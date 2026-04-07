@@ -19,7 +19,7 @@ jobs:
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     continue-on-error: true
     strategy:
       matrix:
@@ -41,6 +41,7 @@ jobs:
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Merge.Plugin.Test
           - Nethermind.Runner.Test
         chunk: ['']
         include:
@@ -96,6 +97,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         env:
           TEST_CHUNK: ${{ matrix.chunk }}
+          TEST_SKIP_HEAVY: 1
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release
 

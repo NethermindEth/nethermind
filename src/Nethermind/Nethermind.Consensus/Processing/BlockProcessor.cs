@@ -25,7 +25,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 using static Nethermind.Consensus.Processing.IBlockProcessor;
 
 namespace Nethermind.Consensus.Processing;
@@ -44,10 +43,10 @@ public partial class BlockProcessor(
     IExecutionRequestsProcessor executionRequestsProcessor)
     : IBlockProcessor
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
-    protected readonly WorldStateMetricsDecorator _stateProvider = new(stateProvider);
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
+    protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
 
     /// <summary>

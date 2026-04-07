@@ -28,8 +28,6 @@ namespace Nethermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests<BlockchainTest>();
             foreach (BlockchainTest test in tests)
             {
-                Setup();
-
                 Console.Write($"{test,-120} ");
                 if (test.LoadFailure is not null)
                 {
@@ -47,13 +45,12 @@ namespace Nethermind.Blockchain.Test.Runner
                     else
                     {
                         WriteRed("FAIL");
-                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                        _ = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup();
                         await RunTest(test);
                     }
                 }

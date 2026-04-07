@@ -88,11 +88,11 @@ public class StateProviderTests(bool useFlat)
         provider.CreateAccount(systemUser, 0);
         provider.Commit(Homestead.Instance);
 
-        var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true };
+        var releaseSpec = new ReleaseSpec() { IsEip158Enabled = true, Eip158IgnoredAccount = systemUser };
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 
-        ((WorldState)provider).GetAccount(systemUser).Should().NotBeNull();
+        provider.AccountExists(systemUser).Should().BeTrue();
     }
 
     [Test]

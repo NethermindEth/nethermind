@@ -31,7 +31,7 @@ public partial class VirtualMachine<TGasPolicy>
             ExceptionType = exceptionType;
         }
 
-        internal CallResult(EvmExceptionType exceptionType)
+        public CallResult(EvmExceptionType exceptionType)
         {
             StateToExecute = null;
             Output = StatusCode.FailureBytes;

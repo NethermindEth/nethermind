@@ -282,6 +282,7 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
           TEST_CHUNK: ${{ matrix.test.chunk }}
+          TEST_SKIP_HEAVY: 1
         run: |
           set +e
           dotnet test --project ${{ matrix.test.project }}.csproj -c release

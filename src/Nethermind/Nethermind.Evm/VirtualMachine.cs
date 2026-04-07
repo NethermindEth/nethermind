@@ -82,7 +82,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
     private readonly IBlockhashProvider _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    protected readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly Stack<VmState<TGasPolicy>> _stateStack = new();
 
     protected IWorldState _worldState;
@@ -388,8 +388,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+        bool discardCreateStateCharge = invalidCode || (spec.LimitCodeSize && callResult.Output.Length > spec.MaxCodeSize);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
+            regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
     }
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
@@ -412,6 +413,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long regularDepositCost,
         long stateDepositCost,
         bool invalidCode,
+        bool discardCreateStateCharge,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
@@ -445,6 +447,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+            if (spec.IsEip8037Enabled && discardCreateStateCharge)
+            {
+                TGasPolicy.DiscardStateGas(ref _currentState.Gas, GasCostOf.CreateState, stateGasFloor: 0);
+            }
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {

@@ -17,7 +17,7 @@ public class StartMonitoring(
     IMetricsConfig metricsConfig
 ) : IStep
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<StartMonitoring>();
 
     public async Task Execute(CancellationToken cancellationToken)
     {

@@ -99,12 +99,24 @@ namespace Nethermind.Serialization.Rlp
 
         public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
         {
-            NettyBufferMemoryOwner memoryOwner = new(byteBuffer);
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
             Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
             int startPos = ctx.Position;
-            RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
-            return list;
+            RlpByteArrayList? list = null;
+
+            try
+            {
+                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                return list;
+            }
+            catch
+            {
+                list?.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
     }
 }

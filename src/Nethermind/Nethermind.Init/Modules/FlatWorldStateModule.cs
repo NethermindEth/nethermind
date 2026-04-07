@@ -3,7 +3,6 @@
 
 using System;
 using Autofac;
-using Microsoft.AspNetCore.Http;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -20,6 +19,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.SnapServer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Flat.Sync;
@@ -43,6 +43,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 new TrieStoreBoundaryWatcher(worldStateManager, ctx.Resolve<IBlockTree>(), ctx.Resolve<ILogManager>());
             })
             .AddSingleton<IStateReader, FlatStateReader>()
+            .AddSingleton<ISnapServer, IWorldStateManager>(wsm => wsm.SnapServer!)
 
             // Disable some pruning trie store specific  components
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
@@ -58,6 +59,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
                 ctx.Resolve<ISnapshotRepository>(),
                 ctx.Resolve<IPersistenceManager>(),
                 ctx.Resolve<IFlatDbConfig>(),
+                ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<IMetricsConfig>().EnableDetailedMetric))
             .AddSingleton<IResourcePool, ResourcePool>()
@@ -79,7 +81,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
             .Intercept<ISyncConfig>((syncConfig) =>
             {
-                syncConfig.SnapServingEnabled = true;
+                syncConfig.SnapServingEnabled ??= true;
             })
             .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
 

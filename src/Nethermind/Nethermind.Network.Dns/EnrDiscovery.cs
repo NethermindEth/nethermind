@@ -24,7 +24,7 @@ public class EnrDiscovery : INodeSource
     public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
     {
         _parser = parser;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
     }

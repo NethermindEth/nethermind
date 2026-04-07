@@ -26,11 +26,11 @@ public class PersistenceManager(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager) : IPersistenceManager
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;
-    private readonly List<(Hash256AsKey, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
+    private readonly List<(Hash256, TreePath)> _trieNodesSortBuffer = new(); // Presort make it faster
     private readonly Lock _persistenceLock = new();
 
     private StateId _currentPersistedStateId = StateId.PreGenesis;
@@ -237,43 +237,42 @@ public class PersistenceManager(
         long sw = Stopwatch.GetTimestamp();
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To))
         {
-            foreach (KeyValuePair<AddressAsKey, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
+            foreach (KeyValuePair<HashedKey<Address>, bool> toSelfDestructStorage in snapshot.SelfDestructedStorageAddresses)
             {
                 if (toSelfDestructStorage.Value)
                 {
                     continue;
                 }
 
-                batch.SelfDestruct(toSelfDestructStorage.Key.Value);
+                batch.SelfDestruct(toSelfDestructStorage.Key.Key);
             }
 
-            foreach (KeyValuePair<AddressAsKey, Account?> kv in snapshot.Accounts)
+            foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
-                (AddressAsKey addr, Account? account) = kv;
-                batch.SetAccount(addr, account);
+                batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
-            foreach (KeyValuePair<(AddressAsKey, UInt256), SlotValue?> kv in snapshot.Storages)
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, SlotValue?> kv in snapshot.Storages)
             {
-                ((Address addr, UInt256 slot), SlotValue? value) = kv;
+                (Address addr, UInt256 slot) = kv.Key.Key;
 
-                batch.SetStorage(addr, slot, value);
+                batch.SetStorage(addr, slot, kv.Value);
             }
 
             _trieNodesSortBuffer.Clear();
             foreach (TreePath path in snapshot.StateNodeKeys)
             {
-                _trieNodesSortBuffer.Add((new Hash256AsKey(Hash256.Zero), path));
+                _trieNodesSortBuffer.Add((Hash256.Zero, path)); // Hash256.Zero is a placeholder; state node keys don't have an address component
             }
             _trieNodesSortBuffer.Sort();
 
             long stateNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
                 (_, TreePath path) = k;
 
-                snapshot.TryGetStateNode(path, out TrieNode? node);
+                snapshot.TryGetStateNode(new HashedKey<TreePath>(path), out TrieNode? node);
 
                 if (node!.FullRlp.Length == 0)
                 {
@@ -297,11 +296,11 @@ public class PersistenceManager(
 
             long storageNodesSize = 0;
             // foreach (var tn in snapshot.TrieNodes)
-            foreach ((Hash256AsKey, TreePath) k in _trieNodesSortBuffer)
+            foreach ((Hash256, TreePath) k in _trieNodesSortBuffer)
             {
-                (Hash256AsKey address, TreePath path) = k;
+                (Hash256 address, TreePath path) = k;
 
-                snapshot.TryGetStorageNode(address, path, out TrieNode? node);
+                snapshot.TryGetStorageNode(new HashedKey<(Hash256, TreePath)>((address, path)), out TrieNode? node);
 
                 if (node!.FullRlp.Length == 0)
                 {
@@ -315,7 +314,6 @@ public class PersistenceManager(
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node);
-
                 node.IsPersisted = true;
             }
 

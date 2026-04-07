@@ -53,7 +53,7 @@ public class BlockchainProcessorTests
 
             public BranchProcessorMock(ILogManager logManager, IStateReader stateReader)
             {
-                _logger = logManager.GetClassLogger();
+                _logger = logManager.GetClassLogger<BranchProcessorMock>();
                 stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(x => _rootProcessed.Contains(((BlockHeader?)x[0])?.StateRoot!));
             }
 
@@ -138,7 +138,7 @@ public class BlockchainProcessorTests
 
         private class RecoveryStepMock(ILogManager logManager) : IBlockPreprocessorStep
         {
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<RecoveryStepMock>();
             private readonly ConcurrentDictionary<Hash256, object> _allowed = new();
             private readonly ConcurrentDictionary<Hash256, object> _allowedToFail = new();
             private readonly object _gate = new(); // Must be object — Monitor.PulseAll/Wait require it
@@ -203,7 +203,7 @@ public class BlockchainProcessorTests
 
         public ProcessingTestContext(bool startProcessor)
         {
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<ProcessingTestContext>();
             _stateReader = Substitute.For<IStateReader>();
 
             _blockTree = Build.A.BlockTree()
@@ -324,7 +324,7 @@ public class BlockchainProcessorTests
                 _processor.BlockAdded += OnBlockAdded;
                 try
                 {
-                    Task.Run(() =>
+                    Task suggestTask = Task.Run(() =>
                     {
                         try
                         {
@@ -344,6 +344,20 @@ public class BlockchainProcessorTests
                         suggestCompleted.Task.Wait(ProcessingWait),
                         Is.True,
                         $"Timed out waiting for {block.ToString(Block.Format.Short)} to complete suggestion");
+                    // Give the Task.Run time to finish the queue write inside
+                    // Enqueue(). BlockAdded fires before the recovery queue write,
+                    // so suggestCompleted resolving does not mean the block is in
+                    // the queue yet. Without this, consecutive Suggested() calls
+                    // can race their Task.Run threads to TryWrite, reordering
+                    // blocks in the recovery queue.
+                    //
+                    // Bounded to 100ms to avoid deadlock: when _queueCount == 1,
+                    // AllowSynchronousContinuations can inline ProcessBlocks() on
+                    // the Task.Run thread, which blocks until the test calls
+                    // Allow(). An infinite wait would deadlock. The timeout
+                    // expiring is harmless — single-block enqueues have no
+                    // ordering concern.
+                    suggestTask.Wait(100);
                 }
                 finally
                 {
@@ -434,7 +448,7 @@ public class BlockchainProcessorTests
         {
             private const int IgnoreWait = 200;
 
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<AfterBlock>();
 
             public ProcessingTestContext BecomesGenesis()
             {

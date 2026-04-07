@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain;
 
 public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) : IDisposable, IBlockhashCache
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockhashCache>();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
     private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();

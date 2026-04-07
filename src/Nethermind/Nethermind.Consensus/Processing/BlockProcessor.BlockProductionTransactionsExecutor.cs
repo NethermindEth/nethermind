@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Processing
             : IBlockProductionTransactionsExecutor
         {
             private BlockAccessListManager? _balManager;
-            private readonly ILogger _logger = logManager.GetClassLogger();
+            private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
 
