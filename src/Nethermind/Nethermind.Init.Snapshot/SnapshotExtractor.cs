@@ -13,7 +13,7 @@ namespace Nethermind.Init.Snapshot;
 /// </summary>
 internal sealed class SnapshotExtractor(ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<SnapshotExtractor>();
 
     /// <summary>
     /// Extracts <paramref name="archivePath"/> into <paramref name="destinationPath"/>.

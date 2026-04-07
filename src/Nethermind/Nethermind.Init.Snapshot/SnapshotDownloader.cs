@@ -19,7 +19,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
     private const int BufferSize = 65536;
     private const int MaxRedirects = 10;
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<SnapshotDownloader>();
 
     /// <summary>
     /// Downloads the snapshot to <paramref name="destinationPath"/>, resuming from the
