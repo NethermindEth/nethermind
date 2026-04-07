@@ -68,8 +68,7 @@ public class XdcRewardCalculator : IRewardCalculator
     /// <returns>Array of BlockReward objects for all reward recipients</returns>
     public BlockReward[] CalculateRewards(Block block)
     {
-        if (block is null)
-            throw new ArgumentNullException(nameof(block));
+        ArgumentNullException.ThrowIfNull(block);
         if (block.Header is not XdcBlockHeader xdcHeader)
             throw new InvalidOperationException("Only supports XDC headers");
         if (xdcHeader.Number == 0)
