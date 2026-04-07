@@ -3,7 +3,6 @@
 
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Types;
 using NSubstitute;

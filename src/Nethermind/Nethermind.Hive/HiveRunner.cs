@@ -12,6 +12,7 @@ using Nethermind.Blockchain;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -29,6 +30,8 @@ namespace Nethermind.Hive
         private readonly ILogger _logger = logManager.GetClassLogger<HiveRunner>();
         private readonly SemaphoreSlim _resetEvent = new(0);
         private bool BlockSuggested;
+        private Hash256? _lastProcessedBlockHash;
+        private ProcessingResult _lastProcessingResult;
 
         public async Task Start(CancellationToken cancellationToken)
         {
@@ -54,6 +57,8 @@ namespace Nethermind.Hive
 
         private void BlockProcessingFinished(object? sender, BlockHashEventArgs e)
         {
+            _lastProcessedBlockHash = e.BlockHash;
+            _lastProcessingResult = e.ProcessingResult;
             _logger.Info(e.ProcessingResult == ProcessingResult.Success
                 ? $"HIVE block added to main: {e.BlockHash}"
                 : $"HIVE block skipped: {e.BlockHash}");
@@ -135,8 +140,10 @@ namespace Nethermind.Hive
                     }
 
                     if (_logger.IsInfo) _logger.Info($"HIVE Processing block file: {file} - {block.ToString(Block.Format.Short)}");
-                    await ProcessBlock(block, parent!);
-                    parent = block.Header;
+                    if (await ProcessBlock(block, parent!))
+                    {
+                        parent = block.Header;
+                    }
                 }
                 catch (RlpException e)
                 {
@@ -179,8 +186,10 @@ namespace Nethermind.Hive
                     parent = blockTree.Genesis;
                 }
 
-                await ProcessBlock(block, parent!);
-                parent = block.Header;
+                if (await ProcessBlock(block, parent!))
+                {
+                    parent = block.Header;
+                }
             }
         }
 
@@ -200,17 +209,19 @@ namespace Nethermind.Hive
             }
         }
 
-        private async Task ProcessBlock(Block block, BlockHeader parent)
+        private async Task<bool> ProcessBlock(Block block, BlockHeader parent)
         {
             try
             {
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
+                _lastProcessedBlockHash = null;
+                _lastProcessingResult = ProcessingResult.Success;
 
                 if (!blockValidator.ValidateSuggestedBlock(block, parent, out string? err))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}. Error: {err}");
-                    return;
+                    return false;
                 }
 
                 // Inside BlockTree.SuggestBlockAsync, if block's total difficulty is higher than highest known,
@@ -220,23 +231,26 @@ namespace Nethermind.Hive
                 if (result != AddBlockResult.Added && result != AddBlockResult.AlreadyKnown)
                 {
                     if (_logger.IsError) _logger.Error($"Cannot add block {block} to the blockTree, add result {result}");
-                    return;
+                    return false;
                 }
 
                 // If block was suggested, we need to wait for processing it.
                 if (BlockSuggested)
                 {
                     await WaitForBlockProcessing(_resetEvent);
+                    return _lastProcessedBlockHash == block.Hash && _lastProcessingResult == ProcessingResult.Success;
                 }
                 // Otherwise, block will be only added and not processed, so there is nothing to wait for.
                 else
                 {
                     _logger.Info($"HIVE skipped suggesting block: {block.Hash}");
+                    return true;
                 }
             }
             catch (Exception e)
             {
                 _logger.Error($"HIVE Invalid block: {block.Hash}, ignoring. ", e);
+                return false;
             }
         }
     }
