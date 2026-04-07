@@ -83,7 +83,14 @@ internal static partial class EvmInstructions
         // Obtain the current EVM specification and check if the call is static (static calls cannot create contracts).
         IReleaseSpec spec = vm.Spec;
         if (vm.VmState.IsStatic)
+        {
+            if (TEip8037.IsActive)
+            {
+                if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateState))
+                    goto OutOfGas;
+            }
             goto StaticCallViolation;
+        }
 
         // Reset the return data buffer as contract creation does not use previous return data.
         vm.ReturnData = null;
@@ -110,10 +117,11 @@ internal static partial class EvmInstructions
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
-                // EIP-8037: charge state gas before halting so StateGasSpill is recorded
-                // for correct block gas accounting (block_regular excludes state gas).
                 if (TEip8037.IsActive)
-                    TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState);
+                {
+                    if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateState))
+                        goto OutOfGas;
+                }
                 goto OutOfGas;
             }
         }
