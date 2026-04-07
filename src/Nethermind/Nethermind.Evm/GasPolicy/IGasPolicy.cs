@@ -246,6 +246,16 @@ public interface IGasPolicy<TSelf> where TSelf : struct, IGasPolicy<TSelf>
     static virtual void RefundStateGas(ref TSelf gas, long amount, long stateGasFloor) => TSelf.UpdateGasUp(ref gas, amount);
 
     /// <summary>
+    /// Discards state gas from block-state accounting without refunding it back into the
+    /// usable gas budget. This is used for reverted state charges that should remain paid
+    /// by the transaction but must not contribute to committed state gas.
+    /// </summary>
+    /// <param name="gas">The gas state to update.</param>
+    /// <param name="amount">Discarded state gas amount.</param>
+    /// <param name="stateGasFloor">Minimum state gas used after discarding.</param>
+    static virtual void DiscardStateGas(ref TSelf gas, long amount, long stateGasFloor) { }
+
+    /// <summary>
     /// Returns the regular gas portion of EIP-7702 code insert refunds (for end-of-tx refund cap).
     /// Pre-EIP-8037: (NewAccount - PerAuthBaseCost) per refund. EIP-8037: zero (state refund only).
     /// </summary>
