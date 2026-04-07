@@ -92,10 +92,10 @@ public class NodeRecordSigner : INodeRecordSigner
                     int udpPort = ctx.DecodeInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
                     break;
-                case 9 when key.SequenceEqual(EnrContentKey.Secp256K1U8):
+                case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = ctx.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
-                    nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
+                    nodeRecord.SetEntry(new SecP256k1Entry(reportedKey));
                     break;
                 default:
                     // snap
@@ -159,7 +159,7 @@ public class NodeRecordSigner : INodeRecordSigner
             _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)!;
 
         CompressedPublicKey? reportedKey =
-            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
 
         return publicKeyA.Equals(reportedKey) || publicKeyB.Equals(reportedKey);
     }

@@ -36,7 +36,7 @@ public class EthRpcSimulateTestsBase
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static string GetEcRecoverContractJsonAbi(string name = "recover")
+    private static string GetECRecoverContractJsonAbi(string name = "recover")
     {
         return $@"
 [
@@ -87,10 +87,10 @@ public class EthRpcSimulateTestsBase
         Signature signature = chain.EthereumEcdsa.Sign(account, in messageHash);
 
         //Check real address
-        return GenerateTransactionDataForEcRecover(new Hash256(messageHash), signature, name);
+        return GenerateTransactionDataForECRecover(new Hash256(messageHash), signature, name);
     }
 
-    public static async Task<Address> DeployEcRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
+    public static async Task<Address> DeployECRecoverContract(TestRpcBlockchain chain, PrivateKey privateKey, string contractBytecode)
     {
         byte[] bytecode = Bytes.FromHexString(contractBytecode);
         Transaction tx = new()
@@ -154,27 +154,27 @@ public class EthRpcSimulateTestsBase
         return createContractTxReceipt.ContractAddress!;
     }
 
-    protected static byte[] GenerateTransactionDataForEcRecover(Hash256 keccak, Signature signature, string name = "recover")
+    protected static byte[] GenerateTransactionDataForECRecover(Hash256 keccak, Signature signature, string name = "recover")
     {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetEcRecoverContractJsonAbi(name));
+        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction(name).GetCallInfo();
         return AbiEncoder.Instance.Encode(functionInfo.EncodingStyle, functionInfo.Signature, keccak, signature.V, signature.R.ToArray(), signature.S.ToArray());
     }
 
-    private static Address? ParseEcRecoverAddress(byte[] data, string name = "recover")
+    private static Address? ParseECRecoverAddress(byte[] data, string name = "recover")
     {
-        AbiDefinition call = new AbiDefinitionParser().Parse(GetEcRecoverContractJsonAbi(name));
+        AbiDefinition call = new AbiDefinitionParser().Parse(GetECRecoverContractJsonAbi(name));
         AbiEncodingInfo functionInfo = call.GetFunction(name).GetReturnInfo();
         return AbiEncoder.Instance.Decode(functionInfo.EncodingStyle, functionInfo.Signature, data).FirstOrDefault() as Address;
     }
 
-    public static Address? EcRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
+    public static Address? ECRecoverCall(TestRpcBlockchain testRpcBlockchain, Address senderAddress, byte[] bytes, Address? toAddress = null)
     {
         SystemTransaction transaction = new() { Data = bytes, To = toAddress, SenderAddress = senderAddress };
         transaction.Hash = transaction.CalculateHash();
         TransactionForRpc transactionForRpc = TransactionForRpc.FromTransaction(transaction);
         transactionForRpc.Gas = null;
         ResultWrapper<string> mainChainResult = testRpcBlockchain.EthRpcModule.eth_call(transactionForRpc, BlockParameter.Pending);
-        return ParseEcRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
+        return ParseECRecoverAddress(Bytes.FromHexString(mainChainResult.Data));
     }
 }

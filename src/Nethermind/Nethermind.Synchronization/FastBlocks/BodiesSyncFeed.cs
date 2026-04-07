@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager,
             long flushDbInterval = DefaultFlushDbInterval)
-            : base(metadataDb, specProvider, logManager.GetClassLogger())
+            : base(metadataDb, specProvider, logManager.GetClassLogger<BodiesSyncFeed>())
         {
             _blockTree = blockTree;
             _blockValidator = blockValidator;

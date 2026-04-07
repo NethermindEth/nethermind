@@ -18,7 +18,7 @@ on:
         options:
           - halfpath
           - flat
-        default: halfpath
+        default: flat
       payload_set:
         description: Payload set mode
         required: true
@@ -168,7 +168,7 @@ jobs:
               should_run="false"
             fi
             branch="${PR_HEAD_BRANCH}"
-            state_layout="halfpath"
+            state_layout="flat"
             payload_set="superblocks"
             payload_sets='["superblocks","realblocks"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"
@@ -181,7 +181,7 @@ jobs:
             run_count="1"
           else
             branch="${PUSH_BRANCH}"
-            state_layout="halfpath"
+            state_layout="flat"
             payload_set="superblocks"
             payload_sets='["superblocks","realblocks"]'
             expb_repo="NethermindEth/execution-payloads-benchmarks"

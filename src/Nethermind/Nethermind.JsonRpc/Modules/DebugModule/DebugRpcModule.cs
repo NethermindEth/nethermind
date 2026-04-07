@@ -38,7 +38,7 @@ public class DebugRpcModule(
     IBlockFinder blockFinder)
     : IDebugRpcModule
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
 

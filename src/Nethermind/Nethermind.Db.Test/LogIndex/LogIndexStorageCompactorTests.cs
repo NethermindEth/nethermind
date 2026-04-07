@@ -30,7 +30,7 @@ public class LogIndexStorageCompactorTests
     }
 
     private static Compactor CreateCompactor(ILogIndexStorage storage, IDbMeta? db = null, int compactionDistance = 100) =>
-        new(storage, db ?? new FakeDb(), LimboLogs.Instance.GetClassLogger(), compactionDistance);
+        new(storage, db ?? new FakeDb(), LimboLogs.Instance.GetClassLogger<LogIndexStorageCompactorTests>(), compactionDistance);
 
     private static Compactor CreateCompactor(ILogIndexStorage storage, int compactionDistance = 100) =>
         CreateCompactor(storage, db: null, compactionDistance: compactionDistance);

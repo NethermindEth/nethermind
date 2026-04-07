@@ -17,7 +17,7 @@ namespace Nethermind.Logging.NLog.Test
         public void Logger_name_is_set_to_full_class_name()
         {
             NLogManager manager = new NLogManager("test", null);
-            NLogLogger logger = (NLogLogger)manager.GetClassLogger().UnderlyingLogger;
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger<NLogManagerTests>().UnderlyingLogger;
             Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
 
@@ -44,14 +44,14 @@ namespace Nethermind.Logging.NLog.Test
             string[] rulePatterns = { "Abc.*", "Cdf.efg" };
             CheckRules(rulePatterns, false);
             string logRules = string.Join(";", rulePatterns.Select(r => $"{r}:Warn"));
-            NLogManager manager = new("test", null, logRules);
+            _ = new NLogManager("test", null, logRules);
             CheckRules(rulePatterns, true);
         }
 
         [Test]
         public void Create_removes_overwritten_rules()
         {
-            NLogManager manager = new("test", null, "*:Error");
+            _ = new NLogManager("test", null, "*:Error");
             LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
                 new LoggingRule[] { new LoggingRule("*", global::NLog.LogLevel.Error, null) },
                 static c => c.Excluding(static r => r.Targets));

@@ -54,11 +54,14 @@ internal class SpecialTransactionsTests
 
     private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
     {
+        UInt256 nonce = chain.TxPool.GetLatestPendingNonce(source.Address);
+
         Transaction tx = Build.A.Transaction
             .WithSenderAddress(source.Address)
             .WithTo(destination.Address)
             .WithValue(amount)
             .WithType(TxType.Legacy)
+            .WithNonce(nonce)
             .TestObject;
 
         var signer = new Signer(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
@@ -106,14 +109,17 @@ internal class SpecialTransactionsTests
 
         Assert.That(blockChain.BlockTree.Head.Number, Is.EqualTo(mergeSignBlockRange + 1));
 
-        Transaction[] pendingTxs = blockChain.TxPool.GetPendingTransactions();
+        Transaction[] pendingTxs = blockChain.BlockTree.Head.Transactions;
+        // Sign tx might have been included in the block already, or could still be pending
+        if (pendingTxs.Length == 0)
+            pendingTxs = blockChain.TxPool.GetPendingTransactions();
 
         var spec = (XdcReleaseSpec)blockChain.SpecProvider.GetFinalSpec();
-        var specialTxs = pendingTxs.Where(r => r.To == spec.BlockSignerContract);
+        var signTxs = pendingTxs.Where(r => r.To == spec.BlockSignerContract);
 
-        Assert.That(specialTxs, Is.Not.Empty);
+        Assert.That(signTxs, Is.Not.Empty);
 
-        var specialTx = specialTxs.First();
+        var specialTx = signTxs.First();
 
         var blockTarget = (long)(new UInt256(specialTx.Data.Span.Slice(4, 32), true));
 

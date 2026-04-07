@@ -20,9 +20,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -96,7 +94,7 @@ public class InitializeNetwork : IStep
         _syncConfig = syncConfig;
         _initConfig = initConfig;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
     public virtual Task Execute(CancellationToken cancellationToken)
@@ -120,8 +118,6 @@ public class InitializeNetwork : IStep
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
         Network.Metrics.PeerLimit = maxPeersCount;
-
-        _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
 
         if (cancellationToken.IsCancellationRequested)
         {

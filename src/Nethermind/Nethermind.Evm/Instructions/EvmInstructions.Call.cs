@@ -185,11 +185,7 @@ internal static partial class EvmInstructions
             true => transferValue != 0 && state.IsDeadAccount(target),
         };
 
-        bool newAccountOutOfGas = chargesNewAccount && !(TEip8037.IsActive switch
-        {
-            true => TGasPolicy.ConsumeNewAccountCreation(ref gas),
-            false => TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount),
-        });
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
 
@@ -360,12 +356,6 @@ internal static partial class EvmInstructions
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // RETURN is not allowed during contract creation.
-        if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            goto BadInstruction;
-        }
-
         // Pop memory position and length for the return data.
         if (!stack.PopUInt256(out UInt256 position) ||
             !stack.PopUInt256(out UInt256 length))
@@ -386,7 +376,5 @@ internal static partial class EvmInstructions
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
-    BadInstruction:
-        return EvmExceptionType.BadInstruction;
     }
 }

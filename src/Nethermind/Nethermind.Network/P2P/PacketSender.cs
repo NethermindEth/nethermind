@@ -17,6 +17,7 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ILogger _logger;
     private readonly TimeSpan _sendLatency;
+    private readonly CancellationTokenSource _cts = new();
     private IChannelHandlerContext _context;
     private Action<Task, object?> _delayThenWrite;
     private Action<Task, object?> _observeWriteCompletion;
@@ -56,7 +57,7 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
         {
             if (_sendLatency != TimeSpan.Zero)
             {
-                Task delayTask = Task.Delay(_sendLatency);
+                Task delayTask = Task.Delay(_sendLatency, _cts.Token);
                 if (delayTask.IsCompletedSuccessfully)
                 {
                     StartWrite(buffer);
@@ -167,5 +168,11 @@ public class PacketSender : ChannelHandlerAdapter, IPacketSender
     public override void HandlerAdded(IChannelHandlerContext context)
     {
         _context = context;
+    }
+
+    public override void HandlerRemoved(IChannelHandlerContext context)
+    {
+        _cts.Cancel();
+        _cts.Dispose();
     }
 }

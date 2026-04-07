@@ -39,7 +39,7 @@ namespace Nethermind.TxPool.Collections
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger(typeof(DistinctValueSortedPool<,,>)) ?? throw new ArgumentNullException(nameof(logManager));
             _distinctDictionary = new Dictionary<TValue, KeyValuePair<TKey, TValue>>(distinctComparer);
         }
 

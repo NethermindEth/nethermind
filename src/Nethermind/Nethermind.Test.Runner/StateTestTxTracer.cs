@@ -10,7 +10,6 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Test.Runner;
 
@@ -51,18 +50,16 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry
         {
-            Pc = pc + (env.CodeInfo is EofCodeInfo eofCodeInfo ? eofCodeInfo.PcOffset() : 0),
-            Section = codeSection,
+            Pc = pc,
             Operation = (byte)opcode,
-            OperationName = opcode.GetName(),
+            OperationName = Enum.GetName(opcode),
             Gas = gas,
             Depth = env.GetGethTraceDepth(),
-            FunctionDepth = functionDepth
         };
         _trace.Entries.Add(_traceEntry);
     }

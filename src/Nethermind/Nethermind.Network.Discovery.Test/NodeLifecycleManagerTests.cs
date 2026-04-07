@@ -585,7 +585,7 @@ public class NodeLifecycleManagerTests
         record.EnrSequence = sequence;
         record.SetEntry(new IpEntry(IPAddress.Parse(ip)));
         record.SetEntry(new UdpEntry(port));
-        record.SetEntry(new Secp256K1Entry(privateKey.CompressedPublicKey));
+        record.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
 
         Ecdsa ecdsa = new();
         NodeRecordSigner signer = new(ecdsa, privateKey);

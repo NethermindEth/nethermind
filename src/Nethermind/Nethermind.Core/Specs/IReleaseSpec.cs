@@ -316,12 +316,7 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
-        /// Eof execution env in EVM
-        /// </summary>
-        bool IsEofEnabled { get; }
-
-        /// <summary>
-        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE for legacy (non-EOF) code
+        /// EIP-8024: Backward-compatible SWAPN, DUPN, EXCHANGE
         /// </summary>
         bool IsEip8024Enabled { get; }
 
@@ -346,7 +341,7 @@ namespace Nethermind.Core.Specs
         bool IsEip4844FeeCollectorEnabled { get; }
 
         /// <summary>
-        /// Secp256r1 precompile
+        /// SecP256r1 precompile
         /// </summary>
         bool IsRip7212Enabled { get; }
         bool IsEip7951Enabled { get; }

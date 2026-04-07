@@ -206,7 +206,7 @@ public class VotesManagerTests
         var blockInfo = new BlockRoundInfo(Hash256.Zero, blockInfoRound, 100);
         var qc = new QuorumCertificate(blockInfo, null, 0);
 
-        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.EqualTo(expected));
+        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.EqualTo(expected));
     }
 
     [TestCase]
@@ -223,7 +223,7 @@ public class VotesManagerTests
         var qc = new QuorumCertificate(blockInfo, null, 0);
         await votesManager.CastVote(blockInfo);
 
-        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.False);
+        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.False);
     }
 
     [Test]
@@ -236,7 +236,7 @@ public class VotesManagerTests
         var blockInfo = new BlockRoundInfo(Hash256.Zero, 5, 100);
         var qc = new QuorumCertificate(blockInfo, null, 0);
 
-        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.True);
+        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.True);
     }
 
     public static IEnumerable<TestCaseData> ExtendingFromAncestorCases()
@@ -271,7 +271,7 @@ public class VotesManagerTests
         VotesManager votesManager = BuildVoteManager(ctx, tree);
         var qc = new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 3, 99), null, 0);
 
-        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc), Is.EqualTo(expected));
+        Assert.That(votesManager.VerifyVotingRules(blockInfo, qc, out _), Is.EqualTo(expected));
     }
 
     private static PrivateKey[] MakeKeys(int n)

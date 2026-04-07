@@ -36,7 +36,7 @@ namespace Nethermind.Wallet
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NodeKeyManager>() ?? throw new ArgumentNullException(nameof(logManager));
             _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         }

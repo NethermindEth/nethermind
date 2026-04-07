@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO;
-using Nethermind.Int256;
-using Nethermind.Merkleization;
-using NUnit.Framework;
 using System.Collections;
+using System.IO;
 using System.Linq;
+using Nethermind.Int256;
+using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
 
@@ -27,12 +26,12 @@ public class EncodingTest
                 Test2 = Enumerable.Range(0, 10).Select(i => (ulong)i).ToArray(),
                 FixedCVec = Enumerable.Range(0, 10).Select(i => new FixedC()).ToArray(),
                 VariableCVec = Enumerable.Range(0, 10).Select(i => new VariableC()).ToArray(),
-                BitVec = new System.Collections.BitArray(10),
+                BitVec = new BitArray(10),
             }).ToArray(),
-            BitVec = new System.Collections.BitArray(10),
+            BitVec = new BitArray(10),
         };
 
-        var encoded = SszEncoding.Encode(test);
+        byte[] encoded = SszEncoding.Encode(test);
         SszEncoding.Merkleize(test, out UInt256 root);
         SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
 
@@ -42,15 +41,23 @@ public class EncodingTest
         Assert.That(root, Is.EqualTo(decodedRoot));
     }
 
-    [Test]
-    public void MerkleizeList_UnionType_EmptyList_MixesInCountNotLimit()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(100)]
+    public void MerkleizeList_UnionType_MixesInCountNotLimit(int itemCount)
     {
-        UnionTest3[] emptyList = [];
-        SszEncoding.MerkleizeList(emptyList, 100, out UInt256 emptyRoot100);
-        SszEncoding.MerkleizeList(emptyList, 200, out UInt256 emptyRoot200);
+        UnionTest3[] list = new UnionTest3[itemCount];
 
-        Assert.That(emptyRoot100, Is.EqualTo(emptyRoot200),
-            "Empty list with different limits must have same root (mix-in is count=0, not limit)");
+        for (int i = 0; i < itemCount; i++)
+        {
+            list[i] = new UnionTest3 { Selector = Test3Union.Test1, Test1 = 0 };
+        }
+
+        SszEncoding.MerkleizeList(list, 100, out UInt256 rootWithLimit100);
+        SszEncoding.MerkleizeList(list, 200, out UInt256 rootWithLimit200);
+
+        Assert.That(rootWithLimit100, Is.EqualTo(rootWithLimit200),
+           "Same list with different limits must have same root (limit affects tree depth, not mix-in)");
     }
 
     [Test]

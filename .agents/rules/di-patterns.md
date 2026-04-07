@@ -102,3 +102,8 @@ IContainer container = new ContainerBuilder()
 ```
 
 Never add test-specific code to production modules. Overrides belong in `TestEnvironmentModule`, `TestBlockProcessingModule`, or a new test module passed to `Build`.
+
+## Anti-pattern
+- Using the form `.Add<IFoo>(ctx => new Foo(ctx.Resolve<Dep1>(), ctx.Resolve<Dep2>()))` is an anti-pattern. It will cause changes to the wiring when `Foo` adds new dependencies, which increases review load.
+  - Rather, do `.Add<IFoo, Foo>()` unless unavoidable.
+- Similar case with using `IComponentContext` within a class that is not related to component wiring. Rather, pass in the dependency to the construct either directly as a type, or as a `Func<IFoo>` if multiple instantiation is needed or `Lazy<IFoo>` if lazy initialization is needed.
