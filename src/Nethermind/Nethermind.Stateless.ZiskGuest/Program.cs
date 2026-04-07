@@ -11,7 +11,7 @@ namespace Nethermind.Stateless.ZiskGuest;
 
 class Program
 {
-    static void Main()
+    static int Main()
     {
         ReadOnlySpan<byte> input = IO.ReadInput();
 
@@ -24,5 +24,7 @@ class Program
 
         // TODO: Remove when zkEVM standard output format is ready
         IO.WriteLine(block.Hash.ToString());
+
+        return 0;
     }
 }
