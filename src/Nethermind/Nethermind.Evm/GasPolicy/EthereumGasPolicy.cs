@@ -231,6 +231,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void DiscardStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
+    {
+        long newFloor = Math.Max(0, stateGasFloor);
+        gas.StateGasUsed = Math.Max(gas.StateGasUsed - amount, newFloor);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long GetCodeInsertRegularRefund(int codeInsertRefunds, IReleaseSpec spec) =>
         spec.IsEip8037Enabled || codeInsertRefunds <= 0
             ? 0
