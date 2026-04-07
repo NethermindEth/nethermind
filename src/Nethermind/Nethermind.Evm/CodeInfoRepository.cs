@@ -120,25 +120,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         return worldState.InsertCode(authority, codeHash, authorizedBuffer, spec);
     }
 
-    /// <summary>
-    /// Retrieves code hash of delegation if delegated. Otherwise, code hash of <paramref name="address"/>.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <param name="spec"></param>
-    // public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec)
-    // {
-    //     ValueHash256 codeHash = _worldState.GetCodeHash(address);
-    //     if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
-    //     {
-    //         return Keccak.OfAnEmptyString.ValueHash256;
-    //     }
-
-    //     CodeInfo codeInfo = _codeInfoLoader(codeHash, spec);
-    //     return codeInfo.IsEmpty
-    //         ? Keccak.OfAnEmptyString.ValueHash256
-    //         : codeHash;
-    // }
-
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         ICodeInfoRepository.TryGetDelegatedAddress(InternalGetCodeInfo(address, spec).CodeSpan, out delegatedAddress);
 }
