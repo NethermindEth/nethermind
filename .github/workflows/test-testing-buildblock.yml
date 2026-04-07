@@ -52,7 +52,7 @@ jobs:
           ./hive \
             --client nethermind \
             --sim ethereum/rpc-compat \
-            --sim.limit "testing_buildBlockV1" \
+            --sim.limit ".*/testing_buildBlockV1" \
             --sim.loglevel 3 \
             --sim.parallelism 1
 
