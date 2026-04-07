@@ -141,7 +141,7 @@ public sealed class EraWriter : IDisposable
             _bodies.Add(bodyRlp.AsMemory().ToArray());
         }
 
-        _receipts.Add(EncodeGethSlimReceipts(receipts, spec.IsEip658Enabled));
+        _receipts.Add(EncodeSlimReceipts(receipts, spec.IsEip658Enabled));
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
@@ -288,20 +288,20 @@ public sealed class EraWriter : IDisposable
     /// txType is empty-bytes for legacy (type 0), single byte otherwise.
     /// postStateOrStatus is the 32-byte state root pre-EIP-658, or 0x01/empty for success/failure post-EIP-658.
     /// </summary>
-    private static byte[] EncodeGethSlimReceipts(TxReceipt[] receipts, bool isEip658)
+    private static byte[] EncodeSlimReceipts(TxReceipt[] receipts, bool isEip658)
     {
         int totalLength = 0;
         foreach (TxReceipt receipt in receipts)
-            totalLength += Rlp.LengthOfSequence(GetGethReceiptContentLength(receipt, isEip658));
+            totalLength += Rlp.LengthOfSequence(GetReceiptContentLength(receipt, isEip658));
 
         RlpStream stream = new(Rlp.LengthOfSequence(totalLength));
         stream.StartSequence(totalLength);
         foreach (TxReceipt receipt in receipts)
-            WriteGethReceipt(stream, receipt, isEip658);
+            WriteReceipt(stream, receipt, isEip658);
         return stream.Data.ToArray() ?? [];
     }
 
-    private static int GetGethReceiptContentLength(TxReceipt receipt, bool isEip658)
+    private static int GetReceiptContentLength(TxReceipt receipt, bool isEip658)
     {
         int logsLength = 0;
         if (receipt.Logs is not null)
@@ -314,7 +314,7 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteGethReceipt(RlpStream stream, TxReceipt receipt, bool isEip658)
+    private static void WriteReceipt(RlpStream stream, TxReceipt receipt, bool isEip658)
     {
         int logsLength = 0;
         if (receipt.Logs is not null)

@@ -111,7 +111,7 @@ public class EraExporter(
 
         string checksumFilePath = Path.Combine(destinationPath, ChecksumsFileName);
         fileSystem.File.Delete(checksumFilePath);
-        await WriteGethChecksumFile(checksumFilePath, checksums, cancellation);
+        await WriteChecksumFile(checksumFilePath, checksums, cancellation);
 
         progress.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
@@ -293,25 +293,35 @@ public class EraExporter(
 
     private async Task WriteHashFile(string path, ArrayPoolList<ValueHash256> hashes, ArrayPoolList<string> fileNames, CancellationToken cancellation)
     {
-        await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        await using StreamWriter writer = new(stream);
-
-        for (int i = 0; i < hashes.Count; i++)
+        IEnumerable<string> Lines()
         {
-            cancellation.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync($"{hashes[i].ToString(false)}  {fileNames[i]}");
+            for (int i = 0; i < hashes.Count; i++)
+                yield return $"{hashes[i].ToString(false)}  {fileNames[i]}";
+        }
+        await WriteLines(path, Lines(), cancellation);
+    }
+
+    private async Task WriteChecksumFile(string path, ArrayPoolList<ValueHash256> hashes, CancellationToken cancellation)
+    {
+        await WriteLines(path, Lines(), cancellation);
+        return;
+
+        IEnumerable<string> Lines()
+        {
+            for (int i = 0; i < hashes.Count; i++)
+                yield return $"0x{hashes[i].ToString(false)}";
         }
     }
 
-    private async Task WriteGethChecksumFile(string path, ArrayPoolList<ValueHash256> hashes, CancellationToken cancellation)
+    private async Task WriteLines(string path, IEnumerable<string> lines, CancellationToken cancellation)
     {
         await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
         await using StreamWriter writer = new(stream);
 
-        for (int i = 0; i < hashes.Count; i++)
+        foreach (string line in lines)
         {
             cancellation.ThrowIfCancellationRequested();
-            await writer.WriteLineAsync($"0x{hashes[i].ToString(false)}");
+            await writer.WriteLineAsync(line);
         }
     }
 }
