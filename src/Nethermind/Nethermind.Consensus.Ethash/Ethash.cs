@@ -215,7 +215,7 @@ namespace Nethermind.Consensus.Ethash
             IEthashDataSet? dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                if (_logger.IsDebug) _logger.Debug($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
                 _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
                 dataSet = _hintBasedCache.Get(epoch);
                 if (dataSet is null)
@@ -242,18 +242,18 @@ namespace Nethermind.Consensus.Ethash
         {
             uint cacheSize = GetCacheSize(epoch);
             Hash256 seed = GetSeedHash(epoch);
-            if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
+            if (_logger.IsDebug) _logger.Debug($"Building ethash cache for epoch {epoch}");
             _cacheStopwatch.Restart();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
             _cacheStopwatch.Stop();
-            if (_logger.IsInfo)
+            if (_logger.IsDebug)
             {
-                var seedText = seed.Bytes.ToHexString(withZeroX: true);
+                string seedText = seed.Bytes.ToHexString(withZeroX: true);
                 if (seedText.Length > 17)
                 {
                     seedText = $"{seedText[..8]}...{seedText[^6..]}";
                 }
-                _logger.Info($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
             }
             return dataSet;
         }
