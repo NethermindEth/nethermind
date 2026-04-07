@@ -3,23 +3,16 @@
 
 namespace Nethermind.Consensus.Producers
 {
-    public enum BlockProducerEnvLifetime
-    {
-        /// <summary>
-        /// Scope is registered with the root lifetime for disposal on shutdown.
-        /// Suitable for long-lived block producers.
-        /// </summary>
-        Persistent,
-
-        /// <summary>
-        /// Caller owns the scope and must dispose the returned env (which implements <see cref="System.IAsyncDisposable"/>).
-        /// Suitable for per-request use.
-        /// </summary>
-        Transient
-    }
-
     public interface IBlockProducerEnvFactory
     {
-        IBlockProducerEnv Create(BlockProducerEnvLifetime lifetime = BlockProducerEnvLifetime.Persistent);
+        /// <summary>
+        /// Creates a block producer environment registered with the root lifetime for disposal on shutdown.
+        /// </summary>
+        IBlockProducerEnv CreatePersistent();
+
+        /// <summary>
+        /// Creates a block producer environment owned by the caller. The caller must dispose it after use.
+        /// </summary>
+        ScopedBlockProducerEnv CreateTransient();
     }
 }

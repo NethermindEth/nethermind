@@ -272,7 +272,7 @@ public class EthereumRunnerTests
             api.Context.Resolve<IUnclesValidator>();
             api.Context.Resolve<ITxValidator>();
             api.Context.Resolve<IReadOnlyTxProcessingEnvFactory>();
-            api.Context.Resolve<IBlockProducerEnvFactory>().Create();
+            api.Context.Resolve<IBlockProducerEnvFactory>().CreatePersistent();
 
             // A root registration should not have both keyed and unkeyed registration. This is confusing and may
             // cause unexpected registration. Either have a single non-keyed registration or all keyed-registration,

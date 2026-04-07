@@ -11,10 +11,10 @@ using Nethermind.Evm.State;
 namespace Nethermind.Consensus.Producers;
 
 /// <summary>
-/// Decorator that owns the Autofac lifetime scope and disposes it when the env is disposed.
-/// Returned by <see cref="IBlockProducerEnvFactory.Create"/> when lifetime is <see cref="BlockProducerEnvLifetime.Transient"/>.
+/// Block producer environment that owns its Autofac lifetime scope.
+/// Returned by <see cref="IBlockProducerEnvFactory.CreateTransient"/>. Must be disposed by the caller.
 /// </summary>
-internal sealed class ScopedBlockProducerEnv(IBlockProducerEnv inner, IAsyncDisposable scope) : IBlockProducerEnv, IAsyncDisposable
+public sealed class ScopedBlockProducerEnv(IBlockProducerEnv inner, IAsyncDisposable scope) : IBlockProducerEnv, IAsyncDisposable
 {
     public IBlockTree BlockTree => inner.BlockTree;
     public IBlockchainProcessor ChainProcessor => inner.ChainProcessor;

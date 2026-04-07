@@ -140,7 +140,7 @@ public class CliqueBlockProducerTests
             mainProcessingContext.BlockchainProcessor.Start();
 
             IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
-            IBlockProducerEnv producerEnv = envFactory.Create();
+            IBlockProducerEnv producerEnv = envFactory.CreatePersistent();
             IWorldState minerStateProvider = producerEnv.ReadOnlyStateProvider;
 
             if (withGenesisAlreadyProcessed)

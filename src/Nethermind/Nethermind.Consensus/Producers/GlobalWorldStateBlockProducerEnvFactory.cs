@@ -33,20 +33,27 @@ namespace Nethermind.Consensus.Producers
             .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
-        protected virtual IWorldStateScopeProvider CreateWorldState() =>
-            worldStateManager.GlobalWorldState;
+        protected virtual IWorldStateScopeProvider CreateWorldState() => worldStateManager.GlobalWorldState;
 
-        public IBlockProducerEnv Create(BlockProducerEnvLifetime lifetime = BlockProducerEnvLifetime.Persistent)
+        public IBlockProducerEnv CreatePersistent()
+        {
+            ILifetimeScope scope = BeginScope(out IBlockProducerEnv blockProducerEnv);
+            rootLifetime.Disposer.AddInstanceForAsyncDisposal(scope);
+            return blockProducerEnv;
+        }
+
+        public ScopedBlockProducerEnv CreateTransient()
+        {
+            ILifetimeScope scope = BeginScope(out IBlockProducerEnv blockProducerEnv);
+            return new ScopedBlockProducerEnv(blockProducerEnv, scope);
+        }
+
+        private ILifetimeScope BeginScope(out IBlockProducerEnv blockProducerEnv)
         {
             IWorldStateScopeProvider worldState = CreateWorldState();
-            ILifetimeScope lifetimeScope = rootLifetime.BeginLifetimeScope(builder => ConfigureBuilder(builder).AddScoped(worldState));
-            IBlockProducerEnv env = lifetimeScope.Resolve<IBlockProducerEnv>();
-
-            if (lifetime is BlockProducerEnvLifetime.Transient)
-                return new ScopedBlockProducerEnv(env, lifetimeScope);
-
-            rootLifetime.Disposer.AddInstanceForAsyncDisposal(lifetimeScope);
-            return env;
+            ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder => ConfigureBuilder(builder).AddScoped(worldState));
+            blockProducerEnv = scope.Resolve<IBlockProducerEnv>();
+            return scope;
         }
     }
 }

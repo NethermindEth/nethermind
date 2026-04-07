@@ -47,8 +47,7 @@ public class TestingRpcModule(
 
             // Create a fresh processor per call with its own WorldState to avoid scope conflicts
             // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
-            IBlockProducerEnv env = blockProducerEnvFactory.Create(BlockProducerEnvLifetime.Transient);
-            await using var _ = env as IAsyncDisposable;
+            await using ScopedBlockProducerEnv env = blockProducerEnvFactory.CreateTransient();
 
             Transaction[] transactions;
             try

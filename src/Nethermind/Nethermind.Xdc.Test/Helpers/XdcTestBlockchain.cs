@@ -290,7 +290,7 @@ public class XdcTestBlockchain : TestBlockchain
 
     protected override IBlockProducer CreateTestBlockProducer()
     {
-        IBlockProducerEnv env = BlockProducerEnvFactory.Create();
+        IBlockProducerEnv env = BlockProducerEnvFactory.CreatePersistent();
         return new TestXdcBlockProducer(
             Signer,
             Container.Resolve<CandidateContainer>(),

@@ -225,7 +225,7 @@ public class TaikoModule : Module
         IRlpValueDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
-        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
 
         TaikoPayloadPreparationService payloadPreparationService = new(
             blockProducerEnv.ChainProcessor,
