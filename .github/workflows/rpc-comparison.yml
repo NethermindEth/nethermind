@@ -1,4 +1,4 @@
-name: [JSON-RPC] Compare Nethermind between clients and versions
+name: Compare JSON-RPC between clients and versions
 
 on:
   workflow_dispatch:
