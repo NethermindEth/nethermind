@@ -32,6 +32,9 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     private void OnTerminalBlock(object? sender, EventArgs e)
     {
+        if (sender is IPoSSwitcher switcher)
+            switcher.TerminalBlockReached -= OnTerminalBlock;
+
         // Unsubscribe AuRa finalization from block processing events — post-merge
         // finalization is handled by the beacon chain via ManualBlockFinalizationManager.
         _auRaBlockFinalizationManager.Dispose();
