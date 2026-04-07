@@ -11,6 +11,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -48,12 +49,21 @@ public class TestingRpcModule(
             // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
             await using IBlockProducerEnv env = blockProducerEnvFactory.Create();
 
-            Transaction[] transactions = txRlps is null
-                ? env.TxSource.GetTransactions(parentBlock.Header, header.GasLimit, payloadAttributes, filterSource: true).ToArray()
-                : DecodeTransactions(txRlps).ToArray();
+            Transaction[] transactions;
+            try
+            {
+                transactions = (txRlps is null
+                        ? env.TxSource.GetTransactions(parentBlock.Header, header.GasLimit, payloadAttributes, filterSource: true)
+                        : DecodeTransactions(txRlps))
+                    .ToArray();
+            }
+            catch (RlpException e)
+            {
+                return ResultWrapper<object?>.Fail($"invalid transaction RLP: {e.Message}", ErrorCodes.InvalidInput);
+            }
 
             header.TxRoot = TxTrie.CalculateRoot(transactions);
-            Block block = new(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes.Withdrawals);
+            Block block = new(header, new BlockBody(transactions, [], payloadAttributes.Withdrawals));
 
             FeesTracer feesTracer = new();
             Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
@@ -133,9 +143,14 @@ public class TestingRpcModule(
         }
     }
 
-    private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec) =>
-        spec.IsEip7928Enabled
-            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false)
-            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests!, shouldOverrideBuilder: false);
+    private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)
+    {
+        processedBlock.ExecutionRequests ??= ExecutionRequestExtensions.EmptyRequests;
+        processedBlock.Header.RequestsHash ??= ExecutionRequestExtensions.EmptyRequestsHash;
+
+        return spec.IsEip7928Enabled
+            ? new GetPayloadV6Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false)
+            : new GetPayloadV5Result(processedBlock, blockFees, new BlobsBundleV2(processedBlock), processedBlock.ExecutionRequests, shouldOverrideBuilder: false);
+    }
 
 }
