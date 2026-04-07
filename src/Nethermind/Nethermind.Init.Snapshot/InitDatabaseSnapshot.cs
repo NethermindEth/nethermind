@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
@@ -17,6 +18,12 @@ namespace Nethermind.Init.Snapshot;
 /// </summary>
 public class InitDatabaseSnapshot : InitDatabase
 {
+    private const int ExtractionRestartDelaySeconds = 5;
+    private const int InitialRetryDelaySeconds = 5;
+    private const int MaxRetryDelaySeconds = 300;
+    private const int ChecksumBufferSize = 65536;
+    private const int ChecksumProgressIntervalSeconds = 30;
+
     private readonly INethermindApi _api;
     private readonly ILogger _logger;
 
@@ -59,7 +66,7 @@ public class InitDatabaseSnapshot : InitDatabase
             {
                 if (_logger.IsInfo)
                     _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
                 Directory.Delete(dbPath, true);
             }
             else
@@ -103,8 +110,7 @@ public class InitDatabaseSnapshot : InitDatabase
         if (checkpoint.Read() >= SnapshotStage.Downloaded)
             return;
 
-        TimeSpan retryDelay = TimeSpan.FromSeconds(5);
-        const double maxRetryDelaySeconds = 300;
+        TimeSpan retryDelay = TimeSpan.FromSeconds(InitialRetryDelaySeconds);
 
         while (true)
         {
@@ -127,7 +133,7 @@ public class InitDatabaseSnapshot : InitDatabase
                 if (_logger.IsError)
                     _logger.Error($"Snapshot download failed. Retrying in {retryDelay.TotalSeconds}s. Error: {e}");
                 await Task.Delay(retryDelay, cancellationToken).ConfigureAwait(false);
-                retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, maxRetryDelaySeconds));
+                retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, MaxRetryDelaySeconds));
             }
         }
 
@@ -190,9 +196,36 @@ public class InitDatabaseSnapshot : InitDatabase
             throw new IOException($"Insufficient disk space to extract snapshot: need {snapshotSize} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
     }
 
-    private static async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
+    private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
     {
-        await using FileStream fileStream = File.OpenRead(filePath);
-        return await SHA256.HashDataAsync(fileStream, cancellationToken).ConfigureAwait(false);
+        long fileSize = new FileInfo(filePath).Length;
+        using IncrementalHash hasher = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(ChecksumBufferSize);
+        try
+        {
+            await using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read,
+                FileShare.None, bufferSize: 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            long bytesHashed = 0;
+            DateTime nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
+
+            int bytesRead;
+            while ((bytesRead = await fileStream.ReadAsync(buffer.AsMemory(), cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                hasher.AppendData(buffer, 0, bytesRead);
+                bytesHashed += bytesRead;
+
+                if (_logger.IsInfo && fileSize > 0 && DateTime.UtcNow >= nextLog)
+                {
+                    _logger.Info($"Snapshot checksum progress: {bytesHashed * 100 / fileSize}%");
+                    nextLog = DateTime.UtcNow.AddSeconds(ChecksumProgressIntervalSeconds);
+                }
+            }
+
+            return hasher.GetHashAndReset();
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 }

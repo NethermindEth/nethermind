@@ -18,6 +18,8 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
 {
     private const int BufferSize = 65536;
     private const int MaxRedirects = 10;
+    private const int ResumeWarningDelaySeconds = 5;
+    private const int ProgressIntervalSeconds = 5;
 
     // A single HttpClient is shared for all retries to preserve the connection pool.
     private readonly HttpClient _httpClient = new(new HttpClientHandler { AllowAutoRedirect = false });
@@ -42,7 +44,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
         {
             if (_logger.IsWarn)
                 _logger.Warn("Snapshot file already exists. Resuming download. To interrupt press Ctrl^C");
-            await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromSeconds(ResumeWarningDelaySeconds), cancellationToken).ConfigureAwait(false);
         }
 
         using HttpResponseMessage response = await SendWithRangeAsync(_httpClient, url, existingSize, cancellationToken).ConfigureAwait(false);
@@ -66,7 +68,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager, ITimerFactory t
         await using FileStream fileStream = new(destinationPath, fileMode, FileAccess.Write, FileShare.None, BufferSize, useAsync: true);
 
         long initialProgress = fileMode == FileMode.Append ? existingSize : 0;
-        using ProgressTracker progressTracker = new(logManager, timerFactory, TimeSpan.FromSeconds(5), initialProgress, totalSize);
+        using ProgressTracker progressTracker = new(logManager, timerFactory, TimeSpan.FromSeconds(ProgressIntervalSeconds), initialProgress, totalSize);
 
         await CopyWithProgressAsync(contentStream, fileStream, progressTracker, cancellationToken).ConfigureAwait(false);
 

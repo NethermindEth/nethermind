@@ -13,6 +13,8 @@ namespace Nethermind.Init.Snapshot;
 /// </summary>
 internal sealed class SnapshotCheckpoint(ISnapshotConfig config, ILogManager logManager)
 {
+    private const int WriteBufferSize = 4096;
+
     private readonly string _path = Path.Combine(config.SnapshotDirectory, $"checkpoint_{config.SnapshotFileName}");
     private readonly ILogger _logger = logManager.GetClassLogger<SnapshotCheckpoint>();
 
@@ -38,7 +40,7 @@ internal sealed class SnapshotCheckpoint(ISnapshotConfig config, ILogManager log
     public void Advance(SnapshotStage stage)
     {
         string tempPath = $"{_path}.tmp";
-        using (FileStream fs = new(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough))
+        using (FileStream fs = new(tempPath, FileMode.Create, FileAccess.Write, FileShare.None, WriteBufferSize, FileOptions.WriteThrough))
         {
             byte[] data = Encoding.UTF8.GetBytes(stage.ToString());
             fs.Write(data);
