@@ -7,7 +7,7 @@
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/bcc0fbeb-fd03-4b9f-9b19-c3790e1fe2fa" alt="Nethermind client" width="100%">
+  <img src="https://github.com/user-attachments/assets/7c077f6c-4a62-42e2-9ef1-abc580bb2413" alt="Nethermind client" width="100%">
 </p>
 
 ## Overview
