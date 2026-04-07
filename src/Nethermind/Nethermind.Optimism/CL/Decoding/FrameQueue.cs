@@ -11,7 +11,7 @@ namespace Nethermind.Optimism.CL.Decoding;
 public class FrameQueue(ILogManager logManager) : IFrameQueue
 {
     private readonly List<byte> _frameData = [];
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<FrameQueue>();
 
     private Frame? _latestFrame;
 

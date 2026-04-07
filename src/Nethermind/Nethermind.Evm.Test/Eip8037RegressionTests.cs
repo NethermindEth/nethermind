@@ -1,11 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using NUnit.Framework;
@@ -77,6 +78,60 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         byte[] returnData = tracer.ReturnValue;
         Assert.That(returnData.IsZero(), Is.True,
             "Nested CREATE should fail: child has 1175 gas but needs 1180 for code deposit (6 regular + 1174 state spill)");
+    }
+
+    /// <summary>
+    /// BAL devnet-3 chain split repro: when a CREATE tx's initcode performs a CALL to a
+    /// new (empty) account — consuming GAS_NEW_ACCOUNT (131,488) state gas — and then
+    /// returns oversized code triggering a code deposit failure, the block state gas
+    /// accumulator must include the state gas consumed during initcode execution, not
+    /// just the intrinsic state gas.
+    ///
+    /// Without the fix, blockStateGas = intrinsicState (only the tx-level state gas),
+    /// which is lower than the actual state gas consumed. This caused header.gasUsed to
+    /// be exactly GAS_NEW_ACCOUNT lower than geth/EELS.
+    /// </summary>
+    [Test]
+    public void Eip8037_code_deposit_failure_must_include_initcode_state_gas_in_block_accumulator()
+    {
+        // Initcode:
+        //   1) SSTORE(slot=0, value=1) — charges SSetState (37,568) state gas
+        //   2) RETURN 33,000 bytes — exceeds MaxCodeSizeEip7954 (32,768), triggers deposit failure
+        //
+        // The code deposit failure halts and reverts state changes, but the state gas
+        // consumed during initcode execution must still count in the block accumulator.
+        byte[] initCode = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0)
+            .Op(Instruction.SSTORE)   // SSTORE(0, 1) → SSetState state gas
+            .PushData(33_000)         // oversized: > MaxCodeSizeEip7954 (32,768)
+            .PushData(0)
+            .Op(Instruction.RETURN)   // return 33,000 zero bytes as deployed code
+            .Done;
+
+        long gasLimit = 1_000_000;
+
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, initCode, blockGasLimit: 50_000_000);
+        transaction.To = null;   // CREATE transaction
+        transaction.Data = initCode;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure),
+            "CREATE tx with oversized code return should fail");
+
+        // The critical assertion: BlockStateGas must include the state gas consumed
+        // during initcode execution (SSetState from the SSTORE), not just intrinsicState.
+        //   intrinsicState for CREATE tx = CreateState = 131,488
+        //   SSTORE in initcode adds     = SSetState = 37,568
+        //   correct total               = 169,056
+        // Without the fix: blockStateGas = intrinsicState = CreateState (131,488)
+        // With the fix:    blockStateGas = CreateState + SSetState (169,056)
+        long intrinsicStateGas = GasCostOf.CreateState;
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.GreaterThan(intrinsicStateGas),
+            $"Block state gas ({tracer.GasConsumedResult.BlockStateGas}) must exceed intrinsic state gas ({intrinsicStateGas}) " +
+            $"because initcode performed an SSTORE (SSetState = {GasCostOf.SSetState})");
     }
 
     /// <summary>

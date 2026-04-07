@@ -23,7 +23,7 @@ public class InitDatabaseSnapshot : InitDatabase
     public InitDatabaseSnapshot(INethermindApi api)
     {
         _api = api;
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = _api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
     }
 
     public override async Task Execute(CancellationToken cancellationToken)

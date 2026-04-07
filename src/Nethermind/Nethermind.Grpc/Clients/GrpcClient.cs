@@ -44,7 +44,7 @@ namespace Nethermind.Grpc.Clients
 
             _address = $"{host}:{port}";
             _reconnectionInterval = reconnectionInterval;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<GrpcClient>();
         }
 
         public async Task StartAsync()

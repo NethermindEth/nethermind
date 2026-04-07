@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain
         {
             _trieStore = trieStore;
             _blockTree = blockTree;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<TrieStoreBoundaryWatcher>();
             _trieStore.ReorgBoundaryReached += OnReorgBoundaryReached;
         }
 

@@ -29,7 +29,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public void Light()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node);
+            _ = new NodeStatsLight(_node);
         }
 
         [Benchmark]

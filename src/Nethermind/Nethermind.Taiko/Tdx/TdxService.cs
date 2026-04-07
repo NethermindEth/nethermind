@@ -38,7 +38,7 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TdxService>();
 
         TryLoadBootstrap();
     }
