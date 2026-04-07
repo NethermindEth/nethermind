@@ -78,6 +78,12 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
         _changes.Clear();
     }
 
+    public void Reset()
+    {
+        Clear();
+        Index = 0;
+    }
+
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
         bool isZeroBalanceChange = before == after;

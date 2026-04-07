@@ -43,20 +43,28 @@ public class BlockAccessListManager(
 {
 
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    private BlockExecutionContext _blockExecutionContext;
-    private TxProcessorWithWorldStateManager _txProcessorWithWorldStateManager;
+    private BlockExecutionContext? _blockExecutionContext;
+    private TxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private const int GasValidationChunkSize = 8;
-    private long _gasRemaining;
+    private long? _gasRemaining;
+
+    public void Reset()
+    {
+        _txProcessorWithWorldStateManager = null;
+        _blockExecutionContext = null;
+        _gasRemaining = null;
+        GeneratedBlockAccessList.Reset();
+    }
 
     public void Setup(Block block, bool parallel)
     {
         if (parallel)
         {
-            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
         else
         {
-            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
     }
 
@@ -112,7 +120,7 @@ public class BlockAccessListManager(
                 throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
             }
         }
-        _blockExecutionContext.Header.GasUsed = totalGas;
+        _blockExecutionContext.Value.Header.GasUsed = totalGas;
     }
 
     public static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)

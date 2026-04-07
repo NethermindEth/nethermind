@@ -41,7 +41,7 @@ public partial class ParallelBlockProcessor(
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
 {
     public new event Action? TransactionsExecuted;
-    private BlockAccessListManager _balManager;
+    private readonly BlockAccessListManager _balManager = new(stateProvider, blobBaseFeeCalculator, specProvider, blockHashProvider, logManager, blocksConfig);
     private bool _parallel;
 
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
@@ -49,7 +49,7 @@ public partial class ParallelBlockProcessor(
         if (spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis)
         {
             _parallel = blocksConfig.ParallelExecution && !options.ContainsFlag(ProcessingOptions.ProducingBlock);
-            _balManager = new(_stateProvider, blobBaseFeeCalculator, _specProvider, blockHashProvider, _logManager, blocksConfig);
+            _balManager.Reset();
             _blockTransactionsExecutor.SetBlockAccessListManager(_balManager);
             _balManager.SetGasUsed(suggestedBlock.GasUsed);
 
