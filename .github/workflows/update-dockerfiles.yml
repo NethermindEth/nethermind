@@ -83,4 +83,4 @@ jobs:
           git add -A
           git commit -am "Update Dockerfiles"
           git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "chore: Update Dockerfiles" -b "$body" -l .net -l devops
