@@ -167,6 +167,49 @@ public class HeaderValidatorTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_slot_number_missing_then_valid()
+    {
+        TestSpecProvider specProvider = new(Amsterdam.Instance);
+        _validator = new HeaderValidator(_blockTree, Always.Valid, specProvider,
+            new OneLoggerLogManager(new(_testLogger)));
+
+        BlockAccessList emptyBal = new();
+        byte[] emptyEncodedBal = Rlp.Encode(emptyBal).Bytes;
+        _parentBlock = Build.A.Block
+            .WithNumber(5)
+            .WithSlotNumber(10)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessList(emptyBal)
+            .WithEncodedBlockAccessList(emptyEncodedBal)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .TestObject;
+
+        _block = Build.A.Block
+            .WithParent(_parentBlock)
+            .WithNumber(_parentBlock.Number + 1)
+            .WithSlotNumber(null)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithEmptyRequestsHash()
+            .WithBlockAccessList(emptyBal)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithEncodedBlockAccessList(emptyEncodedBal)
+            .TestObject;
+
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = _validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.True);
+            Assert.That(error, Is.Null);
+        }
+    }
+
     private static IEnumerable<TestCaseData> CorruptedFieldCases()
     {
         yield return new TestCaseData(new Action<Block>(b => b.Header.ExtraData = new byte[33]))

@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using NUnit.Framework;
@@ -56,10 +57,18 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
         {
-            return RunTest(test, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance, null);
         }
 
         protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        {
+            return RunTest(test, txTracer, null);
+        }
+
+        protected EthereumTestResult RunTest(
+            GeneralStateTest test,
+            ITxTracer txTracer,
+            Action<string, string, long, Hash256, string>? stateDumper)
         {
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
@@ -87,6 +96,7 @@ namespace Ethereum.Test.Base
 
             IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
             IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+            IStateReader stateReader = container.Resolve<IStateReader>();
             using IDisposable _ = stateProvider.BeginScope(null);
             IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
             ITransactionProcessor transactionProcessor = mainBlockProcessingContext.TransactionProcessor;
@@ -102,6 +112,8 @@ namespace Ethereum.Test.Base
                 stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
                 stateProvider.RecalculateStateRoot();
             }
+
+            StateDumpHelper.Write(stateDumper, test.Name ?? string.Empty, "pre", test.CurrentNumber, stateProvider, stateReader);
 
             Snapshot preExecutionSnapshot = stateProvider.TakeSnapshot(newTransactionStart: true);
 
@@ -186,6 +198,8 @@ namespace Ethereum.Test.Base
                     stateProvider.RecalculateStateRoot();
                 }
             }
+
+            StateDumpHelper.Write(stateDumper, test.Name ?? string.Empty, "post", test.CurrentNumber, stateProvider, stateReader);
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)

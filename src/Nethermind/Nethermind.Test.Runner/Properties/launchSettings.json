@@ -10,7 +10,7 @@
     },
     "Blockchain Test": {
       "commandName": "Project",
-      "commandLineArgs": "-b -i blockchainTest1.json"
+      "commandLineArgs": "-b -ds -i blockchainTest1.json"
     },
     "Gnosis Blockchain Test": {
       "commandName": "Project",

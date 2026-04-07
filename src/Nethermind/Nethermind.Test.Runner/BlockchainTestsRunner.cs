@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Test.Runner;
 
@@ -15,11 +17,14 @@ public class BlockchainTestsRunner(
     ulong chainId,
     bool trace = false,
     bool traceMemory = false,
-    bool traceNoStack = false)
+    bool traceNoStack = false,
+    bool dumpState = false)
     : BlockchainTestBase, IBlockchainTestRunner
 {
     private readonly ConsoleColor _defaultColor = Console.ForegroundColor;
     private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+    private readonly bool _dumpState = dumpState;
+    private static readonly IJsonSerializer s_serializer = new EthereumJsonSerializer();
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
     {
@@ -53,7 +58,10 @@ public class BlockchainTestsRunner(
             {
                 test.ChainId = chainId;
 
-                EthereumTestResult result = await RunTest(test, tracer: tracer);
+                EthereumTestResult result = await RunTest(
+                    test,
+                    tracer: tracer,
+                    stateDumper: _dumpState ? WriteStateDump : null);
                 testResults.Add(result);
                 if (result.Pass)
                     WriteGreen("PASS");
@@ -77,5 +85,36 @@ public class BlockchainTestsRunner(
         Console.ForegroundColor = ConsoleColor.Green;
         Console.WriteLine(text);
         Console.ForegroundColor = _defaultColor;
+    }
+
+    private void WriteStateDump(string testName, string phase, long blockNumber, Hash256 stateRoot, string state)
+    {
+        StateDumpEnvelope envelope = new()
+        {
+            StateDump = new StateDumpPayload
+            {
+                Name = testName,
+                Phase = phase,
+                Block = blockNumber,
+                StateRoot = stateRoot,
+                State = state
+            }
+        };
+
+        Console.Error.WriteLine(s_serializer.Serialize(envelope));
+    }
+
+    private sealed class StateDumpEnvelope
+    {
+        public required StateDumpPayload StateDump { get; init; }
+    }
+
+    private sealed class StateDumpPayload
+    {
+        public required string Name { get; init; }
+        public required string Phase { get; init; }
+        public required long Block { get; init; }
+        public required Hash256 StateRoot { get; init; }
+        public required string State { get; init; }
     }
 }

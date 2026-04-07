@@ -38,6 +38,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.TxPool;
 using Nethermind.Serialization.Json;
+using Nethermind.State;
 using System.Reflection;
 using System.Text.Json;
 
@@ -72,7 +73,12 @@ public abstract class BlockchainTestBase
         }
     }
 
-    protected async Task<EthereumTestResult> RunTest(BlockchainTest test, Stopwatch? stopwatch = null, bool failOnInvalidRlp = true, ITestBlockTracer? tracer = null)
+    protected async Task<EthereumTestResult> RunTest(
+        BlockchainTest test,
+        Stopwatch? stopwatch = null,
+        bool failOnInvalidRlp = true,
+        ITestBlockTracer? tracer = null,
+        Action<string, string, long, Hash256, string>? stateDumper = null)
     {
         _logger.Info($"Running {test.Name}, Network: [{test.Network!.Name}] at {DateTime.UtcNow:HH:mm:ss.ffffff}");
         if (test.NetworkAfterTransition is not null)
@@ -148,6 +154,7 @@ public abstract class BlockchainTestBase
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+        IStateReader stateReader = container.Resolve<IStateReader>();
         BlockchainProcessor blockchainProcessor = (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
         IBlockValidator blockValidator = container.Resolve<IBlockValidator>();
@@ -164,7 +171,8 @@ public abstract class BlockchainTestBase
             // Genesis processing
             using (stateProvider.BeginScope(null))
             {
-                InitializeTestState(test, stateProvider, specProvider);
+                InitializeTestState(test, stateProvider, test.GenesisSpec);
+                StateDumpHelper.Write(stateDumper, test.Name ?? string.Empty, "pre", 0, stateProvider, stateReader);
 
                 stopwatch?.Start();
 
@@ -250,6 +258,7 @@ public abstract class BlockchainTestBase
             using (stateProvider.BeginScope(headBlock.Header))
             {
                 differences = RunAssertions(test, headBlock, stateProvider);
+                StateDumpHelper.Write(stateDumper, test.Name ?? string.Empty, "post", headBlock.Number, stateProvider, stateReader);
             }
 
             bool testPassed = differences.Count == 0;
@@ -267,6 +276,13 @@ public abstract class BlockchainTestBase
         }
         catch (Exception)
         {
+            StateDumpHelper.TryWrite(
+                stateDumper,
+                test.Name ?? string.Empty,
+                "post",
+                blockTree.Head?.Number ?? 0,
+                stateProvider,
+                stateReader);
             await blockchainProcessor.StopAsync(true);
             throw;
         }
@@ -439,7 +455,7 @@ public abstract class BlockchainTestBase
         return correctRlp;
     }
 
-    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeTestState(BlockchainTest test, IWorldState stateProvider, IReleaseSpec initializationSpec)
     {
         foreach (KeyValuePair<Address, AccountState> accountState in
             (IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>())
@@ -450,10 +466,12 @@ public abstract class BlockchainTestBase
             }
 
             stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
-            stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
+            stateProvider.InsertCode(accountState.Key, accountState.Value.Code, initializationSpec);
         }
 
-        stateProvider.Commit(specProvider.GenesisSpec);
+        // Ethereum blockchain fixtures materialize the genesis allocation using the chain genesis rules
+        // even when the genesis block itself must be validated under a later fork.
+        stateProvider.Commit(initializationSpec);
         stateProvider.CommitTree(0);
         stateProvider.Reset();
     }

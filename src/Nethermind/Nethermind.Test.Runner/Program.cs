@@ -47,6 +47,9 @@ internal class Program
 
         public static Option<bool> EnableWarmup { get; } =
             new("--warmup", "-wu") { Description = "Enable warmup for benchmarking purposes." };
+
+        public static Option<bool> DumpState { get; } =
+            new("--dumpState", "-ds") { Description = "Write pre and post state dumps to stderr." };
     }
 
     public static async Task<int> Main(params string[] args)
@@ -64,6 +67,7 @@ internal class Program
             Options.Stdin,
             Options.GnosisTest,
             Options.EnableWarmup,
+            Options.DumpState,
         ];
         rootCommand.SetAction(Run);
 
@@ -97,7 +101,8 @@ internal class Program
                     chainId,
                     parseResult.GetValue(Options.TraceAlways),
                     !parseResult.GetValue(Options.ExcludeMemory),
-                    parseResult.GetValue(Options.ExcludeStack)));
+                    parseResult.GetValue(Options.ExcludeStack),
+                    parseResult.GetValue(Options.DumpState)));
             }
             else
             {
@@ -108,7 +113,8 @@ internal class Program
                     !parseResult.GetValue(Options.ExcludeStack),
                     chainId,
                     parseResult.GetValue(Options.Filter),
-                    parseResult.GetValue(Options.EnableWarmup)));
+                    parseResult.GetValue(Options.EnableWarmup),
+                    parseResult.GetValue(Options.DumpState)));
             }
 
 

@@ -415,9 +415,7 @@ namespace Nethermind.Consensus.Validators
             {
                 if (header.SlotNumber is null)
                 {
-                    if (_logger.IsWarn) _logger.Warn("SlotNumber field is not set.");
-                    error = BlockErrorMessages.MissingSlotNumber;
-                    return false;
+                    return true;
                 }
 
                 if (parent.SlotNumber is not null && parent.SlotNumber != 0 && header.SlotNumber <= parent.SlotNumber)
