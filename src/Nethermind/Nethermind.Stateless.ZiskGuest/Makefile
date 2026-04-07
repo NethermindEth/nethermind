@@ -7,33 +7,11 @@ GUEST_DIR := $(MAKEFILE_DIR)
 BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 BFLAT_REFS := \
-  -r {std}/Microsoft.Win32.Primitives.dll \
-  -r {std}/netstandard.dll \
-  -r {std}/System.Collections.dll \
-  -r {std}/System.Collections.Concurrent.dll \
-  -r {std}/System.Collections.Immutable.dll \
-  -r {std}/System.ComponentModel.Primitives.dll \
-  -r {std}/System.Console.dll \
-  -r {std}/System.Diagnostics.DiagnosticSource.dll \
-  -r {std}/System.Diagnostics.Process.dll \
   -r {std}/System.Diagnostics.StackTrace.dll \
   -r {std}/System.Diagnostics.Tracing.dll \
-  -r {std}/System.IO.Pipes.dll \
-  -r {std}/System.Linq.dll \
   -r {std}/System.Memory.dll \
-  -r {std}/System.Net.Primitives.dll \
-  -r {std}/System.Net.Sockets.dll \
-  -r {std}/System.Reflection.Metadata.dll \
   -r {std}/System.Runtime.dll \
-  -r {std}/System.Runtime.InteropServices.dll \
-  -r {std}/System.Runtime.Intrinsics.dll \
-  -r {std}/System.Runtime.Numerics.dll \
-  -r {std}/System.Security.Cryptography.dll \
-  -r {std}/System.Text.RegularExpressions.dll \
-  -r {std}/System.Threading.dll \
-  -r {std}/System.Threading.Tasks.Parallel.dll \
-  -r {std}/System.Threading.Thread.dll \
-  -r {std}/System.Threading.ThreadPool.dll \
+  -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
   -r $(BIN_DIR)/Microsoft.Extensions.ObjectPool.dll \
   -r $(BIN_DIR)/Nethermind.Abi.dll \
   -r $(BIN_DIR)/Nethermind.Blockchain.dll \
@@ -50,10 +28,7 @@ BFLAT_REFS := \
   -r $(BIN_DIR)/Nethermind.State.dll \
   -r $(BIN_DIR)/Nethermind.Stateless.Executor.dll \
   -r $(BIN_DIR)/Nethermind.Trie.dll \
-  -r $(BIN_DIR)/Nethermind.TxPool.dll \
-  -r $(BIN_DIR)/BouncyCastle.Cryptography.dll \
-  -r $(BIN_DIR)/NonBlocking.dll \
-  -r $(BIN_DIR)/FastEnum.Core.dll
+  -r $(BIN_DIR)/Nethermind.TxPool.dll
 
 dotnet-build:
 	dotnet build -c release -p:EnableZkEvm=true $(GUEST_DIR)/Nethermind.Stateless.ZiskGuest.csproj
