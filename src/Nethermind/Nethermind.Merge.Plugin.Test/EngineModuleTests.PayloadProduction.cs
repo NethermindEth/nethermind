@@ -677,7 +677,6 @@ public partial class EngineModuleTests
     [Test]
     public async Task Empty_block_is_valid_V1()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;
@@ -701,7 +700,6 @@ public partial class EngineModuleTests
     [Test]
     public virtual async Task Empty_block_is_valid_with_withdrawals_V2()
     {
-        using SemaphoreSlim blockImprovementLock = new(0);
         using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(Shanghai.Instance));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 blockX = chain.BlockTree.HeadHash;

@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;

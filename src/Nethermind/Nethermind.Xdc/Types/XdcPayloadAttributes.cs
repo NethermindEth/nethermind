@@ -2,9 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus.Producers;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Nethermind.Xdc.Types;
 

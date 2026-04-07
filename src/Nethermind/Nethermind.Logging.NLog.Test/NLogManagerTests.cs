@@ -44,14 +44,14 @@ namespace Nethermind.Logging.NLog.Test
             string[] rulePatterns = { "Abc.*", "Cdf.efg" };
             CheckRules(rulePatterns, false);
             string logRules = string.Join(";", rulePatterns.Select(r => $"{r}:Warn"));
-            NLogManager manager = new("test", null, logRules);
+            _ = new NLogManager("test", null, logRules);
             CheckRules(rulePatterns, true);
         }
 
         [Test]
         public void Create_removes_overwritten_rules()
         {
-            NLogManager manager = new("test", null, "*:Error");
+            _ = new NLogManager("test", null, "*:Error");
             LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
                 new LoggingRule[] { new LoggingRule("*", global::NLog.LogLevel.Error, null) },
                 static c => c.Excluding(static r => r.Targets));

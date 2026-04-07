@@ -139,7 +139,7 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
 
-        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 64));
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 13));
     }
 
     [Test]

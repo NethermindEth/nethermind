@@ -269,7 +269,6 @@ public class HistoryPrunerTests
             RetentionEpochs = 100000,
         };
 
-        ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 100 });
         IDbProvider dbProvider = Substitute.For<IDbProvider>();
         dbProvider.MetadataDb.Returns(new TestMemDb());
 
