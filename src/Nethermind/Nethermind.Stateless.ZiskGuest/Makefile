@@ -73,8 +73,6 @@ build: dotnet-build
 		--no-globalization \
 		--nostdlibrefs \
 		$(BFLAT_REFS) \
-		-r $(BIN_DIR)/Nethermind.ZiskBindings.dll \
-		--extra-ld $(BIN_DIR)/runtimes/linux-riscv64/native/libziskos.a \
 		--extlib $(BIN_DIR)/libziskos.bflat.manifest \
 		$(SRC_DIR)/Program.cs
 	mkdir -p $(GUEST_DIR)/bin && \
