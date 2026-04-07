@@ -115,9 +115,9 @@ public class EraStoreTests
     {
         using IContainer ctx = EraETestModule.BuildContainerBuilder().Build();
         string tmpDirectory = ctx.ResolveTempDirPath();
-        System.IO.Directory.CreateDirectory(tmpDirectory);
+        Directory.CreateDirectory(tmpDirectory);
 
-        System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName), "");
+        File.WriteAllText(Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName), "");
 
         Assert.That(
             () => ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null),
@@ -131,8 +131,8 @@ public class EraStoreTests
         await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
         string tmpDirectory = ctx.ResolveTempDirPath();
 
-        string accPath = System.IO.Path.Combine(tmpDirectory, EraExporter.AccumulatorFileName);
-        ISet<ValueHash256> trusted = (await System.IO.File.ReadAllLinesAsync(accPath))
+        string accPath = Path.Combine(tmpDirectory, EraExporter.AccumulatorFileName);
+        ISet<ValueHash256> trusted = (await File.ReadAllLinesAsync(accPath))
             .Select(EraPathUtils.ExtractHashFromChecksumEntry)
             .ToHashSet();
 

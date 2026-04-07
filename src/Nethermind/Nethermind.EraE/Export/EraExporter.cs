@@ -40,7 +40,8 @@ public class EraExporter(
         : throw new ArgumentException($"MaxEraSize must be between 1 and {EraWriter.MaxEraSize} (SLOTS_PER_HISTORICAL_ROOT). Got {eraConfig.MaxEraSize}.");
 
     public const string AccumulatorFileName = "accumulators.txt";
-    public const string ChecksumsFileName = "checksums_sha256.txt";
+    public const string ChecksumsSHA256FileName = "checksums_sha256.txt";
+    public const string ChecksumsFileName = "checksums.txt";
 
     private const int ProgressLogInterval = 10000;
     private const int RetryDelayMs = 100;
@@ -90,7 +91,7 @@ public class EraExporter(
 
         // Load existing hash manifests so TrySkipExistingEpoch can look up checksums and
         // accumulator roots by filename — O(1) per epoch — instead of reading each era file.
-        Dictionary<string, ValueHash256> cachedChecksums = LoadHashFile(Path.Combine(destinationPath, ChecksumsFileName));
+        Dictionary<string, ValueHash256> cachedChecksums = LoadHashFile(Path.Combine(destinationPath, ChecksumsSHA256FileName));
         Dictionary<string, ValueHash256> cachedAccumulators = LoadHashFile(Path.Combine(destinationPath, AccumulatorFileName));
 
         await Parallel.ForEachAsync(epochIdxs, new ParallelOptions
@@ -104,9 +105,13 @@ public class EraExporter(
         fileSystem.File.Delete(accumulatorPath);
         await WriteHashFile(accumulatorPath, accumulators, fileNames, cancellation);
 
-        string checksumPath = Path.Combine(destinationPath, ChecksumsFileName);
-        fileSystem.File.Delete(checksumPath);
-        await WriteHashFile(checksumPath, checksums, fileNames, cancellation);
+        string checksumSha256FilePath = Path.Combine(destinationPath, ChecksumsSHA256FileName);
+        fileSystem.File.Delete(checksumSha256FilePath);
+        await WriteHashFile(checksumSha256FilePath, checksums, fileNames, cancellation);
+
+        string checksumFilePath = Path.Combine(destinationPath, ChecksumsFileName);
+        fileSystem.File.Delete(checksumFilePath);
+        await WriteGethChecksumFile(checksumFilePath, checksums, cancellation);
 
         progress.LogProgress();
         if (_logger.IsInfo) _logger.Info($"Finished EraE export from {from} to {to}");
@@ -295,6 +300,18 @@ public class EraExporter(
         {
             cancellation.ThrowIfCancellationRequested();
             await writer.WriteLineAsync($"{hashes[i].ToString(false)}  {fileNames[i]}");
+        }
+    }
+
+    private async Task WriteGethChecksumFile(string path, ArrayPoolList<ValueHash256> hashes, CancellationToken cancellation)
+    {
+        await using FileSystemStream stream = fileSystem.FileStream.New(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        await using StreamWriter writer = new(stream);
+
+        for (int i = 0; i < hashes.Count; i++)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            await writer.WriteLineAsync($"0x{hashes[i].ToString(false)}");
         }
     }
 }

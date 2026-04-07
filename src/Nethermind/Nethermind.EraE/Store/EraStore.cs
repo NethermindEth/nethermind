@@ -72,7 +72,7 @@ public sealed class EraStore : IEraStore
         _verifyConcurrency = verifyConcurrency == 0 ? Environment.ProcessorCount : verifyConcurrency;
 
         _checksumsByEpoch = new Dictionary<long, ValueHash256>();
-        foreach (string line in fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsFileName)))
+        foreach (string line in fileSystem.File.ReadAllLines(Path.Join(directory, EraExporter.ChecksumsSHA256FileName)))
         {
             (long checksumEpoch, ValueHash256 hash) = EraPathUtils.ParseChecksumEntry(line);
             _checksumsByEpoch[checksumEpoch] = hash;

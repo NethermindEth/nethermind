@@ -51,7 +51,7 @@ public class EraExporterTests
         string tmpDirectory = container.ResolveTempDirPath();
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
 
-        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName))
+        System.IO.File.Exists(System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName))
             .Should().BeTrue();
     }
 
@@ -76,7 +76,7 @@ public class EraExporterTests
         await container.Resolve<IEraExporter>().Export(tmpDirectory, 0, 0);
 
         string[] lines = await System.IO.File.ReadAllLinesAsync(
-            System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName));
+            System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName));
 
         foreach (string line in lines)
         {

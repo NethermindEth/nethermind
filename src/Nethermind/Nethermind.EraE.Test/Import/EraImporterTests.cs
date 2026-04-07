@@ -27,7 +27,7 @@ public class EraImporterTests
         string tmpDirectory = ctx.ResolveTempDirPath();
         System.IO.Directory.CreateDirectory(tmpDirectory);
         await System.IO.File.WriteAllTextAsync(
-            System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsFileName), "");
+            System.IO.Path.Combine(tmpDirectory, EraExporter.ChecksumsSHA256FileName), "");
 
         IEraImporter sut = ctx.Resolve<IEraImporter>();
         Assert.That(
@@ -92,7 +92,7 @@ public class EraImporterTests
         await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
         string exportPath = sourceCtx.ResolveTempDirPath();
 
-        string checksumPath = System.IO.Path.Combine(exportPath, EraExporter.ChecksumsFileName);
+        string checksumPath = System.IO.Path.Combine(exportPath, EraExporter.ChecksumsSHA256FileName);
         string[] lines = await System.IO.File.ReadAllLinesAsync(checksumPath);
         lines[^1] = "0x0000000000000000000000000000000000000000000000000000000000000000 " +
                     System.IO.Path.GetFileName(lines[^1].Split(' ')[^1]);
