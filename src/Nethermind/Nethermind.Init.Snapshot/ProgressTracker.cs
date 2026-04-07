@@ -62,5 +62,5 @@ public class ProgressTracker : IDisposable
         _timer.Enabled = true;
     }
 
-    void IDisposable.Dispose() => _timer.Dispose();
+    public void Dispose() => _timer.Dispose();
 }

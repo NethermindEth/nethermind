@@ -16,7 +16,7 @@ namespace Nethermind.Init.Snapshot;
 /// remote snapshot before the node starts. The download is resumable and idempotent:
 /// a checkpoint file tracks progress so that restarts skip already-completed stages.
 /// </summary>
-public class InitDatabaseSnapshot : InitDatabase
+public class InitDatabaseSnapshot(INethermindApi api) : InitDatabase
 {
     private const int ExtractionRestartDelaySeconds = 5;
     private const int InitialRetryDelaySeconds = 5;
@@ -24,14 +24,7 @@ public class InitDatabaseSnapshot : InitDatabase
     private const int ChecksumBufferSize = 65536;
     private const int ChecksumProgressIntervalSeconds = 30;
 
-    private readonly INethermindApi _api;
-    private readonly ILogger _logger;
-
-    public InitDatabaseSnapshot(INethermindApi api)
-    {
-        _api = api;
-        _logger = _api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
-    }
+    private readonly ILogger _logger = api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
 
     public override async Task Execute(CancellationToken cancellationToken)
     {
@@ -42,15 +35,15 @@ public class InitDatabaseSnapshot : InitDatabase
     }
 
     private bool IsInMemoryOrReadOnlyMode() =>
-        _api.Config<IInitConfig>().DiagnosticMode is
+        api.Config<IInitConfig>().DiagnosticMode is
             DiagnosticMode.RpcDb or
             DiagnosticMode.ReadOnlyDb or
             DiagnosticMode.MemDb;
 
     private async Task InitDbFromSnapshotAsync(CancellationToken cancellationToken)
     {
-        ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
-        string dbPath = _api.Config<IInitConfig>().BaseDbPath;
+        ISnapshotConfig snapshotConfig = api.Config<ISnapshotConfig>();
+        string dbPath = api.Config<IInitConfig>().BaseDbPath;
         string snapshotUrl = snapshotConfig.DownloadUrl
             ?? throw new InvalidOperationException("Snapshot download URL is not configured.");
         string snapshotPath = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
@@ -58,7 +51,7 @@ public class InitDatabaseSnapshot : InitDatabase
         if (snapshotConfig.StripComponents < 0)
             throw new InvalidOperationException($"Snapshot.StripComponents must be non-negative, got {snapshotConfig.StripComponents}.");
 
-        SnapshotCheckpoint checkpoint = new(snapshotConfig, _api.LogManager);
+        SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
 
         if (Path.Exists(dbPath))
         {
@@ -79,7 +72,7 @@ public class InitDatabaseSnapshot : InitDatabase
 
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        using SnapshotDownloader downloader = new(_api.LogManager, _api.TimerFactory);
+        using SnapshotDownloader downloader = new(api.LogManager, api.TimerFactory);
         await DownloadWithRetryAsync(downloader, snapshotUrl, snapshotPath, checkpoint, cancellationToken).ConfigureAwait(false);
 
         bool checksumPassed = await VerifyChecksumAsync(snapshotPath, snapshotConfig, checkpoint, cancellationToken).ConfigureAwait(false);
@@ -182,7 +175,7 @@ public class InitDatabaseSnapshot : InitDatabase
 
         CheckDiskSpace(dbPath, snapshotPath);
 
-        SnapshotExtractor extractor = new(_api.LogManager);
+        SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
     }
@@ -192,8 +185,10 @@ public class InitDatabaseSnapshot : InitDatabase
         long snapshotSize = new FileInfo(snapshotPath).Length;
         string root = Path.GetPathRoot(dbPath) ?? "/";
         DriveInfo drive = new(root);
-        if (drive.AvailableFreeSpace < snapshotSize)
-            throw new IOException($"Insufficient disk space to extract snapshot: need {snapshotSize} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
+
+        // May still underestimate for highly compressed archives.
+        if (drive.AvailableFreeSpace < snapshotSize * 2)
+            throw new IOException($"Insufficient disk space to extract snapshot: need at least {snapshotSize * 2} bytes, {drive.AvailableFreeSpace} available on '{root}'.");
     }
 
     private async Task<byte[]> ComputeChecksumAsync(string filePath, CancellationToken cancellationToken)
