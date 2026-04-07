@@ -25,7 +25,6 @@ namespace Nethermind.AuRa.Test
         private IBranchProcessor _blockProcessor;
         private IValidatorStore _validatorStore;
         private ILogManager _logManager;
-        private IValidSealerStrategy _validSealerStrategy;
 
         [SetUp]
         public void Initialize()
@@ -34,7 +33,6 @@ namespace Nethermind.AuRa.Test
             _blockProcessor = Substitute.For<IBranchProcessor>();
             _validatorStore = Substitute.For<IValidatorStore>();
             _logManager = LimboLogs.Instance;
-            _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
 
             _validatorStore.GetValidators(Arg.Any<long?>()).Returns([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC]);
         }

@@ -13,11 +13,13 @@ namespace Nethermind.Merge.Plugin;
 public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlockFinalizationManager
 {
     private readonly IAuRaBlockFinalizationManager _auRaBlockFinalizationManager;
+    private readonly IPoSSwitcher _poSSwitcher;
 
     public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IAuRaBlockFinalizationManager blockFinalizationManager, IPoSSwitcher poSSwitcher)
         : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
     {
         _auRaBlockFinalizationManager = blockFinalizationManager;
+        _poSSwitcher = poSSwitcher;
         _auRaBlockFinalizationManager.BlocksFinalized += OnBlockFinalized;
 
         if (poSSwitcher.HasEverReachedTerminalBlock())
@@ -26,14 +28,13 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
         }
         else
         {
-            poSSwitcher.TerminalBlockReached += OnTerminalBlock;
+            _poSSwitcher.TerminalBlockReached += OnTerminalBlock;
         }
     }
 
     private void OnTerminalBlock(object? sender, EventArgs e)
     {
-        if (sender is IPoSSwitcher switcher)
-            switcher.TerminalBlockReached -= OnTerminalBlock;
+        _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
 
         // Unsubscribe AuRa finalization from block processing events — post-merge
         // finalization is handled by the beacon chain via ManualBlockFinalizationManager.
@@ -53,6 +54,7 @@ public class AuRaMergeFinalizationManager : MergeFinalizationManager, IAuRaBlock
 
     public override void Dispose()
     {
+        _poSSwitcher.TerminalBlockReached -= OnTerminalBlock;
         _auRaBlockFinalizationManager.BlocksFinalized -= OnBlockFinalized;
         _auRaBlockFinalizationManager.Dispose();
         base.Dispose();
