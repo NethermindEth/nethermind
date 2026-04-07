@@ -4,7 +4,7 @@
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.Precompiles;
 
 public class L1PrecompileMetrics
 {

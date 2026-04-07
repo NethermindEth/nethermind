@@ -8,27 +8,23 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.Precompiles;
 
 /// <summary>
 /// L1STATICCALL precompile - execute arbitrary read-only calls against L1 contracts.
 ///
-/// The input to the L1STATICCALL precompile consists of:
+/// Input layout:
+///   [0:20)   address      — L1 contract address to call
+///   [20:52)  blockNumber  — L1 block number
+///   [52:...)  calldata    — ABI-encoded function call (may be empty)
 ///
-/// | Byte range          | Name               | Description                                  |
-/// | ------------------  | ------------------ | -------------------------------------------- |
-/// | [0: 19] (20 bytes)  | target             | The L1 contract address to call               |
-/// | [20: 51] (32 bytes) | blockNumber        | The L1 block number to call at                |
-/// | [52: ...)  (variable)| calldata          | ABI-encoded function call (may be empty)      |
-///
-/// Output:
-/// - Variable-length bytes (ABI-encoded return data from the L1 call)
+/// Output: variable-length ABI-encoded return data from the L1 call.
 /// </summary>
 public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
 {
     public static readonly L1StaticCallPrecompile Instance = new();
 
-    private const string L1CallFailed = "l1 call failed";
+    private const string L1StaticCallFailed = "l1 static call failed";
 
     private L1StaticCallPrecompile()
     {
@@ -62,35 +58,35 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
             return Errors.InvalidInputLength;
         }
 
-        Address target = new(inputData.Span[..L1PrecompileConstants.AddressBytes]);
-        UInt256 blockNumber = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
-        byte[] calldata = inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
+        Address contractAddress = new(inputData.Span[..Address.Size]);
+        UInt256 blockNumber = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
+        byte[] calldata = inputData.Span[(Address.Size + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
 
-        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: request target={target}, block={blockNumber}, calldata_len={calldata.Length}");
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: request contract={contractAddress}, block={blockNumber}, calldata_len={calldata.Length}");
 
-        byte[]? result = ExecuteL1StaticCall(target, blockNumber, calldata);
+        byte[]? result = ExecuteL1StaticCall(contractAddress, blockNumber, calldata);
         if (result is null)
         {
-            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: call returned null for target={target}, block={blockNumber}");
-            return L1CallFailed;
+            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: call returned null for contract={contractAddress}, block={blockNumber}");
+            return L1StaticCallFailed;
         }
 
         if (result.Length > L1PrecompileConstants.L1StaticCallMaxReturnDataSize)
         {
             if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: return data too large ({result.Length} bytes, max {L1PrecompileConstants.L1StaticCallMaxReturnDataSize})");
-            return L1CallFailed;
+            return L1StaticCallFailed;
         }
 
-        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: success target={target}, block={blockNumber}, return_len={result.Length}");
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: success contract={contractAddress}, block={blockNumber}, return_len={result.Length}");
 
         return result;
     }
 
-    private byte[]? ExecuteL1StaticCall(Address target, UInt256 blockNumber, byte[] calldata)
+    private byte[]? ExecuteL1StaticCall(Address contractAddress, UInt256 blockNumber, byte[] calldata)
     {
         try
         {
-            byte[]? result = L1CallProvider?.ExecuteStaticCall(target, blockNumber, calldata);
+            byte[]? result = L1CallProvider?.ExecuteStaticCall(contractAddress, blockNumber, calldata);
             if (Logger.IsTrace) Logger.Trace($"L1STATICCALL: provider returned {(result is null ? "null" : $"{result.Length} bytes")}");
             return result;
         }

@@ -8,7 +8,7 @@ using Nethermind.Core;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.Precompiles;
 
 public class TaikoPrecompileProvider : IPrecompileProvider
 {

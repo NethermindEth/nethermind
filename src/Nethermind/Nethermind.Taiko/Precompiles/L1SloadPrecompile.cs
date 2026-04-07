@@ -8,21 +8,17 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.Precompiles;
 
 /// <summary>
 /// L1SLOAD precompile - read storage values from L1 contracts (RIP-7728).
 ///
-/// The input to the L1SLOAD precompile consists of:
+/// Input layout:
+///   [0:20)   address      — L1 contract address
+///   [20:52)  storageKey   — storage slot to read
+///   [52:84)  blockNumber  — L1 block number
 ///
-/// | Byte range          | Name               | Description                      |
-/// | ------------------  | ------------------ | -------------------------------  |
-/// | [0: 19] (20 bytes)  | address            | The L1 contract address          |
-/// | [20: 51] (32 bytes) | storageKey         | The storage key to read          |
-/// | [52: 83] (32 bytes) | blockNumber        | The L1 block number to read from |
-///
-/// Output:
-/// - Storage value (32 bytes)
+/// Output: 32-byte storage value.
 /// </summary>
 public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 {
@@ -39,29 +35,29 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     public static IL1StorageProvider? L1StorageProvider { get; set; }
     public static ILogger Logger { get; set; }
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.FixedGasCost;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1SloadFixedGasCost;
 
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
-        inputData.Length != L1PrecompileConstants.ExpectedInputLength ? 0L : L1PrecompileConstants.PerLoadGasCost;
+        inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength ? 0L : L1PrecompileConstants.L1SloadPerLoadGasCost;
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         L1PrecompileMetrics.L1SloadPrecompile++;
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: precompile called, input_len={inputData.Length}");
 
-        if (inputData.Length != L1PrecompileConstants.ExpectedInputLength)
+        if (inputData.Length != L1PrecompileConstants.L1SloadExpectedInputLength)
         {
-            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: rejected invalid input length {inputData.Length}, expected {L1PrecompileConstants.ExpectedInputLength}");
+            if (Logger.IsWarn) Logger.Warn($"L1SLOAD: rejected invalid input length {inputData.Length}, expected {L1PrecompileConstants.L1SloadExpectedInputLength}");
             return Errors.InvalidInputLength;
         }
 
-        Address contractAddress = new(inputData.Span[..L1PrecompileConstants.AddressBytes]);
-        UInt256 storageKey = new(inputData.Span[L1PrecompileConstants.AddressBytes..(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)], isBigEndian: true);
-        UInt256 blockNumber = new(inputData.Span[(L1PrecompileConstants.AddressBytes + L1PrecompileConstants.StorageKeyBytes)..], isBigEndian: true);
+        Address contractAddress = new(inputData.Span[..Address.Size]);
+        UInt256 storageKey = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)], isBigEndian: true);
+        UInt256 blockNumber = new(inputData.Span[(Address.Size + L1PrecompileConstants.L1SloadStorageKeyBytes)..], isBigEndian: true);
 
         if (Logger.IsDebug) Logger.Debug($"L1SLOAD: request contract={contractAddress}, key={storageKey}, block={blockNumber}");
 
-        UInt256? storageValue = GetL1StorageValue(contractAddress, storageKey, blockNumber);
+        UInt256? storageValue = GetL1StorageValue(contractAddress, blockNumber, storageKey);
         if (storageValue is null)
         {
             if (Logger.IsWarn) Logger.Warn($"L1SLOAD: storage access returned null for contract={contractAddress}, key={storageKey}, block={blockNumber}");
@@ -76,11 +72,11 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
         return output;
     }
 
-    private UInt256? GetL1StorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
+    private UInt256? GetL1StorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {
         try
         {
-            var result = L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            UInt256? result = L1StorageProvider?.GetStorageValue(contractAddress, blockNumber, storageKey);
             if (Logger.IsTrace) Logger.Trace($"L1SLOAD: provider returned {(result is null ? "null" : result.Value.ToString())}");
             return result;
         }

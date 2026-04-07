@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.Stateless;
 
 /// <summary>
 /// Collects execution witness for a single call (not a full block).
-/// Used by taiko_executionWitnessCall to capture state accessed during a single eth_call.
+/// Used by debug_executionWitnessCall to capture state accessed during a single eth_call.
 /// </summary>
 public interface ISingleCallWitnessCollector
 {

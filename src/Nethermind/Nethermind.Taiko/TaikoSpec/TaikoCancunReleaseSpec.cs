@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Frozen;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Specs.Forks;
+using Nethermind.Taiko.Precompiles;
 
 namespace Nethermind.Taiko.TaikoSpec;
 
@@ -20,13 +20,8 @@ public class TaikoOntakeReleaseSpec : Cancun, ITaikoReleaseSpec
     public bool IsRip7728Enabled { get; set; }
     public bool IsL1StaticCallEnabled { get; set; }
 
-    public override FrozenSet<AddressAsKey> BuildPrecompilesCache()
-    {
-        HashSet<AddressAsKey> cache = new(base.BuildPrecompilesCache());
-        if (IsRip7728Enabled) cache.Add(L1SloadPrecompile.Address);
-        if (IsL1StaticCallEnabled) cache.Add(L1StaticCallPrecompile.Address);
-        return cache.ToFrozenSet();
-    }
+    public override FrozenSet<AddressAsKey> BuildPrecompilesCache() =>
+        ITaikoReleaseSpec.BuildTaikoPrecompilesCache(base.BuildPrecompilesCache(), IsRip7728Enabled, IsL1StaticCallEnabled);
 }
 
 public class TaikoPacayaReleaseSpec : TaikoOntakeReleaseSpec

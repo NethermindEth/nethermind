@@ -36,13 +36,14 @@ public class WitnessGeneratingBlockProcessingEnv(
     ISealValidator sealValidator,
     IRewardCalculator rewardCalculator,
     IHeaderStore headerStore,
+    IPrecompileProvider precompileProvider,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnv
 {
     private TransactionProcessor<EthereumGasPolicy> CreateTransactionProcessor(IWorldState state, IHeaderFinder witnessGeneratingHeaderFinder)
     {
         BlockhashProvider blockhashProvider = new(new BlockhashCache(witnessGeneratingHeaderFinder, logManager), state, logManager);
         VirtualMachine vm = new(blockhashProvider, specProvider, logManager);
-        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, new EthereumPrecompileProvider());
+        ICodeInfoRepository codeInfoRepository = new CodeInfoRepository(state, precompileProvider);
         return new TransactionProcessor<EthereumGasPolicy>(new BlobBaseFeeCalculator(), specProvider, state, vm, codeInfoRepository, logManager);
     }
 

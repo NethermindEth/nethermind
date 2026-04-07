@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
 using NUnit.Framework;
 
@@ -40,7 +41,7 @@ public class L1StaticCallPrecompileTests
     [Test]
     public void DataGasCost_With_Short_Input_Should_Return_0()
     {
-        byte[] input = new byte[L1PrecompileConstants.AddressBytes]; // 20 bytes, well below 52
+        byte[] input = new byte[Address.Size]; // 20 bytes, well below 52
         Assert.That(_precompile.DataGasCost(input, _spec), Is.EqualTo(0L));
     }
 
@@ -71,7 +72,7 @@ public class L1StaticCallPrecompileTests
     [Test]
     public void Run_With_Short_Input_Should_Fail()
     {
-        byte[] input = new byte[L1PrecompileConstants.AddressBytes]; // 20 bytes, below 52
+        byte[] input = new byte[Address.Size]; // 20 bytes, below 52
 
         (byte[]? result, bool success) = _precompile.Run(input, _spec);
 
@@ -154,12 +155,12 @@ public class L1StaticCallPrecompileTests
             "L1StaticCallPrecompile address should not be identified as precompile when L1StaticCall is disabled");
     }
 
-    private static byte[] CreateValidInput(Address target, UInt256 blockNumber, byte[]? calldata = null)
+    private static byte[] CreateValidInput(Address contractAddress, UInt256 blockNumber, byte[]? calldata = null)
     {
         int calldataLen = calldata?.Length ?? 0;
         byte[] input = new byte[L1PrecompileConstants.L1StaticCallMinInputLength + calldataLen];
-        target.Bytes.CopyTo(input.AsSpan(0, L1PrecompileConstants.AddressBytes));
-        blockNumber.ToBigEndian().CopyTo(input.AsSpan(L1PrecompileConstants.AddressBytes, L1PrecompileConstants.BlockNumberBytes));
+        contractAddress.Bytes.CopyTo(input.AsSpan(0, Address.Size));
+        blockNumber.ToBigEndian().CopyTo(input.AsSpan(Address.Size, L1PrecompileConstants.BlockNumberBytes));
         if (calldata is not null)
             calldata.CopyTo(input.AsSpan(L1PrecompileConstants.L1StaticCallMinInputLength));
         return input;
@@ -174,7 +175,7 @@ public class L1StaticCallPrecompileTests
             _returnValue = returnValue;
         }
 
-        public byte[]? ExecuteStaticCall(Address target, UInt256 blockNumber, byte[] calldata) => _returnValue;
+        public byte[]? ExecuteStaticCall(Address contractAddress, UInt256 blockNumber, byte[] calldata) => _returnValue;
 
         public static MockL1CallProvider Returning(byte[] data) => new(data);
         public static MockL1CallProvider ReturningNull() => new(null);

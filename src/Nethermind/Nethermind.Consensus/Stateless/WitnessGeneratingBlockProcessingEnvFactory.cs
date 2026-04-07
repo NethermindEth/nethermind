@@ -9,6 +9,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -59,6 +60,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     builder.Resolve<ISealValidator>(),
                     builder.Resolve<IRewardCalculator>(),
                     builder.Resolve<IHeaderStore>(),
+                    builder.Resolve<IPrecompileProvider>(),
                     logManager)));
 
         return new ExecutionRecordingScope(envLifetimeScope);
