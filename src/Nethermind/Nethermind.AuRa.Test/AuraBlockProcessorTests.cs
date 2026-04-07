@@ -207,6 +207,9 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
+                BlobBaseFeeCalculator.Instance,
+                Substitute.For<IBlockhashProvider>(),
+                new BlocksConfig(),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);

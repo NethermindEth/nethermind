@@ -41,8 +41,8 @@ public partial class ParallelBlockProcessor(
     : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor)
 {
     public new event Action? TransactionsExecuted;
-    private readonly BlockAccessListManager _balManager = new(stateProvider, blobBaseFeeCalculator, specProvider, blockHashProvider, logManager, blocksConfig);
-    private bool _parallel;
+    protected readonly BlockAccessListManager _balManager = new(stateProvider, blobBaseFeeCalculator, specProvider, blockHashProvider, logManager, blocksConfig);
+    protected bool _parallel;
 
     public override (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {

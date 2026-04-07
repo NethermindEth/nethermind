@@ -8,6 +8,7 @@ using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.ExecutionRequests;
@@ -19,14 +20,16 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaBlockProcessor : BlockProcessor
+    public class AuRaBlockProcessor : ParallelBlockProcessor
     {
         private readonly IBlockFinder _blockTree;
         private readonly AuRaContractGasLimitOverride? _gasLimitOverride;
@@ -47,6 +50,9 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
             IExecutionRequestsProcessor executionRequestsProcessor,
+            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+            IBlockhashProvider blockhashProvider,
+            IBlocksConfig blocksConfig,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -62,7 +68,10 @@ namespace Nethermind.Consensus.AuRa
                 new BlockhashStore(stateProvider),
                 logManager,
                 withdrawalProcessor,
-                executionRequestsProcessor)
+                executionRequestsProcessor,
+                blobBaseFeeCalculator,
+                blockhashProvider,
+                blocksConfig)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger<AuRaBlockProcessor>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -109,8 +118,10 @@ namespace Nethermind.Consensus.AuRa
         protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec, CancellationToken token)
         {
             RewriteContracts(block, spec);
-            // todo: fix, inherit ParallelBlockProcessor?
-            // _balBuilder.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            if (_parallel)
+            {
+                _balManager.ApplyAuRaPreprocessingChanges(spec, _withdrawalContractAddress);
+            }
             return base.ProcessBlock(block, blockTracer, options, spec, token);
         }
 
