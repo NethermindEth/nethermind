@@ -13,8 +13,11 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
 {
     protected override TimeoutCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
         int sequenceLength = decoderContext.ReadSequenceLength();
         int endPosition = decoderContext.Position + sequenceLength;
 
@@ -43,42 +46,10 @@ public sealed class TimeoutCertificateDecoder : RlpValueDecoder<TimeoutCertifica
         return new TimeoutCertificate(round, signatures, gapNumber);
     }
 
-    protected override TimeoutCertificate DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-        int sequenceLength = rlpStream.ReadSequenceLength();
-        int endPosition = rlpStream.Position + sequenceLength;
-
-        ulong round = rlpStream.DecodeULong();
-
-        byte[][]? signatureBytes = rlpStream.DecodeByteArrays();
-        if (signatureBytes is not null && signatureBytes.Any(s => s.Length != 65))
-            throw new RlpException("One or more invalid signature lengths in timeout certificate.");
-        Signature[]? signatures = null;
-        if (signatureBytes is not null)
-        {
-            signatures = new Signature[signatureBytes.Length];
-            for (int i = 0; i < signatures.Length; i++)
-            {
-                signatures[i] = new Signature(signatureBytes[i].AsSpan(0, 64), signatureBytes[i][64]);
-            }
-        }
-
-        ulong gapNumber = rlpStream.DecodeUlong();
-
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            rlpStream.Check(endPosition);
-        }
-
-        return new TimeoutCertificate(round, signatures, gapNumber);
-    }
-
     public Rlp Encode(TimeoutCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);

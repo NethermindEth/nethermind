@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Facade.Eth;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
 using NUnit.Framework;

@@ -57,6 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public void DisableTxFiltering() => _floodController.IsEnabled = false;
 
+        public static string Code => Protocol.Eth;
         public override byte ProtocolVersion => EthVersions.Eth62;
         public override string ProtocolCode => Protocol.Eth;
         public override int MessageIdSpaceSize => 8;
@@ -183,9 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlock:
                     if (CanAcceptBlockGossip())
                     {
-                        using NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
-                        ReportIn(newBlockMsg, size);
-                        Handle(newBlockMsg);
+                        HandleInBackground<NewBlockMessage>(message, Handle);
                     }
                     break;
             }
@@ -236,7 +235,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected void Handle(TransactionsMessage msg)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow);
+            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((iList, 0), _handleSlow, "Transactions"))
+            {
+                iList.Dispose();
+            }
         }
 
         protected virtual ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
@@ -254,15 +256,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (i == startIdx)
                         {
-                            // Timeout immediately on the first transaction. This indicate that this task spent too much
-                            // time in the queue as the queue is probably full. In this case, queuing again wont help
-                            // as it later will just take as much time in the queue, then timing out again.
-                            if (Logger.IsDebug) Logger.Debug("Background task queue full. Dropping transactions.");
+                            // Cancelled before processing any transaction — dispose and bail out.
+                            // Rescheduling would just loop (cancelled again immediately).
+                            transactions.Dispose();
                             return ValueTask.CompletedTask;
                         }
 
-                        // Reschedule and with different start index
-                        BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), HandleSlow);
+                        // Reschedule remaining transactions with a different start index
+                        if (!BackgroundTaskScheduler.TryScheduleBackgroundTask((transactions, i), _handleSlow, "Transactions"))
+                        {
+                            transactions.Dispose();
+                        }
                         return ValueTask.CompletedTask;
                     }
 
@@ -309,7 +313,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
         }
 
-        private void Handle(NewBlockMessage msg)
+        private ValueTask Handle(NewBlockMessage msg, CancellationToken cancellationToken)
         {
             try
             {
@@ -321,6 +325,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
                 throw;
             }
+
+            return ValueTask.CompletedTask;
         }
 
         protected virtual void NotifyOfStatus(BlockHeader head)

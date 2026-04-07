@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -24,12 +23,12 @@ public class TaikoPayloadPreparationService(
     IWorldState worldState,
     IL1OriginStore l1OriginStore,
     ILogManager logManager,
-    IRlpStreamDecoder<Transaction> txDecoder) : IPayloadPreparationService
+    IRlpValueDecoder<Transaction> txDecoder) : IPayloadPreparationService
 {
     private const int _emptyBlockProcessingTimeout = 2000;
     private readonly SemaphoreSlim _worldStateLock = new(1);
 
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<TaikoPayloadPreparationService>();
 
     private readonly ConcurrentDictionary<string, IBlockProductionContext> _payloadStorage = new();
 
@@ -139,23 +138,23 @@ public class TaikoPayloadPreparationService(
 
     private Transaction[] BuildTransactions(TaikoPayloadAttributes payloadAttributes)
     {
-        RlpStream rlpStream = new(payloadAttributes.BlockMetadata!.TxList!);
+        Rlp.ValueDecoderContext ctx = new(payloadAttributes.BlockMetadata!.TxList!);
 
-        int transactionsSequenceLength = rlpStream.ReadSequenceLength();
-        int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
+        int transactionsSequenceLength = ctx.ReadSequenceLength();
+        int transactionsCheck = ctx.Position + transactionsSequenceLength;
 
-        int txCount = rlpStream.PeekNumberOfItemsRemaining(transactionsCheck);
-        rlpStream.GuardLimit(txCount);
+        int txCount = ctx.PeekNumberOfItemsRemaining(transactionsCheck);
+        ctx.GuardLimit(txCount);
 
         Transaction[] transactions = new Transaction[txCount];
         int txIndex = 0;
 
-        while (rlpStream.Position < transactionsCheck)
+        while (ctx.Position < transactionsCheck)
         {
-            transactions[txIndex++] = txDecoder.Decode(rlpStream)!;
+            transactions[txIndex++] = txDecoder.Decode(ref ctx)!;
         }
 
-        rlpStream.Check(transactionsCheck);
+        ctx.Check(transactionsCheck);
 
         return transactions;
     }

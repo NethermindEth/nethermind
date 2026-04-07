@@ -186,7 +186,7 @@ internal static partial class EvmInstructions
         programCounter += Size;
     Success:
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
@@ -572,6 +572,142 @@ internal static partial class EvmInstructions
     }
 
     /// <summary>
+    /// EIP-8024: DUPN instruction.
+    /// Duplicates a stack item based on an immediate operand with extended encoding.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionDupN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            return StopOrBadInstruction(vm, programCounter);
+
+        return stack.Dup<TTracingInst>(depth);
+    }
+
+    /// <summary>
+    /// EIP-8024: SWAPN instruction.
+    /// Swaps top of stack with the Nth element, where N is decoded from the immediate.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionSwapN<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodeSingle(vm, ref programCounter, out int depth))
+            return StopOrBadInstruction(vm, programCounter);
+
+        return stack.Swap<TTracingInst>(depth + 1);
+    }
+
+    /// <summary>
+    /// EIP-8024: EXCHANGE instruction.
+    /// Exchanges stack items at positions n and m from the top.
+    /// </summary>
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionExchange<TGasPolicy, TTracingInst>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag
+    {
+        TGasPolicy.Consume(ref gas, GasCostOf.VeryLow);
+
+        if (!TryDecodePair(vm, ref programCounter, out int n, out int m))
+            return StopOrBadInstruction(vm, programCounter);
+
+        if (!stack.Exchange<TTracingInst>(n, m))
+            return EvmExceptionType.StackUnderflow;
+
+        return EvmExceptionType.None;
+    }
+
+    /// <summary>
+    /// Returns Stop if the program counter is at or past end of code, otherwise BadInstruction.
+    /// Used by EIP-8024 to distinguish end-of-code (graceful stop) from disallowed immediate.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType StopOrBadInstruction<TGasPolicy>(VirtualMachine<TGasPolicy> vm, int programCounter)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        => programCounter >= vm.VmState.Env.CodeInfo.CodeSpan.Length
+            ? EvmExceptionType.Stop
+            : EvmExceptionType.BadInstruction;
+
+    /// <summary>
+    /// Reads and decodes an immediate for EIP-8024 DUPN/SWAPN instructions.
+    /// </summary>
+    /// <remarks>
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Branchless formula: n = (x + 145) % 256.
+    /// Valid range: 0-90 (n=145-235) and 128-255 (n=17-144).
+    /// Disallowed range: 0x5b-0x7f (91-127) to avoid JUMPDEST/PUSH patterns.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryDecodeSingle<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int depth)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            depth = 0;
+            return false;
+        }
+
+        byte imm = code[programCounter];
+        depth = (imm + 145) & 0xFF;
+
+        if ((uint)(imm - 0x5B) <= 0x24)
+            return false;
+
+        programCounter++;
+        return true;
+    }
+
+    /// <summary>
+    /// Reads and decodes an immediate for EIP-8024 EXCHANGE instruction.
+    /// </summary>
+    /// <remarks>
+    /// Handles bounds checking, reading the immediate, and advancing the program counter.
+    /// Branchless formula: k = x ^ 143 (XOR with 0x8F).
+    /// Valid range: 0-81 (k mapped via XOR) and 128-255. Invalid range: 82-127.
+    /// Returns stack indices ready for direct use with stack.Exchange.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool TryDecodePair<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref int programCounter, out int n, out int m)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+    {
+        ReadOnlySpan<byte> code = vm.VmState.Env.CodeInfo.CodeSpan;
+        if (programCounter >= code.Length)
+        {
+            n = m = 0;
+            return false;
+        }
+
+        byte imm = code[programCounter];
+
+        int k = imm ^ 0x8F;
+        int q = k >> 4;
+        int r = k & 0x0F;
+
+        // mask = -1 if q < r, 0 otherwise
+        int mask = (q - r) >> 31;
+
+        // EIP-8024 base mapping (0-based stack): if (q < r) n=q+1, m=r+1 else n=r+1, m=29-q
+        // Add +1 for 1-indexed stack positions used by Exchange: if (q < r) final_n=q+2, final_m=r+2; else final_n=r+2, final_m=30-q
+        n = ((q & mask) | (r & ~mask)) + 2;
+        m = (((r + 1) & mask) | ((29 - q) & ~mask)) + 1;
+
+        if ((uint)(imm - 0x52) <= 0x2D)
+            return false;
+
+        programCounter++;
+        return true;
+    }
+
+    /// <summary>
     /// Executes a LOG operation which records a log entry with topics and data.
     /// Pops data offset and length, then pops a fixed number of topics from the stack.
     /// Validates memory expansion and deducts gas accordingly.
@@ -623,16 +759,11 @@ internal static partial class EvmInstructions
             vmState.Env.ExecutingAccount,
             data.ToArray(),
             topics);
-        vmState.AccessTracker.Logs.Add(logEntry);
 
-        // Optionally report the log if tracing is enabled.
-        if (vm.TxTracer.IsTracingLogs)
-        {
-            vm.TxTracer.ReportLog(logEntry);
-        }
+        vm.AddLog(logEntry);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:

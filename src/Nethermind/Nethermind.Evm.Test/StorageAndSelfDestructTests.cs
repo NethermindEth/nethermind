@@ -26,7 +26,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Load_self_destruct()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -86,7 +86,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -192,7 +192,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Destroy_restore_store_different_cells()
         {
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
 
@@ -354,7 +354,7 @@ namespace Nethermind.Evm.Test
                 .CallWithValue(deploymentAddress, 100000)
                 .Op(Instruction.STOP).Done;
 
-            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether());
+            TestState.CreateAccount(TestItem.PrivateKeyA.Address, 100.Ether);
             //TestState.Commit(SpecProvider.GenesisSpec);
             //TestState.CommitTree(0);
 

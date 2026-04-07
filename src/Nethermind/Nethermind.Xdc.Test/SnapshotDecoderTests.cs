@@ -21,7 +21,7 @@ public class SnapshotDecoderTests
     ];
 
     [Test, TestCaseSource(nameof(Snapshots))]
-    public void RoundTrip_valuedecoder(Snapshot original)
+    public void RoundTrip_ValueDecoder(Snapshot original)
     {
         SnapshotDecoder encoder = new();
         RlpStream rlpStream = new(encoder.GetLength(original, RlpBehaviors.None));
@@ -47,10 +47,8 @@ public class SnapshotDecoderTests
         RlpStream stream = new(encoder.GetLength(original, RlpBehaviors.None));
         encoder.Encode(stream, original);
 
-        stream.Reset();
-
         SnapshotDecoder decoder = new();
-        Snapshot decoded = decoder.Decode(stream);
+        Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
         decoded.Should().BeEquivalentTo(original);
     }
 }

@@ -84,7 +84,7 @@ namespace Nethermind.Facade.Test.Eth
         [TestCase(false, false, true)]
         [TestCase(true, true, false)]
         public void IsSyncing_AncientBarriers(bool resolverDownloadingBodies,
-            bool resolverDownloadingreceipts, bool expectedResult)
+            bool resolverDownloadingReceipts, bool expectedResult)
         {
             ISyncConfig syncConfig = new SyncConfig
             {
@@ -102,7 +102,7 @@ namespace Nethermind.Facade.Test.Eth
             ISyncPointers syncPointers = Substitute.For<ISyncPointers>();
             ISyncProgressResolver syncProgressResolver = Substitute.For<ISyncProgressResolver>();
             syncProgressResolver.IsFastBlocksBodiesFinished().Returns(resolverDownloadingBodies);
-            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingreceipts);
+            syncProgressResolver.IsFastBlocksReceiptsFinished().Returns(resolverDownloadingReceipts);
 
             blockTree.FindBestSuggestedHeader().Returns(Build.A.BlockHeader.WithNumber(6178001L).TestObject);
             blockTree.Head.Returns(Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(6178000L).TestObject).TestObject);

@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.Peers
             {
                 _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
                 _stats = statsManager ?? throw new ArgumentNullException(nameof(statsManager));
-                _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+                _logger = logManager?.GetClassLogger<SyncPeersReport>() ?? throw new ArgumentNullException(nameof(logManager));
             }
         }
 

@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using Nethermind.Api;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Collections;

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Abstractions;
@@ -23,7 +22,7 @@ internal sealed class HostingApplication : IHttpApplication<HostingApplication.C
         ILogManager logManager,
         HttpContextFactory httpContextFactory)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<HostingApplication>();
         //_logManager = logManager;
         _application = application;
         _httpContextFactory = httpContextFactory;

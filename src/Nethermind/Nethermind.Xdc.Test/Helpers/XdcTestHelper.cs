@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Types;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -24,20 +26,18 @@ internal static class XdcTestHelper
 
     public static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        var qcEncoder = new VoteDecoder();
-
         IEnumerable<Signature> signatures = CreateVoteSignatures(roundInfo, gapNumber, keys);
 
         return new QuorumCertificate(roundInfo, signatures.ToArray(), gapNumber);
     }
 
-    public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapnumber, PrivateKey[] keys)
+    public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
         var encoder = new VoteDecoder();
         IEnumerable<Signature> signatures = keys.Select(k =>
         {
             var stream = new KeccakRlpStream();
-            encoder.Encode(stream, new Vote(roundInfo, gapnumber), RlpBehaviors.ForSealing);
+            encoder.Encode(stream, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
             return ecdsa.Sign(k, stream.GetValueHash());
         }).ToArray();
         return signatures.ToArray();
@@ -53,8 +53,16 @@ internal static class XdcTestHelper
         return new Timeout(round, signature, gap) { Signer = key.Address };
     }
 
-    public static Vote BuildSignedVote(
-    BlockRoundInfo info, ulong gap, PrivateKey key)
+    public static SyncInfo BuildSyncInfo(PrivateKey key, ulong round, ulong gap)
+    {
+        BlockRoundInfo roundInfo = new(Hash256.Zero, round, (long)round);
+        QuorumCertificate qc = CreateQc(roundInfo, gap, [key]);
+        Timeout timeout = BuildSignedTimeout(key, round, gap);
+        TimeoutCertificate tc = new(round, [timeout.Signature!], gap);
+        return new SyncInfo(qc, tc);
+    }
+
+    public static Vote BuildSignedVote(BlockRoundInfo info, ulong gap, PrivateKey key)
     {
         var vote = new Vote(info, gap);
         var stream = new KeccakRlpStream();
@@ -62,5 +70,13 @@ internal static class XdcTestHelper
         vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
         vote.Signer = key.Address;
         return vote;
+    }
+
+    public static byte[] BuildV1ExtraData(Address[] addresses)
+    {
+        byte[] extraData = new byte[XdcConstants.ExtraVanity + addresses.Length * Address.Size + XdcConstants.ExtraSeal];
+        for (int i = 0; i < addresses.Length; i++)
+            Array.Copy(addresses[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
+        return extraData;
     }
 }

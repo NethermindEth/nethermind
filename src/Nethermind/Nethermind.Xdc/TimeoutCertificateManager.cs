@@ -8,12 +8,15 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Errors;
+using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -24,23 +27,34 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
+    private readonly ITimeoutTimer _timeoutTimer;
+    private readonly ISyncPeerPool _syncPeerPool;
     private readonly ISnapshotManager _snapshotManager;
     private readonly IEpochSwitchManager _epochSwitchManager;
     private readonly ISpecProvider _specProvider;
     private readonly IBlockTree _blockTree;
-    private readonly ISyncInfoManager _syncInfoManager;
     private readonly ISigner _signer;
     private readonly XdcPool<Timeout> _timeouts = new();
 
-    public TimeoutCertificateManager(IXdcConsensusContext context, ISnapshotManager snapshotManager, IEpochSwitchManager epochSwitchManager, ISpecProvider specProvider, IBlockTree blockTree, ISyncInfoManager syncInfoManager, ISigner signer)
+    public TimeoutCertificateManager(
+        IXdcConsensusContext context,
+        ITimeoutTimer timeoutTimer,
+        ISyncPeerPool syncPeerPool,
+        ISnapshotManager snapshotManager,
+        IEpochSwitchManager epochSwitchManager,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        ISigner signer)
     {
         _consensusContext = context;
+        this._timeoutTimer = timeoutTimer;
+        this._syncPeerPool = syncPeerPool;
         this._snapshotManager = snapshotManager;
         this._epochSwitchManager = epochSwitchManager;
         this._specProvider = specProvider;
         this._blockTree = blockTree;
-        this._syncInfoManager = syncInfoManager;
         this._signer = signer;
+        _timeoutTimer.TimeoutElapsed += (s, e) => OnCountdownTimer();
     }
 
     public Task HandleTimeoutVote(Timeout timeout)
@@ -62,16 +76,25 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             return Task.CompletedTask;
         }
 
+        BroadcastTimeout(timeout);
+
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeout.Round);
-        var certThreshold = spec.CertThreshold;
-        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * certThreshold)
+        var CertificateThreshold = spec.CertificateThreshold;
+        if (collectedTimeouts.Count >= epochSwitchInfo.Masternodes.Length * CertificateThreshold)
         {
             OnTimeoutPoolThresholdReached(collectedTimeouts, timeout);
         }
         return Task.CompletedTask;
     }
 
-
+    private void BroadcastTimeout(Timeout timeout)
+    {
+        foreach (PeerInfo peer in _syncPeerPool.AllPeers)
+        {
+            if (peer.SyncPeer is XdcProtocolHandler xdcProtocol)
+                xdcProtocol.SendTimeout(timeout);
+        }
+    }
 
     private void OnTimeoutPoolThresholdReached(IEnumerable<Timeout> timeouts, Timeout timeout)
     {
@@ -80,9 +103,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         var timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
-
-        SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
-        //TODO: Broadcast syncInfo
     }
 
     public void ProcessTimeoutCertificate(TimeoutCertificate timeoutCertificate)
@@ -99,9 +119,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         }
     }
 
-    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, out string errorMessage)
+    public bool VerifyTimeoutCertificate(TimeoutCertificate timeoutCertificate, [NotNullWhen(false)] out string errorMessage)
     {
-        if (timeoutCertificate is null) throw new ArgumentNullException(nameof(timeoutCertificate));
+        ArgumentNullException.ThrowIfNull(timeoutCertificate);
         if (timeoutCertificate.Signatures is null) throw new ArgumentNullException(nameof(timeoutCertificate.Signatures));
 
         Snapshot snapshot = _snapshotManager.GetSnapshotByGapNumber((long)timeoutCertificate.GapNumber);
@@ -127,9 +147,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = $"Failed to get epoch switch info for timeout certificate with round {timeoutCertificate.Round}";
             return false;
         }
-        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertThreshold)
+        if (signatures.Count < epochInfo.Masternodes.Length * spec.CertificateThreshold)
         {
-            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertThreshold}";
+            errorMessage = $"Number of unique signatures {signatures.Count} does not meet threshold of {epochInfo.Masternodes.Length * spec.CertificateThreshold}";
             return false;
         }
 
@@ -157,20 +177,37 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
     public void OnCountdownTimer()
     {
-        if (!AllowedToSend())
-            return;
-
-        SendTimeout();
-        _consensusContext.TimeoutCounter++;
-
-        var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
-
-        if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
+        try
         {
-            SyncInfo syncInfo = _syncInfoManager.GetSyncInfo();
-            //TODO: Broadcast syncInfo
+            if (!AllowedToSend())
+                return;
+
+            SendTimeout();
+            _consensusContext.TimeoutCounter++;
+
+            var xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
+            IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader!, _consensusContext.CurrentRound);
+
+            if (_consensusContext.TimeoutCounter % spec.TimeoutSyncThreshold == 0)
+            {
+                SyncInfo syncInfo = GetSyncInfo();
+                foreach (PeerInfo peerInfo in _syncPeerPool.AllPeers)
+                {
+                    if (peerInfo.SyncPeer is XdcProtocolHandler xdcProtocolHandler)
+                        xdcProtocolHandler.SendSyncInfo(syncInfo);
+                }
+            }
         }
+        finally
+        {
+            ResetTimer();
+        }
+    }
+
+    private void ResetTimer()
+    {
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(_blockTree.Head?.Header as XdcBlockHeader, _consensusContext.CurrentRound);
+        _timeoutTimer.Reset(TimeSpan.FromSeconds(spec.TimeoutPeriod));
     }
 
     public Task OnReceiveTimeout(Timeout timeout)
@@ -207,13 +244,16 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return snapshot.NextEpochCandidates.Contains(signer);
     }
 
+    internal SyncInfo GetSyncInfo() => new SyncInfo(_consensusContext.HighestQC, _consensusContext.HighestTC);
+
     private void SendTimeout()
     {
         long gapNumber = 0;
         var currentHeader = (XdcBlockHeader)_blockTree.Head?.Header;
         if (currentHeader is null) throw new InvalidOperationException("Failed to retrieve current header");
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, _consensusContext.CurrentRound);
-        if (_epochSwitchManager.IsEpochSwitchAtRound(_consensusContext.CurrentRound, currentHeader))
+        ulong currentRound = _consensusContext.CurrentRound;
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(currentHeader, currentRound);
+        if (_epochSwitchManager.IsEpochSwitchAtRound(currentRound, currentHeader))
         {
             var currentNumber = currentHeader.Number + 1;
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
@@ -228,14 +268,12 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             gapNumber = Math.Max(0, currentNumber - currentNumber % spec.EpochLength - spec.Gap);
         }
 
-        ValueHash256 msgHash = ComputeTimeoutMsgHash(_consensusContext.CurrentRound, (ulong)gapNumber);
+        ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
-        var timeoutMsg = new Timeout(_consensusContext.CurrentRound, signedHash, (ulong)gapNumber);
+        var timeoutMsg = new Timeout(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
-
-        //TODO: Broadcast _ctx.HighestTC
     }
 
     // Returns true if the signer is within the master node list

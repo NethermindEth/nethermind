@@ -1,21 +1,25 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpStreamDecoder<TxReceipt[]>
+public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : RlpValueDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
-    private static readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptArrayStorageDecoder))]
+    public ReceiptArrayStorageDecoder() : this(true) { }
+
+    private static readonly IRlpStreamEncoder<TxReceipt> Decoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
     private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
 
-    private static readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpStreamEncoder<TxReceipt> CompactDecoder = Rlp.GetStreamEncoder<TxReceipt>(RlpDecoderKey.Storage);
     private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
@@ -59,16 +63,25 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    protected override TxReceipt[] DecodeInternal(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override TxReceipt[] DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        if (rlpStream.PeekByte() == CompactEncoding)
+        if (decoderContext.PeekByte() == CompactEncoding)
         {
-            rlpStream.ReadByte();
-            return CompactDecoder.DecodeArray(rlpStream, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
+            decoderContext.ReadByte();
+            return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
-            return Decoder.DecodeArray(rlpStream, RlpBehaviors.Storage);
+            int startPosition = decoderContext.Position;
+            try
+            {
+                return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
+            }
+            catch (RlpException)
+            {
+                decoderContext.Position = startPosition;
+                return ValueDecoder.DecodeArray(ref decoderContext);
+            }
         }
     }
 
@@ -105,7 +118,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     public TxReceipt[] Decode(in Span<byte> receiptsData)
     {
-        if (receiptsData.Length == 0 || receiptsData[0] == Rlp.NullObjectByte)
+        if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
             return [];
         }

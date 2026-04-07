@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
@@ -75,7 +74,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_node_data()
     {
-        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        var msg = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
 
         ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
@@ -84,7 +83,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_node_data()
     {
-        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        var msg = new NodeDataMessage(new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty()));
 
         System.Action act = () => HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
         act.Should().Throw<SubprotocolException>();
@@ -92,7 +91,7 @@ public class NodeDataProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
-        IByteBuffer getPacket = _svc.ZeroSerialize(msg);
+        using DisposableByteBuffer getPacket = _svc.ZeroSerialize(msg).AsDisposable();
         msg.Dispose();
         getPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getPacket) { PacketType = (byte)messageCode });

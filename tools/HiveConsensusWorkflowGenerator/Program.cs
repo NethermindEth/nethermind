@@ -27,11 +27,12 @@ public static class Program
 
             if (groupedTestNames.Count == MaxJobsCount)
             {
-                testsList = new List<string>(groupedTestNames.First().Value);
-                size = groupedTestNames.First().Key;
+                var smallestGroup = groupedTestNames.First();
+                testsList = new List<string>(smallestGroup.Value);
+                size = smallestGroup.Key;
                 testsList.Add(test.Key);
                 size += test.Value;
-                groupedTestNames.Remove(groupedTestNames.First().Key);
+                groupedTestNames.Remove(smallestGroup.Key);
             }
             else
             {

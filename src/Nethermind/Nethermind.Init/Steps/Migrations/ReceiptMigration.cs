@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
@@ -82,7 +81,7 @@ namespace Nethermind.Init.Steps.Migrations
             _receiptsBlockDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks);
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<ReceiptMigration>();
             _progressLogger = new ProgressLogger("Receipts migration", logManager);
         }
 

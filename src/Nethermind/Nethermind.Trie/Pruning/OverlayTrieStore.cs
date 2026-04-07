@@ -11,7 +11,7 @@ namespace Nethermind.Trie.Pruning;
 /// OverlayTrieStore works by reading and writing to the passed in keyValueStore first as if it is an archive node.
 /// If a node is missing, then it will try to find from the base store.
 /// On reset the base db provider is expected to clear any diff which causes this overlay trie store to no longer
-/// see overlayed keys.
+/// see overlaid keys.
 /// </summary>
 public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnlyTrieStore baseStore) : ITrieStore
 {
@@ -36,8 +36,6 @@ public class OverlayTrieStore(IKeyValueStoreWithBatching keyValueStore, IReadOnl
     }
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => _nodeStorage.Get(address, in path, hash, flags) ?? baseStore.TryLoadRlp(address, in path, hash, flags);
-
-    public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak) => _nodeStorage.Get(address, in path, in keccak) is not null || baseStore.IsPersisted(address, in path, in keccak);
 
     public bool HasRoot(Hash256 stateRoot) => _nodeStorage.Get(null, TreePath.Empty, stateRoot) is not null || baseStore.HasRoot(stateRoot);
 

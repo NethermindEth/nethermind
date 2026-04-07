@@ -20,7 +20,7 @@ namespace Nethermind.Benchmarks.Evm
         {
             if (!Bytes.AreEqual(Current(), Improved()))
             {
-                throw new InvalidBenchmarkDeclarationException("blakes");
+                throw new InvalidBenchmarkDeclarationException("blake2 mismatch");
             }
         }
 

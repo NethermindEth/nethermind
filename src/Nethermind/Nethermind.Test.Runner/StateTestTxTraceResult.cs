@@ -7,16 +7,9 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceResult
     {
-        [JsonPropertyName("output")]
         public byte[] Output { get; set; }
-
-        [JsonPropertyName("gasUsed")]
         public long GasUsed { get; set; }
-
-        [JsonPropertyName("time")]
         public double Time { get; set; }
-
-        [JsonPropertyName("error")]
         public string Error { get; set; }
     }
 }

@@ -96,7 +96,7 @@ namespace Nethermind.EthStats.Integrations
             _sendStatsInterval = sendStatsInterval > TimeSpan.Zero
                 ? sendStatsInterval
                 : throw new ArgumentOutOfRangeException(nameof(sendStatsInterval));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<EthStatsIntegration>();
         }
 
         public async Task InitAsync()
@@ -226,7 +226,7 @@ namespace Nethermind.EthStats.Integrations
             }
 
             await _sender.SendAsync(_websocketClient!, new StatsMessage(new Messages.Models.Stats(true, _ethSyncingInfo.IsSyncing(), _isMining, 0,
-                _peerManager.ActivePeers.Count, (long)gasPrice, 100)));
+                _peerManager.ActivePeersCount, (long)gasPrice, 100)));
         }
     }
 }

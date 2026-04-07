@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using NLog;
 using NLog.Config;
@@ -39,6 +38,7 @@ namespace Nethermind.Logging.NLog
             logDirectory = SetupLogDirectory(logDirectory);
             SetupLogFile(logFileName, logDirectory);
             SetupLogRules(logRules);
+            LogManager.ReconfigExistingLoggers();
         }
 
         private static void SetupLogFile(string logFileName, string logDirectory)
@@ -66,21 +66,16 @@ namespace Nethermind.Logging.NLog
 
         private static readonly ConcurrentDictionary<string, ILogger> s_namedLoggers = new();
         private static readonly Func<string, ILogger> s_namedLoggerBuilder = BuildNamedLogger;
-        private static readonly Func<string, ILogger> s_classLoggerBuilder = BuildClassLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
         private static ILogger BuildLogger(Type type)
             => new(new NLogLogger(type));
         private static ILogger BuildNamedLogger(string loggerName)
             => new(new NLogLogger(loggerName));
-        private static ILogger BuildClassLogger(string filePath)
-            => new(new NLogLogger());
 
+#if !ZK_EVM
         public ILogger GetClassLogger<T>() => TypedLogger<T>.Logger;
-
-        public ILogger GetClassLogger([CallerFilePath] string filePath = "") => !string.IsNullOrEmpty(filePath) ?
-            s_namedLoggers.GetOrAdd(filePath, s_classLoggerBuilder) :
-            new(new NLogLogger());
+#endif
 
         public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
@@ -113,10 +108,10 @@ namespace Nethermind.Logging.NLog
 
         private static void RemoveOverriddenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
-            string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
+            string regexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)
             {
-                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, reqexPattern))
+                if (Regex.IsMatch(configurationLoggingRules[j].LoggerNamePattern, regexPattern))
                 {
                     configurationLoggingRules.RemoveAt(j);
                 }
@@ -177,9 +172,11 @@ namespace Nethermind.Logging.NLog
             LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
         }
 
+#if !ZK_EVM
         private static class TypedLogger<T>
         {
             public static ILogger Logger { get; } = BuildLogger(typeof(T));
         }
+#endif
     }
 }

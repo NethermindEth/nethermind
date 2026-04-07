@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Specs;
@@ -42,6 +41,20 @@ public static class SubscriptionFactoryExtensions
             SubscriptionType.EthSubscription.Logs,
             (jsonRpcDuplexClient, filter) =>
             new LogsSubscription(jsonRpcDuplexClient, receiptMonitor, filterStore, blockTree, logManager, filter)
+            );
+    }
+
+    public static void RegisterTransactionReceiptsSubscription(
+        this ISubscriptionFactory subscriptionFactory,
+        IReceiptMonitor receiptMonitor,
+        IBlockTree? blockTree,
+        ILogManager? logManager
+        )
+    {
+        subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
+            SubscriptionType.EthSubscription.TransactionReceipts,
+            (jsonRpcDuplexClient, filter) =>
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, filter)
             );
     }
 
@@ -115,6 +128,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
@@ -134,6 +148,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);

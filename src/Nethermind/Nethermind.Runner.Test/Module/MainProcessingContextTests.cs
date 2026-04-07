@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -22,13 +23,13 @@ public class MainProcessingContextTests
 {
     [Test]
     [CancelAfter(10000)]
-    public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancelationToken)
+    public async Task Test_TransactionProcessed_EventIsFired(CancellationToken cancellationToken)
     {
         await using IContainer ctx = new ContainerBuilder()
             .AddModule(new TestNethermindModule(Cancun.Instance))
             .WithGenesisPostProcessor((_, state) =>
             {
-                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether(), Osaka.Instance);
+                state.AddToBalanceAndCreateIfNotExists(TestItem.AddressA, 10.Ether, Osaka.Instance);
             })
             .Build();
 
@@ -36,8 +37,8 @@ public class MainProcessingContextTests
         int totalTransactionProcessed = 0;
         mainProcessingContext.TransactionProcessed += (_, _) => totalTransactionProcessed++;
 
-        await ctx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancelationToken);
-        await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancelationToken,
+        await ctx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
+        await ctx.Resolve<TestBlockchainUtil>().AddBlockAndWaitForHead(false, cancellationToken,
             Build.A.Transaction
                 .WithGasLimit(100_000)
                 .WithSenderAddress(TestItem.AddressA)

@@ -15,11 +15,13 @@ public class Filter : IJsonRpcParam
 {
     public HashSet<AddressAsKey>? Address { get; set; }
 
-    public BlockParameter FromBlock { get; set; }
+    public BlockParameter FromBlock { get; set; } = BlockParameter.Latest;
 
-    public BlockParameter ToBlock { get; set; }
+    public BlockParameter ToBlock { get; set; } = BlockParameter.Latest;
 
     public IEnumerable<Hash256[]?>? Topics { get; set; }
+
+    public bool UseIndex { get; set; } = true;
 
     public void ReadJson(JsonElement filter, JsonSerializerOptions options)
     {
@@ -64,6 +66,16 @@ public class Filter : IJsonRpcParam
             if (filter.TryGetProperty("topics"u8, out JsonElement topicsElement) && topicsElement.ValueKind == JsonValueKind.Array)
             {
                 Topics = GetTopics(topicsElement, options);
+            }
+
+            if (filter.TryGetProperty("useIndex"u8, out JsonElement useIndex))
+            {
+                UseIndex = useIndex.ValueKind switch
+                {
+                    JsonValueKind.False => false,
+                    JsonValueKind.True => true,
+                    _ => UseIndex
+                };
             }
         }
         finally

@@ -36,6 +36,11 @@ internal class EpochSwitchManager : IEpochSwitchManager
     {
         var xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
 
+        if (header.Number < xdcSpec.SwitchBlock)
+        {
+            return header.Number % xdcSpec.EpochLength == 0;
+        }
+
         if (header.Number == xdcSpec.SwitchBlock)
         {
             return true;
@@ -48,10 +53,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
         var round = header.ExtraConsensusData.BlockRound;
         var qc = header.ExtraConsensusData.QuorumCert;
-
         ulong parentRound = qc.ProposedBlockInfo.Round;
         ulong epochStartRound = round - (round % (ulong)xdcSpec.EpochLength);
-        ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + round / (ulong)xdcSpec.EpochLength;
 
         if (qc.ProposedBlockInfo.BlockNumber == xdcSpec.SwitchBlock)
         {
@@ -98,7 +101,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
-        if (_epochSwitches.TryGet(header.Hash, out var epochSwitchInfo))
+        Hash256 headerHash = header.Hash;
+        if (_epochSwitches.TryGet(headerHash, out var epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
@@ -135,24 +139,24 @@ internal class EpochSwitchManager : IEpochSwitchManager
         Address[] penalties = header.PenaltiesAddress.Value.ToArray();
         Address[] candidates = snap.NextEpochCandidates;
 
-        var stanbyNodes = new Address[0];
+        var standbyNodes = Array.Empty<Address>();
 
         if (masterNodes.Length != candidates.Length)
         {
-            stanbyNodes = candidates
+            standbyNodes = candidates
                 .Except(masterNodes)
                 .Except(penalties)
                 .ToArray();
         }
 
-        epochSwitchInfo = new EpochSwitchInfo(masterNodes, stanbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
+        epochSwitchInfo = new EpochSwitchInfo(masterNodes, standbyNodes, penalties, new BlockRoundInfo(header.Hash, header.ExtraConsensusData?.BlockRound ?? 0, header.Number));
 
         if (header.ExtraConsensusData?.QuorumCert is not null)
         {
             epochSwitchInfo.EpochSwitchParentBlockInfo = header.ExtraConsensusData.QuorumCert.ProposedBlockInfo;
         }
 
-        _epochSwitches.Set(header.Hash, epochSwitchInfo);
+        _epochSwitches.Set(headerHash, epochSwitchInfo);
         return epochSwitchInfo;
     }
 
@@ -324,8 +328,8 @@ internal class EpochSwitchManager : IEpochSwitchManager
         while (epochBlockInfo.Round > timeoutCert.Round)
         {
             tempTCEpoch--;
-
-            if (GetBlockByEpochNumber(tempTCEpoch) is null)
+            epochBlockInfo = GetBlockByEpochNumber(tempTCEpoch);
+            if (epochBlockInfo is null)
             {
                 return null;
             }

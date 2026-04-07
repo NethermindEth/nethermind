@@ -18,7 +18,7 @@ public class TimeoutTests
     [Test]
     public async Task TestCountdownTimeoutToSendTimeoutMessage()
     {
-        var blockchain = await XdcTestBlockchain.Create();
+        using var blockchain = await XdcTestBlockchain.Create();
         var tcManager = blockchain.TimeoutCertificateManager;
         var ctx = blockchain.XdcContext;
         tcManager.OnCountdownTimer();
@@ -32,10 +32,8 @@ public class TimeoutTests
     [Test]
     public async Task TestCountdownTimeoutNotToSendTimeoutMessageIfNotInMasternodeList()
     {
-        var blockchain = await XdcTestBlockchain.Create();
+        using var blockchain = await XdcTestBlockchain.Create();
         // Create TCManager with a signer not in the Masternode list
-        var extraKey = blockchain.RandomKeys.First();
-
         blockchain.Signer.SetSigner(TestItem.PrivateKeyA);
 
         blockchain.TimeoutCertificateManager.OnCountdownTimer();
@@ -47,7 +45,7 @@ public class TimeoutTests
     [Test]
     public async Task TestTimeoutMessageHandlerSuccessfullyGenerateTC()
     {
-        var blockchain = await XdcTestBlockchain.Create();
+        using var blockchain = await XdcTestBlockchain.Create();
 
         var ctx = blockchain.XdcContext;
         var head = (XdcBlockHeader)blockchain.BlockTree.Head!.Header;
@@ -68,12 +66,12 @@ public class TimeoutTests
 
         // Sanity check: round hasn’t advanced, HighestTC not set to this round yet
         Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC, Is.Null);
+        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
 
         // Send timeout message with wrong gap so it doesn't reach threshold yet
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(XdcTestHelper.BuildSignedTimeout(signers.Last(), round, 1350));
         Assert.That(ctx.CurrentRound, Is.EqualTo(round));
-        Assert.That(ctx.HighestTC, Is.Null);
+        Assert.That(ctx.HighestTC.Round, Is.EqualTo(0));
 
         // One more timeout (reaches threshold) -> HighestTC set, round increments
         Timeout lastTimeoutMsg = XdcTestHelper.BuildSignedTimeout(signers.Last(), round, gap);

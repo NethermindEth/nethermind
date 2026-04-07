@@ -11,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Facade;
 using Nethermind.State;
 using Nethermind.TxPool;
 
@@ -40,7 +39,7 @@ namespace Nethermind.Api
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
-        CompositeTxGossipPolicy TxGossipPolicy { get; }
+
         ITransactionComparerProvider? TransactionComparerProvider { get; set; }
 
         [SkipServiceCollection]

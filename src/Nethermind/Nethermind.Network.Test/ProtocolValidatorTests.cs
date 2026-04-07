@@ -18,6 +18,27 @@ namespace Nethermind.Network.Test;
 
 public class ProtocolValidatorTests
 {
+    private const string TestEnode = "enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303";
+
+    private static ISession CreateSession()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(new NetworkNode(TestEnode)));
+        return session;
+    }
+
+    private static void AssertDisconnect(ISession session, bool shouldDisconnect, DisconnectReason reason)
+    {
+        if (shouldDisconnect)
+        {
+            session.Received(1).InitiateDisconnect(reason, Arg.Any<string>());
+        }
+        else
+        {
+            session.DidNotReceive().InitiateDisconnect(reason, Arg.Any<string>());
+        }
+    }
+
     [TestCase("besu", "besu/v23.4.0/linux-x86_64/openjdk-java-17", false)]
     [TestCase("besu", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", true)]
     [TestCase("^((?!besu).)*$", "Geth/v1.12.1-unstable-b8d7da87-20230808/linux-amd64/go1.19.2", false)]
@@ -36,22 +57,14 @@ public class ProtocolValidatorTests
             LimboLogs.Instance
         );
 
-        ISession session = Substitute.For<ISession>();
-        session.Node.Returns(new Node(new NetworkNode("enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303")));
+        ISession session = CreateSession();
         IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
         protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
         {
             ClientId = clientId,
             P2PVersion = 5
         });
-        if (shouldDisconnect)
-        {
-            session.Received(1).InitiateDisconnect(DisconnectReason.ClientFiltered, Arg.Any<string>());
-        }
-        else
-        {
-            session.DidNotReceive().InitiateDisconnect(DisconnectReason.ClientFiltered, Arg.Any<string>());
-        }
+        AssertDisconnect(session, shouldDisconnect, DisconnectReason.ClientFiltered);
     }
 
     [TestCase(11, 10, true)]
@@ -72,21 +85,12 @@ public class ProtocolValidatorTests
             LimboLogs.Instance
         );
 
-        ISession session = Substitute.For<ISession>();
-        session.Node.Returns(new Node(new NetworkNode("enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303")));
+        ISession session = CreateSession();
         IProtocolHandler protocolHandler = Substitute.For<IProtocolHandler>();
         protocolValidator.DisconnectOnInvalid(Protocol.P2P, session, new P2PProtocolInitializedEventArgs(protocolHandler)
         {
             P2PVersion = 5
         });
-
-        if (shouldDisconnect)
-        {
-            session.Received(1).InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-        }
-        else
-        {
-            session.DidNotReceive().InitiateDisconnect(DisconnectReason.TooManyPeers, Arg.Any<string>());
-        }
+        AssertDisconnect(session, shouldDisconnect, DisconnectReason.TooManyPeers);
     }
 }

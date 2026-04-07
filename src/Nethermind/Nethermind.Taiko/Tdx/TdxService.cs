@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -39,7 +38,7 @@ public class TdxService : ITdxService
 
         _config = config;
         _client = client;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TdxService>();
 
         TryLoadBootstrap();
     }

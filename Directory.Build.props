@@ -3,13 +3,15 @@
   <PropertyGroup>
     <Configuration Condition="'$(Configuration)' == ''">Debug</Configuration>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+    <DefineConstants Condition="'$(EnableZkEvm)' == 'true'">$(DefineConstants);ZK_EVM</DefineConstants>
     <InvariantGlobalization>true</InvariantGlobalization>
     <LangVersion>14.0</LangVersion>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <TargetFramework>net10.0</TargetFramework>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- NU1900: vulnerability metadata fetch failure — don't break builds when a feed is down -->
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
     <UseArtifactsOutput>true</UseArtifactsOutput>
-    <WarningsNotAsErrors>NU1901;NU1902;NU1903</WarningsNotAsErrors>
   </PropertyGroup>
 
   <PropertyGroup Label="ProductInfo">

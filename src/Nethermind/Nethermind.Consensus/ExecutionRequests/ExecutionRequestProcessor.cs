@@ -3,7 +3,6 @@
 
 
 using Nethermind.Abi;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -15,7 +14,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using System;
-using System.Linq;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
@@ -95,10 +93,8 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
         if (!spec.DepositsEnabled)
             return;
 
-        using ArrayPoolList<byte> depositRequests = new(receipts.Length * 2 + 1)
-        {
-            (byte)ExecutionRequestType.Deposit
-        };
+        using ArrayPoolListRef<byte> depositRequests = new(receipts.Length * 2 + 1);
+        depositRequests.Add((byte)ExecutionRequestType.Deposit);
 
         for (int i = 0; i < receipts.Length; i++)
         {

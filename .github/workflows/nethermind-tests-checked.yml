@@ -1,0 +1,222 @@
+name: Nethermind extra test variants
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
+  TERM: xterm
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - label: checked
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
+            hw-intrinsic: ""
+          - label: no-intrinsics
+            dotnet-args: ""
+            hw-intrinsic: "0"
+        project:
+          - Ethereum.Abi.Test
+          - Ethereum.Basic.Test
+          - Ethereum.Blockchain.Block.Test
+          - Ethereum.Difficulty.Test
+          - Ethereum.HexPrefix.Test
+          - Ethereum.KeyAddress.Test
+          - Ethereum.KeyStore.Test
+          - Ethereum.Legacy.Blockchain.Block.Test
+          - Ethereum.Legacy.Transition.Test
+          - Ethereum.Legacy.VM.Test
+          - Ethereum.PoW.Test
+          - Ethereum.Rlp.Test
+          - Ethereum.Transaction.Test
+          - Ethereum.Trie.Test
+          - Nethermind.Abi.Test
+          - Nethermind.Api.Test
+          - Nethermind.AuRa.Test
+          - Nethermind.Blockchain.Test
+          - Nethermind.Clique.Test
+          - Nethermind.Config.Test
+          - Nethermind.Consensus.Test
+          - Nethermind.Core.Test
+          - Nethermind.Db.Test
+          - Nethermind.Era1.Test
+          - Nethermind.Ethash.Test
+          - Nethermind.EthStats.Test
+          - Nethermind.Evm.Test
+          - Nethermind.Facade.Test
+          - Nethermind.Flashbots.Test
+          - Nethermind.HealthChecks.Test
+          - Nethermind.History.Test
+          - Nethermind.Hive.Test
+          - Nethermind.JsonRpc.Test
+          - Nethermind.JsonRpc.TraceStore.Test
+          - Nethermind.KeyStore.Test
+          - Nethermind.Logging.NLog.Test
+          - Nethermind.Merge.AuRa.Test
+          - Nethermind.Merge.Plugin.Test
+          - Nethermind.Mining.Test
+          - Nethermind.Monitoring.Test
+          - Nethermind.Network.Discovery.Test
+          - Nethermind.Network.Dns.Test
+          - Nethermind.Network.Enr.Test
+          - Nethermind.Network.Test
+          - Nethermind.Optimism.Test
+          - Nethermind.Runner.Test
+          - Nethermind.Serialization.Ssz.Test
+          - Nethermind.Shutter.Test
+          - Nethermind.Sockets.Test
+          - Nethermind.Specs.Test
+          - Nethermind.State.Test
+          - Nethermind.State.Test.Runner.Test
+          - Nethermind.Synchronization.Test
+          - Nethermind.Taiko.Test
+          - Nethermind.Trie.Test
+          - Nethermind.TxPool.Test
+          - Nethermind.Wallet.Test
+          - Nethermind.Xdc.Test
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: ${{ startsWith(matrix.project, 'Ethereum.') && 'recursive' || 'false' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: ${{ matrix.project }}
+        id: test
+        working-directory: src/Nethermind/${{ matrix.project }}
+        env:
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+        run: |
+          dotnet test --project ${{ matrix.project }}.csproj -c release \
+            ${{ matrix.variant.dotnet-args }}
+
+      - name: Save test outcome
+        if: success() || failure()
+        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
+
+      - name: Upload test outcome
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.project }}-${{ matrix.variant.label }}-outcome
+          path: test.outcome
+          retention-days: 1
+
+  tests-chunked:
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - label: checked
+            dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
+            hw-intrinsic: ""
+          - label: no-intrinsics
+            dotnet-args: ""
+            hw-intrinsic: "0"
+        test:
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 3of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 4of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 5of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 6of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 7of8 }
+          - { project: Ethereum.Legacy.Blockchain.Test, chunk: 8of8 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 1of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 2of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 3of4 }
+          - { project: Ethereum.Blockchain.Pyspec.Test, chunk: 4of4 }
+    steps:
+      - name: Free up disk space
+        if: startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec')
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          large-packages: false
+          tool-cache: false
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: ${{ startsWith(matrix.test.project, 'Ethereum.Blockchain.Pyspec') && 'false' || 'recursive' }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: ${{ matrix.test.project }} (${{ matrix.test.chunk }})
+        id: test
+        working-directory: src/Nethermind/${{ matrix.test.project }}
+        env:
+          TEST_CHUNK: ${{ matrix.test.chunk }}
+          DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          TEST_SKIP_HEAVY: 1
+        run: |
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release \
+            ${{ matrix.variant.dotnet-args }}
+
+      - name: Save test outcome
+        if: success() || failure()
+        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
+
+      - name: Upload test outcome
+        if: success() || failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-outcome
+          path: test.outcome
+          retention-days: 1
+
+  tests-summary:
+    name: Tests summary
+    needs: [tests, tests-chunked]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download test outcomes
+        uses: actions/download-artifact@v4
+        with:
+          path: .outcomes
+          pattern: '*-outcome'
+
+      - name: Ensure all tests passed
+        run: |
+          data=$(cat .outcomes/*/test.outcome) && data=${data%?}
+          passed=$(echo "[$data]" | jq -r 'all')
+          [[ "$passed" == "true" ]] && exit 0 || exit 1

@@ -89,13 +89,15 @@ internal static partial class EvmInstructions
     /// An <see cref="EvmExceptionType"/> value indicating success or the type of error encountered.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst>(VirtualMachine<TGasPolicy> vm,
+    public static EvmExceptionType InstructionCall<TGasPolicy, TOpCall, TTracingInst, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment global call metrics.
         Metrics.IncrementCalls();
@@ -132,13 +134,9 @@ internal static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 dataLength) ||
             !stack.PopUInt256(out UInt256 outputOffset) ||
             !stack.PopUInt256(out UInt256 outputLength))
+        {
             goto StackUnderflow;
-
-        // Charge gas for accessing the account's code (including delegation logic if applicable).
-        bool _ = vm.TxExecutionContext.CodeInfoRepository
-            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
-        if (!TGasPolicy.ConsumeAccountAccessGasWithDelegation(ref gas, vm.Spec, in vm.VmState.AccessTracker,
-                vm.TxTracer.IsTracingAccess, codeSource, delegated)) goto OutOfGas;
+        }
 
         // For non-delegate calls, the transfer value is the call value.
         UInt256 transferValue = typeof(TOpCall) == typeof(OpDelegateCall) ? UInt256.Zero : callValue;
@@ -159,25 +157,41 @@ internal static partial class EvmInstructions
         }
 
         IReleaseSpec spec = vm.Spec;
+
         IWorldState state = vm.WorldState;
-        // Charge additional gas if the target account is new or considered empty.
-        if (!spec.ClearEmptyAccountWhenTouched && !state.AccountExists(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
-        else if (spec.ClearEmptyAccountWhenTouched && transferValue != 0 && state.IsDeadAccount(target))
-        {
-            if (!TGasPolicy.ConsumeNewAccountCreation(ref gas)) goto OutOfGas;
-        }
 
         // Update gas: call cost and memory expansion for input and output.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GetCallCost()) ||
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.CallCost) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in dataOffset, dataLength, vm.VmState) ||
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, vm.VmState))
             goto OutOfGas;
 
+        // Charge gas for accessing the account's code (including delegation logic if applicable).
+        if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                vm.TxTracer.IsTracingAccess, codeSource)) goto OutOfGas;
+        bool _ = vm.TxExecutionContext.CodeInfoRepository
+            .TryGetDelegation(codeSource, vm.Spec, out Address delegated);
+
+        if (spec.UseHotAndColdStorage && delegated is not null)
+        {
+            if (!TGasPolicy.ConsumeAccountAccessGas(ref gas, vm.Spec, in vm.VmState.AccessTracker,
+                    vm.TxTracer.IsTracingAccess, delegated)) goto OutOfGas;
+        }
+
+        // Charge additional gas if the target account is new or considered empty.
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
+        {
+            false => !state.AccountExists(target),
+            true => transferValue != 0 && state.IsDeadAccount(target),
+        };
+
+        bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas);
+
+        if (newAccountOutOfGas) goto OutOfGas;
+
+
         // Retrieve code information for the call and schedule background analysis if needed.
-        ICodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
+        CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, spec);
 
         // If contract is large, charge for access
         if (spec.IsEip7907Enabled)
@@ -252,6 +266,7 @@ internal static partial class EvmInstructions
             vm.ReturnDataBuffer = default;
             stack.PushBytes<TTracingInst>(StatusCode.SuccessBytes.Span);
             TGasPolicy.UpdateGasUp(ref gas, gasLimitUl);
+            vm.AddTransferLog<TEip7708>(caller, target, transferValue);
             return FastCall(vm, spec, in transferValue, target);
         }
 
@@ -278,7 +293,7 @@ internal static partial class EvmInstructions
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
-            gas: TGasPolicy.FromLong(gasLimitUl),
+            gas: TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl),
             outputDestination: outputOffset.ToLong(),
             outputLength: outputLength.ToLong(),
             executionType: TOpCall.ExecutionType,
@@ -302,7 +317,7 @@ internal static partial class EvmInstructions
             return EvmExceptionType.None;
         }
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
@@ -341,12 +356,6 @@ internal static partial class EvmInstructions
         ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
     {
-        // RETURN is not allowed during contract creation.
-        if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            goto BadInstruction;
-        }
-
         // Pop memory position and length for the return data.
         if (!stack.PopUInt256(out UInt256 position) ||
             !stack.PopUInt256(out UInt256 length))
@@ -362,12 +371,10 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
-    BadInstruction:
-        return EvmExceptionType.BadInstruction;
     }
 }

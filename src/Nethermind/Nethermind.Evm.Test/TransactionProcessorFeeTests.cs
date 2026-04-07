@@ -11,18 +11,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs.GnosisForks;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Test;
 
@@ -43,7 +40,7 @@ public class TransactionProcessorFeeTests
 
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -95,7 +92,7 @@ public class TransactionProcessorFeeTests
     {
         _spec.FeeCollector = TestItem.AddressC;
 
-        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)

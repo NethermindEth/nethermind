@@ -219,6 +219,32 @@ public class MerkleTests
     }
 
     [Test]
+    public void Merkleizer_Feed_list_produces_correct_root()
+    {
+        // List[uint8, 64] containing just [0xAB]
+        //   pack:        0xAB padded to 32 bytes = 1 chunk
+        //   chunk_limit: ceil(64 * 1 / 32) = 2
+        //   merkleize:   hash tree with 2 leaf slots (our chunk + 1 zero chunk)
+        //   mix_in:      SHA256(merkle_root || little_endian(actual_count = 1))
+        byte[] data = [0xAB];
+        int limit = 64;
+
+        // Manually compute expected root
+        // Step 1: merkleize(pack(data), chunk_limit=2)
+        ulong chunkCount = ((ulong)limit * sizeof(byte) + 31) / 32; // = 2
+        Merkle.Merkleize(out UInt256 expectedRoot, data, chunkCount);
+        // Step 2: mix_in_length(root, actual_count=1)
+        Merkle.MixIn(ref expectedRoot, data.Length);
+
+        // Compute via Merkleizer.Feed
+        Merkleizer merkleizer = new Merkleizer(0);
+        merkleizer.Feed((ReadOnlySpan<byte>)data, limit);
+        UInt256 actualRoot = merkleizer.CalculateRoot();
+
+        Assert.That(actualRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [Test]
     public void Can_merkleize_bitvector()
     {
         Merkle.Merkleize(out UInt256 root, new byte[] { 123 });

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -68,7 +67,7 @@ internal static partial class EvmInstructions
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -297,7 +296,7 @@ internal static partial class EvmInstructions
         {
             int expSize = 32 - leadingZeros;
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
+            TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
 
             if (a.IsZero)
             {
@@ -316,7 +315,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

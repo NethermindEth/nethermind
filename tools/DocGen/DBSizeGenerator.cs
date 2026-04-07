@@ -97,7 +97,6 @@ internal static class DBSizeGenerator
         writeStream.Close();
 
         File.Move(tempFileName, fileName, true);
-        File.Delete(tempFileName);
 
         AnsiConsole.MarkupLine($"[green]Updated[/] {fileName}");
     }

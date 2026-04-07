@@ -11,7 +11,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker : IDisposable
+public struct StackAccessTracker() : IDisposable
 {
     public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
@@ -19,7 +19,7 @@ public struct StackAccessTracker : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private TrackingState _trackingState;
+    private TrackingState _trackingState = TrackingState.RentState();
 
     private int _addressesSnapshots;
     private int _storageKeysSnapshots;
@@ -27,10 +27,6 @@ public struct StackAccessTracker : IDisposable
     private int _logsSnapshots;
     private int _largeContractList;
 
-    public StackAccessTracker()
-    {
-        _trackingState = TrackingState.RentState();
-    }
     public readonly bool IsCold(Address? address) => !_trackingState.AccessedAddresses.Contains(address);
 
     public readonly bool IsCold(in StorageCell storageCell) => !_trackingState.AccessedStorageCells.Contains(storageCell);
@@ -105,12 +101,12 @@ public struct StackAccessTracker : IDisposable
             _trackerPool.Enqueue(state);
         }
 
-        public JournalSet<Address> AccessedAddresses { get; } = new();
-        public JournalSet<StorageCell> AccessedStorageCells { get; } = new();
+        public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
+        public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = new();
-        public JournalSet<Address> DestroyList { get; } = new();
-        public HashSet<AddressAsKey> CreateList { get; } = new();
-        public JournalSet<AddressAsKey> LargeContractList { get; } = new();
+        public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public JournalSet<AddressAsKey> LargeContractList { get; } = new(AddressAsKey.EqualityComparer);
 
         private void Clear()
         {

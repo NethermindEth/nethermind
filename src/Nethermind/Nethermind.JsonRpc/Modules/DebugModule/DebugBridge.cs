@@ -19,7 +19,6 @@ using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -224,25 +223,28 @@ public class DebugBridge : IDebugBridge
     {
         foreach (TransactionForRpc txForRpc in bundle.Transactions)
         {
-            Transaction tx = txForRpc.ToTransaction();
             GethLikeTxTrace? trace;
-
-            try
+            Result<Transaction> txResult = txForRpc.ToTransaction(validateUserInput: true);
+            if (txResult.IsError)
             {
-                trace = _tracer.Trace(
-                    blockParameter,
-                    tx,
-                    gethTraceOptions ?? GethTraceOptions.Default,
-                    cancellationToken);
+                trace = CreateFailTrace(txForRpc.Gas);
             }
-            catch (Exception)
+            else
             {
-                trace = new GethLikeTxTrace
+                Transaction tx = txResult.Data;
+
+                try
                 {
-                    Failed = true,
-                    Gas = tx.GasLimit,
-                    ReturnValue = []
-                };
+                    trace = _tracer.Trace(
+                        blockParameter,
+                        tx,
+                        gethTraceOptions ?? GethTraceOptions.Default,
+                        cancellationToken);
+                }
+                catch (Exception)
+                {
+                    trace = CreateFailTrace(tx.GasLimit);
+                }
             }
 
             if (trace is not null)
@@ -250,5 +252,7 @@ public class DebugBridge : IDebugBridge
                 yield return trace;
             }
         }
+
+        static GethLikeTxTrace? CreateFailTrace(long? gasLimit) => new() { Failed = true, Gas = gasLimit ?? 0, ReturnValue = [] };
     }
 }

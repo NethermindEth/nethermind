@@ -28,7 +28,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Address.Zero,
             UInt256.One,
             1,
-            XdcConstants.TargetGasLimit,
+            XdcConstants.DefaultTargetGasLimit,
             1_700_000_000,
             [])
         {

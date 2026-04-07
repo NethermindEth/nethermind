@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -34,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             ExampleResponse = "0x1ddea39c8b8a2202cd9f56bc9a6ecdbf1cf3d5f5")]
         ResultWrapper<Address> personal_ecRecover([JsonRpcParameter(ExampleValue = "[\"0xdeadbeaf\", \"0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee1b\"]")] byte[] message, byte[] signature);
 
-        [JsonRpcMethod(Description = "The sign method calculates an Ethereum specific signature with: sign(keccack256(\"\x19Ethereum Signed Message:\n\" + len(message) + message))).",
+        [JsonRpcMethod(Description = "The sign method calculates an Ethereum specific signature with: sign(keccak256(\"\x19Ethereum Signed Message:\n\" + len(message) + message))).",
             IsImplemented = false,
             ExampleResponse = "0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee1b")]
         ResultWrapper<string> personal_sign([JsonRpcParameter(ExampleValue = "[\"0xdeadbeaf\", \"0x9b2055d370f73ec7d8a03e965129118dc8f5bf83\"]")] byte[] message, Address address, string passphrase = null);

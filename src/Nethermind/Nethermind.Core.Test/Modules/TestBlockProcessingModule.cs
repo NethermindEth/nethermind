@@ -26,7 +26,6 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<IBlockPreprocessorStep, RecoverSignatures>()
 
             .AddSingleton<ITxPool, TxPool.TxPool>()
-            .AddSingleton<CompositeTxGossipPolicy>()
             .AddSingleton<INonceManager, IChainHeadInfoProvider>((chainHeadInfoProvider) => new NonceManager(chainHeadInfoProvider.ReadOnlyStateProvider))
 
             // Seems to be only used by block producer.

@@ -30,9 +30,9 @@ public class AuthorizationTupleDecoderTests
         AuthorizationTupleDecoder sut = new();
 
         RlpStream result = sut.Encode(item);
-        result.Position = 0;
+        Rlp.ValueDecoderContext ctx = new(result.Data);
 
-        sut.Decode(result).Should().BeEquivalentTo(item);
+        sut.Decode(ref ctx).Should().BeEquivalentTo(item);
     }
 
     [Test]
@@ -127,7 +127,11 @@ public class AuthorizationTupleDecoderTests
     {
         AuthorizationTupleDecoder sut = new();
 
-        Assert.That(() => sut.Decode(badEncoding, RlpBehaviors.None), Throws.InstanceOf<RlpException>());
+        Assert.That(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(badEncoding.Data);
+            sut.Decode(ref ctx, RlpBehaviors.None);
+        }, Throws.InstanceOf<RlpException>());
     }
 
     private static RlpStream TupleRlpStreamWithNull()

@@ -17,6 +17,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class BeaconBlockRootHandlerTests
 {
     private BeaconBlockRootHandler _beaconBlockRootHandler;

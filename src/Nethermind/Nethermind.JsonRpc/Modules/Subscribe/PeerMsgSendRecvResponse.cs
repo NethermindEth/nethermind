@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json.Serialization;
-using System.Runtime.CompilerServices;
-using Nethermind.JsonRpc.Modules.Admin;
 using System;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
@@ -15,9 +13,9 @@ public class PeerMsgSendRecvResponse
 
     }
 
-    public PeerMsgSendRecvResponse(EventArgs eventArgs, string subscripionType, string? e)
+    public PeerMsgSendRecvResponse(EventArgs eventArgs, string subscriptionType, string? e)
     {
-        Type = subscripionType;
+        Type = subscriptionType;
         Error = e;
     }
 

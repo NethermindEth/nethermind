@@ -10,9 +10,6 @@ using Nethermind.Specs;
 using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Processing;
-using Nethermind.TxPool;
-using Nethermind.Int256;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 

@@ -8,7 +8,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -20,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State.OverridableEnv;
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -57,7 +55,7 @@ public class ValidateSubmissionHandler
         _ethereumEcdsa = ethereumEcdsa;
         _flashbotsConfig = flashbotsConfig;
         _headerValidator = headerValidator;
-        _logger = logManager!.GetClassLogger();
+        _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
         _specProvider = specProvider;
         _blockProcessorEnv = blockProcessorEnv;
     }
@@ -241,7 +239,7 @@ public class ValidateSubmissionHandler
             {
                 if (withdrawal.Address == feeRecipient)
                 {
-                    amtBeforeOrWithdrawn += withdrawal.AmountInGwei;
+                    amtBeforeOrWithdrawn += withdrawal.AmountInWei;
                 }
             }
         }

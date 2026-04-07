@@ -9,7 +9,6 @@ using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.State.Repositories;
 
 namespace Nethermind.Blockchain;
 
@@ -246,6 +245,7 @@ public class BlockTreeOverlay : IBlockTree
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
 
     public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
+
     public (long BlockNumber, Hash256 BlockHash) SyncPivot
     {
         get => _baseTree.SyncPivot;

@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text.Json.Serialization;
-
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
@@ -26,7 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SyncingSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
 
             _lastIsSyncing = _ethSyncingInfo.IsSyncing();
             if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id}: Syncing status on start is {_lastIsSyncing}");

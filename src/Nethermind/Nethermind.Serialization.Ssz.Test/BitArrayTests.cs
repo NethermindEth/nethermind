@@ -104,49 +104,49 @@ namespace Nethermind.Serialization.Ssz.Test
             hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
-        public static IEnumerable<object[]> GetBitvectorData()
+        public static IEnumerable<TestCaseData> GetBitvectorData()
         {
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, true, false, true, false, true, false, false },
                 "2b",
                 HashUtility.Chunk(new byte[] { 0x2b }).ToArray()
-            };
+            ).SetName("Len8_4True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { false, true, false, true },
                 "0a",
                 HashUtility.Chunk(new byte[] { 0x0a }).ToArray()
-            };
+            ).SetName("Len4_2True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { false, true, false },
                 "02",
                 HashUtility.Chunk(new byte[] { 0x02 }).ToArray()
-            };
+            ).SetName("Len3_1True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, false, true, false, false, false, true, true, false, true },
                 "c502",
                 HashUtility.Chunk(new byte[] { 0xc5, 0x02 }).ToArray()
-            };
+            ).SetName("Len10_5True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, false, true, false, false, false, true, true,
                     false, true, false, false, false, false, true, true },
                 "c5c2",
                 HashUtility.Chunk(new byte[] { 0xc5, 0xc2 }).ToArray()
-            };
+            ).SetName("Len16_7True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 Enumerable.Repeat(true, 512).ToArray(),
                 new string('f', 64 * 2),
                 HashUtility.Hash(
                     Enumerable.Repeat((byte)0xff, 32).ToArray(),
                     Enumerable.Repeat((byte)0xff, 32).ToArray()
                 )
-            };
+            ).SetName("Len512_512True");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 Enumerable.Repeat(true, 513).ToArray(),
                 new string('f', 64 * 2) + "01",
                 HashUtility.Hash(
@@ -159,12 +159,12 @@ namespace Nethermind.Serialization.Ssz.Test
                         new byte[32]
                     )
                 )
-            };
+            ).SetName("Len513_513True");
         }
 
-        public static IEnumerable<object[]> GetBitlistData()
+        public static IEnumerable<TestCaseData> GetBitlistData()
         {
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, true, false, true, false, true, false, false },
                 (ulong)8,
                 "2b01",
@@ -172,9 +172,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     HashUtility.Chunk(new byte[] { 0x2b }).ToArray(),
                     HashUtility.Chunk(new byte[] { 0x08 }).ToArray()
                 )
-            };
+            ).SetName("Len8_Limit8");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { false, true, false, true },
                 (ulong)4,
                 "1a",
@@ -182,9 +182,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     HashUtility.Chunk(new byte[] { 0x0a }).ToArray(),
                     HashUtility.Chunk(new byte[] { 0x04 }).ToArray()
                 )
-            };
+            ).SetName("Len4_Limit4");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { false, true, false },
                 (ulong)3,
                 "0a",
@@ -192,9 +192,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     HashUtility.Chunk(new byte[] { 0x02 }).ToArray(),
                     HashUtility.Chunk(new byte[] { 0x03 }).ToArray()
                 )
-            };
+            ).SetName("Len3_Limit3");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, false, true, false, false, false, true, true, false, true },
                 (ulong)16,
                 "c506",
@@ -202,9 +202,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     HashUtility.Chunk(new byte[] { 0xc5, 0x02 }).ToArray(),
                     HashUtility.Chunk(new byte[] { 0x0a }).ToArray()
                 )
-            };
+            ).SetName("Len10_Limit16");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true, false, true, false, false, false, true, true,
                     false, true, false, false, false, false, true, true },
                 (ulong)16,
@@ -213,9 +213,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     HashUtility.Chunk(new byte[] { 0xc5, 0xc2 }).ToArray(),
                     HashUtility.Chunk(new byte[] { 0x10 }).ToArray()
                 )
-            };
+            ).SetName("Len16_Limit16");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 new[] { true },
                 (ulong)512,
                 "03",
@@ -226,9 +226,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     ),
                     HashUtility.Chunk(new byte[] { 0x01 }).ToArray()
                 )
-            };
+            ).SetName("Len1_Limit512");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 Enumerable.Repeat(true, 512).ToArray(),
                 (ulong)512,
                 new string('f', 64 * 2) + "01",
@@ -239,9 +239,9 @@ namespace Nethermind.Serialization.Ssz.Test
                     ),
                     HashUtility.Chunk(new byte[] { 0x00, 0x02 }).ToArray()
                 )
-            };
+            ).SetName("Len512_Limit512");
 
-            yield return new object[] {
+            yield return new TestCaseData(
                 Enumerable.Repeat(true, 513).ToArray(),
                 (ulong)513,
                 new string('f', 64 * 2) + "03",
@@ -258,7 +258,7 @@ namespace Nethermind.Serialization.Ssz.Test
                     ),
                     HashUtility.Chunk(new byte[] { 0x01, 0x02 }).ToArray()
                 )
-            };
+            ).SetName("Len513_Limit513");
         }
 
     }

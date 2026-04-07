@@ -3,8 +3,10 @@
 
 #nullable enable
 using System;
-using System.Text.Json.Serialization;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
@@ -28,12 +30,36 @@ public class Hash256Converter : JsonConverter<Hash256>
         return bytes is null ? null : new Hash256(bytes);
     }
 
+    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         Hash256 keccak,
         JsonSerializerOptions options)
     {
-        ByteArrayConverter.Convert(writer, keccak.Bytes, skipLeadingZeros: false);
+        WriteHashHex(writer, in keccak.ValueHash256);
+    }
+
+    /// <summary>
+    /// SIMD-accelerated hex encoding for 32-byte hashes.
+    /// Writes raw JSON (including quotes) via WriteRawValue to bypass the encoder entirely.
+    /// </summary>
+    [SkipLocalsInit]
+    internal static void WriteHashHex(Utf8JsonWriter writer, in ValueHash256 hash)
+    {
+        // Raw JSON: '"' + "0x" + 64 hex chars + '"' = 68 bytes
+        Unsafe.SkipInit(out HexWriter.HexBuffer72 rawBuf);
+        ref byte b = ref Unsafe.As<HexWriter.HexBuffer72, byte>(ref rawBuf);
+
+        Unsafe.Add(ref b, 0) = (byte)'"';
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref b, 1), (ushort)0x7830); // "0x" LE
+
+        HexWriter.Encode32Bytes(ref Unsafe.Add(ref b, 3), hash.Bytes);
+
+        Unsafe.Add(ref b, 67) = (byte)'"';
+
+        writer.WriteRawValue(
+            MemoryMarshal.CreateReadOnlySpan(ref b, 68),
+            skipInputValidation: true);
     }
 
     // Methods needed to ser/de dictionary keys

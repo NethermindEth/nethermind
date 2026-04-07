@@ -3,7 +3,6 @@
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,8 +16,7 @@ public class ChainSpecParamsJson
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    [JsonPropertyName("registrar")]
-    public Address EnsRegistrar { get; set; }
+    public Address Registrar { get; set; }
 
     public long? GasLimitBoundDivisor { get; set; }
 
@@ -135,14 +133,20 @@ public class ChainSpecParamsJson
     public long? TerminalPoWBlockNumber { get; set; }
     public ulong? BeaconChainGenesisTimestamp { get; set; }
 
+    public long? Eip1153Transition { get; set; }
     public ulong? Eip1153TransitionTimestamp { get; set; }
+    public long? Eip3651Transition { get; set; }
     public ulong? Eip3651TransitionTimestamp { get; set; }
+    public long? Eip3855Transition { get; set; }
     public ulong? Eip3855TransitionTimestamp { get; set; }
+    public long? Eip3860Transition { get; set; }
     public ulong? Eip3860TransitionTimestamp { get; set; }
     public ulong? Eip4895TransitionTimestamp { get; set; }
     public ulong? Eip4844TransitionTimestamp { get; set; }
     public ulong? Eip2537TransitionTimestamp { get; set; }
+    public long? Eip5656Transition { get; set; }
     public ulong? Eip5656TransitionTimestamp { get; set; }
+    public long? Eip6780Transition { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
@@ -161,7 +165,6 @@ public class ChainSpecParamsJson
     public Address Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
-    public ulong? Eip7692TransitionTimestamp { get; set; }
     public ulong? Eip7702TransitionTimestamp { get; set; }
     public ulong? Eip7883TransitionTimestamp { get; set; }
     public ulong? Eip7823TransitionTimestamp { get; set; }
@@ -178,4 +181,12 @@ public class ChainSpecParamsJson
     public ulong? Eip7594TransitionTimestamp { get; set; }
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Rip7728TransitionTimestamp { get; set; }
+    public ulong? Eip8037TransitionTimestamp { get; set; }
+    public ulong? Eip7778TransitionTimestamp { get; set; }
+
+    public ulong? Eip7928TransitionTimestamp { get; set; }
+    public ulong? Eip7708TransitionTimestamp { get; set; }
+    public ulong? Eip8024TransitionTimestamp { get; set; }
+    public ulong? Eip7843TransitionTimestamp { get; set; }
+    public ulong? Eip7954TransitionTimestamp { get; set; }
 }

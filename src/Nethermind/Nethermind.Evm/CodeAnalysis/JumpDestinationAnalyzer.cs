@@ -16,7 +16,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
+public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,10 +24,10 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-    private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
-    private ReadOnlyMemory<byte> MachineCode { get; } = code;
+    public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     public bool ValidateJump(int destination)
     {
@@ -108,7 +108,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         Metrics.IncrementContractsAnalysed();
         ReadOnlySpan<byte> code = MachineCode.Span;
 
-        // If code is empty or starts with STOP, then we don't need to analyse
+        // If code is empty or starts with STOP, then we don't need to analyze
         if ((uint)code.Length < (uint)1 || code[0] == (byte)Instruction.STOP) return _emptyJumpDestinationBitmap;
 
         long[] bitmap = CreateBitmap(code.Length);
@@ -305,7 +305,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             else if ((sbyte)op > PUSHx)
             {
                 // Fast forward programCounter by the amount of data the push
-                // represents as don't need to analyse data for Jump Destinations.
+                // represents as don't need to analyze data for Jump Destinations.
                 move = op - PUSH1 + 2;
             }
 

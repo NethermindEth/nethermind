@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
 using NUnit.Framework;
 

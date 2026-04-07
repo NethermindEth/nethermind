@@ -14,7 +14,6 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
-using Nethermind.State;
 
 namespace Nethermind.Benchmarks.Store;
 

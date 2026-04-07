@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;

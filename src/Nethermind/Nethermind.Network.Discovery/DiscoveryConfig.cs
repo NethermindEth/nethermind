@@ -1,5 +1,7 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Config;
 
 namespace Nethermind.Network.Discovery;
 
@@ -39,7 +41,9 @@ public class DiscoveryConfig : IDiscoveryConfig
 
     public int MaxOutgoingMessagePerSecond { get; set; } = 100;
 
-    public string Bootnodes { get; set; } = string.Empty;
+    public NetworkNode[] Bootnodes { get; set; } = [];
+
+    public bool UseDefaultDiscv5Bootnodes { get; set; } = true;
 
     public DiscoveryVersion DiscoveryVersion { get; set; } = DiscoveryVersion.V4;
 }

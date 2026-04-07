@@ -17,12 +17,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Utils;
-using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -34,7 +31,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 {
     public abstract class SyncPeerProtocolHandlerBase : ZeroProtocolHandlerBase, ISyncPeer
     {
-        public static readonly ulong SoftOutgoingMessageSizeLimit = (ulong)2.MB();
+        internal static ulong SoftOutgoingMessageSizeLimit = (ulong)9_500.KB;
         public Node Node => Session?.Node;
         public string ClientId => Node?.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -53,7 +50,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Hash256 _remoteHeadBlockHash;
         protected readonly ITimestamper _timestamper;
-        protected readonly TxDecoder _txDecoder;
 
         protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
@@ -70,10 +66,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
-            _txDecoder = TxDecoder.Instance;
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
         }
+
+        public override void RegisterWith(ISession session, IProtocolRegistrar registrar) => registrar.Register(session, this);
 
         public void Disconnect(DisconnectReason reason, string details)
         {
@@ -181,7 +178,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
@@ -307,7 +304,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
             IOwnedReadOnlyList<BlockHeader> headers =
-                startingHash is null
+                startingHash is null || cancellationToken.IsCancellationRequested
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
@@ -337,14 +334,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < hashes.Count; i++)
             {
-                Block block = SyncServer.Find(hashes[i]);
-                blocks.Add(block);
-                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
-
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
+
+                Block block = SyncServer.Find(hashes[i]);
+                sizeEstimate += MessageSizeEstimator.EstimateSize(block);
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
+
+                blocks.Add(block);
             }
 
             return Task.FromResult(new BlockBodiesMessage(blocks));
@@ -377,16 +380,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ulong sizeEstimate = 0;
             for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
             {
-                txReceipts.Add(SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]));
-                for (int j = 0; j < txReceipts[i].Length; j++)
-                {
-                    sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
-                }
-
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                if (cancellationToken.IsCancellationRequested)
                 {
                     break;
                 }
+
+                TxReceipt[] blockTxReceipts = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                sizeEstimate += MessageSizeEstimator.EstimateSize(blockTxReceipts);
+
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                {
+                    break;
+                }
+
+                txReceipts.Add(blockTxReceipts);
             }
 
             return Task.FromResult(new ReceiptsMessage(txReceipts));

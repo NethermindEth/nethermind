@@ -180,7 +180,7 @@ public partial class BlockProducerBaseTests
         TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(spec);
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
-        await testRpc.AddFunds(address, 1.Ether());
+        await testRpc.AddFunds(address, 1.Ether);
         return testRpc;
     }
 

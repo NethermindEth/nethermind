@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System;
 using Nethermind.Core;
 
 namespace Nethermind.TxPool;
@@ -14,19 +13,20 @@ public interface ITxGossipPolicy
     bool ShouldGossipTransaction(Transaction tx) => true;
 }
 
-public class CompositeTxGossipPolicy : ITxGossipPolicy
+// Lazy: resolving ITxGossipPolicy[] eagerly pulls in the sync infrastructure
+// (SyncedTxGossipPolicy → ISyncModeSelector → ...) which depends on services
+// not yet available during init step construction.
+public class CompositeTxGossipPolicy(Lazy<ITxGossipPolicy[]> policies) : ITxGossipPolicy
 {
-    public List<ITxGossipPolicy> Policies { get; } = new();
     public bool ShouldListenToGossipedTransactions
     {
         get
         {
-            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            ITxGossipPolicy[] p = policies.Value;
+            for (int i = 0; i < p.Length; i++)
             {
-                if (!policy.ShouldListenToGossipedTransactions)
-                {
+                if (!p[i].ShouldListenToGossipedTransactions)
                     return false;
-                }
             }
             return true;
         }
@@ -36,12 +36,11 @@ public class CompositeTxGossipPolicy : ITxGossipPolicy
     {
         get
         {
-            foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+            ITxGossipPolicy[] p = policies.Value;
+            for (int i = 0; i < p.Length; i++)
             {
-                if (!policy.CanGossipTransactions)
-                {
+                if (!p[i].CanGossipTransactions)
                     return false;
-                }
             }
             return true;
         }
@@ -49,12 +48,11 @@ public class CompositeTxGossipPolicy : ITxGossipPolicy
 
     public bool ShouldGossipTransaction(Transaction tx)
     {
-        foreach (ITxGossipPolicy policy in CollectionsMarshal.AsSpan(Policies))
+        ITxGossipPolicy[] p = policies.Value;
+        for (int i = 0; i < p.Length; i++)
         {
-            if (!policy.ShouldGossipTransaction(tx))
-            {
+            if (!p[i].ShouldGossipTransaction(tx))
                 return false;
-            }
         }
         return true;
     }

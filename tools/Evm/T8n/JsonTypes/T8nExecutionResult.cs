@@ -7,11 +7,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.State.Proofs;
 
@@ -48,7 +46,7 @@ public class T8nExecutionResult
             TxRoot = txRoot,
             ReceiptsRoot = receiptsRoot,
             WithdrawalsRoot = block.WithdrawalsRoot,
-            LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes),
+            LogsHash = Keccak.Compute(Rlp.OfEmptyList.Bytes),
             LogsBloom = bloom,
             Receipts = txReport.SuccessfulTransactionReceipts.ToArray(),
             Rejected = txReport.RejectedTransactionReceipts.Count == 0

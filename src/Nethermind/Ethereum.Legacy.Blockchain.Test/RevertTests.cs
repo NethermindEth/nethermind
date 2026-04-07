@@ -10,23 +10,16 @@ namespace Ethereum.Legacy.Blockchain.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class RevertTests : GeneralStateTestBase
+public class RevertTest : GeneralStateTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
-    public void Test(GeneralStateTest test)
-    {
-        Assert.That(RunTest(test).Pass, Is.True);
-    }
+    public void Test(GeneralStateTest test) => Assert.That(RunTest(test).Pass, Is.True);
 
     public static IEnumerable<GeneralStateTest> LoadTests()
     {
         var loader = new TestsSourceLoader(new LoadLegacyGeneralStateTestsStrategy(), "stRevertTest");
         IEnumerable<GeneralStateTest> tests = loader.LoadTests<GeneralStateTest>();
-        HashSet<string> ignoredTests = new()
-        {
-            "RevertPrecompiledTouch",
-        };
-
+        HashSet<string> ignoredTests = ["RevertPrecompiledTouch"];
         return tests.Where(t => !ignoredTests.Any(pattern => t.Name.Contains(pattern)));
     }
 }

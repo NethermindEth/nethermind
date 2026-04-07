@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -94,20 +95,7 @@ public class SyncServerTests
 
         ISealValidator sealValidator = sealOk ? Always.Valid : Always.Invalid;
         IBlockValidator blockValidator = validationOk ? Always.Valid : Always.Invalid;
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            blockValidator,
-            sealValidator,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, blockValidator, sealValidator);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
@@ -130,35 +118,6 @@ public class SyncServerTests
         }
     }
 
-    [Test]
-    public void Can_accept_blocks_that_are_fine()
-    {
-        Context ctx = new();
-        BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
-        BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
-
-        Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
-
-        ctx.SyncServer.AddNewBlock(block, ctx.NodeWhoSentTheBlock);
-
-        Assert.That(block.Header, Is.EqualTo(localBlockTree.BestSuggestedHeader));
-    }
-
     [TestCase(SyncMode.SnapSync, false)]
     [TestCase(SyncMode.FastSync, false)]
     [TestCase(SyncMode.StateNodes, false)]
@@ -175,20 +134,7 @@ public class SyncServerTests
             SyncMode.StateNodes => StaticSelector.StateNodesWithFastBlocks,
             _ => StaticSelector.Full,
         };
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            staticSelector,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, syncModeSelector: staticSelector);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
@@ -507,20 +453,7 @@ public class SyncServerTests
             MainnetSpecProvider.Instance,
             LimboLogs.Instance);
 
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            blockValidator,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, blockValidator);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
         block.Header.TotalDifficulty = block.Header.TotalDifficulty * 2;
@@ -540,20 +473,7 @@ public class SyncServerTests
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
 
         ISealValidator sealValidator = Substitute.For<ISealValidator>();
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            sealValidator,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, sealValidator: sealValidator);
 
         Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None)!;
 
@@ -568,20 +488,7 @@ public class SyncServerTests
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
         ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
         SyncPeerMock syncPeerMock1 = new(remoteBlockTree, remotePublicKey: TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
@@ -605,20 +512,7 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            blockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(blockTree);
 
         ISyncServer remoteServer1 = Substitute.For<ISyncServer>();
         SyncPeerMock syncPeerMock1 = new(blockTree, remotePublicKey: TestItem.PublicKeyA, remoteSyncServer: remoteServer1);
@@ -647,26 +541,13 @@ public class SyncServerTests
         Context ctx = new();
         BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(9).TestObject;
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
         ISyncServer remoteServer = Substitute.For<ISyncServer>();
         int count = 0;
         remoteServer
             .When(r => r.AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
-            .Do(_ => count++);
+            .Do(_ => Interlocked.Increment(ref count));
         PeerInfo[] peers = Enumerable.Range(0, peerCount).Take(peerCount)
             .Select(_ => new PeerInfo(new SyncPeerMock(remoteBlockTree, remoteSyncServer: remoteServer)))
             .ToArray();
@@ -688,20 +569,7 @@ public class SyncServerTests
         const int frequency = 32;
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
 
-        ctx.SyncServer = new SyncServer(
-            ctx.WorldStateManager,
-            new MemDb(),
-            localBlockTree,
-            NullReceiptStorage.Instance,
-            Always.Valid,
-            Always.Valid,
-            ctx.PeerPool,
-            StaticSelector.Full,
-            new TestSyncConfig(),
-            Policy.FullGossip,
-            ctx.HistoryPruner,
-            MainnetSpecProvider.Instance,
-            LimboLogs.Instance);
+        ctx.SyncServer = ctx.CreateSyncServer(localBlockTree);
 
         PeerInfo[] peers = Enumerable.Range(0, 3)
             .Select(_ => Substitute.For<ISyncPeer>())
@@ -725,10 +593,14 @@ public class SyncServerTests
         foreach (PeerInfo peerInfo in peers)
         {
             Assert.That(
-                () => peerInfo.SyncPeer.ReceivedCalls()
-                    .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
-                    .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
-                    .Select(a => (earliest: a[0], latest: a[1])).ToArray()[^2..],
+                () =>
+                {
+                    var arr = peerInfo.SyncPeer.ReceivedCalls()
+                        .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
+                        .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
+                        .Select(a => (earliest: a[0], latest: a[1])).ToArray();
+                    return arr.Length >= 2 ? arr[^2..] : arr;
+                },
                 Is.EquivalentTo(expectedUpdates).After(15000, 50) // Wait for background notifications to finish
             );
         }
@@ -739,9 +611,8 @@ public class SyncServerTests
     {
         Context ctx = new();
         BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
-        ISealValidator sealValidator = Substitute.For<ISealValidator>();
         MemDb stateDb = new();
-        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB()), NoPersistence.Instance, LimboLogs.Instance);
+        TrieStore trieStore = TestTrieStoreFactory.Build(stateDb, Prune.WhenCacheReaches(10.MB), NoPersistence.Instance, LimboLogs.Instance);
 
         IWorldStateManager worldStateManager = Substitute.For<IWorldStateManager>();
         worldStateManager.HashServer.Returns(trieStore.TrieNodeRlpStore);
@@ -752,7 +623,7 @@ public class SyncServerTests
             localBlockTree,
             NullReceiptStorage.Instance,
             Always.Valid,
-            sealValidator,
+            Always.Valid,
             ctx.PeerPool,
             StaticSelector.Full,
             new TestSyncConfig(),
@@ -774,7 +645,9 @@ public class SyncServerTests
         }
 
         stateDb.KeyExists(nodeKey).Should().BeFalse();
-        ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
+        using IByteArrayList nodeData = ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All);
+        nodeData.Count.Should().Be(1);
+        nodeData[0].ToArray().Should().BeEquivalentTo(TestItem.KeccakB.BytesToArray());
     }
 
     [Test]
@@ -823,5 +696,28 @@ public class SyncServerTests
 
         public IBlockTree LocalBlockTree { get; set; } = null!;
         public ISyncPeer NodeWhoSentTheBlock { get; }
+
+        public SyncServer CreateSyncServer(
+            IBlockTree localBlockTree,
+            IBlockValidator? blockValidator = null,
+            ISealValidator? sealValidator = null,
+            ISyncModeSelector? syncModeSelector = null,
+            ISpecProvider? specProvider = null)
+        {
+            return new SyncServer(
+                WorldStateManager,
+                new MemDb(),
+                localBlockTree,
+                NullReceiptStorage.Instance,
+                blockValidator ?? Always.Valid,
+                sealValidator ?? Always.Valid,
+                PeerPool,
+                syncModeSelector ?? StaticSelector.Full,
+                new TestSyncConfig(),
+                Policy.FullGossip,
+                HistoryPruner,
+                specProvider ?? MainnetSpecProvider.Instance,
+                LimboLogs.Instance);
+        }
     }
 }

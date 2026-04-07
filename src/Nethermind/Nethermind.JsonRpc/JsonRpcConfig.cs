@@ -65,7 +65,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();
     public int MaxBatchSize { get; set; } = 1024;
     public int JsonSerializationMaxDepth { get; set; } = EthereumJsonSerializer.DefaultMaxDepth;
-    public long? MaxBatchResponseBodySize { get; set; } = 32.MiB();
+    public long? MaxBatchResponseBodySize { get; set; } = 32.MiB;
     public long? MaxSimulateBlocksCap { get; set; } = 256;
     public int EstimateErrorMargin { get; set; } = 150;
     public string[] CorsOrigins { get; set; } = ["*"];

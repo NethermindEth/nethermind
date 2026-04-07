@@ -79,34 +79,34 @@ public class GethLikeTxTraceCollectionConverterTests
         });
     }
 
-    private static IEnumerable<object[]> TraceAndJsonSource()
+    private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {
-        yield return [
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 1, ReturnValue = [0x01], TxHash = null },
             """
             {
                 "result": { "gas": 1, "failed": false, "returnValue": "0x01", "structLogs": [] },
                 "txHash": null
             }
-            """
-        ];
-        yield return [
+            """)
+            .SetName("Gas1_NullTxHash");
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 2, ReturnValue = [0x02], TxHash = Hash256.Zero },
             """
             {
                 "result": { "gas": 2, "failed": false, "returnValue": "0x02", "structLogs": [] },
                 "txHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
             }
-            """
-        ];
-        yield return [
+            """)
+            .SetName("Gas2_ZeroTxHash");
+        yield return new TestCaseData(
             new GethLikeTxTrace { Gas = 3, ReturnValue = [0x03], TxHash = Keccak.Compute("A") },
             """
             {
                 "result": { "gas": 3, "failed": false, "returnValue": "0x03", "structLogs": [] },
                 "txHash": "0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"
             }
-            """
-        ];
+            """)
+            .SetName("Gas3_ComputedTxHash");
     }
 }

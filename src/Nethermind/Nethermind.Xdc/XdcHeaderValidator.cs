@@ -17,8 +17,7 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 {
     protected override bool Validate<TOrphaned>(BlockHeader header, BlockHeader parent, bool isUncle, out string? error)
     {
-        if (parent is null)
-            throw new ArgumentNullException(nameof(parent));
+        ArgumentNullException.ThrowIfNull(parent);
         if (header is not XdcBlockHeader xdcHeader)
             throw new ArgumentException($"Only type of {nameof(XdcBlockHeader)} is allowed, but got type {header.GetType().Name}.", nameof(header));
         if (parent is not XdcBlockHeader parentXdcHeader)
@@ -67,6 +66,14 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
         error = null;
         return true;
+    }
+
+    protected override bool ValidateGasLimitRange(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error)
+    {
+        //We ignore gas limit validation for genesis block
+        if (parent.Number == 0)
+            return true;
+        return base.ValidateGasLimitRange(header, parent, spec, ref error);
     }
 
     protected override bool ValidateSeal(BlockHeader header, BlockHeader parent, bool isUncle, ref string? error)

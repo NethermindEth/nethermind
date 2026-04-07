@@ -38,39 +38,14 @@ namespace Nethermind.Crypto
             Write(zeros);
         }
 
-        public override byte ReadByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override byte PeekByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            WriteZero(length);
-        }
-
         public override int Position
         {
-            get => throw new NotSupportedException("Cannot read form Keccak");
-            set => throw new NotSupportedException("Cannot read form Keccak");
+            get => throw new NotSupportedException("Cannot read from Keccak");
+            set => throw new NotSupportedException("Cannot read from Keccak");
         }
 
-        public override int Length => throw new NotSupportedException("Cannot read form Keccak");
+        public override int Length => throw new NotSupportedException("Cannot read from Keccak");
 
-        protected override string Description => "|KeccakRlpSTream|description missing|";
+        protected override string Description => "|KeccakRlpStream|description missing|";
     }
 }

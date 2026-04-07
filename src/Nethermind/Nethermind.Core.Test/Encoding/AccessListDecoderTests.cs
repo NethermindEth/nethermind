@@ -90,8 +90,8 @@ namespace Nethermind.Core.Test.Encoding
         {
             RlpStream rlpStream = new(10000);
             _decoder.Encode(rlpStream, testCase.AccessList);
-            rlpStream.Position = 0;
-            AccessList decoded = _decoder.Decode(rlpStream)!;
+            Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
+            AccessList decoded = _decoder.Decode(ref ctx)!;
             if (testCase.AccessList is null)
             {
                 decoded.Should().BeNull();

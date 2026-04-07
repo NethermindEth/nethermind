@@ -307,11 +307,15 @@ public static class ContainerBuilderExtensions
         return builder.AddScoped<T, IComponentContext>(factoryMethod);
     }
 
-    public static ContainerBuilder Add<T>(this ContainerBuilder builder) where T : class
+    public static ContainerBuilder Add<T>(this ContainerBuilder builder, bool externallyOwned = false) where T : class
     {
-        builder.RegisterType<T>()
-            .CommonNethermindConfig()
-            .As<T>();
+        IRegistrationBuilder<T, ConcreteReflectionActivatorData, SingleRegistrationStyle> registration =
+            builder.RegisterType<T>()
+                .CommonNethermindConfig()
+                .As<T>();
+
+        if (externallyOwned)
+            registration.ExternallyOwned();
 
         return builder;
     }
@@ -370,6 +374,15 @@ public static class ContainerBuilderExtensions
         return builder.AddDecorator<T>((ctx, service) =>
         {
             interceptor(service);
+            return service;
+        });
+    }
+
+    public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T, IComponentContext> interceptor) where T : class
+    {
+        return builder.AddDecorator<T>((ctx, service) =>
+        {
+            interceptor(service, ctx);
             return service;
         });
     }
@@ -488,8 +501,7 @@ public static class ContainerBuilderExtensions
     ) where TReflectionActivatorData : ReflectionActivatorData
     {
         return builder
-            .WithAttributeFiltering()
-            .FindConstructorsWith(NethermindConstructorFinder.Instance);
+            .WithAttributeFiltering();
     }
 
     private static Func<IComponentContext, T> CreateArgResolver<T>(MethodInfo methodInfo, int paramIndex) where T : notnull

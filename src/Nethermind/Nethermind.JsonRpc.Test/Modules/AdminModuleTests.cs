@@ -90,7 +90,6 @@ public class AdminModuleTests
         _rlpxPeer = Substitute.For<IRlpxHost>();
         _rlpxPeer.SessionMonitor.Sessions.Returns(existingSessions);
 
-        IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         Enode enode = new(_enodeString);
@@ -295,7 +294,6 @@ public class AdminModuleTests
         IPeerPool peerPool = Substitute.For<IPeerPool>();
 
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
-        Enode testEnode = new(_enodeString);
 
         // Mock AddAsync to return true for any enode (to simplify)
         trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));
@@ -337,7 +335,6 @@ public class AdminModuleTests
         IPeerPool peerPool = Substitute.For<IPeerPool>();
 
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
-        Enode testEnode = new(_enodeString);
 
         // Mock RemoveAsync to return true for any enode (to simplify)
         trustedNodesManager.RemoveAsync(Arg.Any<Enode>(), Arg.Any<bool>()).Returns(Task.FromResult(true));

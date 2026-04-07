@@ -24,7 +24,4 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
         fullTrieStore.BeginCommit(address, root, writeFlags);
-
-    public bool IsPersisted(in TreePath path, in ValueHash256 keccak) =>
-        fullTrieStore.IsPersisted(address, path, in keccak);
 }

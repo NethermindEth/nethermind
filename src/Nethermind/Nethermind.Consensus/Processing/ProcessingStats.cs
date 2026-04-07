@@ -19,27 +19,27 @@ namespace Nethermind.Consensus.Processing
 {
     public class BlockStatistics
     {
-        public long BlockCount { get; internal set; }
-        public long BlockFrom { get; internal set; }
-        public long BlockTo { get; internal set; }
-        public double ProcessingMs { get; internal set; }
-        public double SlotMs { get; internal set; }
+        public long BlockCount { get; set; }
+        public long BlockFrom { get; set; }
+        public long BlockTo { get; set; }
+        public double ProcessingMs { get; set; }
+        public double SlotMs { get; set; }
         [JsonPropertyName("mgasPerSecond")]
-        public double MGasPerSecond { get; internal set; }
-        public float MinGas { get; internal set; }
-        public float MedianGas { get; internal set; }
-        public float AveGas { get; internal set; }
-        public float MaxGas { get; internal set; }
-        public long GasLimit { get; internal set; }
+        public double MGasPerSecond { get; set; }
+        public float MinGas { get; set; }
+        public float MedianGas { get; set; }
+        public float AveGas { get; set; }
+        public float MaxGas { get; set; }
+        public long GasLimit { get; set; }
     }
     //TODO Consult on disabling of such metrics from configuration
-    internal class ProcessingStats
+    public class ProcessingStats : IProcessingStats
     {
         private static readonly DefaultObjectPool<BlockData> _dataPool = new(new BlockDataPolicy(), 16);
         private readonly Action<BlockData> _executeFromThreadPool;
         public event EventHandler<BlockStatistics>? NewProcessingStatistics;
-        private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        protected readonly IStateReader _stateReader;
+        protected readonly ILogger _logger;
         private readonly Stopwatch _runStopwatch = new();
 
         private bool _showBlobs;
@@ -69,12 +69,12 @@ namespace Nethermind.Consensus.Processing
         private long _contractsAnalyzed;
         private long _cachedContractsUsed;
 
-        public ProcessingStats(IStateReader stateReader, ILogger logger)
+        public ProcessingStats(IStateReader stateReader, ILogManager logManager)
         {
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logger;
+            _logger = logManager.GetClassLogger<ProcessingStats>();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
@@ -85,15 +85,15 @@ namespace Nethermind.Consensus.Processing
 
         public void CaptureStartStats()
         {
-            _startSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            _startSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            _startCallOps = Evm.Metrics.ThreadLocalCalls;
-            _startEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            _startCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            _startContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            _startCreateOps = Evm.Metrics.ThreadLocalCreates;
-            _startSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
-            _startOpCodes = Evm.Metrics.ThreadLocalOpCodes;
+            _startSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            _startSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            _startCallOps = Evm.Metrics.MainThreadCalls;
+            _startEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            _startCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            _startContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            _startCreateOps = Evm.Metrics.MainThreadCreates;
+            _startSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            _startOpCodes = Evm.Metrics.MainThreadOpCodes;
         }
 
         public void UpdateStats(Block? block, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -115,15 +115,15 @@ namespace Nethermind.Consensus.Processing
             blockData.StartCreateOps = _startCreateOps;
             blockData.StartSelfDestructOps = _startSelfDestructOps;
             blockData.ProcessingMicroseconds = blockProcessingTimeInMicros;
-            blockData.CurrentOpCodes = Evm.Metrics.ThreadLocalOpCodes;
-            blockData.CurrentSLoadOps = Evm.Metrics.ThreadLocalSLoadOpcode;
-            blockData.CurrentSStoreOps = Evm.Metrics.ThreadLocalSStoreOpcode;
-            blockData.CurrentCallOps = Evm.Metrics.ThreadLocalCalls;
-            blockData.CurrentEmptyCalls = Evm.Metrics.ThreadLocalEmptyCalls;
-            blockData.CurrentCachedContractsUsed = Evm.Metrics.ThreadLocalCodeDbCache;
-            blockData.CurrentContractsAnalyzed = Evm.Metrics.ThreadLocalContractsAnalysed;
-            blockData.CurrentCreatesOps = Evm.Metrics.ThreadLocalCreates;
-            blockData.CurrentSelfDestructOps = Evm.Metrics.ThreadLocalSelfDestructs;
+            blockData.CurrentOpCodes = Evm.Metrics.MainThreadOpCodes;
+            blockData.CurrentSLoadOps = Evm.Metrics.MainThreadSLoadOpcode;
+            blockData.CurrentSStoreOps = Evm.Metrics.MainThreadSStoreOpcode;
+            blockData.CurrentCallOps = Evm.Metrics.MainThreadCalls;
+            blockData.CurrentEmptyCalls = Evm.Metrics.MainThreadEmptyCalls;
+            blockData.CurrentCachedContractsUsed = Evm.Metrics.MainThreadCodeDbCache;
+            blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
+            blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
+            blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
 
             CaptureReportData(blockData);
         }
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private void GenerateReport(BlockData data)
+        protected virtual void GenerateReport(BlockData data)
         {
             const long weiToEth = 1_000_000_000_000_000_000;
             const string resetColor = "\u001b[37m";
@@ -443,7 +443,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        private class BlockData
+        protected class BlockData
         {
             public Block Block;
             public BlockHeader? BaseBlock;

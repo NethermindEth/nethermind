@@ -15,7 +15,6 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
-using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -23,15 +22,17 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Network.P2P.Subprotocols.NodeData;
 
-public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
+public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer, IStaticProtocolInfo
 {
     private readonly ISyncServer _syncServer;
-    private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
+    private readonly MessageQueue<GetNodeDataMessage, IByteArrayList> _nodeDataRequests;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
-    public override byte ProtocolVersion => 1;
-    public override string ProtocolCode => Protocol.NodeData;
+    public static byte Version => 1;
+    public static string Code => Protocol.NodeData;
+    public override byte ProtocolVersion => Version;
+    public override string ProtocolCode => Code;
     public override int MessageIdSpaceSize => 2;
 
     public NodeDataProtocolHandler(ISession session,
@@ -43,7 +44,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-        _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
+        _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IByteArrayList>(Send);
     }
     public override void Init()
     {
@@ -102,7 +103,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 
     private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<byte[]?>? nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
+        IByteArrayList nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
         return new NodeDataMessage(nodeData);
     }
 
@@ -111,23 +112,23 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         _nodeDataRequests.Handle(msg.Data, size);
     }
 
-    public async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
+    public async Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
     {
         if (keys.Count == 0)
         {
-            return ArrayPoolList<byte[]>.Empty();
+            return EmptyByteArrayList.Instance;
         }
 
         GetNodeDataMessage msg = new(keys.ToPooledList());
-        IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
+        IByteArrayList nodeData = await SendRequest(msg, token);
         return nodeData;
     }
 
-    private async Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
+    private async Task<IByteArrayList> SendRequest(GetNodeDataMessage message, CancellationToken token)
     {
         if (Logger.IsTrace) Logger.Trace($"NODEDATA protocol: Sending node data request with keys count: {message.Hashes.Count}");
 
-        Request<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>? request = new(message);
+        Request<GetNodeDataMessage, IByteArrayList>? request = new(message);
         _nodeDataRequests.Send(request);
 
         return await HandleResponse(request, TransferSpeedType.NodeData, static _ => $"{nameof(GetNodeDataMessage)}", token);

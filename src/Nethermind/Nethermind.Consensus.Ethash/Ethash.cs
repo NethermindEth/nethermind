@@ -30,7 +30,7 @@ namespace Nethermind.Consensus.Ethash
 
         public Ethash(ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<Ethash>() ?? throw new ArgumentNullException(nameof(logManager));
             _hintBasedCache = new HintBasedCache(BuildCache, logManager);
         }
 

@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Trie.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class TreePathTests
 {
     [Test]
@@ -197,6 +198,22 @@ public class TreePathTests
             path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
         }
         path.Length.Should().Be(0);
+    }
+
+    [TestCase("", "0000000000000000")]
+    [TestCase("01", "1000000000000001")]
+    [TestCase("000102030405060708", "0123456780000009")]
+    [TestCase("000102030405060708090a0b0c0d0e", "0123456789abcdef")] // verifies upper nibble of byte 7 preserved
+    [TestCase("000102030405", "0123450000000006")]
+    public void TestEncodeWith8Byte(string nibbleHex, string expectedEncodedHex)
+    {
+        byte[] nibbles = string.IsNullOrEmpty(nibbleHex) ? [] : Bytes.FromHexString(nibbleHex);
+        TreePath path = TreePath.FromNibble(nibbles);
+
+        Span<byte> buffer = stackalloc byte[8];
+        path.EncodeWith8Byte(buffer);
+
+        buffer.ToArray().ToHexString().Should().Be(expectedEncodedHex);
     }
 
     private static TreePath CreateFullTreePath()

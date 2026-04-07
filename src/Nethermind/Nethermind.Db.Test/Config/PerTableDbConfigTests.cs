@@ -5,7 +5,6 @@ using System;
 using System.Reflection;
 using FluentAssertions;
 using Nethermind.Db.Rocks.Config;
-using NSubstitute.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test.Config;
@@ -31,7 +30,7 @@ public class PerTableDbConfigTests
 
         foreach (string table in tables)
         {
-            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table);
+            PerTableDbConfig config = new PerTableDbConfig(dbConfig, table, validate: false);
 
             object _ = config.RocksDbOptions;
             _ = config.AdditionalRocksDbOptions;

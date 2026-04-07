@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Config;
@@ -18,15 +17,15 @@ public class ChainSpecFileLoader
     private readonly Dictionary<string, IChainSpecLoader> _chainSpecLoaders;
     private readonly ILogger _logger;
 
-    public ChainSpecFileLoader(IJsonSerializer serializer, ILogger logger)
+    public ChainSpecFileLoader(IJsonSerializer serializer, ILogManager logManager)
     {
-        var jsonLoader = new ChainSpecLoader(serializer);
+        AutoDetectingChainSpecLoader jsonLoader = new(serializer, logManager);
         _chainSpecLoaders = new Dictionary<string, IChainSpecLoader>
         {
             { ".json", jsonLoader },
             { ".zst", new ZstdChainSpecLoader(jsonLoader) }
         };
-        _logger = logger;
+        _logger = logManager.GetClassLogger<ChainSpecFileLoader>();
     }
 
     public ChainSpec LoadEmbeddedOrFromFile(string fileName)
@@ -90,8 +89,12 @@ public class ChainSpecFileLoader
                 string[] jsonFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
                 string[] zstdFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.zst");
 
-                var configFiles = Enumerable.Empty<string>().Concat(jsonFiles).Concat(zstdFiles);
-                foreach (var configFile in configFiles)
+                foreach (string configFile in jsonFiles)
+                {
+                    missingChainspecFileMessage.AppendLine($"  * {configFile}");
+                }
+
+                foreach (string configFile in zstdFiles)
                 {
                     missingChainspecFileMessage.AppendLine($"  * {configFile}");
                 }

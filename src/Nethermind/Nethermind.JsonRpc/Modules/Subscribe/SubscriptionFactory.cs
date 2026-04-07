@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
-using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe;
 

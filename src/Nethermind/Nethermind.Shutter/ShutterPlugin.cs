@@ -21,7 +21,6 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Find;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -43,7 +42,7 @@ public class ShutterPlugin(IShutterConfig shutterConfig, IMergeConfig mergeConfi
 
     public Task Init(INethermindApi nethermindApi)
     {
-        _logger = nethermindApi.LogManager.GetClassLogger();
+        _logger = nethermindApi.LogManager.GetClassLogger<ShutterPlugin>();
         if (_logger.IsInfo) _logger.Info($"Initializing Shutter plugin.");
         return Task.CompletedTask;
     }

@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Receipts
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
 
-            long blockNum = new RlpStream(blockHashData).DecodeLong();
+            long blockNum = new Rlp.ValueDecoderContext(blockHashData).DecodeLong();
             return _blockTree.FindBlockHash(blockNum);
         }
 

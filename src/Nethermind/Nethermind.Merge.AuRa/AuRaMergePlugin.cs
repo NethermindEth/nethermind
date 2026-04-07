@@ -63,7 +63,7 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
-        protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
+        protected override IBlockFinalizationManager InitializeMergeFinalizationManager()
         {
             return new AuRaMergeFinalizationManager(_api.Context.Resolve<IManualBlockFinalizationManager>(),
                 _auraApi!.FinalizationManager ??

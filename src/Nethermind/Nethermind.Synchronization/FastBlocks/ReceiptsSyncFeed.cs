@@ -73,7 +73,7 @@ namespace Nethermind.Synchronization.FastBlocks
             IHistoryPruner historyPruner,
             [KeyFilter(DbNames.Metadata)] IDb metadataDb,
             ILogManager logManager)
-            : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
+            : base(metadataDb, specProvider, logManager?.GetClassLogger<ReceiptsSyncFeed>() ?? default)
         {
             _receiptStorage = receiptStorage;
             _syncPointers = syncPointers;
@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 long? cutoff = historyPruner?.CutoffBlockNumber;
                 cutoff = cutoff is null ? null : long.Min(cutoff!.Value, blockTree.SyncPivot.BlockNumber);
                 bool shouldDownload = !hasReceipt && (cutoff is null || info.BlockNumber >= cutoff);
-                if (!shouldDownload) syncReport.FastBlocksBodies.IncrementSkipped();
+                if (!shouldDownload) syncReport.FastBlocksReceipts.IncrementSkipped();
                 return shouldDownload;
             }
         }

@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -95,7 +95,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<byte[]> eth_getStorageAt([JsonRpcParameter(ExampleValue = "[\"0x000000000000000000000000c666d239cbda32aa7ebca894b6dc598ddb881285\",\"0x2\"]")] Address address, UInt256 positionIndex, BlockParameter? blockParameter = null);
 
         [JsonRpcMethod(IsImplemented = true,
-            Description = "Returns account nonce (number of trnsactions from the account since genesis) at the given block number",
+            Description = "Returns storage values for multiple slots across multiple accounts in a single request. Total slot count across all addresses must not exceed 1024.",
+            IsSharable = true,
+            ExampleResponse = "{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x00000000000000000000000000000000000000000000000000000000000f4240\"]}")]
+        ResultWrapper<StorageValuesResult> eth_getStorageValues([JsonRpcParameter(ExampleValue = "[{\"0xdac17f958d2ee523a2206206994597c13d831ec7\":[\"0x0000000000000000000000000000000000000000000000000000000000000002\"]}]")] StorageValuesRequest requests, BlockParameter blockParameter);
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns account nonce (number of transactions from the account since genesis) at the given block number",
             IsSharable = true,
             ExampleResponse = "0x3e")]
         Task<ResultWrapper<UInt256>> eth_getTransactionCount([JsonRpcParameter(ExampleValue = "[\"0xae3ed7a6ccdddf2914133d0669b5f02ff6fa8ad2\"]")] Address address, BlockParameter? blockParameter = null);
@@ -178,6 +184,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             TransactionForRpc transactionCall,
             [JsonRpcParameter(Description = "(optional)")]
             BlockParameter? blockParameter = null,
+            [JsonRpcParameter(Description = "(optional)")]
+            Dictionary<Address, AccountOverride>? stateOverride = null,
             [JsonRpcParameter(Description = "(optional)")]
             bool optimize = true);
 
@@ -295,5 +303,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         [JsonRpcMethod(IsImplemented = true, Description = "Provides configuration data for the current and next fork", IsSharable = true)]
         ResultWrapper<JsonNode> eth_config();
+
+        [JsonRpcMethod(Description = "Retrieves block access list for a block by hash.")]
+        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByHash(Hash256 blockHash);
+
+        [JsonRpcMethod(Description = "Retrieves block access list for a block by number.")]
+        ResultWrapper<BlockAccessList?> eth_getBlockAccessListByNumber(long number);
     }
 }

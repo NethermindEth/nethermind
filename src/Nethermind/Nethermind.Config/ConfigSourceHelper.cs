@@ -17,21 +17,16 @@ namespace Nethermind.Config
     {
         public static object ParseValue(Type valueType, string valueString, string category, string name)
         {
-            if (Nullable.GetUnderlyingType(valueType) is { } nullableType)
-            {
-                return IsNullString(valueString) ? null : ParseValue(nullableType, valueString, category, name);
-            }
-
-            if (!valueType.IsValueType && IsNullString(valueString))
-            {
-                return null;
-            }
-
             try
             {
                 object value;
                 if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
                 {
+                    if (IsNullString(valueString))
+                    {
+                        return null;
+                    }
+
                     //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
                     var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
@@ -101,7 +96,7 @@ namespace Nethermind.Config
         private static bool IsNullString(string valueString) =>
             valueString?.Equals("null", StringComparison.OrdinalIgnoreCase) ?? true;
 
-        public static object GetDefault(Type type) => type.IsValueType ? (false, Activator.CreateInstance(type)) : (false, null);
+        public static object GetDefault(Type type) => type.IsValueType ? Activator.CreateInstance(type) : null;
 
         private static bool TryFromHex(Type type, string itemValue, out object value)
         {
@@ -152,6 +147,11 @@ namespace Nethermind.Config
             if (valueType == typeof(Hash256))
             {
                 return new Hash256(itemValue);
+            }
+
+            if (valueType == typeof(NetworkNode))
+            {
+                return new NetworkNode(itemValue);
             }
 
             if (valueType.IsEnum)

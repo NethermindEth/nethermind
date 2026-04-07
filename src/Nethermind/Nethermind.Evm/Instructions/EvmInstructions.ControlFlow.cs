@@ -85,7 +85,7 @@ internal static partial class EvmInstructions
         if (!Jump(result, ref programCounter, vm.VmState.Env)) goto InvalidJumpDestination;
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -123,7 +123,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     InvalidJumpDestination:
@@ -148,20 +148,11 @@ internal static partial class EvmInstructions
 
     /// <summary>
     /// Stops the execution of the EVM.
-    /// In EOFCREATE or TXCREATE executions, the STOP opcode is considered illegal.
     /// </summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionStop<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // In contract creation contexts, a STOP is not permitted.
-        if (vm.VmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
-        {
-            return EvmExceptionType.BadInstruction;
-        }
-
-        return EvmExceptionType.Stop;
-    }
+        => EvmExceptionType.Stop;
 
     /// <summary>
     /// Implements the REVERT opcode.
@@ -189,7 +180,7 @@ internal static partial class EvmInstructions
         vm.ReturnData = returnData.ToArray();
 
         return EvmExceptionType.Revert;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -202,8 +193,10 @@ internal static partial class EvmInstructions
     /// and marks the executing account for destruction.
     /// </summary>
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    private static EvmExceptionType InstructionSelfDestruct<TGasPolicy, TEip8037, TEip7708>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TEip8037 : struct, IFlag
+        where TEip7708 : struct, IFlag
     {
         // Increment metrics for self-destruct operations.
         Metrics.IncrementSelfDestructs();
@@ -219,7 +212,8 @@ internal static partial class EvmInstructions
         // If Shanghai DDoS protection is active, charge the appropriate gas cost.
         if (spec.UseShanghaiDDosProtection)
         {
-            TGasPolicy.ConsumeSelfDestructGas(ref gas);
+            if (!TGasPolicy.ConsumeSelfDestructGas(ref gas))
+                goto OutOfGas;
         }
 
         // Pop the inheritor address from the stack; signal underflow if missing.
@@ -233,29 +227,28 @@ internal static partial class EvmInstructions
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.AccessTracker.CreateList.Contains(executingAccount);
+        bool selfdestructOnlyOnSameTx = spec.SelfdestructOnlyOnSameTransaction;
         // Mark the executing account for destruction if allowed.
-        if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
+        if (!selfdestructOnlyOnSameTx || createInSameTx)
             vmState.AccessTracker.ToBeDestroyed(executingAccount);
 
         // Retrieve the current balance for transfer.
         UInt256 result = state.GetBalance(executingAccount);
+
         if (vm.TxTracer.IsTracingActions)
             vm.TxTracer.ReportSelfDestruct(executingAccount, result, inheritor);
 
-        // For certain specs, charge gas if transferring to a dead account.
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && state.IsDeadAccount(inheritor))
-        {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
-        }
-
-        // If account creation rules apply, ensure gas is charged for new accounts.
+        // Charge gas if transferring to a dead or non-existent account.
         bool inheritorAccountExists = state.AccountExists(inheritor);
-        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        bool chargesNewAccount = spec.ClearEmptyAccountWhenTouched switch
         {
-            if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.NewAccount))
-                goto OutOfGas;
-        }
+            true => !result.IsZero && state.IsDeadAccount(inheritor),
+            false => !inheritorAccountExists && spec.UseShanghaiDDosProtection,
+        };
+
+        bool outOfGas = chargesNewAccount && !(TGasPolicy.ConsumeNewAccountCreation<TEip8037>(ref gas));
+
+        if (outOfGas) goto OutOfGas;
 
         // Create or update the inheritor account with the transferred balance.
         if (!inheritorAccountExists)
@@ -268,13 +261,16 @@ internal static partial class EvmInstructions
         }
 
         // Special handling when SELFDESTRUCT is limited to the same transaction.
-        if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
-            goto Stop; // Avoid burning ETH if contract is not destroyed per EIP clarification
+        // No ETH moves and no log is emitted for this no-op case.
+        if (selfdestructOnlyOnSameTx && !createInSameTx && inheritor.Equals(executingAccount))
+            goto Stop;
+
+        vm.AddSelfDestructLog<TEip8037, TEip7708>(executingAccount, inheritor, result);
 
         // Subtract the balance from the executing account.
         state.SubtractFromBalance(executingAccount, result, spec);
 
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     Stop:
         return EvmExceptionType.Stop;
     OutOfGas:

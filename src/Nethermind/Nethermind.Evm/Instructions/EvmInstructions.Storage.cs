@@ -62,7 +62,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -117,7 +117,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -165,7 +165,7 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportMemoryChange((long)result, bytes);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -212,7 +212,7 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportMemoryChange(result, data);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -259,7 +259,7 @@ internal static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(bytes);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -315,7 +315,7 @@ internal static partial class EvmInstructions
             vm.TxTracer.ReportMemoryChange(a, bytes);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -351,7 +351,7 @@ internal static partial class EvmInstructions
         IReleaseSpec spec = vm.Spec;
 
         // For legacy metering: ensure there is enough gas for the SSTORE reset cost before reading storage.
-        if (!TGasPolicy.UpdateGas(ref gas, spec.GetSStoreResetCost()))
+        if (!TGasPolicy.UpdateGas(ref gas, spec.GasCosts.SStoreResetCost))
             goto OutOfGas;
 
         // Pop the key and then the new value for storage; signal underflow if unavailable.
@@ -377,7 +377,7 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = spec.GasCosts.SClearRefund;
 
         // Legacy metering: if storing zero and the value changes, grant a clearing refund.
         if (newIsZero)
@@ -414,7 +414,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -439,10 +439,11 @@ internal static partial class EvmInstructions
     /// <param name="programCounter">The program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating the outcome.</returns>
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
+    internal static EvmExceptionType InstructionSStoreMetered<TGasPolicy, TTracingInst, TUseNetGasStipendFix, TEip8037>(VirtualMachine<TGasPolicy> vm, ref EvmStack stack, ref TGasPolicy gas, ref int programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseNetGasStipendFix : struct, IFlag
+        where TEip8037 : struct, IFlag
     {
         // Increment the SSTORE opcode metric.
         Metrics.IncrementSStoreOpcode();
@@ -452,12 +453,13 @@ internal static partial class EvmInstructions
         if (vmState.IsStatic) goto StaticCallViolation;
 
         IReleaseSpec spec = vm.Spec;
+        SpecGasCosts gasCosts = spec.GasCosts;
 
         // In net metering with stipend fix, ensure extra gas pressure is reported and that sufficient gas remains.
         if (TUseNetGasStipendFix.IsActive)
         {
             if (vm.TxTracer.IsTracingRefunds)
-                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                vm.TxTracer.ReportExtraGasPressure(GasCostOf.CallStipend - gasCosts.NetMeteredSStoreCost + 1);
             if (TGasPolicy.GetRemainingGas(in gas) <= GasCostOf.CallStipend)
                 goto OutOfGas;
         }
@@ -485,11 +487,11 @@ internal static partial class EvmInstructions
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
 
         // Retrieve the refund value associated with clearing storage.
-        long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
+        long sClearRefunds = gasCosts.SClearRefund;
 
         if (newSameAsCurrent)
         {
-            if (!TGasPolicy.UpdateGas(ref gas, spec.GetNetMeteredSStoreCost()))
+            if (!TGasPolicy.UpdateGas(ref gas, gasCosts.NetMeteredSStoreCost))
                 goto OutOfGas;
         }
         else
@@ -503,12 +505,12 @@ internal static partial class EvmInstructions
             {
                 if (currentIsZero)
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: true, spec))
-                        goto OutOfGas;
+                    bool ssetOutOfGas = !TGasPolicy.ConsumeStorageWrite<TEip8037, OnFlag>(ref gas, spec);
+                    if (ssetOutOfGas) goto OutOfGas;
                 }
                 else
                 {
-                    if (!TGasPolicy.ConsumeStorageWrite(ref gas, isSlotCreation: false, spec))
+                    if (!TGasPolicy.ConsumeStorageWrite<TEip8037, OffFlag>(ref gas, spec))
                         goto OutOfGas;
 
                     if (newIsZero)
@@ -521,7 +523,7 @@ internal static partial class EvmInstructions
             }
             else
             {
-                long netMeteredStoreCost = spec.GetNetMeteredSStoreCost();
+                long netMeteredStoreCost = gasCosts.NetMeteredSStoreCost;
                 if (!TGasPolicy.UpdateGas(ref gas, netMeteredStoreCost))
                     goto OutOfGas;
 
@@ -547,9 +549,7 @@ internal static partial class EvmInstructions
                 bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
                 if (newSameAsOriginal)
                 {
-                    long refundFromReversal = originalIsZero
-                        ? spec.GetSetReversalRefund()
-                        : spec.GetClearReversalRefund();
+                    long refundFromReversal = gasCosts.RefundFromReversal<TEip8037>(originalIsZero);
 
                     vmState.Refund += refundFromReversal;
                     if (vm.TxTracer.IsTracingRefunds)
@@ -576,7 +576,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -618,7 +618,7 @@ internal static partial class EvmInstructions
         Metrics.IncrementSLoadOpcode();
 
         // Deduct the gas cost for performing an SLOAD.
-        TGasPolicy.Consume(ref gas, spec.GetSLoadCost());
+        TGasPolicy.Consume(ref gas, spec.GasCosts.SLoadCost);
 
         // Pop the key from the stack; if unavailable, signal a stack underflow.
         if (!stack.PopUInt256(out UInt256 result)) goto StackUnderflow;
@@ -642,7 +642,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return EvmExceptionType.OutOfGas;
     StackUnderflow:
@@ -668,7 +668,7 @@ internal static partial class EvmInstructions
         stack.PushBytes<TTracingInst>(vm.VmState.Env.InputData.SliceWithZeroPadding(result, 32));
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

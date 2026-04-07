@@ -118,23 +118,23 @@ namespace Nethermind.Synchronization.FastSync
                 return;
             }
 
-            RlpStream rlpStream = new(serializedData);
-            rlpStream.ReadSequenceLength();
-            ConsumedNodesCount = rlpStream.DecodeLong();
-            SavedStorageCount = rlpStream.DecodeLong();
-            SavedStateCount = rlpStream.DecodeLong();
-            SavedNodesCount = rlpStream.DecodeLong();
-            SavedAccounts = rlpStream.DecodeLong();
-            SavedCode = rlpStream.DecodeLong();
-            RequestedNodesCount = rlpStream.DecodeLong();
-            DbChecks = rlpStream.DecodeLong();
-            StateWasThere = rlpStream.DecodeLong();
-            StateWasNotThere = rlpStream.DecodeLong();
-            DataSize = rlpStream.DecodeLong();
+            Rlp.ValueDecoderContext ctx = new(serializedData);
+            ctx.ReadSequenceLength();
+            ConsumedNodesCount = ctx.DecodeLong();
+            SavedStorageCount = ctx.DecodeLong();
+            SavedStateCount = ctx.DecodeLong();
+            SavedNodesCount = ctx.DecodeLong();
+            SavedAccounts = ctx.DecodeLong();
+            SavedCode = ctx.DecodeLong();
+            RequestedNodesCount = ctx.DecodeLong();
+            DbChecks = ctx.DecodeLong();
+            StateWasThere = ctx.DecodeLong();
+            StateWasNotThere = ctx.DecodeLong();
+            DataSize = ctx.DecodeLong();
 
-            if (rlpStream.Position != rlpStream.Length)
+            if (ctx.Position != ctx.Length)
             {
-                SecondsInSync = rlpStream.DecodeLong();
+                SecondsInSync = ctx.DecodeLong();
             }
         }
 
