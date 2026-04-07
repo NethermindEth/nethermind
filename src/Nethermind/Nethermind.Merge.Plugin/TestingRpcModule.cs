@@ -62,7 +62,7 @@ public class TestingRpcModule(
             }
 
             header.TxRoot = TxTrie.CalculateRoot(transactions);
-            Block block = new(header, new BlockBody(transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null));
+            BlockToProduce block = new(header, transactions, [], spec.WithdrawalsEnabled ? (payloadAttributes.Withdrawals ?? []) : null);
 
             FeesTracer feesTracer = new();
             Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
