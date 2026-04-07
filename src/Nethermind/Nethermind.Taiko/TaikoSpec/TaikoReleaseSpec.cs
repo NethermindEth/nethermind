@@ -4,7 +4,6 @@
 using System.Collections.Frozen;
 using Nethermind.Core;
 using Nethermind.Specs;
-using Nethermind.Taiko.Precompiles;
 
 namespace Nethermind.Taiko.TaikoSpec;
 
