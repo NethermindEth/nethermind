@@ -2,45 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Threading;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Api;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.HealthChecks;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Merge.Plugin.Data;
 using Nethermind.Runner.Ethereum.Modules;
 using Nethermind.Runner.Test.Ethereum;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Specs.Forks;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test.ChainSpecStyle;
-using Nethermind.State.Proofs;
 using NUnit.Framework;
 using NSubstitute;
 
