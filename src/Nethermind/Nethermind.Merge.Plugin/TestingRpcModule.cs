@@ -47,7 +47,8 @@ public class TestingRpcModule(
 
             // Create a fresh processor per call with its own WorldState to avoid scope conflicts
             // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
-            await using IBlockProducerEnv env = blockProducerEnvFactory.Create();
+            IBlockProducerEnv env = blockProducerEnvFactory.Create(BlockProducerEnvLifetime.Transient);
+            await using var _ = env as IAsyncDisposable;
 
             Transaction[] transactions;
             try
@@ -135,13 +136,8 @@ public class TestingRpcModule(
         return header;
     }
 
-    private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps)
-    {
-        foreach (byte[] txRlp in txRlps)
-        {
-            yield return Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping);
-        }
-    }
+    private static IEnumerable<Transaction> DecodeTransactions(IEnumerable<byte[]> txRlps) =>
+        txRlps.Select(txRlp => Rlp.Decode<Transaction>(txRlp, RlpBehaviors.SkipTypedWrapping));
 
     private static object CreateGetPayloadResult(Block processedBlock, UInt256 blockFees, IReleaseSpec spec)
     {
