@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     else
                     {
                         WriteRed("FAIL");
-                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                        _ = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);

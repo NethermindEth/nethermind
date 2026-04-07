@@ -79,7 +79,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<ITreeSyncStore, FlatTreeSyncStore>()
             .Intercept<ISyncConfig>((syncConfig) =>
             {
-                syncConfig.SnapServingEnabled = true;
+                syncConfig.SnapServingEnabled ??= true;
             })
             .AddSingleton<IFullStateFinder, FlatFullStateFinder>()
 
