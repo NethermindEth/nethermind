@@ -35,7 +35,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
-using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 

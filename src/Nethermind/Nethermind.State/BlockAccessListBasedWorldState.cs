@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -26,9 +25,9 @@ public class BlockAccessListBasedWorldState(
     Block suggestedBlock,
     ILogManager logManager) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
-    private BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
-    private BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
-    private TransientStorageProvider _transientStorageProvider = new(logManager);
+    private readonly BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
+    private readonly BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
+    private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
