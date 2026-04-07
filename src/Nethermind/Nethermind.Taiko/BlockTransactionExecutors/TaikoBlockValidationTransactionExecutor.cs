@@ -10,8 +10,8 @@ using Nethermind.Evm.TransactionProcessing;
 namespace Nethermind.Taiko.BlockTransactionExecutors;
 
 public class TaikoBlockValidationTransactionExecutor(
-        ITransactionProcessorAdapter transactionProcessor,
-        IWorldState stateProvider)
+    ITransactionProcessorAdapter transactionProcessor,
+    IWorldState stateProvider)
     : BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider)
 {
     protected override void ProcessTransaction(Block block, Transaction currentTx, int i, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)

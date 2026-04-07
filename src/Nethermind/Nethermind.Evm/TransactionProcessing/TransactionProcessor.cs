@@ -258,7 +258,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                WorldState.Reset(resetBlockChanges: false); //todo: need to implement?
+                WorldState.Reset(resetBlockChanges: false);
                 if (deleteCallerAccount)
                 {
                     WorldState.DeleteAccount(tx.SenderAddress!);
@@ -644,7 +644,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         protected virtual void DecrementNonce(Transaction tx)
         {
-            WorldState.DecrementNonce(tx.SenderAddress!); //todo: check if used?
+            WorldState.DecrementNonce(tx.SenderAddress!);
         }
 
         [SkipLocalsInit]

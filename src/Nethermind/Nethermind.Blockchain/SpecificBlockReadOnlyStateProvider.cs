@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
 
         public byte[]? GetCode(in ValueHash256 codeHash) => _stateReader.GetCode(in codeHash);
 
-        public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out AccountStruct account);
+        public bool AccountExists(Address address) => _stateReader.TryGetAccount(BaseBlock, address, out _);
 
         [SkipLocalsInit]
         public bool IsDeadAccount(Address address) => !TryGetAccount(address, out AccountStruct account) || account.IsEmpty;

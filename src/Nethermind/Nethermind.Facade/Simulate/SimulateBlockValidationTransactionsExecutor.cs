@@ -16,8 +16,6 @@ public class SimulateBlockValidationTransactionsExecutor(
     SimulateRequestState simulateState)
     : IBlockProcessor.IBlockTransactionsExecutor
 {
-    public BlockAccessList GeneratedBlockAccessList { get => throw new System.NotImplementedException(); set => throw new System.NotImplementedException(); }
-
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         if (simulateState.BlobBaseFeeOverride is null)

@@ -46,7 +46,7 @@ public class BlockProcessorTests
         IRewardCalculator? rewardCalculator = null,
         IBlockCachePreWarmer? preWarmer = null)
     {
-        IWorldState stateProvider = TestWorldStateFactory.CreateForTest(parallel: true);
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,

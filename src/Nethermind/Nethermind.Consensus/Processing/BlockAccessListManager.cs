@@ -434,7 +434,7 @@ public class BlockAccessListManager(
             IWorldState worldState = stateProvider;
             if (parallel)
             {
-                worldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, block, new(logManager));
+                worldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, block, logManager);
             }
             WorldState = new TracedAccessWorldState(worldState);
             WorldState.SetIndex(balIndex);

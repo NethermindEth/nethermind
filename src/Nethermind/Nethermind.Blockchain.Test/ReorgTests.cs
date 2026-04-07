@@ -8,8 +8,6 @@ using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Spec;
-using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -28,10 +26,8 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Evm.State;
 using Nethermind.State;
-using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -73,8 +69,6 @@ public class ReorgTests
         }
 
         EthereumEcdsa ecdsa = new(1);
-        ITransactionComparerProvider transactionComparerProvider =
-            new TransactionComparerProvider(specProvider, _blockTree);
 
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree()
             .WithoutSettingHead
@@ -82,18 +76,8 @@ public class ReorgTests
 
         _blockTree = blockTreeBuilder.TestObject;
 
-        TxPool.TxPool txPool = new(
-            ecdsa,
-            new BlobTxStorage(),
-            new ChainHeadInfoProvider(
-                new ChainHeadSpecProvider(specProvider, _blockTree), _blockTree, stateReader),
-            new TxPoolConfig(),
-            new TxValidator(specProvider.ChainId),
-            LimboLogs.Instance,
-            transactionComparerProvider.GetDefaultComparer());
         BlockhashCache blockhashCache = new(blockTreeBuilder.HeaderStore, LimboLogs.Instance);
         BlockhashProvider blockhashProvider = new(blockhashCache, stateProvider, LimboLogs.Instance);
-        ICodeInfoRepository codeInfoRepository = new EthereumCodeInfoRepository(stateProvider);
         EthereumVirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -103,7 +87,7 @@ public class ReorgTests
             specProvider,
             stateProvider,
             virtualMachine,
-            codeInfoRepository,
+            new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
         BlockProcessor blockProcessor = new(

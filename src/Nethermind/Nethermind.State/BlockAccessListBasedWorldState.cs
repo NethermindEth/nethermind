@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -23,11 +24,11 @@ public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
     int blockAccessIndex,
     Block suggestedBlock,
-    TransientStorageProvider transientStorageProvider) : WrappedWorldState(innerWorldState), IPreBlockCaches
+    ILogManager logManager) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
     private BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
     private BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
-    private TransientStorageProvider _transientStorageProvider = transientStorageProvider;
+    private TransientStorageProvider _transientStorageProvider = new(logManager);
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 

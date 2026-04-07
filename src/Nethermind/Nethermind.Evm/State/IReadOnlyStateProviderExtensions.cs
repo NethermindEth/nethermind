@@ -13,6 +13,11 @@ namespace Nethermind.Evm.State
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
         /// Where possible a cache for code lookup should be used, since the fallback will read from <see cref="GetCode(IReadOnlyStateProvider, Address)"/>.
         /// </summary>
+        /// <param name="stateProvider"></param>
+        /// <param name="spec"></param>
+        /// <param name="sender"></param>
+        /// <param name="isDelegatedCode"></param>
+        /// <returns></returns>
         public static bool IsInvalidContractSender(
             this IReadOnlyStateProvider stateProvider,
             IReleaseSpec spec,
@@ -27,6 +32,11 @@ namespace Nethermind.Evm.State
         /// Checks if <paramref name="sender"/> has code that is not a delegation, according to the rules of eip-3607 and eip-7702.
         /// Where possible a cache for code lookup should be used, since the fallback will read from <see cref="GetCode(IReadOnlyStateProvider, Address)"/>.
         /// </summary>
+        /// <param name="stateProvider"></param>
+        /// <param name="spec"></param>
+        /// <param name="sender"></param>
+        /// <param name="isDelegatedCode"></param>
+        /// <returns></returns>
         public static bool IsInvalidContractSender(
             this IWorldState stateProvider,
             IReleaseSpec spec,

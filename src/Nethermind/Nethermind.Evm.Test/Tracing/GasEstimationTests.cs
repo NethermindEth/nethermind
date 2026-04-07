@@ -1293,7 +1293,7 @@ namespace Nethermind.Evm.Test.Tracing
             public void InsertContract(Address contractAddress, byte[] code)
             {
                 _stateProvider.CreateAccount(contractAddress, 0);
-                _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec, false);
+                _stateProvider.InsertCode(contractAddress, ValueKeccak.Compute(code), code, _specProvider.GenesisSpec);
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
             }
