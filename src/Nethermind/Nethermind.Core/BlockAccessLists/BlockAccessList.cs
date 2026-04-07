@@ -72,25 +72,10 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public AccountChanges? GetAccountChanges(Address address) => _accountChanges.TryGetValue(address, out AccountChanges? value) ? value : null;
 
-    // todo: these methods will be removed, only needed for sequential
-    public void IncrementBlockAccessIndex()
-    {
-        _changes.Clear();
-        Index++;
-    }
-
-    public void RollbackCurrentIndex()
-    {
-        Restore(0);
-        _changes.Clear();
-        Index--;
-    }
-
     public void Clear()
     {
         _accountChanges.Clear();
         _changes.Clear();
-        Index = 0;
     }
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
