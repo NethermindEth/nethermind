@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Xdc.Spec;
 
@@ -19,12 +20,14 @@ public class MintedRecordContract : IMintedRecordContract
     private static readonly UInt256 MintedRecordPostRewardBlockBase = UInt256.Parse("0x0300000000000000000000000000000000000000000000000000000000000000");
 
     public void UpdateAccounting(
-        IWorldState worldState,
+        ITransactionProcessor transactionProcessor,
         XdcBlockHeader header,
         IXdcReleaseSpec spec,
         UInt256 mintedInEpoch,
         UInt256 burnedInEpoch)
     {
+        XdcTransactionProcessor xdcTransactionProcessor = (XdcTransactionProcessor)transactionProcessor;
+        IWorldState worldState = xdcTransactionProcessor.RewardWorldState;
         UInt256 epochNumber = (ulong)spec.SwitchEpoch + (header.ExtraConsensusData?.BlockRound ?? 0) / (ulong)spec.EpochLength;
         UInt256 blockNumber = (UInt256)header.Number;
 

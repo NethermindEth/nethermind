@@ -8,11 +8,13 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
@@ -24,7 +26,6 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Test;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -43,7 +44,7 @@ public class RewardTests
         {
             spec.EpochLength = 50;
             spec.MergeSignRange = 5;
-            spec.MergeSignRange = System.Math.Min(spec.MergeSignRange, spec.EpochLength / 2);
+            spec.MergeSignRange = Math.Min(spec.MergeSignRange, spec.EpochLength / 2);
             if (spec.MergeSignRange < 1) spec.MergeSignRange = 1;
         });
 
@@ -58,8 +59,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>(),
-            chain.MainWorldState
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -195,8 +195,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>(),
-            chain.MainWorldState
+            Substitute.For<ITransactionProcessor>()
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -375,7 +374,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(2));
 
         var signingTxCache = new SigningTxCache(tree, specProvider);
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>(), Substitute.For<IWorldState>());
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -504,6 +503,14 @@ public class RewardTests
         IWorldState worldState = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         IMintedRecordContract mintedRecordContract = new MintedRecordContract();
+        ITransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+            Substitute.For<ITransactionProcessor.IBlobBaseFeeCalculator>(),
+            specProvider,
+            worldState,
+            Substitute.For<IVirtualMachine>(),
+            Substitute.For<ICodeInfoRepository>(),
+            LimboLogs.Instance,
+            votingContract);
         ISigningTxCache signingTxCache = new SigningTxCache(tree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(
             epochSwitchManager,
@@ -512,8 +519,7 @@ public class RewardTests
             votingContract,
             mintedRecordContract,
             signingTxCache,
-            Substitute.For<ITransactionProcessor>(),
-            worldState);
+            transactionProcessor);
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
@@ -558,8 +564,7 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>(),
-            Substitute.For<IWorldState>()
+            Substitute.For<ITransactionProcessor>()
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");

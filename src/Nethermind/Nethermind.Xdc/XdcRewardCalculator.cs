@@ -14,7 +14,6 @@ using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm.State;
 
 namespace Nethermind.Xdc;
 
@@ -35,7 +34,6 @@ public class XdcRewardCalculator : IRewardCalculator
     private readonly IMintedRecordContract _mintedRecordContract;
     private readonly ISigningTxCache _signingTxCache;
     private readonly ITransactionProcessor _transactionProcessor;
-    private readonly IWorldState _worldState;
 
     public XdcRewardCalculator(
         IEpochSwitchManager epochSwitchManager,
@@ -44,8 +42,7 @@ public class XdcRewardCalculator : IRewardCalculator
         IMasternodeVotingContract masternodeVotingContract,
         IMintedRecordContract mintedRecordContract,
         ISigningTxCache signingTxCache,
-        ITransactionProcessor transactionProcessor,
-        IWorldState worldState)
+        ITransactionProcessor transactionProcessor)
     {
         _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
         _epochSwitchManager = epochSwitchManager;
@@ -55,7 +52,6 @@ public class XdcRewardCalculator : IRewardCalculator
         _mintedRecordContract = mintedRecordContract;
         _signingTxCache = signingTxCache;
         _transactionProcessor = transactionProcessor;
-        _worldState = worldState;
     }
     /// <summary>
     /// Calculates block rewards according to XDPoS consensus rules.
@@ -112,7 +108,7 @@ public class XdcRewardCalculator : IRewardCalculator
             AddDistributedRewards(xdcHeader, observerRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch);
 
             _mintedRecordContract.UpdateAccounting(
-                _worldState,
+                _transactionProcessor,
                 xdcHeader,
                 spec,
                 totalMintedInEpoch,
