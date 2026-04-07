@@ -34,6 +34,7 @@ using Nethermind.TxPool;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.P2P;
 using Nethermind.Xdc.Spec;
+using Nethermind.Facade;
 using Nethermind.Xdc.TxPool;
 
 namespace Nethermind.Xdc;
@@ -46,6 +47,7 @@ public class XdcModule : Module
 
         builder
             .AddDecorator<IRocksDbConfigFactory, XdcRocksDbConfigFactory>() // Register custom RocksDb config factory that handles XdcSnapshots without validation
+            .AddDecorator<IBlockchainBridgeFactory, XdcBlockchainBridgeFactory>() // Use XDC-specific blockchain bridge factory
             .AddProtocolHandler<P2P.XdcProtocolHandler>() // Register XDC protocol handler using clean DSL (intercepts ETH protocol version 100)
             .AddStep(typeof(InitializeBlockchainXdc))
             .Intercept<ChainSpec>(XdcChainSpecLoader.ProcessChainSpec)

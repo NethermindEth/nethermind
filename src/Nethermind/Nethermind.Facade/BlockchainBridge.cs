@@ -247,7 +247,7 @@ namespace Nethermind.Facade
             }
         }
 
-        private TransactionResult CallAndRestore(
+        protected virtual TransactionResult CallAndRestore(
             BlockHeader blockHeader,
             Transaction transaction,
             bool treatBlockHeaderAsParentBlock,
@@ -259,25 +259,7 @@ namespace Nethermind.Facade
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
 
-            BlockHeader callHeader = treatBlockHeaderAsParentBlock
-                ? new(
-                    blockHeader.Hash!,
-                    Keccak.OfAnEmptySequenceRlp,
-                    Address.Zero,
-                    UInt256.Zero,
-                    blockHeader.Number + 1,
-                    blockHeader.GasLimit,
-                    Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds),
-                    [])
-                : new(
-                    blockHeader.ParentHash!,
-                    blockHeader.UnclesHash!,
-                    blockHeader.Beneficiary!,
-                    blockHeader.Difficulty,
-                    blockHeader.Number,
-                    blockHeader.GasLimit,
-                    blockHeader.Timestamp,
-                    blockHeader.ExtraData);
+            BlockHeader callHeader = CreateCallHeader(blockHeader, treatBlockHeaderAsParentBlock, blocksConfig, timestamper);
 
             IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
@@ -305,6 +287,29 @@ namespace Nethermind.Facade
             transaction.Hash = transaction.CalculateHash();
             BlockExecutionContext blockExecutionContext = new(callHeader, releaseSpec, blobBaseFee);
             return components.TransactionProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
+        }
+
+        protected virtual BlockHeader CreateCallHeader(BlockHeader blockHeader, bool treatBlockHeaderAsParentBlock, IBlocksConfig blocksConfig, ITimestamper timestamper)
+        {
+            return treatBlockHeaderAsParentBlock
+                ? new BlockHeader(
+                    blockHeader.Hash!,
+                    Keccak.OfAnEmptySequenceRlp,
+                    Address.Zero,
+                    UInt256.Zero,
+                    blockHeader.Number + 1,
+                    blockHeader.GasLimit,
+                    Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds),
+                    [])
+                : new BlockHeader(
+                    blockHeader.ParentHash!,
+                    blockHeader.UnclesHash!,
+                    blockHeader.Beneficiary!,
+                    blockHeader.Difficulty,
+                    blockHeader.Number,
+                    blockHeader.GasLimit,
+                    blockHeader.Timestamp,
+                    blockHeader.ExtraData);
         }
 
         public ulong GetChainId()
@@ -473,7 +478,7 @@ namespace Nethermind.Facade
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
     {
-        public IBlockchainBridge CreateBlockchainBridge()
+        public virtual IBlockchainBridge CreateBlockchainBridge()
         {
             IOverridableEnv env = envFactory.Create();
 
