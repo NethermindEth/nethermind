@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Xdc.Contracts;
 
@@ -15,10 +16,11 @@ internal class XdcRewardCalculatorSource(
     IBlockTree blockTree,
     IMasternodeVotingContract masternodeVotingContract,
     IMintedRecordContract mintedRecordContract,
-    ISigningTxCache signingTxCache) : IRewardCalculatorSource
+    ISigningTxCache signingTxCache,
+    IWorldState worldState) : IRewardCalculatorSource
 {
     public IRewardCalculator Get(ITransactionProcessor processor)
     {
-        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, processor);
+        return new XdcRewardCalculator(epochSwitchManager, specProvider, blockTree, masternodeVotingContract, mintedRecordContract, signingTxCache, processor, worldState);
     }
 }

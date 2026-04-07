@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using System;
@@ -51,6 +52,9 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
     public long TIP2019Block { get; set; }
     public long? TipUpgradePenalty { get; set; }
     public long? TipUpgradeReward { get; set; }
+    public UInt256 MasternodeReward { get; set; }
+    public UInt256 ProtectorReward { get; set; }
+    public UInt256 ObserverReward { get; set; }
     public long MergeSignRange { get; set; }
     public Address[] BlackListedAddresses { get; set; }
     public long BlackListHFNumber { get; set; }
@@ -80,6 +84,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipTrc21Fee.Value);
         if (TipUpgradePenalty is not null)
             blockNumbers.Add(TipUpgradePenalty.Value);
+        if (TipUpgradeReward is not null)
+            blockNumbers.Add(TipUpgradeReward.Value);
     }
 }
 

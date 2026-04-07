@@ -9,10 +9,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Db;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Test.Helpers;
@@ -22,6 +24,7 @@ using NUnit.Framework;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Xdc.Test.ModuleTests;
 
@@ -55,7 +58,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            chain.MainWorldState
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -191,7 +195,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            chain.MainWorldState
         );
 
         var head = (XdcBlockHeader)chain.BlockTree.Head!.Header;
@@ -319,7 +324,7 @@ public class RewardTests
         xdcSpec.Reward.Returns(totalRewardInEther);
         xdcSpec.SwitchBlock.Returns(0);
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
-        xdcSpec.TipUpgradeRewardBlock.Returns(long.MaxValue);
+        xdcSpec.IsTipUpgradeRewardEnabled.Returns(false);
 
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcSpec);
@@ -370,7 +375,7 @@ public class RewardTests
             .Returns(ci => ci.ArgAt<Address>(2));
 
         var signingTxCache = new SigningTxCache(tree, specProvider);
-        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>());
+        var rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, Substitute.For<IMintedRecordContract>(), signingTxCache, Substitute.For<ITransactionProcessor>(), Substitute.For<IWorldState>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -420,7 +425,7 @@ public class RewardTests
         xdcSpec.BlockSignerContract.Returns(blockSignerContract);
         xdcSpec.SwitchBlock.Returns(0);
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
-        xdcSpec.TipUpgradeRewardBlock.Returns(0);
+        xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
         xdcSpec.MaxProtectorNodes.Returns(2);
         xdcSpec.MaxObserverNodes.Returns(2);
         xdcSpec.MasternodeReward.Returns((UInt256)500);
@@ -485,24 +490,30 @@ public class RewardTests
         IMasternodeVotingContract votingContract = Substitute.For<IMasternodeVotingContract>();
         votingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(2));
-        votingContract.GetCandidatesByStake(Arg.Any<BlockHeader>()).Returns(
+        Address[] rewardCandidates =
         [
             ..masternodes,
             protector1.Address,
             protector2.Address,
             observer1.Address,
             observer2.Address,
-        ]);
+        ];
+        votingContract.GetCandidates(Arg.Any<BlockHeader>()).Returns(rewardCandidates);
+        votingContract.GetCandidateStake(Arg.Any<BlockHeader>(), Arg.Any<Address>()).Returns(UInt256.One);
 
+        IWorldState worldState = TestWorldStateFactory.CreateForTest(TestMemDbProvider.Init(), LimboLogs.Instance);
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
+        IMintedRecordContract mintedRecordContract = new MintedRecordContract();
         ISigningTxCache signingTxCache = new SigningTxCache(tree, specProvider);
         var rewardCalculator = new XdcRewardCalculator(
             epochSwitchManager,
             specProvider,
             tree,
             votingContract,
-            Substitute.For<IMintedRecordContract>(),
+            mintedRecordContract,
             signingTxCache,
-            Substitute.For<ITransactionProcessor>());
+            Substitute.For<ITransactionProcessor>(),
+            worldState);
 
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks[(int)checkpointNumber]);
 
@@ -514,6 +525,23 @@ public class RewardTests
         Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
         Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
         Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
+
+        // Validate minted-record accounting side effects produced by the reward upgrade path.
+        UInt256 epochNumber = 3;
+        UInt256 mintedRecordPostMintedBase = UInt256.Parse("0x0100000000000000000000000000000000000000000000000000000000000000");
+        UInt256 mintedRecordPostBurnedBase = UInt256.Parse("0x0200000000000000000000000000000000000000000000000000000000000000");
+        UInt256 mintedRecordPostRewardBlockBase = UInt256.Parse("0x0300000000000000000000000000000000000000000000000000000000000000");
+        Address mintedRecordAddress = Address.FromNumber(0x9a);
+
+        UInt256 totalMinted = ReadStorageUInt256(worldState, mintedRecordAddress, mintedRecordPostMintedBase + epochNumber);
+        UInt256 rewardBlock = ReadStorageUInt256(worldState, mintedRecordAddress, mintedRecordPostRewardBlockBase + epochNumber);
+        UInt256 onsetBlock = ReadStorageUInt256(worldState, mintedRecordAddress, (UInt256)2);
+        UInt256 totalBurned = ReadStorageUInt256(worldState, mintedRecordAddress, mintedRecordPostBurnedBase + epochNumber);
+
+        Assert.That(totalMinted, Is.EqualTo((UInt256)2100));
+        Assert.That(rewardBlock, Is.EqualTo((UInt256)checkpointNumber));
+        Assert.That(onsetBlock, Is.EqualTo((UInt256)checkpointNumber));
+        Assert.That(totalBurned, Is.EqualTo(UInt256.Zero));
     }
 
     [Test]
@@ -530,7 +558,8 @@ public class RewardTests
             masternodeVotingContract,
             Substitute.For<IMintedRecordContract>(),
             signingTxCache,
-            Substitute.For<ITransactionProcessor>()
+            Substitute.For<ITransactionProcessor>(),
+            Substitute.For<IWorldState>()
             );
 
         var totalReward = UInt256.Parse("171000000000000000000");
@@ -570,6 +599,6 @@ public class RewardTests
     private static UInt256 ReadStorageUInt256(IWorldState worldState, Address address, UInt256 slot)
     {
         ReadOnlySpan<byte> value = worldState.Get(new StorageCell(address, slot));
-        return value.Length == 0 ? UInt256.Zero : new UInt256(value);
+        return value.Length == 0 ? UInt256.Zero : new UInt256(value, isBigEndian: true);
     }
 }
