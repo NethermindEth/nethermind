@@ -42,7 +42,7 @@ public class TestingRpcModule(
         {
             IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(parentBlock.Header.Number + 1, payloadAttributes.Timestamp));
 
-            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, extraData);
+            BlockHeader header = PrepareBlockHeader(parentBlock.Header, payloadAttributes, spec, extraData);
 
             // Create a fresh processor per call with its own WorldState to avoid scope conflicts
             // with the main processing pipeline (TrieWarmer/prewarmer may hold scopes open).
@@ -62,7 +62,7 @@ public class TestingRpcModule(
             }
 
             header.TxRoot = TxTrie.CalculateRoot(transactions);
-            Block block = new(header, new BlockBody(transactions, [], payloadAttributes.Withdrawals));
+            Block block = new(header, new BlockBody(transactions, [], spec.WithdrawalsEnabled ? payloadAttributes.Withdrawals : null));
 
             FeesTracer feesTracer = new();
             Block? processedBlock = env.ChainProcessor.Process(block, ProcessingOptions.ProducingBlock, feesTracer);
@@ -85,13 +85,13 @@ public class TestingRpcModule(
                 return ResultWrapper<object?>.Success(getPayloadResult);
             }
 
-            return ResultWrapper<object?>.Fail("payload processing failed", MergeErrorCodes.UnknownPayload);
+            return ResultWrapper<object?>.Fail("payload processing failed", ErrorCodes.InternalError);
         }
 
         return ResultWrapper<object?>.Fail("unknown parent block", MergeErrorCodes.InvalidPayloadAttributes);
     }
 
-    private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, byte[]? extraData)
+    private BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes, IReleaseSpec spec, byte[]? extraData)
     {
         Address blockAuthor = payloadAttributes.SuggestedFeeRecipient ?? Address.Zero;
         BlockHeader header = new(
@@ -115,7 +115,6 @@ public class TestingRpcModule(
         header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
         header.IsPostMerge = true;
-        IReleaseSpec spec = specProvider.GetSpec(header);
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
 
         if (spec.IsEip4844Enabled)

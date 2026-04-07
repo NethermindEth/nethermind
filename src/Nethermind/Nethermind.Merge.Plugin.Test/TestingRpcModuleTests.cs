@@ -182,6 +182,19 @@ public class TestingRpcModuleTests
         result.Result.Error.Should().Contain("expected 2 transactions but only 1 were included");
     }
 
+    [Test]
+    public async Task Returns_error_for_unknown_parent()
+    {
+        (TestingRpcModule module, _, BlockHeader parentHeader) = CreateDefaultTestingModule();
+
+        Hash256 unknownHash = Keccak.Compute("unknown");
+        ResultWrapper<object?> result = await module.testing_buildBlockV1(
+            unknownHash, CreateDefaultPayloadAttributes(parentHeader), null);
+
+        result.Result.ResultType.Should().Be(ResultType.Failure);
+        result.Result.Error.Should().Contain("unknown parent block");
+    }
+
     private static (TestingRpcModule module, Hash256 parentHash, BlockHeader parentHeader) CreateDefaultTestingModule(
         IReleaseSpec? spec = null,
         ulong? slotNumber = null,
