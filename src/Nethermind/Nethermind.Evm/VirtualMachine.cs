@@ -875,6 +875,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
+        // Expose remaining gas so DataGasCost() can use it (e.g., L1STATICCALL gas limiting)
+        PrecompileGasContext.AvailableGas = TGasPolicy.GetRemainingGas(in gas);
+
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);

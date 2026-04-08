@@ -57,4 +57,7 @@ public interface ISurgeConfig : IConfig
 
     [ConfigItem(Description = "Enable TDX attestation support.", DefaultValue = "false")]
     bool TdxEnabled { get; set; }
+
+    [ConfigItem(Description = "Gas limit cap for L1 debug_traceCall in L1STATICCALL precompile. The actual limit used is min(remainingTxGas, this cap).", DefaultValue = "30000000")]
+    long L1StaticCallGasCap { get; set; }
 }

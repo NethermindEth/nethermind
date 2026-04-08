@@ -6,7 +6,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Taiko.Precompiles;
 
+public readonly record struct L1CallResult(byte[]? ReturnData, long GasUsed, bool Failed)
+{
+    public static L1CallResult Failure() => new(null, 0L, true);
+}
+
 public interface IL1CallProvider
 {
-    byte[]? ExecuteStaticCall(Address contractAddress, UInt256 blockNumber, byte[] calldata);
+    L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit);
 }

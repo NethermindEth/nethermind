@@ -17,36 +17,49 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
 {
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcL1CallProvider>();
 
-    public byte[]? ExecuteStaticCall(Address contractAddress, UInt256 blockNumber, byte[] calldata)
+    public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit)
     {
         try
         {
             string calldataHex = calldata.ToHexString(withZeroX: true);
-            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: sending eth_call — contract={contractAddress}, calldata_len={calldata.Length}, block={blockNumber.ToHexString(true)}");
+            string gasHex = gasLimit.ToHexString(true);
+            string blockHex = blockNumber.ToHexString(true);
+
+            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: sending debug_traceCall — contract={contractAddress}, calldata_len={calldata.Length}, block={blockHex}, gasLimit={gasLimit}");
 
             // Sync-over-async: IPrecompile.Run() is synchronous by design.
             // Acceptable for devnet; async precompile pipeline needed for production load.
-            string? response = rpcClient.Post<string>("eth_call", new object[]
+            DebugTraceCallResult? response = rpcClient.Post<DebugTraceCallResult>("debug_traceCall", new object[]
             {
-                new { to = contractAddress.ToString(), data = calldataHex },
-                blockNumber.ToHexString(true)
+                new { from = Address.Zero.ToString(), to = contractAddress.ToString(), data = calldataHex, gas = gasHex },
+                blockHex,
+                new { } // default tracer options
             }).GetAwaiter().GetResult();
 
             if (response is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: eth_call returned null — contract={contractAddress}, block={blockNumber.ToHexString(true)}");
-                return null;
+                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: debug_traceCall returned null — contract={contractAddress}, block={blockHex}");
+                return L1CallResult.Failure();
             }
 
-            byte[] result = Convert.FromHexString(response.StartsWith("0x") ? response[2..] : response);
-            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: eth_call success — contract={contractAddress}, block={blockNumber.ToHexString(true)}, return_len={result.Length}");
-            return result;
+            if (response.Failed)
+            {
+                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: L1 call failed — contract={contractAddress}, block={blockHex}, gasUsed={response.Gas}");
+                return new L1CallResult(null, response.Gas, true);
+            }
+
+            byte[] returnData = Convert.FromHexString(
+                response.ReturnValue.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+                    ? response.ReturnValue[2..]
+                    : response.ReturnValue);
+
+            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: debug_traceCall success — contract={contractAddress}, block={blockHex}, gasUsed={response.Gas}, return_len={returnData.Length}");
+            return new L1CallResult(returnData, response.Gas, false);
         }
         catch (Exception ex)
         {
-            if (_logger.IsError) _logger.Error($"L1STATICCALL: eth_call exception — contract={contractAddress}, block={blockNumber.ToHexString(true)}, error={ex}");
-            return null;
+            if (_logger.IsError) _logger.Error($"L1STATICCALL: debug_traceCall exception — contract={contractAddress}, block={blockNumber.ToHexString(true)}, error={ex}");
+            return L1CallResult.Failure();
         }
     }
-
 }

@@ -110,6 +110,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
         if (staticCallEnabled)
         {
             L1StaticCallPrecompile.L1CallProvider = new JsonRpcL1CallProvider(l1RpcClient, logManager);
+            L1StaticCallPrecompile.GasCap = surgeConfig.L1StaticCallGasCap;
             L1StaticCallPrecompile.Logger = logManager.GetClassLogger<L1StaticCallPrecompile>();
             if (logger.IsInfo) logger.Info("L1STATICCALL: precompile initialized");
         }

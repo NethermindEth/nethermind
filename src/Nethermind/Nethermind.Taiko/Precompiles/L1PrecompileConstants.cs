@@ -43,4 +43,10 @@ public static class L1PrecompileConstants
     /// Maximum return data size (24 KB, matches MAX_CODE_SIZE per EIP-170).
     /// </summary>
     public const int L1StaticCallMaxReturnDataSize = 24576;
+
+    /// <summary>
+    /// Default safety cap for the gas limit passed to L1 debug_traceCall.
+    /// The actual limit is min(remainingL2Gas, this cap).
+    /// </summary>
+    public const long L1CallDefaultGasCap = 30_000_000L;
 }
