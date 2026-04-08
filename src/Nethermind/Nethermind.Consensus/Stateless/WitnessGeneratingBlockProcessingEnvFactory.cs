@@ -13,7 +13,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Stateless;
 
@@ -36,7 +35,7 @@ public sealed class ExecutionRecordingScope(ILifetimeScope envLifetimeScope) : I
 
 public class WitnessGeneratingBlockProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
-    IReadOnlyTrieStore readOnlyTrieStore,
+    IWorldStateManager worldStateManager,
     IDbProvider dbProvider,
     IBlockValidationModule[] validationModules,
     ILogManager logManager) : IWitnessGeneratingBlockProcessingEnvFactory
@@ -44,7 +43,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
     public IWitnessGeneratingBlockProcessingEnvScope CreateScope()
     {
         IReadOnlyDbProvider readOnlyDbProvider = new ReadOnlyDbProvider(dbProvider, true);
-        WitnessCapturingTrieStore trieStore = new(readOnlyTrieStore);
+        WitnessCapturingTrieStore trieStore = new(worldStateManager.CreateReadOnlyTrieStore());
         IStateReader stateReader = new StateReader(trieStore, readOnlyDbProvider.CodeDb, logManager);
         IWorldState baseWorldState = new WorldState(
             new TrieStoreScopeProvider(trieStore, readOnlyDbProvider.CodeDb, logManager), logManager);
