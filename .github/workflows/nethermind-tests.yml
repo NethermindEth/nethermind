@@ -30,7 +30,6 @@ jobs:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    continue-on-error: true
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
@@ -140,7 +139,6 @@ jobs:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -208,7 +206,6 @@ jobs:
     name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -276,6 +273,7 @@ jobs:
   tests-summary:
     name: Tests summary
     needs: [tests, tests-spec, tests-chunked]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Ensure all tests passed
