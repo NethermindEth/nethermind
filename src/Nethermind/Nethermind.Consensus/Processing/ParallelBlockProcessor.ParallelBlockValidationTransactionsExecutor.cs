@@ -91,6 +91,7 @@ public partial class ParallelBlockProcessor
 
             Task incrementalValidationTask = Task.Run(() => _balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
 
+            // todo: change to Parallel.For?
             ParallelUnbalancedWork.For(
                 0,
                 len + 1,

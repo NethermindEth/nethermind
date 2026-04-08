@@ -269,6 +269,7 @@ public class BlockValidatorTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         BlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
         byte[] encodedBal = Rlp.Encode(bal).Bytes;
+        bal.ItemCount = Rlp.Decode<BlockAccessList>(encodedBal).ItemCount; // items counted on decode
         Hash256 balHash = new(ValueKeccak.Compute(encodedBal).Bytes);
         Block suggestedBlock = Build.A.Block
             .WithParent(parent)
@@ -291,7 +292,7 @@ public class BlockValidatorTests
         }
         else
         {
-            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+            Assert.That(error, Does.StartWith("BlockLevelAccessListExceededSizeLimit"));
         }
     }
 }
