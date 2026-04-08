@@ -36,6 +36,8 @@ public class EraImporter(
     private readonly ILogger _logger = logManager.GetClassLogger<EraImporter>();
     private readonly int _maxEraSize = eraConfig.MaxEraSize;
 
+    private const int ProgressLogInterval = 10000;
+
     public async Task Import(string src, long from, long to, string? accumulatorFile, CancellationToken cancellation = default)
     {
         if (!fileSystem.Directory.Exists(src))
@@ -172,7 +174,7 @@ public class EraImporter(
             }
 
             long processed = Interlocked.Increment(ref blocksProcessed);
-            if (processed % 10000 == 0)
+            if (processed % ProgressLogInterval == 0)
             {
                 progressLogger.Update(processed);
                 progressLogger.LogProgress();
@@ -188,14 +190,18 @@ public class EraImporter(
             BlockTreeInsertHeaderOptions headerOptions = block.Header.IsPostMerge
                 ? BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded
                 : BlockTreeInsertHeaderOptions.None;
-            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, headerOptions, bodiesWriteFlags: WriteFlags.DisableWAL);
+            if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
+                if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number}.");
         }
         else if (!block.Header.IsPostMerge && existing.TotalDifficulty is null)
         {
             // Block body already exists (e.g. downloaded during snap sync ancient-bodies phase) but
             // TotalDifficulty was not stored at that time. Re-insert so the block tree stores the
             // correct TD — either from the era file (if available) or computed via SetTotalDifficulty.
-            blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            AddBlockResult result = blockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            if (result is not AddBlockResult.Added and not AddBlockResult.AlreadyKnown)
+                if (_logger.IsWarn) _logger.Warn($"Unexpected block tree insert result {result} for block {block.Number} (TD re-insert).");
         }
         if (!receiptStorage.HasBlock(block.Number, block.Hash!))
             receiptStorage.Insert(block, receipts, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);

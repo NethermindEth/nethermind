@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
@@ -18,10 +19,11 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         Uri baseUrl,
         HttpClient? httpClient = null,
         TimeSpan? requestTimeout = null,
-        int maxRetries = 3)
+        int maxRetries = 3,
+        ILogManager? logManager = null)
     {
         _baseUrl = baseUrl;
-        _client = new BeaconApiHttpClient(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30));
+        _client = new BeaconApiHttpClient(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
         _maxRetries = maxRetries;
     }
 

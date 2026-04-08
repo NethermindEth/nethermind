@@ -99,7 +99,7 @@ public class EraExporter(
             MaxDegreeOfParallelism = concurrency,
             CancellationToken = cancellation
         },
-        async (epochIdx, cancel) => await WriteEpoch(epochIdx, cancel));
+        (epochIdx, cancel) => new ValueTask(WriteEpoch(epochIdx, cancel)));
 
         string accumulatorPath = Path.Combine(destinationPath, AccumulatorFileName);
         fileSystem.File.Delete(accumulatorPath);
@@ -230,9 +230,12 @@ public class EraExporter(
         Dictionary<string, ValueHash256> cachedAccumulators,
         ref int totalProcessed)
     {
-        string? existingFile = fileSystem.Directory
-            .EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}")
-            .FirstOrDefault();
+        string? existingFile = null;
+        foreach (string f in fileSystem.Directory.EnumerateFiles(destinationPath, $"{_networkName}-{epoch:D5}-*{EraPathUtils.FileExtension}"))
+        {
+            existingFile = f;
+            break;
+        }
 
         if (existingFile is null)
             return false;

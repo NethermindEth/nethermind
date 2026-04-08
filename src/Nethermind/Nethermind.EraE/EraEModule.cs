@@ -32,7 +32,7 @@ public class EraEModule : Module
                 string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
                 return string.IsNullOrWhiteSpace(url)
                     ? NullBeaconRootsProvider.Instance
-                    : new BeaconApiRootsProvider(new Uri(url), ctx.Resolve<HttpClient>());
+                    : new BeaconApiRootsProvider(new Uri(url), ctx.Resolve<HttpClient>(), logManager: ctx.Resolve<ILogManager>());
             })
             .AddSingleton<IHistoricalSummariesProvider>(ctx =>
             {

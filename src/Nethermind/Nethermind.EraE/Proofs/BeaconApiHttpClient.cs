@@ -1,8 +1,9 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
@@ -11,12 +12,14 @@ internal sealed class BeaconApiHttpClient : IDisposable
     private readonly HttpClient _httpClient;
     private readonly bool _ownsHttpClient;
     private readonly TimeSpan _requestTimeout;
+    private readonly ILogger _logger;
 
-    public BeaconApiHttpClient(HttpClient? httpClient, TimeSpan requestTimeout)
+    public BeaconApiHttpClient(HttpClient? httpClient, TimeSpan requestTimeout, ILogger logger = default)
     {
         _ownsHttpClient = httpClient is null;
         _httpClient = httpClient ?? new HttpClient();
         _requestTimeout = requestTimeout;
+        _logger = logger;
     }
 
     public async Task<JsonDocument?> GetAsync(Uri uri, CancellationToken cancellationToken)
@@ -33,9 +36,12 @@ internal sealed class BeaconApiHttpClient : IDisposable
         if (!response.IsSuccessStatusCode)
         {
             if ((int)response.StatusCode >= 500)
-            {
                 throw new HttpRequestException($"Beacon API returned {(int)response.StatusCode} for {uri}.");
-            }
+
+            // 404 is expected for missed slots; other 4xx (401, 403, 429) indicate misconfiguration or quota issues.
+            if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                _logger.Warn($"Beacon API returned {(int)response.StatusCode} for {uri}. Beacon roots will not be included for this slot.");
+
             return null;
         }
 

@@ -106,6 +106,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
                     if (block.Header.ReceiptsRoot != receiptRoot)
                         throw new EraVerificationException($"Mismatched receipt root at block {blockNumber}.");
 
+                    // Safe: each dequeued blockNumber is unique, so each idx is written by exactly one worker.
                     int idx = (int)(block.Header.Number - startBlock);
                     blockMeta[idx] = (
                         block.Header.Hash!,
@@ -119,6 +120,7 @@ public sealed class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxRec
 
         // Accumulator verification applies to pre-merge and transition epochs only.
         // Post-merge-only epochs have no AccumulatorRoot entry.
+        // TODO: verify HistoricalRoots / HistoricalSummaries beacon proofs for post-merge epochs.
         if (!e2.HasTotalDifficulty)
             return default;
 
