@@ -31,18 +31,17 @@ public class FullPrunerFactory(
     ChainSpec chainSpec,
     IFileSystem fileSystem,
     ITimerFactory timerFactory,
-    IDisposableStack disposeStack,
     CompositePruningTrigger compositePruningTrigger,
     ILogManager logManager
 ) : IFullPrunerFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FullPrunerFactory>();
 
-    public void Initialize(IStateReader stateReader, IPruningTrieStore trieStore)
+    public FullPruner? Create(IStateReader stateReader, IPruningTrieStore trieStore)
     {
         IDb stateDb = dbProvider.StateDb;
 
-        if (!pruningConfig.Mode.IsFull() || stateDb is not IFullPruningDb fullPruningDb) return;
+        if (!pruningConfig.Mode.IsFull() || stateDb is not IFullPruningDb fullPruningDb) return null;
 
         string pruningDbPath = fullPruningDb.GetPath(initConfig.BaseDbPath);
         IPruningTrigger? automaticTrigger = CreateAutomaticTrigger(pruningDbPath);
@@ -52,7 +51,7 @@ public class FullPrunerFactory(
         }
 
         IDriveInfo? drive = fileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-        FullPruner pruner = new(
+        return new FullPruner(
             fullPruningDb,
             nodeStorageFactory,
             mainNodeStorage,
@@ -65,7 +64,6 @@ public class FullPrunerFactory(
             drive,
             trieStore,
             logManager);
-        disposeStack.Push(pruner);
     }
 
     private IPruningTrigger? CreateAutomaticTrigger(string dbPath)

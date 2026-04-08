@@ -80,7 +80,11 @@ public class PruningTrieStateFactory(
 
         disposeStack.Push(mainWorldTrieStore);
 
-        fullPrunerFactory.Initialize(stateManager.GlobalStateReader, trieStore);
+        FullPruner? fullPruner = fullPrunerFactory.Create(stateManager.GlobalStateReader, trieStore);
+        if (fullPruner is not null)
+        {
+            disposeStack.Push(fullPruner);
+        }
 
         VerifyTrieStarter verifyTrieStarter = new(stateManager, processExit!, logManager);
         ManualPruningTrigger pruningTrigger = new();
