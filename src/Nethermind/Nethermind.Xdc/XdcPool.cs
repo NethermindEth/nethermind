@@ -18,6 +18,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public long Add(T item)
     {
+        if (item.Signer is null)
+            throw new ArgumentException("Cannot add an unsigned item to the pool.", nameof(item));
+
         using var lockRelease = _lock.Acquire();
         {
             var key = item.PoolKey();
@@ -27,8 +30,6 @@ public class XdcPool<T> where T : IXdcPoolItem
                 list = new ArrayPoolList<T>(128);
                 _items[key] = list;
             }
-            if (item.Signer is null)
-                throw new ArgumentException("Cannot add an unsigned item to the pool.", nameof(item));
             if (list.All(x => x.Signer != item.Signer))
                 list.Add(item);
             return list.Count;
