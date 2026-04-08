@@ -4,10 +4,21 @@
 namespace Nethermind.StateComposition;
 
 /// <summary>
-/// Wraps cached stats from last completed scan.
-/// Stats are null before the first scan completes.
+/// Always-current state composition stats.
+/// <see cref="CurrentStats"/> is null before the first scan completes.
+/// After the initial scan, stats are kept current via incremental diffs on each new block.
 /// </summary>
 public readonly record struct CachedStatsResponse
 {
-    public StateCompositionStats? Stats { get; init; }
+    /// <summary>Live cumulative stats — initialized from scan, then updated by diffs.</summary>
+    public CumulativeSizeStats? CurrentStats { get; init; }
+
+    /// <summary>Block number these stats correspond to.</summary>
+    public long? BlockNumber { get; init; }
+
+    /// <summary>Number of diffs applied since the last full scan (0 = fresh from scan).</summary>
+    public int DiffsSinceLastScan { get; init; }
+
+    /// <summary>Metadata from the last full scan (block, time, duration).</summary>
+    public ScanMetadata? LastScanMetadata { get; init; }
 }

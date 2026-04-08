@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -24,11 +25,12 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             Substitute.For<IStateCompositionService>(),
             stateHolder,
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_getCachedStats();
 
-        Assert.That(result.Data.Stats, Is.Null);
+        Assert.That(result.Data.CurrentStats, Is.Null);
     }
 
     [Test]
@@ -40,7 +42,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             Substitute.For<IStateCompositionService>(),
             stateHolder,
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<ScanMetadata?> result = await rpc.statecomp_getCacheMetadata();
 
@@ -55,7 +58,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             service,
             Substitute.For<IStateCompositionStateHolder>(),
-            Substitute.For<IBlockTree>());
+            Substitute.For<IBlockTree>(),
+            new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
@@ -72,7 +76,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             Substitute.For<IStateCompositionService>(),
             Substitute.For<IStateCompositionStateHolder>(),
-            blockTree);
+            blockTree,
+            new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<StateCompositionStats> result = await rpc.statecomp_getStats();
 
@@ -88,7 +93,8 @@ public class StateCompositionRpcModuleTests
         StateCompositionRpcModule rpc = new(
             Substitute.For<IStateCompositionService>(),
             Substitute.For<IStateCompositionStateHolder>(),
-            blockTree);
+            blockTree,
+            new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null);
 

@@ -10,6 +10,8 @@ namespace Nethermind.StateComposition;
 /// <summary>
 /// Orchestrates state composition analysis: full trie scans, cached lookups,
 /// single-contract inspection, and trie distribution queries. Owns the scan lifecycle.
+/// After the initial scan, subscribes to new blocks and keeps cumulative stats
+/// current via <see cref="TrieDiffWalker"/> diffs.
 /// Returns <see cref="Result{T}"/> for business logic outcomes (scan in progress, etc.);
 /// only throws for infrastructure failures.
 /// </summary>
@@ -17,6 +19,7 @@ public interface IStateCompositionService
 {
     /// <summary>
     /// Run a full state composition scan at the given block.
+    /// Establishes a baseline and starts incremental diff tracking.
     /// Returns <see cref="Result{T}.Fail"/> if a scan is already in progress or cooldown is active.
     /// </summary>
     Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct);

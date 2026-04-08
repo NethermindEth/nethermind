@@ -13,4 +13,7 @@ public class StateCompositionConfig : IStateCompositionConfig
     public long ScanMemoryBudget { get; set; } = 1_000_000_000;
     public int TopNContracts { get; set; } = 20;
     public bool ExcludeStorage { get; set; }
+    public bool PersistSnapshots { get; set; } = true;
+    public int SnapshotBlocksToKeep { get; set; } = 10_000;
+    public int SnapshotInterval { get; set; } = 1;
 }

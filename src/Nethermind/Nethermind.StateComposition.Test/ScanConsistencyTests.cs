@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -304,7 +305,9 @@ public class ScanConsistencyTests
 
         StateCompositionStateHolder stateHolder = new();
         using StateCompositionService service = new(
-            stateReader, stateHolder, new StateCompositionConfig { ScanParallelism = 1 },
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            stateHolder, new StateCompositionSnapshotStore(new MemDb()),
+            new StateCompositionConfig { ScanParallelism = 1 },
             LimboLogs.Instance);
 
         // Scan at root0
@@ -366,7 +369,9 @@ public class ScanConsistencyTests
 
         StateCompositionStateHolder stateHolder = new();
         using StateCompositionService service = new(
-            stateReader, stateHolder, new StateCompositionConfig { ScanParallelism = 1 },
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            stateHolder, new StateCompositionSnapshotStore(new MemDb()),
+            new StateCompositionConfig { ScanParallelism = 1 },
             LimboLogs.Instance);
 
         // First scan at root0

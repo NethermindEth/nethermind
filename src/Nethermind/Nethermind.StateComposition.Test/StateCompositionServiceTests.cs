@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Blockchain;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
@@ -19,6 +21,8 @@ namespace Nethermind.StateComposition.Test;
 [TestFixture]
 public class StateCompositionServiceTests
 {
+    private static StateCompositionSnapshotStore CreateSnapshotStore() => new(new MemDb());
+
     private static IStateCompositionConfig CreateValidConfig()
     {
         IStateCompositionConfig config = Substitute.For<IStateCompositionConfig>();
@@ -40,7 +44,10 @@ public class StateCompositionServiceTests
         {
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
+                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
+                CreateSnapshotStore(),
                 config,
                 LimboLogs.Instance);
         });
@@ -55,7 +62,10 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
+                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
+                CreateSnapshotStore(),
                 config,
                 LimboLogs.Instance));
     }
@@ -69,7 +79,10 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
+                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
+                CreateSnapshotStore(),
                 config,
                 LimboLogs.Instance));
     }
@@ -83,7 +96,10 @@ public class StateCompositionServiceTests
         Assert.Throws<ArgumentException>(() =>
             _ = new StateCompositionService(
                 Substitute.For<IStateReader>(),
+                Substitute.For<IWorldStateManager>(),
+                Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
+                CreateSnapshotStore(),
                 config,
                 LimboLogs.Instance));
     }
@@ -93,7 +109,10 @@ public class StateCompositionServiceTests
     {
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
+            Substitute.For<IWorldStateManager>(),
+            Substitute.For<IBlockTree>(),
             new StateCompositionStateHolder(),
+            CreateSnapshotStore(),
             CreateValidConfig(),
             LimboLogs.Instance);
 
@@ -112,7 +131,10 @@ public class StateCompositionServiceTests
     {
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
+            Substitute.For<IWorldStateManager>(),
+            Substitute.For<IBlockTree>(),
             new StateCompositionStateHolder(),
+            CreateSnapshotStore(),
             CreateValidConfig(),
             LimboLogs.Instance);
 
@@ -126,7 +148,8 @@ public class StateCompositionServiceTests
         StateCompositionStateHolder stateHolder = new();
 
         StateCompositionService service = new(
-            stateReader, stateHolder, CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            stateHolder, CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -148,7 +171,8 @@ public class StateCompositionServiceTests
         // TryGetAccount returns false by default (NSubstitute default for bool)
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -177,7 +201,8 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -206,7 +231,8 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -239,7 +265,8 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
@@ -287,7 +314,8 @@ public class StateCompositionServiceTests
             });
 
         StateCompositionService service = new(
-            stateReader, new StateCompositionStateHolder(), CreateValidConfig(), LimboLogs.Instance);
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 

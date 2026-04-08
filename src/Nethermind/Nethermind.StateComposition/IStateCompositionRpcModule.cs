@@ -42,4 +42,9 @@ public interface IStateCompositionRpcModule : IRpcModule
         Description = "Inspect a single contract's storage trie structure. " +
                       "Returns null if the address has no storage.")]
     Task<ResultWrapper<TopContractEntry?>> statecomp_inspectContract(Address address);
+
+    [JsonRpcMethod(IsImplemented = true,
+        Description = "Get persisted stats snapshot at a specific block number. " +
+                      "Returns null if no snapshot exists for that block.")]
+    Task<ResultWrapper<StateCompositionSnapshot?>> statecomp_getStatsAtBlock(long blockNumber);
 }

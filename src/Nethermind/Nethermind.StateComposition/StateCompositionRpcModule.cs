@@ -13,7 +13,8 @@ namespace Nethermind.StateComposition;
 public class StateCompositionRpcModule(
     IStateCompositionService service,
     IStateCompositionStateHolder stateHolder,
-    IBlockTree blockTree)
+    IBlockTree blockTree,
+    StateCompositionSnapshotStore snapshotStore)
     : IStateCompositionRpcModule
 {
     public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats()
@@ -40,7 +41,10 @@ public class StateCompositionRpcModule(
     {
         CachedStatsResponse response = new()
         {
-            Stats = stateHolder.IsInitialized ? stateHolder.CurrentStats : null,
+            CurrentStats = stateHolder.IncrementalStats,
+            BlockNumber = stateHolder.IncrementalStats is not null ? stateHolder.IncrementalBlock : null,
+            DiffsSinceLastScan = stateHolder.DiffsSinceBaseline,
+            LastScanMetadata = stateHolder.LastScanMetadata,
         };
 
         return Task.FromResult(ResultWrapper<CachedStatsResponse>.Success(response));
@@ -86,5 +90,15 @@ public class StateCompositionRpcModule(
         {
             return ResultWrapper<TopContractEntry?>.Fail("Inspection was cancelled");
         }
+    }
+
+    public Task<ResultWrapper<StateCompositionSnapshot?>> statecomp_getStatsAtBlock(long blockNumber)
+    {
+        if (blockNumber < 0)
+            return Task.FromResult(
+                ResultWrapper<StateCompositionSnapshot?>.Fail("Block number must be non-negative", ErrorCodes.InvalidInput));
+
+        StateCompositionSnapshot? snapshot = snapshotStore.ReadSnapshot(blockNumber);
+        return Task.FromResult(ResultWrapper<StateCompositionSnapshot?>.Success(snapshot));
     }
 }
