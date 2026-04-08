@@ -67,7 +67,7 @@ internal static partial class EvmInstructions
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -315,7 +315,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

@@ -186,7 +186,7 @@ internal static partial class EvmInstructions
         programCounter += Size;
     Success:
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     InvalidJumpDestination:
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
@@ -763,7 +763,7 @@ internal static partial class EvmInstructions
         vm.AddLog(logEntry);
 
         return EvmExceptionType.None;
-        // Jump forward to be unpredicted by the branch predictor.
+    // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     StaticCallViolation:
