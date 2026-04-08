@@ -43,7 +43,7 @@ public class FastHeadersSyncTests
 
         Assert.Throws<InvalidOperationException>(() =>
         {
-            HeadersSyncFeed _ = new HeadersSyncFeed(
+            _ = new HeadersSyncFeed(
                 blockTree: blockTree,
                 syncPeerPool: Substitute.For<ISyncPeerPool>(),
                 syncConfig: new TestSyncConfig(),

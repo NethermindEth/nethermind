@@ -1,4 +1,4 @@
-name: '[JSON-RPC] Compare Nethermind between clients and versions'
+name: Compare JSON-RPC between clients and versions
 
 on:
   workflow_dispatch:
@@ -29,10 +29,10 @@ on:
         default: false
         required: false
       timeout:
-       type: string
-       description: "How long should node be kept alive"
-       default: "24"
-       required: false
+        type: string
+        description: "How long should node be kept alive"
+        default: "24"
+        required: false
 
 jobs:
   verify_correctness_of_setup:
@@ -47,7 +47,7 @@ jobs:
             echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
             exit 1
           fi
-          
+
           if [ "$IS_PERFORMANCE_CHECK" == "false" ] && [ -z "$BRANCH_TO_COMPARE" ] && [ -z "$COMPARE_WITH" ]; then
             echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to false."
             exit 1
@@ -56,7 +56,7 @@ jobs:
           IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
           BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
           COMPARE_WITH: ${{ inputs.compare_with }}
-          
+
       - name: Compute Machine Type
         id: compute_machine_type
         run: |
@@ -93,7 +93,7 @@ jobs:
       custom_run_id: ${{ github.run_id }}
       network: "${{ 'mainnet' }}"
       convert_to_paprika: "${{ inputs.convert_to_paprika }}"
-  
+
   create_compare_node:
     name: Create node from branch to compare
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
@@ -115,7 +115,7 @@ jobs:
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ 'mainnet' }}"
-  
+
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
@@ -124,14 +124,13 @@ jobs:
     outputs:
       rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
     steps:
-  
       - name: Prepare clean main ref
         id: prepare_main_ref
         run: |
           REF_NAME=${{ github.ref }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_MAIN_REF=$CLEAN_REF" >> $GITHUB_ENV
-      
+
       - name: Prepare clean compare ref
         id: prepare_compare_ref
         if: inputs.branch_to_compare != ''
@@ -139,39 +138,39 @@ jobs:
           REF_NAME=${{ inputs.branch_to_compare }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
-      
+
       - name: Download RPC Artifact for current branch
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
           path: artifacts
-      
-      - name: Download RPC Artifact for branch to compare 
+
+      - name: Download RPC Artifact for branch to compare
         if: inputs.branch_to_compare != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
           path: artifacts
-  
+
       - name: Process Artifacts Content
         id: process_artifacts
         run: |
           rpc_urls=""
           main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
           compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
-  
+
           # Check and add the main branch file
           if [ -f "artifacts/$main_branch_file" ]; then
             url_content=$(cat "artifacts/$main_branch_file")
             rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
           fi
-  
+
           # Check and add the compare branch file
           if [ -f "artifacts/$compare_branch_file" ]; then
             url_content=$(cat "artifacts/$compare_branch_file")
             rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
           fi
-  
+
           rpc_urls=${rpc_urls%,}
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
@@ -430,7 +429,7 @@ jobs:
           # -----------------------------
           echo "Waiting for (128 - 32) Ethereum blocks ≈ 1152 seconds..."
           sleep 1152
-  
+
   compare:
     name: Compare JSON-RPC responses between clients and versions
     runs-on: [vpn]
@@ -454,7 +453,7 @@ jobs:
           unset IFS
           IFS=' ' read -r -a others_str_array <<< "$others_str"
           unset IFS
-          
+
           # Construct nethermind_urls_str as an array
           nethermind_urls_str=()
           for url_entry in "${rpc_urls_array[@]}"; do
@@ -462,7 +461,7 @@ jobs:
             url="${url_entry#*::}"     # Extract the URL part
             nethermind_urls_str+=("nethermind_$branch=$url")
           done
-          
+
           # Construct others_prepared_str as an array
           others_prepared_str=()
           for other in "${others_str_array[@]}"; do
@@ -499,7 +498,7 @@ jobs:
             fi
           done
           echo "compare_to_infura=$compare_to_infura" >> $GITHUB_ENV
-          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV               
+          echo "compare_to_archive=$compare_to_archive" >> $GITHUB_ENV
 
       - name: Compare to Other Branch
         if: env.compare_to_other_branch == 'true'
@@ -514,7 +513,7 @@ jobs:
 
             # Prepare test files
             mapfile -t tests < <(flood ls | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}')
-            
+
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
                 echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 10 10 100 100 100 500 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
@@ -524,13 +523,13 @@ jobs:
             echo "flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt"
             flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt
           fi
-      
+
       - name: Compare to INFURA Endpoint
         if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
           echo "flood all ${compare_to_infura_params} --equality | tee output_infura.txt"
           flood all ${compare_to_infura_params} --equality | tee output_infura.txt
-      
+
       - name: Compare to Nethermind Archive Endpoint
         if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
@@ -558,7 +557,7 @@ jobs:
           fi
 
       - name: Upload results as files
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: flood-results
           path: |
@@ -568,4 +567,3 @@ jobs:
             *_perf_result
             *_perf_result.txt
             equality_result_*
-            
