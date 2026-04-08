@@ -310,7 +310,7 @@ jobs:
 
       - name: Publish PR benchmark comment
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           COMMENT_BODY: ${{ steps.compare.outputs.comment_body }}
         with:
@@ -362,7 +362,7 @@ jobs:
 
       - name: Upload benchmark logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evm-opcode-benchmark-logs
           path: |

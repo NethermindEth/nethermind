@@ -131,7 +131,7 @@ namespace Nethermind.Db.Test
             }
 
             {
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, _rocksdbConfigFactory, LimboLogs.Instance);
             }
         }
 
@@ -146,7 +146,7 @@ namespace Nethermind.Db.Test
             Action act = () =>
             {
                 var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
-                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
+                using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
             if (success)
@@ -250,7 +250,7 @@ namespace Nethermind.Db.Test
             bool exceptionThrown = false;
             try
             {
-                CorruptedDbOnTheRocks db = new("test", GetRocksDbSettings("test", "test"), config,
+                _ = new CorruptedDbOnTheRocks("test", GetRocksDbSettings("test", "test"), config,
                     _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem);
@@ -280,7 +280,7 @@ namespace Nethermind.Db.Test
 
             try
             {
-                DbOnTheRocks db = new(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
+                _ = new DbOnTheRocks(Path.Join(Path.GetTempPath(), "test"), GetRocksDbSettings("test", "test"), config, _rocksdbConfigFactory,
                     LimboLogs.Instance,
                     fileSystem: fileSystem,
                     rocksDbNative: native);

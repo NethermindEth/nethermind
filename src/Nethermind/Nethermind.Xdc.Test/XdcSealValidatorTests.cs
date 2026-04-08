@@ -226,7 +226,6 @@ internal class XdcSealValidatorTests
     private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
         EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        QuorumCertificateDecoder qcEncoder = new QuorumCertificateDecoder();
 
         //Fake the sigs by signing empty hash
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(Hash256.Zero.Bytes)));
