@@ -32,10 +32,10 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/amd64,linux/riscv64
 
@@ -75,7 +75,7 @@ jobs:
         run: ./stateless_exec_test.sh
 
       - name: Upload Zisk simulator binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stateless-execution-zisk-sim
           path: tools/StatelessExecution/Program
@@ -93,7 +93,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build .NET tool
         working-directory: tools/StatelessExecution
@@ -104,7 +104,7 @@ jobs:
         run: make build-zisk
 
       - name: Upload Zisk binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: stateless-execution-zisk
           path: tools/StatelessExecution/Program.patched

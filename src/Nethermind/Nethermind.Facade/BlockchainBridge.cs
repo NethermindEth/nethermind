@@ -455,7 +455,7 @@ namespace Nethermind.Facade
             return witnessCollector.GetWitnessForExistingBlock(parent, block);
         }
 
-        public Witness GenerateExecutionWitnessForCall(BlockHeader header, Transaction tx)
+        public Witness GenerateExecutionWitness(BlockHeader header, Transaction tx)
         {
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
             ISingleCallWitnessCollector collector = scope.Env.CreateSingleCallWitnessCollector();
