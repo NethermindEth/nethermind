@@ -15,7 +15,7 @@ public class RequestForwarder(
     ILogManager logManager)
 {
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<RequestForwarder>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
 
     public virtual async Task<JsonRpcResponse> ForwardRequestToExecutionClient(JsonRpcRequest request, bool logResponse = true)

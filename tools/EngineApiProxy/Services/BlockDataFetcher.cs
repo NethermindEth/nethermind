@@ -22,7 +22,7 @@ public class BlockDataFetcher(HttpClient httpClient, ILogManager logManager, Htt
 {
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     private readonly HttpClient? _consensusClient = consensusClient;
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<BlockDataFetcher>() ?? throw new ArgumentNullException(nameof(logManager));
 
     /// <summary>
     /// Gets or sets the consensus client endpoint URL

@@ -28,7 +28,7 @@ public class NewPayloadHandler(
     private const string SafeBlockHashKey = "safeBlockHash";
 
     private readonly ProxyConfig _config = config;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<NewPayloadHandler>();
     private readonly RequestForwarder _requestForwarder = requestForwarder;
     private readonly MessageQueue _messageQueue = messageQueue;
     private readonly PayloadTracker _payloadTracker = payloadTracker;

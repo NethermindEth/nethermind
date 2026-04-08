@@ -11,7 +11,7 @@ namespace Nethermind.EngineApiProxy.Models;
 /// </summary>
 public class MessageQueue(ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<MessageQueue>();
     private readonly ConcurrentQueue<QueuedMessage> _messageQueue = new();
     private readonly ConcurrentDictionary<string, QueuedMessage> _messageById = new();
 

@@ -32,7 +32,7 @@ public class BlobHashComputer
 
     public BlobHashComputer(ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<BlobHashComputer>() ?? throw new ArgumentNullException(nameof(logManager));
     }
 
     /// <summary>

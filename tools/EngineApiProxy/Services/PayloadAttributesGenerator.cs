@@ -14,7 +14,7 @@ namespace Nethermind.EngineApiProxy.Services;
 public class PayloadAttributesGenerator(ProxyConfig config, ILogManager logManager)
 {
     private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<PayloadAttributesGenerator>() ?? throw new ArgumentNullException(nameof(logManager));
 
     /// <summary>
     /// Generates payload attributes based on the block data

@@ -42,7 +42,7 @@ public class ProxyServer
     {
         Console.WriteLine("Application starting...");
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<ProxyServer>() ?? throw new ArgumentNullException(nameof(logManager));
 
         // Add this line to ensure console output
         Console.WriteLine($"Logger initialized with level: {_config.LogLevel}");

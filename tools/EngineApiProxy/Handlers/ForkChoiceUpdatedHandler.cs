@@ -39,7 +39,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
         ILogManager logManager)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<ForkChoiceUpdatedHandler>() ?? throw new ArgumentNullException(nameof(logManager));
         _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
         _messageQueue = messageQueue ?? throw new ArgumentNullException(nameof(messageQueue));
         _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));

@@ -122,7 +122,7 @@ public class Program
 
                 logManager.SetGlobalVariable("logLevel", logLevel);
 
-                var logger = logManager.GetClassLogger();
+                var logger = logManager.GetClassLogger<Program>();
 
                 // Configure file logging only if log file is specified
                 if (!string.IsNullOrWhiteSpace(logFile))

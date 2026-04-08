@@ -11,7 +11,7 @@ public class DefaultRequestHandler(
     RequestForwarder requestForwarder,
     ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<DefaultRequestHandler>();
     private readonly RequestForwarder _requestForwarder = requestForwarder;
 
     public async Task<JsonRpcResponse> HandleRequest(JsonRpcRequest request)

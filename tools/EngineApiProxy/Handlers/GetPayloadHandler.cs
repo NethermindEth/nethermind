@@ -15,7 +15,7 @@ public class GetPayloadHandler(
     ILogManager logManager)
 {
     private readonly ProxyConfig _config = config ?? throw new ArgumentNullException(nameof(config));
-    private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<GetPayloadHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly RequestForwarder _requestForwarder = requestForwarder ?? throw new ArgumentNullException(nameof(requestForwarder));
     private readonly PayloadTracker _payloadTracker = payloadTracker ?? throw new ArgumentNullException(nameof(payloadTracker));
 

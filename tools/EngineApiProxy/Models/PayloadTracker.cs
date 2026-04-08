@@ -12,7 +12,7 @@ namespace Nethermind.EngineApiProxy.Models;
 /// </summary>
 public class PayloadTracker(ILogManager logManager)
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<PayloadTracker>();
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToPayloadId = new();
     private readonly ConcurrentDictionary<string, Hash256> _payloadIdToHeadBlock = new();
     private readonly ConcurrentDictionary<Hash256, string> _headBlockToParentBeaconBlockRoot = new();
