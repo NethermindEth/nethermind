@@ -122,30 +122,27 @@ public class TransactionForRpcDeserializationTests
         }
     }
 
-    [Test]
-    public void Test_DefaultedType_ProducesLegacyTransaction_OnPreBerlinSpec()
+    [TestCaseSource(nameof(DefaultedTypeResolutionCases))]
+    public TxType Test_DefaultedType_ResolvesCorrectly(IReleaseSpec spec, bool hasAccessList)
     {
-        // Minimal eth_call payload — no type, no gasPrice, no EIP-1559 fields
         TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
             """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""");
 
-        Result<Transaction> result = rpc.ToTransaction(spec: Istanbul.Instance);
-
-        Transaction tx = result.Data!;
-        Assert.That(tx.Type, Is.EqualTo(TxType.Legacy));
-        Assert.That(tx.AccessList, Is.Null);
+        Transaction tx = rpc.ToTransaction(spec: spec).Data!;
+        Assert.That(tx.AccessList is not null, Is.EqualTo(hasAccessList));
+        return tx.Type;
     }
 
-    [Test]
-    public void Test_DefaultedType_ProducesEip1559Transaction_OnPostLondonSpec()
+    public static IEnumerable DefaultedTypeResolutionCases
     {
-        TransactionForRpc rpc = _serializer.Deserialize<TransactionForRpc>(
-            """{"to":"0x0000000000000000000000000000000000000001","data":"0x01"}""");
-
-        Result<Transaction> result = rpc.ToTransaction(spec: London.Instance);
-
-        Transaction tx = result.Data!;
-        Assert.That(tx.Type, Is.EqualTo(TxType.EIP1559));
-        Assert.That(tx.AccessList, Is.Not.Null);
+        get
+        {
+            yield return new TestCaseData(Istanbul.Instance, false)
+                .SetName("Pre-Berlin spec resolves to Legacy without AccessList")
+                .Returns(TxType.Legacy);
+            yield return new TestCaseData(London.Instance, true)
+                .SetName("Post-London spec resolves to EIP1559 with AccessList")
+                .Returns(TxType.EIP1559);
+        }
     }
 }
