@@ -7,7 +7,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Timers;
 using Nethermind.Db;
