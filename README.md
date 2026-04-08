@@ -7,7 +7,7 @@
 [![GitPOAPs](https://public-api.gitpoap.io/v1/repo/NethermindEth/nethermind/badge)](https://www.gitpoap.io/gh/NethermindEth/nethermind)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/bcc0fbeb-fd03-4b9f-9b19-c3790e1fe2fa" alt="Nethermind client" width="100%">
+  <img src="https://github.com/user-attachments/assets/7c077f6c-4a62-42e2-9ef1-abc580bb2413" alt="Nethermind client" width="100%">
 </p>
 
 ## Overview
@@ -28,15 +28,15 @@ Nethermind documentation is available at [docs.nethermind.io][docs].
 
 Nethermind connects operators to the Ethereum network via JSON-RPC over HTTP, WebSocket, and IPC. Snap sync, enabled by default, reaches the chain tip up to 10x faster than traditional fast sync. Node health and performance are exposed through a built-in UI and Prometheus metrics.
 
-1. **Performance:** The EVM is optimized for low-overhead block processing: direct opcode dispatch, hardware-accelerated bitwise operations, and zero heap allocation on the execution stack. A parallel pre-execution system warms state reads before a block's main loop, cutting block processing time roughly in half.
+- **Performance:** The EVM is optimized for low-overhead block processing: direct opcode dispatch, hardware-accelerated bitwise operations, and zero heap allocation on the execution stack. A parallel pre-execution system warms state reads before a block's main loop, cutting block processing time roughly in half.
 
-2. **Modularity:** Every component of the Nethermind is independently extendable without forking the codebase. The plugin system lets teams add consensus algorithms, transaction types, network protocols, and RPC namespaces through a .NET assembly that loads on startup. Nethermind uses this same system internally for L2 network support and health checks.
+- **Modularity:** Every component of the Nethermind is independently extendable without forking the codebase. The plugin system lets teams add consensus algorithms, transaction types, network protocols, and RPC namespaces through a .NET assembly that loads on startup. Nethermind uses this same system internally for L2 network support and health checks.
 
-3. **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running.
+- **Client diversity:** The Ethereum protocol becomes more resilient when no single node implementation dominates. A bug in any one implementation cannot cause the network to finalize a bad block if multiple independent clients are running.
 
-4. **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
+- **L2 and rollup native:** Each supported L2 network is implemented as a plugin, so the core stays untouched. For OP Stack operators, a rollup node is built directly into the client, fully replacing the separate `op-node` and cutting services from two down to one.
 
-5. **ZK-readiness:** ZK proving is being built directly into the production execution client. Execution witness capture, stateless block replay, and a minimal EVM binary are complete. See the [ZK roadmap](https://www.nethermind.io/blog/road-to-zk-implementation-nethermind-clients-path-to-proofs) for current status.
+- **ZK-readiness:** ZK proving is being built directly into the production execution client. Execution witness capture, stateless block replay, and a minimal EVM binary are complete. See the [ZK roadmap](https://www.nethermind.io/blog/road-to-zk-implementation-nethermind-clients-path-to-proofs) for current status.
 
 ## Getting started
 
