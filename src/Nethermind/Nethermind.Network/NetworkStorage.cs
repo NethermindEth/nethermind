@@ -28,7 +28,7 @@ namespace Nethermind.Network
         public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
         {
             _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public int PersistedNodesCount => GetPersistedNodes().Length;

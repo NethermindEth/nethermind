@@ -16,7 +16,7 @@ public abstract class GetPayloadBodiesByHashHandler<TResult>(IBlockTree blockTre
 {
     protected readonly IBlockTree _blockTree = blockTree;
     private const int MaxCount = 1024;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger(typeof(GetPayloadBodiesByHashHandler<>));
 
     public ResultWrapper<IEnumerable<TResult?>> Handle(IReadOnlyList<Hash256> blockHashes)
     {

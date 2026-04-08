@@ -119,7 +119,7 @@ namespace Nethermind.Evm.TransactionProcessing
             ArgumentNullException.ThrowIfNull(codeInfoRepository);
             ArgumentNullException.ThrowIfNull(blobBaseFeeCalculator);
 
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger(typeof(TransactionProcessorBase<>));
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
@@ -466,10 +466,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long minGasRequired = spec.IsEip8037Enabled
                 ? Math.Max(TGasPolicy.GetRemainingGas(in standard) + TGasPolicy.GetStateReservoir(in standard), TGasPolicy.GetRemainingGas(in minimal))
                 : TGasPolicy.GetRemainingGas(in minimal);
-            return ValidateGas(tx, header, minGasRequired);
+            return ValidateGas(tx, header, spec, minGasRequired);
         }
 
-        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, long minGasRequired)
+        protected virtual TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, long minGasRequired)
         {
             if (tx.GasLimit < minGasRequired)
             {
@@ -477,9 +477,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (tx.GasLimit > header.GasLimit - header.GasUsed)
+            long maxTransactionGasLimit = spec.IsEip8037Enabled
+                ? header.GasLimit
+                : header.GasLimit - header.GasUsed;
+            if (tx.GasLimit > maxTransactionGasLimit)
             {
-                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {header.GasLimit} - {header.GasUsed}");
+                string limitDescription = spec.IsEip8037Enabled
+                    ? $"{header.GasLimit}"
+                    : $"{header.GasLimit} - {header.GasUsed}";
+                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
                 return TransactionResult.BlockGasLimitExceeded;
             }
 
@@ -806,7 +812,7 @@ namespace Nethermind.Evm.TransactionProcessing
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
-            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts);
+            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts, in gasAvailable);
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
@@ -817,20 +823,22 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
 
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts)
+        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in TGasPolicy gasAfterExecution)
         {
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
 
-            // EIP-8037: compute intrinsic state cost and initial reservoir.
-            // All regular gas is consumed as penalty, but the unused state reservoir is refunded.
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec);
             long intrinsicState = TGasPolicy.GetStateReservoir(intrinsicGas.Standard);
+            long revertedExecutionStateGas = Math.Max(0, TGasPolicy.GetStateGasUsed(in gasAfterExecution) - intrinsicState);
             long initialReservoir = Math.Max(0, tx.GasLimit - intrinsicState - Eip7825Constants.DefaultTxGasLimitCap);
 
+            // Exceptional halt still burns the regular-gas penalty; only the initial overflow
+            // reservoir is refunded to the sender. Reverted execution state gas is removed from
+            // block_regular and fully discarded from block_state accounting.
             long spentGas = tx.GasLimit - initialReservoir;
-            long blockGas = spentGas - intrinsicState;
-            long blockStateGas = intrinsicState;
+            long blockGas = spentGas - intrinsicState - revertedExecutionStateGas;
+            long blockStateGas = 0;
 
             GasConsumed gasConsumed = new(spentGas, spentGas, blockGas, blockStateGas, spentGas);
 

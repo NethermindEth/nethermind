@@ -25,7 +25,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     {
         _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<TotalDifficultyFixMigration>();
         _syncConfig = syncConfig;
     }
 

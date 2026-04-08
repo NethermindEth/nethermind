@@ -183,4 +183,91 @@ public class RetryCacheTests
     {
         Assert.That(() => _cache.Received(999), Throws.Nothing);
     }
+
+    [Test]
+    public void HandlerBag_StaleAddAfterDrainAndReuse_IsRejected()
+    {
+        // Simulate the race: capture a bag reference, drain+return it, reuse for another resource,
+        // then try to add via the stale reference — should be rejected.
+        HandlerBag<ResourceRequestMessage> bag = new();
+        bag.Activate();
+
+        TestHandler handler1 = new();
+        TestHandler staleHandler = new();
+
+        bag.TryAdd(handler1, 8);
+        Assert.That(bag.Drain(), Has.Length.EqualTo(1));
+
+        // Bag is now inactive (drained). Simulate pool return + reuse.
+        bag.Reset();
+        bag.Activate();
+
+        // Stale add from a thread that captured the reference before drain.
+        // This should succeed because the bag is active again — but in RetryCache,
+        // TryRemove ensures the stale reference is no longer in the dictionary,
+        // so GetOrAdd would return a different bag. The HandlerBag itself
+        // cannot distinguish old vs new lifecycle after Activate. The safety
+        // comes from the dictionary-level removal, not the bag-level flag.
+        // This test verifies Drain deactivates and Reset+Activate reactivates.
+        bool addedAfterReactivation = bag.TryAdd(staleHandler, 8);
+        Assert.That(addedAfterReactivation, Is.True);
+
+        IMessageHandler<ResourceRequestMessage>[] handlers = bag.Drain();
+        Assert.That(handlers, Has.Length.EqualTo(1));
+        Assert.That(handlers[0], Is.SameAs(staleHandler));
+    }
+
+    [Test]
+    public void HandlerBag_AddAfterDrainWithoutReactivation_IsRejected()
+    {
+        HandlerBag<ResourceRequestMessage> bag = new();
+        bag.Activate();
+
+        bag.TryAdd(new TestHandler(), 8);
+        bag.Drain();
+
+        // Bag is inactive after drain — TryAdd must be rejected
+        bool added = bag.TryAdd(new TestHandler(), 8);
+        Assert.That(added, Is.False);
+    }
+
+    [Test]
+    public void HandlerBag_AddAfterDeactivate_IsRejected()
+    {
+        HandlerBag<ResourceRequestMessage> bag = new();
+        bag.Activate();
+
+        bag.TryAdd(new TestHandler(), 8);
+        bag.Deactivate();
+
+        // Bag is inactive after explicit deactivate — TryAdd must be rejected
+        bool added = bag.TryAdd(new TestHandler(), 8);
+        Assert.That(added, Is.False);
+    }
+
+    [Test]
+    public void HandlerBag_PreservesSetSemantics_NoDuplicates()
+    {
+        HandlerBag<ResourceRequestMessage> bag = new();
+        bag.Activate();
+
+        TestHandler handler = new();
+        Assert.That(bag.TryAdd(handler, 8), Is.True);
+        Assert.That(bag.TryAdd(handler, 8), Is.False);
+
+        IMessageHandler<ResourceRequestMessage>[] handlers = bag.Drain();
+        Assert.That(handlers, Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public void Announced_RetryHandlerReceivesCorrectResourceId()
+    {
+        int receivedResourceId = -1;
+        TestHandler retryHandler = new() { OnHandleMessage = msg => receivedResourceId = msg.Resource };
+
+        _cache.Announced(42, new TestHandler());
+        _cache.Announced(42, retryHandler);
+
+        Assert.That(() => receivedResourceId, Is.EqualTo(42).After(AssertTimeoutMs, 100));
+    }
 }

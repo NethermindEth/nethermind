@@ -21,7 +21,7 @@ public class IPResolver : IIPResolver
 
     public IPResolver(INetworkConfig networkConfig, ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<IPResolver>() ?? throw new ArgumentNullException(nameof(logManager));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _logManager = logManager;
     }

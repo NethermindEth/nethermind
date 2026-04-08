@@ -238,12 +238,12 @@ public abstract class VirtualMachineTestsBase
             TestState.InsertCode(senderRecipientAndMiner.Recipient, code, SpecProvider.GenesisSpec);
         }
 
-        GetLogManager().GetClassLogger().Debug("Committing initial state");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committing initial state");
         TestState.Commit(SpecProvider.GenesisSpec);
-        GetLogManager().GetClassLogger().Debug("Committed initial state");
-        GetLogManager().GetClassLogger().Debug("Committing initial tree");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committed initial state");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committing initial tree");
         TestState.CommitTree(0);
-        GetLogManager().GetClassLogger().Debug("Committed initial tree");
+        GetLogManager().GetClassLogger<VirtualMachineTestsBase>().Debug("Committed initial tree");
 
         transaction ??= Build.A.Transaction
             .WithGasLimit(gasLimit)

@@ -89,7 +89,7 @@ namespace Nethermind.Network.Rlpx
             }
             _serializationService = serializationService;
             _logManager = logManager;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<RlpxHost>();
             _sessionMonitor = sessionMonitor;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _handshakeService = handshakeService;

@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Visitors
         public ReceiptsVerificationVisitor(long startLevel, long endLevel, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ReceiptsVerificationVisitor>() ?? throw new ArgumentNullException(nameof(logManager));
             EndLevelExclusive = endLevel;
             StartLevelInclusive = startLevel; // we should start post-pivot
             _toCheck = EndLevelExclusive - StartLevelInclusive;

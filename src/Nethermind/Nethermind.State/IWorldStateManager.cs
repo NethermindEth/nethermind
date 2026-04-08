@@ -28,6 +28,13 @@ public interface IWorldStateManager
     IOverridableWorldScope CreateOverridableWorldScope();
 
     /// <summary>
+    /// Creates a read-only <see cref="IReadOnlyTrieStore"/> for trie-based operations (e.g. witness generation).
+    /// For trie mode, returns the existing read-only trie store.
+    /// For flat mode, returns an adapter over the flat DB's trie node data.
+    /// </summary>
+    IReadOnlyTrieStore CreateReadOnlyTrieStore();
+
+    /// <summary>
     /// Probably should be called `verifyState` but the name stuck. Run an internal check for the integrity of the state.
     /// Return false if error is found.
     /// </summary>
