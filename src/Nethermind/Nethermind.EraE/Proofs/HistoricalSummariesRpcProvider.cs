@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
@@ -9,9 +10,10 @@ public class HistoricalSummariesRpcProvider(
     Uri baseUrl,
     HttpClient? httpClient = null,
     TimeSpan? requestTimeout = null,
-    int maxRetries = 3) : IHistoricalSummariesProvider
+    int maxRetries = 3,
+    ILogManager? logManager = null) : IHistoricalSummariesProvider
 {
-    private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30));
+    private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
     private readonly SemaphoreSlim _lock = new(1, 1);
     private const string Endpoint = "/eth/v2/debug/beacon/states";
 

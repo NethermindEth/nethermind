@@ -39,7 +39,7 @@ public class EraEModule : Module
                 string? url = ctx.Resolve<IEraEConfig>().BeaconNodeUrl;
                 return string.IsNullOrWhiteSpace(url)
                     ? NullHistoricalSummariesProvider.Instance
-                    : new HistoricalSummariesRpcProvider(new Uri(url), ctx.Resolve<HttpClient>());
+                    : new HistoricalSummariesRpcProvider(new Uri(url), ctx.Resolve<HttpClient>(), logManager: ctx.Resolve<ILogManager>());
             })
             .AddSingleton<IEraImporter, EraImporter>()
             .AddSingleton<IEraExporter, EraExporter>()
