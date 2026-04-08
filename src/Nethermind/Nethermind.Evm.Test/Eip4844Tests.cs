@@ -47,7 +47,7 @@ public class Eip4844Tests : VirtualMachineTestsBase
         TestAllTracerWithOutput result = Execute(Activation, 50000, code, blobVersionedHashes: hashes);
 
         result.StatusCode.Should().Be(StatusCode.Success);
-        result.ReturnValue.SequenceEqual(expectedOutput);
+        result.ReturnValue.SequenceEqual(expectedOutput).Should().BeTrue();
         AssertGas(result, gasCostOfCallingWrapper + GasCostOf.BlobHash);
     }
 
