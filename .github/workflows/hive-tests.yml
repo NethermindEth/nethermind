@@ -102,7 +102,7 @@ jobs:
           path: nethermind
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build Docker image
         uses: docker/build-push-action@v6
@@ -144,7 +144,7 @@ jobs:
           ./hive $HIVE_ARGS
 
       - name: Upload results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: results-${{ strategy.job-index }}-${{ github.run_number }}-${{ github.run_attempt }}
           path: hive/workspace
