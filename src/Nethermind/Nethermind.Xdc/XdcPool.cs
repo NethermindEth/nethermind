@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -25,7 +27,9 @@ public class XdcPool<T> where T : IXdcPoolItem
                 list = new ArrayPoolList<T>(128);
                 _items[key] = list;
             }
-            if (!list.Contains(item))
+            if (item.Signer is null)
+                throw new ArgumentException("Cannot add an unsigned item to the pool.", nameof(item));
+            if (list.All(x => x.Signer != item.Signer))
                 list.Add(item);
             return list.Count;
         }
@@ -76,4 +80,5 @@ public class XdcPool<T> where T : IXdcPoolItem
 public interface IXdcPoolItem
 {
     (ulong Round, Hash256 hash) PoolKey();
+    Address? Signer { get; }
 }
