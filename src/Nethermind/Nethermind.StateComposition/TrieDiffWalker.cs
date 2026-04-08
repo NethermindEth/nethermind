@@ -1,0 +1,706 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
+
+namespace Nethermind.StateComposition;
+
+/// <summary>
+/// Walks two committed state roots and computes exact adds/removes for every metric.
+/// Content-addressed property: if hash(old) == hash(new), entire subtree identical → skip.
+/// Read-only — uses only <see cref="ITrieNodeResolver.FindCachedOrUnknown"/>.
+/// </summary>
+public sealed class TrieDiffWalker
+{
+    private readonly ITrieNodeResolver _resolver;
+
+    // Mutable counters accumulated during a single ComputeDiff call.
+    // Reset at the start of each call.
+    private int _accountsAdded, _accountsRemoved;
+    private int _contractsAdded, _contractsRemoved;
+    private int _accountTrieBranchesAdded, _accountTrieBranchesRemoved;
+    private int _accountTrieExtensionsAdded, _accountTrieExtensionsRemoved;
+    private int _accountTrieLeavesAdded, _accountTrieLeavesRemoved;
+    private long _accountTrieBytesAdded, _accountTrieBytesRemoved;
+    private int _storageTrieBranchesAdded, _storageTrieBranchesRemoved;
+    private int _storageTrieExtensionsAdded, _storageTrieExtensionsRemoved;
+    private int _storageTrieLeavesAdded, _storageTrieLeavesRemoved;
+    private long _storageTrieBytesAdded, _storageTrieBytesRemoved;
+    private long _storageSlotsAdded, _storageSlotsRemoved;
+
+    public TrieDiffWalker(ITrieNodeResolver resolver)
+    {
+        _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+    }
+
+    /// <summary>
+    /// Compute exact diff between two committed state roots.
+    /// Both roots must already be persisted and resolvable via the resolver.
+    /// </summary>
+    public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
+    {
+        ResetCounters();
+
+        Hash256? oldHash = NormalizeHash(oldRoot);
+        Hash256? newHash = NormalizeHash(newRoot);
+
+        if (oldHash == newHash) return default;
+
+        TreePath path = TreePath.Empty;
+        DiffSubtree(oldHash, newHash, ref path, _resolver, isStorage: false);
+
+        return new TrieDiff(
+            _accountsAdded, _accountsRemoved,
+            _contractsAdded, _contractsRemoved,
+            _accountTrieBranchesAdded, _accountTrieBranchesRemoved,
+            _accountTrieExtensionsAdded, _accountTrieExtensionsRemoved,
+            _accountTrieLeavesAdded, _accountTrieLeavesRemoved,
+            _accountTrieBytesAdded, _accountTrieBytesRemoved,
+            _storageTrieBranchesAdded, _storageTrieBranchesRemoved,
+            _storageTrieExtensionsAdded, _storageTrieExtensionsRemoved,
+            _storageTrieLeavesAdded, _storageTrieLeavesRemoved,
+            _storageTrieBytesAdded, _storageTrieBytesRemoved,
+            _storageSlotsAdded, _storageSlotsRemoved
+        );
+    }
+
+    /// <summary>
+    /// Diff two subtree roots. Resolves nodes and dispatches to type-specific comparison.
+    /// If both hashes are equal → skip (content-addressed fast path).
+    /// If only one exists → collect entire subtree as added or removed.
+    /// </summary>
+    private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    {
+        // Fast path: identical subtrees
+        if (oldHash == newHash) return;
+
+        // One side is empty → collect entire other side
+        if (oldHash is null)
+        {
+            TrieNode newNode = resolver.FindCachedOrUnknown(in path, newHash!);
+            newNode.ResolveNode(resolver, in path);
+            CollectSubtree(newNode, ref path, resolver, isStorage, added: true);
+            return;
+        }
+
+        if (newHash is null)
+        {
+            TrieNode oldNode = resolver.FindCachedOrUnknown(in path, oldHash);
+            oldNode.ResolveNode(resolver, in path);
+            CollectSubtree(oldNode, ref path, resolver, isStorage, added: false);
+            return;
+        }
+
+        // Both exist and differ → resolve and compare
+        TrieNode oldResolved = resolver.FindCachedOrUnknown(in path, oldHash);
+        oldResolved.ResolveNode(resolver, in path);
+        TrieNode newResolved = resolver.FindCachedOrUnknown(in path, newHash);
+        newResolved.ResolveNode(resolver, in path);
+
+        DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage);
+    }
+
+    /// <summary>
+    /// Compare two resolved nodes. Dispatches based on matching node types.
+    /// On type mismatch, collects both subtrees independently.
+    /// </summary>
+    private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    {
+        if (oldNode.NodeType != newNode.NodeType)
+        {
+            // Type mismatch (e.g., leaf → extension+branch on insert).
+            // Can't just collect both subtrees independently — that would double-count
+            // accounts/contracts/slots that exist in both. Instead, enumerate leaves
+            // from both sides, match by full path, and diff semantically.
+            DiffMismatchedNodes(oldNode, newNode, ref path, resolver, isStorage);
+            return;
+        }
+
+        switch (oldNode.NodeType)
+        {
+            case NodeType.Branch:
+                DiffBranches(oldNode, newNode, ref path, resolver, isStorage);
+                break;
+            case NodeType.Extension:
+                DiffExtensions(oldNode, newNode, ref path, resolver, isStorage);
+                break;
+            case NodeType.Leaf:
+                DiffLeaves(oldNode, newNode, ref path, resolver, isStorage);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Compare two branch nodes. Record both branch nodes, then diff each of the 16 children.
+    /// Uses hash comparison for fast skip of identical children.
+    /// </summary>
+    private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    {
+        // Record the branch nodes themselves (old removed, new added)
+        RecordNode(NodeType.Branch, oldBranch.FullRlp.Length, isStorage, added: false);
+        RecordNode(NodeType.Branch, newBranch.FullRlp.Length, isStorage, added: true);
+
+        for (int i = 0; i < 16; i++)
+        {
+            Hash256? oldChildHash = oldBranch.GetChildHash(i);
+            Hash256? newChildHash = newBranch.GetChildHash(i);
+
+            // Both have hashes → fast compare
+            if (oldChildHash is not null && newChildHash is not null)
+            {
+                if (oldChildHash == newChildHash) continue; // Identical subtree
+
+                int prevLen = path.Length;
+                path.AppendMut(i);
+                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage);
+                path.TruncateMut(prevLen);
+                continue;
+            }
+
+            // Both have hashes handled above. Now handle inline/null cases.
+            // GetChildHash returns null for BOTH empty slots AND inline nodes.
+            // Use IsChildNull to distinguish.
+            bool oldIsNull = oldChildHash is null && oldBranch.IsChildNull(i);
+            bool newIsNull = newChildHash is null && newBranch.IsChildNull(i);
+
+            if (oldIsNull && newIsNull) continue; // Both empty
+
+            int prevLength = path.Length;
+            path.AppendMut(i);
+
+            if (oldIsNull)
+            {
+                // Old is empty, new has inline or hash child
+                if (newChildHash is not null)
+                {
+                    // New is hash-referenced
+                    TrieNode newChild = resolver.FindCachedOrUnknown(in path, newChildHash);
+                    newChild.ResolveNode(resolver, in path);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                }
+                else
+                {
+                    // New is inline
+                    TrieNode? newChild = newBranch.GetChildWithChildPath(resolver, ref path, i);
+                    if (newChild is not null)
+                    {
+                        newChild.ResolveNode(resolver, in path);
+                        CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                    }
+                }
+            }
+            else if (newIsNull)
+            {
+                // New is empty, old has inline or hash child
+                if (oldChildHash is not null)
+                {
+                    TrieNode oldChild = resolver.FindCachedOrUnknown(in path, oldChildHash);
+                    oldChild.ResolveNode(resolver, in path);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                }
+                else
+                {
+                    TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref path, i);
+                    if (oldChild is not null)
+                    {
+                        oldChild.ResolveNode(resolver, in path);
+                        CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                    }
+                }
+            }
+            else
+            {
+                // Both are inline (both hashes null, neither IsChildNull)
+                // Must resolve both and diff
+                TreePath oldChildPath = path;
+                TrieNode? oldChild = oldBranch.GetChildWithChildPath(resolver, ref oldChildPath, i);
+                TreePath newChildPath = path;
+                TrieNode? newChild = newBranch.GetChildWithChildPath(resolver, ref newChildPath, i);
+
+                if (oldChild is not null && newChild is not null)
+                {
+                    oldChild.ResolveNode(resolver, in path);
+                    newChild.ResolveNode(resolver, in path);
+                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage);
+                }
+                else if (oldChild is not null)
+                {
+                    oldChild.ResolveNode(resolver, in path);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                }
+                else if (newChild is not null)
+                {
+                    newChild.ResolveNode(resolver, in path);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                }
+            }
+
+            path.TruncateMut(prevLength);
+        }
+    }
+
+    /// <summary>
+    /// Compare two extension nodes. If keys match, recurse into child.
+    /// If keys differ, collect both subtrees independently.
+    /// </summary>
+    private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    {
+        byte[]? oldKey = oldExt.Key;
+        byte[]? newKey = newExt.Key;
+
+        if (oldKey is not null && newKey is not null && oldKey.AsSpan().SequenceEqual(newKey))
+        {
+            // Same key prefix: record both extension nodes, recurse child
+            RecordNode(NodeType.Extension, oldExt.FullRlp.Length, isStorage, added: false);
+            RecordNode(NodeType.Extension, newExt.FullRlp.Length, isStorage, added: true);
+
+            // Extension child hash is at RLP index 1
+            Hash256? oldChildHash = oldExt.GetChildHash(1);
+            Hash256? newChildHash = newExt.GetChildHash(1);
+
+            int prevLen = path.Length;
+            path.AppendMut(oldKey);
+
+            if (oldChildHash is not null && newChildHash is not null)
+            {
+                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage);
+            }
+            else
+            {
+                // At least one child is inline — resolve via GetChildWithChildPath
+                TreePath oldChildPath = path;
+                TrieNode? oldChild = oldExt.GetChildWithChildPath(resolver, ref oldChildPath, 0);
+                TreePath newChildPath = path;
+                TrieNode? newChild = newExt.GetChildWithChildPath(resolver, ref newChildPath, 0);
+
+                if (oldChild is not null && newChild is not null)
+                {
+                    oldChild.ResolveNode(resolver, in path);
+                    newChild.ResolveNode(resolver, in path);
+                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage);
+                }
+                else if (oldChild is not null)
+                {
+                    oldChild.ResolveNode(resolver, in path);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                }
+                else if (newChild is not null)
+                {
+                    newChild.ResolveNode(resolver, in path);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                }
+            }
+
+            path.TruncateMut(prevLen);
+        }
+        else
+        {
+            // Different key prefixes: entirely different subtrees
+            CollectSubtree(oldExt, ref path, resolver, isStorage, added: false);
+            CollectSubtree(newExt, ref path, resolver, isStorage, added: true);
+        }
+    }
+
+    /// <summary>
+    /// Compare two leaf nodes. Both are at the same trie path.
+    /// For account trie: decode accounts to detect contract/storage changes.
+    /// For storage trie: each leaf is one storage slot.
+    /// </summary>
+    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    {
+        // Record both leaf nodes (old removed, new added)
+        RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
+        RecordNode(NodeType.Leaf, newLeaf.FullRlp.Length, isStorage, added: true);
+
+        if (isStorage)
+        {
+            // Storage leaves: each leaf is one slot, but same path means same slot modified → net zero
+            // Both exist at same path so it's an update, not add/remove
+            return;
+        }
+
+        // Account trie leaves: decode to check contract and storage changes
+        DecodeAndDiffAccountLeaves(oldLeaf, newLeaf, ref path);
+    }
+
+    /// <summary>
+    /// Decode two account leaves and diff their contract status and storage roots.
+    /// Both leaves are at the same account path (same address hash).
+    /// </summary>
+    private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path)
+    {
+        var (oldCodeHash, oldStorageRoot) = DecodeAccountHashes(oldLeaf);
+        var (newCodeHash, newStorageRoot) = DecodeAccountHashes(newLeaf);
+
+        // Account itself: same path, same account, just modified → net zero for account count
+        // (not an add or remove of an account)
+
+        // Contract status change
+        bool oldIsContract = oldCodeHash != Keccak.OfAnEmptyString;
+        bool newIsContract = newCodeHash != Keccak.OfAnEmptyString;
+
+        if (!oldIsContract && newIsContract) _contractsAdded++;
+        else if (oldIsContract && !newIsContract) _contractsRemoved++;
+
+        // Storage trie diff
+        Hash256? normalizedOldStorage = NormalizeHash(oldStorageRoot);
+        Hash256? normalizedNewStorage = NormalizeHash(newStorageRoot);
+
+        if (normalizedOldStorage != normalizedNewStorage)
+        {
+            Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
+            ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
+            TreePath storagePath = TreePath.Empty;
+            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true);
+        }
+    }
+
+    /// <summary>
+    /// Recursively collect all nodes in a subtree as either added or removed.
+    /// Also counts accounts, contracts, and storage slots at leaves.
+    /// </summary>
+    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added)
+    {
+        RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
+
+        switch (node.NodeType)
+        {
+            case NodeType.Branch:
+                for (int i = 0; i < 16; i++)
+                {
+                    Hash256? childHash = node.GetChildHash(i);
+
+                    if (childHash is not null)
+                    {
+                        int prevLen = path.Length;
+                        path.AppendMut(i);
+                        TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
+                        child.ResolveNode(resolver, in path);
+                        CollectSubtree(child, ref path, resolver, isStorage, added);
+                        path.TruncateMut(prevLen);
+                    }
+                    else if (!node.IsChildNull(i))
+                    {
+                        // Inline child
+                        int prevLen = path.Length;
+                        path.AppendMut(i);
+                        TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
+                        if (child is not null)
+                        {
+                            child.ResolveNode(resolver, in path);
+                            CollectSubtree(child, ref path, resolver, isStorage, added);
+                        }
+                        path.TruncateMut(prevLen);
+                    }
+                }
+                break;
+
+            case NodeType.Extension:
+            {
+                Hash256? childHash = node.GetChildHash(1);
+                int prevLen = path.Length;
+                path.AppendMut(node.Key!);
+
+                if (childHash is not null)
+                {
+                    TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
+                    child.ResolveNode(resolver, in path);
+                    CollectSubtree(child, ref path, resolver, isStorage, added);
+                }
+                else
+                {
+                    TreePath childPath = path;
+                    TrieNode? child = node.GetChildWithChildPath(resolver, ref childPath, 0);
+                    if (child is not null)
+                    {
+                        child.ResolveNode(resolver, in path);
+                        CollectSubtree(child, ref path, resolver, isStorage, added);
+                    }
+                }
+
+                path.TruncateMut(prevLen);
+                break;
+            }
+
+            case NodeType.Leaf:
+                CollectLeaf(node, ref path, added, isStorage);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Count a leaf node's semantic content (account/contract/slot).
+    /// For account trie leaves, also recurse into storage tries.
+    /// </summary>
+    private void CollectLeaf(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+    {
+        if (isStorage)
+        {
+            if (added) _storageSlotsAdded++;
+            else _storageSlotsRemoved++;
+            return;
+        }
+
+        // Account leaf
+        if (added) _accountsAdded++;
+        else _accountsRemoved++;
+
+        var (codeHash, storageRoot) = DecodeAccountHashes(leaf);
+
+        if (codeHash != Keccak.OfAnEmptyString)
+        {
+            if (added) _contractsAdded++;
+            else _contractsRemoved++;
+        }
+
+        Hash256? normalizedStorage = NormalizeHash(storageRoot);
+        if (normalizedStorage is not null)
+        {
+            Hash256 addressHash = GetAddressHash(leaf, ref path);
+            ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
+            TreePath storagePath = TreePath.Empty;
+
+            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, normalizedStorage);
+            storageRootNode.ResolveNode(storageResolver, in storagePath);
+            CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added);
+        }
+    }
+
+    /// <summary>
+    /// Handle type mismatch between old and new nodes by enumerating leaves from both
+    /// subtrees, matching by full path, and diffing semantically. Structural node counts
+    /// (branches, extensions, leaf nodes, bytes) are recorded for all nodes since the
+    /// actual trie nodes ARE created/destroyed. Semantic counts (accounts, contracts, slots)
+    /// only count genuinely new or removed items.
+    /// </summary>
+    private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
+        ITrieNodeResolver resolver, bool isStorage)
+    {
+        var oldLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
+        var newLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
+
+        CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves);
+        CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves);
+
+        // Diff leaves by full path for correct semantic counts
+        foreach (KeyValuePair<Hash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
+        {
+            Hash256 fullPath = kvp.Key;
+            (TrieNode newLeaf, TreePath newLeafPath) = kvp.Value;
+
+            if (oldLeaves.Remove(fullPath, out (TrieNode Leaf, TreePath Path) oldEntry))
+            {
+                // Leaf at same path in both: modification, not add/remove
+                if (!isStorage)
+                {
+                    TreePath leafPath = oldEntry.Path;
+                    DecodeAndDiffAccountLeaves(oldEntry.Leaf, newLeaf, ref leafPath);
+                }
+                // Storage: same slot modified → net zero
+            }
+            else
+            {
+                // Leaf only in new → genuinely added
+                TreePath leafPath = newLeafPath;
+                CollectLeaf(newLeaf, ref leafPath, added: true, isStorage);
+            }
+        }
+
+        // Remaining old leaves not matched → genuinely removed
+        foreach (KeyValuePair<Hash256, (TrieNode Leaf, TreePath Path)> kvp in oldLeaves)
+        {
+            (TrieNode oldLeaf, TreePath oldLeafPath) = kvp.Value;
+            TreePath leafPath = oldLeafPath;
+            CollectLeaf(oldLeaf, ref leafPath, added: false, isStorage);
+        }
+    }
+
+    /// <summary>
+    /// Walk a subtree recording all structural node changes (via RecordNode) and collecting
+    /// leaf entries into a dictionary keyed by full path. Leaf semantic counting is deferred
+    /// to the caller for correct diff matching.
+    /// </summary>
+    private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
+        bool isStorage, bool added, Dictionary<Hash256, (TrieNode Leaf, TreePath Path)> leaves)
+    {
+        RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
+
+        switch (node.NodeType)
+        {
+            case NodeType.Branch:
+                for (int i = 0; i < 16; i++)
+                {
+                    Hash256? childHash = node.GetChildHash(i);
+                    if (childHash is not null)
+                    {
+                        int prevLen = path.Length;
+                        path.AppendMut(i);
+                        TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
+                        child.ResolveNode(resolver, in path);
+                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                        path.TruncateMut(prevLen);
+                    }
+                    else if (!node.IsChildNull(i))
+                    {
+                        int prevLen = path.Length;
+                        path.AppendMut(i);
+                        TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
+                        if (child is not null)
+                        {
+                            child.ResolveNode(resolver, in path);
+                            CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                        }
+                        path.TruncateMut(prevLen);
+                    }
+                }
+                break;
+
+            case NodeType.Extension:
+            {
+                Hash256? childHash = node.GetChildHash(1);
+                int prevLen = path.Length;
+                path.AppendMut(node.Key!);
+                if (childHash is not null)
+                {
+                    TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
+                    child.ResolveNode(resolver, in path);
+                    CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                }
+                else
+                {
+                    TreePath childPath = path;
+                    TrieNode? child = node.GetChildWithChildPath(resolver, ref childPath, 0);
+                    if (child is not null)
+                    {
+                        child.ResolveNode(resolver, in path);
+                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                    }
+                }
+                path.TruncateMut(prevLen);
+                break;
+            }
+
+            case NodeType.Leaf:
+            {
+                // Store path BEFORE appending leaf key (needed for GetAddressHash)
+                TreePath pathAtLeaf = path;
+
+                // Compute full path for matching
+                int prevLen = path.Length;
+                if (node.Key is not null) path.AppendMut(node.Key);
+                Hash256 fullPath = path.Path.ToCommitment();
+                path.TruncateMut(prevLen);
+
+                leaves[fullPath] = (node, pathAtLeaf);
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Record a single trie node as added or removed, incrementing the appropriate counter.
+    /// </summary>
+    private void RecordNode(NodeType nodeType, int rlpLength, bool isStorage, bool added)
+    {
+        if (isStorage)
+        {
+            switch (nodeType)
+            {
+                case NodeType.Branch:
+                    if (added) _storageTrieBranchesAdded++;
+                    else _storageTrieBranchesRemoved++;
+                    break;
+                case NodeType.Extension:
+                    if (added) _storageTrieExtensionsAdded++;
+                    else _storageTrieExtensionsRemoved++;
+                    break;
+                case NodeType.Leaf:
+                    if (added) _storageTrieLeavesAdded++;
+                    else _storageTrieLeavesRemoved++;
+                    break;
+            }
+
+            if (added) _storageTrieBytesAdded += rlpLength;
+            else _storageTrieBytesRemoved += rlpLength;
+        }
+        else
+        {
+            switch (nodeType)
+            {
+                case NodeType.Branch:
+                    if (added) _accountTrieBranchesAdded++;
+                    else _accountTrieBranchesRemoved++;
+                    break;
+                case NodeType.Extension:
+                    if (added) _accountTrieExtensionsAdded++;
+                    else _accountTrieExtensionsRemoved++;
+                    break;
+                case NodeType.Leaf:
+                    if (added) _accountTrieLeavesAdded++;
+                    else _accountTrieLeavesRemoved++;
+                    break;
+            }
+
+            if (added) _accountTrieBytesAdded += rlpLength;
+            else _accountTrieBytesRemoved += rlpLength;
+        }
+    }
+
+    /// <summary>
+    /// Decode account leaf value to extract CodeHash and StorageRoot without full deserialization.
+    /// </summary>
+    private static (Hash256 CodeHash, Hash256 StorageRoot) DecodeAccountHashes(TrieNode leaf)
+    {
+        var value = leaf.Value;
+        var ctx = new Rlp.ValueDecoderContext(value.AsSpan());
+        return AccountDecoder.Instance.DecodeHashesOnly(ref ctx);
+    }
+
+    /// <summary>
+    /// Get the address hash from a leaf node's position in the account trie.
+    /// The full 64-nibble path at a leaf = the keccak256 hash of the address.
+    /// </summary>
+    private static Hash256 GetAddressHash(TrieNode leaf, ref TreePath path)
+    {
+        // Append leaf's key nibbles to build the full 64-nibble path
+        int prevLen = path.Length;
+        if (leaf.Key is not null)
+        {
+            path.AppendMut(leaf.Key);
+        }
+
+        Hash256 addressHash = path.Path.ToCommitment();
+        path.TruncateMut(prevLen);
+        return addressHash;
+    }
+
+    /// <summary>
+    /// Normalize empty tree hash to null for uniform comparison.
+    /// Content-addressed: EmptyTreeHash means "no trie" = null.
+    /// </summary>
+    private static Hash256? NormalizeHash(Hash256? hash)
+    {
+        if (hash is null) return null;
+        return hash == Keccak.EmptyTreeHash ? null : hash;
+    }
+
+    private void ResetCounters()
+    {
+        _accountsAdded = 0; _accountsRemoved = 0;
+        _contractsAdded = 0; _contractsRemoved = 0;
+        _accountTrieBranchesAdded = 0; _accountTrieBranchesRemoved = 0;
+        _accountTrieExtensionsAdded = 0; _accountTrieExtensionsRemoved = 0;
+        _accountTrieLeavesAdded = 0; _accountTrieLeavesRemoved = 0;
+        _accountTrieBytesAdded = 0; _accountTrieBytesRemoved = 0;
+        _storageTrieBranchesAdded = 0; _storageTrieBranchesRemoved = 0;
+        _storageTrieExtensionsAdded = 0; _storageTrieExtensionsRemoved = 0;
+        _storageTrieLeavesAdded = 0; _storageTrieLeavesRemoved = 0;
+        _storageTrieBytesAdded = 0; _storageTrieBytesRemoved = 0;
+        _storageSlotsAdded = 0; _storageSlotsRemoved = 0;
+    }
+}
