@@ -8,7 +8,6 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

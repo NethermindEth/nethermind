@@ -36,6 +36,8 @@ internal static partial class XdcExtensions
         IXdcReleaseSpec spec = specProvider.GetSpec(xdcBlockHeader) as IXdcReleaseSpec;
         if (spec is null)
             throw new InvalidOperationException($"Expected {nameof(IXdcReleaseSpec)}.");
+        if (round == 0)
+            round = xdcBlockHeader.ExtraConsensusData?.BlockRound ?? 0;
         spec.ApplyV2Config(round);
         return spec;
     }

@@ -67,7 +67,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
         _traceModule.trace_rawTransaction(data, traceTypes);
 
-    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, params string[] traceTypes) =>
+    public ResultWrapper<ParityTxTraceFromReplay> trace_replayTransaction(Hash256 txHash, string[] traceTypes, bool traceNonCanonical = false) =>
         TryTraceTransaction(
             txHash,
             TraceRpcModule.GetParityTypes(traceTypes),
@@ -75,7 +75,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
             out ResultWrapper<ParityTxTraceFromReplay>? result)
         && result is not null
             ? result
-            : _traceModule.trace_replayTransaction(txHash, traceTypes);
+            : _traceModule.trace_replayTransaction(txHash, traceTypes, traceNonCanonical);
 
     public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_replayBlockTransactions(BlockParameter blockParameter, string[] traceTypes)
     {
@@ -173,7 +173,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
         return ResultWrapper<IEnumerable<ParityTxTraceFromStore>>.Success(traces);
     }
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromStore>> trace_transaction(Hash256 txHash, bool traceNonCanonical = false) =>
         TryTraceTransaction(
             txHash,
             ParityTraceTypes.Trace,
@@ -181,7 +181,7 @@ public class TraceStoreRpcModule : ITraceRpcModule
             out ResultWrapper<IEnumerable<ParityTxTraceFromStore>>? result)
         && result is not null
             ? result
-            : _traceModule.trace_transaction(txHash);
+            : _traceModule.trace_transaction(txHash, traceNonCanonical);
 
     private bool TryTraceTransaction<T>(
         Hash256 txHash,
