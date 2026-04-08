@@ -75,9 +75,7 @@ public abstract class TransactionForRpc
     private TxType ResolveType(IReleaseSpec? spec)
     {
         TxType type = Type ?? default;
-        return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted && type > TxType.Legacy
-            ? TxType.Legacy
-            : type;
+        return spec is not null && !spec.IsEip2930Enabled && IsTypeDefaulted ? TxType.Legacy : type;
     }
 
     public abstract void EnsureDefaults(long? gasCap);
