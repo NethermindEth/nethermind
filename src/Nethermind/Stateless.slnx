@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Nethermind/">
     <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
+    <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
     <Project Path="Nethermind.Consensus/Nethermind.Consensus.csproj" />
