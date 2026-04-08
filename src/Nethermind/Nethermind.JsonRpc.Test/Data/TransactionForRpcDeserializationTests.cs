@@ -87,7 +87,8 @@ public class TransactionForRpcDeserializationTests
     {
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson);
         Result<Transaction> result = transactionForRpc.ToTransaction(spec: spec);
-        return result.Data?.Type ?? transactionForRpc.Type ?? TxType.Legacy;
+        Assert.That(result.IsError, Is.False, result.Error);
+        return result.Data!.Type;
     }
 
     public static IEnumerable SpecAwareResolutionCases
