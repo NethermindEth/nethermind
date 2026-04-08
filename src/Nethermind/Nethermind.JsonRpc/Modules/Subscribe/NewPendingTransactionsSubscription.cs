@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
-using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -17,6 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
         private readonly bool _includeTransactions;
 
+        [ConstructorWithSideEffect]
         public NewPendingTransactionsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ITxPool? txPool,

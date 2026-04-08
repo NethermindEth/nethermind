@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using NUnit.Framework;
 using Nethermind.Int256;
@@ -23,11 +22,8 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Tracing;
-using Nethermind.Evm;
 using Nethermind.State;
 
 namespace Nethermind.Merge.Plugin.Test

@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -389,8 +388,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+        bool discardCreateStateCharge = invalidCode || (spec.LimitCodeSize && callResult.Output.Length > spec.MaxCodeSize);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
+            regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
     }
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
@@ -413,6 +413,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long regularDepositCost,
         long stateDepositCost,
         bool invalidCode,
+        bool discardCreateStateCharge,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
@@ -446,6 +447,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+            if (spec.IsEip8037Enabled && discardCreateStateCharge)
+            {
+                TGasPolicy.DiscardStateGas(ref _currentState.Gas, GasCostOf.CreateState, stateGasFloor: 0);
+            }
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {

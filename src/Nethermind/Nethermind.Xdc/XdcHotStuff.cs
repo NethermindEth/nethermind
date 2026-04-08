@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
