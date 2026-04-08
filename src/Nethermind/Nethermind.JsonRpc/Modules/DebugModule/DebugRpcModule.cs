@@ -450,7 +450,7 @@ public class DebugRpcModule(
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
-        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
+        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
 
@@ -522,6 +522,7 @@ public class DebugRpcModule(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
+                specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
                 _secondsPerSlot
             ).Execute(simulatePayload, concreteBlockParameter);

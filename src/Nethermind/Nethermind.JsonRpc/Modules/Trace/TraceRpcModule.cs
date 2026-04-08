@@ -12,6 +12,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.Tracing;
@@ -41,6 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         IBlockFinder blockFinder,
         IJsonRpcConfig jsonRpcConfig,
         IBlockchainBridge blockchainBridge,
+        ISpecProvider specProvider,
         IBlocksConfig blocksConfig)
         : ITraceRpcModule
     {
@@ -371,7 +373,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null)
         {
-            return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
+            return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
                 .Execute(payload, blockParameter);
         }
     }

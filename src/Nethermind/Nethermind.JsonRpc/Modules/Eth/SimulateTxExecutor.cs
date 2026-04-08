@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -20,6 +21,7 @@ public class SimulateTxExecutor<TTrace>(
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
     IJsonRpcConfig rpcConfig,
+    ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
     ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
@@ -51,7 +53,8 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation);
+                        IReleaseSpec spec = specProvider.GetSpec(header);
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
