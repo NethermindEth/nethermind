@@ -121,4 +121,6 @@ public class XdcHeaderValidator(IBlockTree blockTree, IQuorumCertificateManager 
 
         return true;
     }
+
+    protected override bool ValidateBlobGasFields(BlockHeader header, BlockHeader parent, IReleaseSpec spec, ref string? error) => true;
 }

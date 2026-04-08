@@ -10,7 +10,7 @@ namespace Nethermind.Core.ExecutionRequest;
 
 using SHA256 =
 #if ZK_EVM
-    SHA256Managed;
+    ExecutionRequestExtensions.Sha256;
 #else
     System.Security.Cryptography.SHA256;
 #endif
@@ -34,11 +34,8 @@ public static class ExecutionRequestExtensions
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
-        // make sure that length is 3 or less elements
-        if (flatEncodedRequests is null)
-        {
-            throw new ArgumentException("Flat encoded requests must be an array");
-        }
+        // TODO: Make sure that length <= 3
+        ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
@@ -90,4 +87,18 @@ public static class ExecutionRequestExtensions
             return buffer.ToArray();
         }
     }
+
+#if ZK_EVM
+    internal static class Sha256
+    {
+        internal static byte[] HashData(ReadOnlySpan<byte> data)
+        {
+            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
+
+            ZiskBindings.Crypto.sha256_c(data, (nuint)data.Length, output);
+
+            return output;
+        }
+    }
+#endif
 }
