@@ -24,7 +24,7 @@ public sealed class StateCompositionVisitor(
     CancellationToken ct = default)
     : ITreeVisitor<StateCompositionContext>, IDisposable
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<StateCompositionVisitor>();
 
     private readonly ThreadLocal<VisitorCounters> _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
 

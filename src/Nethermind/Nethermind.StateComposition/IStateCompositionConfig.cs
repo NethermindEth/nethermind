@@ -29,4 +29,16 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Skip storage trie traversal during scans",
         DefaultValue = "false")]
     bool ExcludeStorage { get; set; }
+
+    [ConfigItem(Description = "Persist incremental stats snapshots to disk for warm restart",
+        DefaultValue = "true")]
+    bool PersistSnapshots { get; set; }
+
+    [ConfigItem(Description = "Number of historical snapshot blocks to keep (0 = keep all)",
+        DefaultValue = "10000")]
+    int SnapshotBlocksToKeep { get; set; }
+
+    [ConfigItem(Description = "Write a snapshot every N blocks (1 = every block)",
+        DefaultValue = "1")]
+    int SnapshotInterval { get; set; }
 }

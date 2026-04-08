@@ -20,6 +20,11 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     private ScanMetadata? _lastScanMetadata;
     private bool _isInitialized;
 
+    private CumulativeSizeStats? _incrementalStats;
+    private long _incrementalBlock;
+    private int _diffsSinceBaseline;
+    private Hash256? _lastProcessedStateRoot;
+
     public StateCompositionStats CurrentStats
     {
         get { lock (_lock) return _currentStats; }
@@ -36,6 +41,26 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     }
 
     public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
+
+    public CumulativeSizeStats? IncrementalStats
+    {
+        get { lock (_lock) return _incrementalStats; }
+    }
+
+    public long IncrementalBlock
+    {
+        get { lock (_lock) return _incrementalBlock; }
+    }
+
+    public int DiffsSinceBaseline
+    {
+        get { lock (_lock) return _diffsSinceBaseline; }
+    }
+
+    public Hash256? LastProcessedStateRoot
+    {
+        get { lock (_lock) return _lastProcessedStateRoot; }
+    }
 
     public void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist)
     {
@@ -59,6 +84,42 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
                 Duration = duration,
                 IsComplete = true,
             };
+        }
+    }
+
+    public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot)
+    {
+        lock (_lock)
+        {
+            _incrementalStats = baseline;
+            _incrementalBlock = blockNumber;
+            _diffsSinceBaseline = 0;
+            _lastProcessedStateRoot = stateRoot;
+        }
+    }
+
+    public void UpdateIncremental(CumulativeSizeStats updated, long blockNumber, Hash256 stateRoot)
+    {
+        lock (_lock)
+        {
+            _incrementalStats = updated;
+            _incrementalBlock = blockNumber;
+            _diffsSinceBaseline++;
+            _lastProcessedStateRoot = stateRoot;
+        }
+    }
+
+    public void RestoreFromSnapshot(StateCompositionSnapshot snapshot)
+    {
+        lock (_lock)
+        {
+            _incrementalStats = snapshot.Stats;
+            _incrementalBlock = snapshot.BlockNumber;
+            _diffsSinceBaseline = snapshot.DiffsSinceBaseline;
+            _lastProcessedStateRoot = snapshot.StateRoot;
+            // _isInitialized stays false — baseline scan data (TopN, distribution)
+            // is not persisted. getCachedStats() returns incremental stats;
+            // getTrieDistribution() requires a fresh scan.
         }
     }
 }

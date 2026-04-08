@@ -22,7 +22,7 @@ internal sealed class SingleContractVisitor(
     CancellationToken ct)
     : ITreeVisitor<StateCompositionContext>, IDisposable
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<SingleContractVisitor>();
 
     private bool _collectingTarget;
     private bool _targetCompleted;

@@ -5,12 +5,14 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.StateComposition;
 
@@ -21,28 +23,40 @@ namespace Nethermind.StateComposition;
 public sealed class StateCompositionService : IStateCompositionService, IDisposable
 {
     private readonly IStateReader _stateReader;
+    private readonly IWorldStateManager _worldStateManager;
+    private readonly IBlockTree _blockTree;
     private readonly IStateCompositionStateHolder _stateHolder;
+    private readonly StateCompositionSnapshotStore _snapshotStore;
     private readonly IStateCompositionConfig _config;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _scanLock = new(1, 1);
     private readonly SemaphoreSlim _inspectLock = new(1, 1);
+    private readonly SemaphoreSlim _diffLock = new(1, 1);
 
     private CancellationTokenSource? _currentScanCts;
 
     public StateCompositionService(
         IStateReader stateReader,
+        IWorldStateManager worldStateManager,
+        IBlockTree blockTree,
         IStateCompositionStateHolder stateHolder,
+        StateCompositionSnapshotStore snapshotStore,
         IStateCompositionConfig config,
         ILogManager logManager)
     {
         _stateReader = stateReader;
+        _worldStateManager = worldStateManager;
+        _blockTree = blockTree;
         _stateHolder = stateHolder;
+        _snapshotStore = snapshotStore;
         _config = config;
         _logManager = logManager;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<StateCompositionService>();
 
         ValidateConfig(config);
+
+        _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
 
     private static void ValidateConfig(IStateCompositionConfig config)
@@ -124,6 +138,12 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
             _stateHolder.SetBaseline(stats, dist);
             _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
+            CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
+            _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!);
+
+            if (_config.PersistSnapshots)
+                _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
+                    cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number));
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
@@ -203,12 +223,60 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    /// <summary>
-    /// Releases the semaphore resources used for rate limiting.
-    /// </summary>
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        Hash256? lastRoot = _stateHolder.LastProcessedStateRoot;
+        if (lastRoot is null) return; // No baseline yet
+
+        Hash256? newRoot = e.Block.Header.StateRoot;
+        if (newRoot is null || newRoot == lastRoot) return; // No state change
+
+        _ = Task.Run(() =>
+        {
+            // Non-blocking: if another diff is running, skip — it will pick up the latest head.
+            if (!_diffLock.Wait(0)) return;
+            try
+            {
+                // Re-read inside lock for coalescing: diff from real latest to current head.
+                Hash256? prevRoot = _stateHolder.LastProcessedStateRoot;
+                Block? head = _blockTree.Head;
+                if (head?.Header.StateRoot is null || head.Header.StateRoot == prevRoot) return;
+
+                using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
+                IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
+                TrieDiffWalker walker = new(resolver);
+
+                TrieDiff diff = walker.ComputeDiff(prevRoot, head.Header.StateRoot);
+                CumulativeSizeStats updated = _stateHolder.IncrementalStats!.Value.ApplyDiff(diff);
+                _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot);
+
+                if (_config.PersistSnapshots && head.Number % _config.SnapshotInterval == 0)
+                    _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
+                        updated, head.Number, head.Header.StateRoot,
+                        _stateHolder.DiffsSinceBaseline,
+                        _stateHolder.LastScanMetadata?.BlockNumber ?? 0));
+
+                if (_logger.IsDebug)
+                    _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
+                                  $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError)
+                    _logger.Error("StateComposition: failed to compute incremental diff", ex);
+            }
+            finally
+            {
+                _diffLock.Release();
+            }
+        });
+    }
+
     public void Dispose()
     {
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
         _scanLock.Dispose();
         _inspectLock.Dispose();
+        _diffLock.Dispose();
     }
 }

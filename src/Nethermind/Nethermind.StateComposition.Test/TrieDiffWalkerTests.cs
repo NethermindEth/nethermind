@@ -924,7 +924,6 @@ public class TrieDiffWalkerTests
     }
 
     [Test]
-    [Explicit("Large-scale integration test — run manually with: dotnet test --filter MultiBlock_ScanDiffScan")]
     public void MultiBlock_ScanDiffScan_CumulativeMatchesFreshScan()
     {
         const int totalBlocks = 20;
