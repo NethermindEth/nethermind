@@ -28,7 +28,7 @@ public class SimulateTxExecutor<TTrace>(
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call)
+    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -173,7 +173,7 @@ public class SimulateTxExecutor<TTrace>(
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
 
-        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call);
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
             : Execute(header.Clone(), data, stateOverride, timeout.Token);
