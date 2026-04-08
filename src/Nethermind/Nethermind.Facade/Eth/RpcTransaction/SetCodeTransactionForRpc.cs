@@ -32,7 +32,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
 
         Transaction tx = baseResult.Data;
 
-        if (tx.Type == TxType.SetCode)
+        if (tx.SupportsAuthorizationList)
         {
             tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
         }
