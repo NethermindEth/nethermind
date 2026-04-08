@@ -25,7 +25,7 @@ public class ShutterKeyValidator(
     ILogManager logManager) : IShutterKeyValidator
 {
     private ulong? _highestValidatedSlot;
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterKeyValidator>();
     private readonly ulong _instanceId = shutterConfig.InstanceID;
     private readonly Lock _lockObject = new();
 

@@ -493,9 +493,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 : _backend.Get(storageCell.Hash);
         }
 
-        private static byte[] LoadFromTreeStorage(StorageCell storageCell, PerContractState @this)
-            => @this.LoadFromTreeStorage(storageCell);
-
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             EnsureStorageTree();

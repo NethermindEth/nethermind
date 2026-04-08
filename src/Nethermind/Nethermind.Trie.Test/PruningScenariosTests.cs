@@ -37,7 +37,7 @@ namespace Nethermind.Trie.Test
         public void SetUp()
         {
             _logManager = LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<PruningScenariosTests>();
         }
 
         /* When analyzing the tests below please remember that the way we store accounts is by calculating a hash
@@ -215,7 +215,7 @@ namespace Nethermind.Trie.Test
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
             {
                 _logManager = LimboLogs.Instance;
-                _logger = _logManager.GetClassLogger();
+                _logger = _logManager.GetClassLogger<PruningContext>();
                 _stateDb = new TestMemDb();
                 _stateDb.WriteFunc = (k, v) =>
                 {

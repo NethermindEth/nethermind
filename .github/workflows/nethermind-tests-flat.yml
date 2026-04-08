@@ -19,7 +19,7 @@ jobs:
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     continue-on-error: true
     strategy:
       matrix:
@@ -41,6 +41,7 @@ jobs:
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test
           - Nethermind.Db.Test
+          - Nethermind.Merge.Plugin.Test
           - Nethermind.Runner.Test
         chunk: ['']
         include:
@@ -106,7 +107,7 @@ jobs:
 
       - name: Upload test outcome
         if: success() || failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-flat-outcome
           path: test.outcome
@@ -118,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download test outcomes
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
 
       - name: Ensure all tests passed
         run: |

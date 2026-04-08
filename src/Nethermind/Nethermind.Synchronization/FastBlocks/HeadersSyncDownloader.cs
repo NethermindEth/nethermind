@@ -17,7 +17,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         public HeadersSyncDownloader(ILogManager logManager)
         {
-            Logger = logManager.GetClassLogger();
+            Logger = logManager.GetClassLogger<HeadersSyncDownloader>();
         }
 
         async Task ISyncDownloader<HeadersSyncBatch>.Dispatch(

@@ -27,7 +27,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _versionSelectorContract = versions.Values.Last();
             Activation = activation;
             _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(VersionedContract<>));
         }
 
         public T? ResolveVersion(BlockHeader blockHeader)

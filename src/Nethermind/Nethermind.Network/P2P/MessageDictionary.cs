@@ -32,7 +32,7 @@ public class MessageDictionary<T66Msg, TData>(Action<T66Msg> send, TimeSpan? old
 
     private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
-    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
+    private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new(concurrencyLevel: 1, capacity: MaxConcurrentRequest);
     private readonly CancellationToken _cancellationToken = cancellationToken;
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;

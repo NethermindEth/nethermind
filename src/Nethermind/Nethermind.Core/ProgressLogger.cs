@@ -24,7 +24,7 @@ namespace Nethermind.Core
 
         public ProgressLogger(string prefix, ILogManager logManager, ITimestamper? timestamper = null)
         {
-            _logger = logManager.GetClassLogger(nameof(ProgressLogger));
+            _logger = logManager.GetClassLogger<ProgressLogger>();
             _prefix = prefix;
             _timestamper = timestamper ?? Timestamper.Default;
         }

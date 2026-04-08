@@ -15,7 +15,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.Self)]
 public class TransactionJsonTest : GeneralStateTestBase
 {
     [Test]

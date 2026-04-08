@@ -70,7 +70,7 @@ public class DataFeed
         _receiptFinder = receiptFinder;
         _syncPeerPool = syncPeerPool;
 
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<DataFeed>();
 
         mainProcessingContext.BlockchainProcessor.NewProcessingStatistics += OnNewProcessingStatistics;
         blockTree.OnForkChoiceUpdated += OnForkChoiceUpdated;

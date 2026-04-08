@@ -98,7 +98,7 @@ jobs:
 
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -133,7 +133,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -312,7 +312,7 @@ jobs:
 
             mkdir -p execution-data-taiko/logs/configs
             mv ../tests/predefined_configs/customNLog.config execution-data-taiko/logs/configs/customNLog.config
-            
+
             if [ -n "${{ inputs.nethermind_args }}" ]; then
               for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-l2-extra-flag $f"; done
             fi
@@ -343,7 +343,7 @@ jobs:
             if [ -n "${{ inputs.nethermind_args }}" ]; then
               for f in ${{ inputs.nethermind_args }}; do extra_param+=" --el-extra-flag $f"; done
             fi
-            
+
             ./build/sedge generate \
               --logging none \
               -p $GITHUB_WORKSPACE/sedge \
@@ -397,7 +397,7 @@ jobs:
           echo "artifact_path=$(pwd)/${artifact_name}.zip" >> $GITHUB_ENV
       - name: Upload Nethermind Debug logs artifact
         if: ${{ failure() || cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}
@@ -442,7 +442,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.ADMIN_APP_ID }}
           private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
@@ -478,7 +478,7 @@ jobs:
     steps:
       - name: Authenticate App
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}

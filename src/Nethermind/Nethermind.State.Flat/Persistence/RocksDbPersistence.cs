@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Db;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
 

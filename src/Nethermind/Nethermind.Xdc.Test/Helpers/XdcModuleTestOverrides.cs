@@ -21,7 +21,6 @@ using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using NSubstitute;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -66,9 +65,9 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton(Substitute.For<IKeyStore>())
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton(Substitute.For<ITxSender>())
+            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()

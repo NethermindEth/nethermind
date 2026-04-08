@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Clique
             ILogManager logManager
         )
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<SnapshotManager>() ?? throw new ArgumentNullException(nameof(logManager));
             _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
             _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));

@@ -87,8 +87,6 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        using AccountsAndProofs accountsAndProofs = new();
-
         StorageRange storage = new StorageRange()
         {
             Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),

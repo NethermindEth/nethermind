@@ -1575,7 +1575,7 @@ public partial class EngineModuleTests
         var iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
         var logger = new ILogger(iLogger);
-        loggerManager.GetClassLogger(Arg.Any<string>()).Returns(logger);
+        loggerManager.GetClassLogger<ExchangeCapabilitiesHandler>().Returns(logger);
 
         using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .BuildMergeTestBlockchain(configurer: builder => builder
@@ -1593,7 +1593,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
+        chain.LogManager.GetClassLogger<ExchangeCapabilitiesHandler>().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(static a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV4), StringComparison.Ordinal)));
     }

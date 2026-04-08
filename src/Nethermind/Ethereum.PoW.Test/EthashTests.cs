@@ -61,7 +61,6 @@ namespace Ethereum.PoW.Test
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct
-            Ethash ethash = new Ethash(LimboLogs.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
             Assert.That(Ethash.GetSeedHash(epoch), Is.EqualTo(test.Seed), "seed");
 
