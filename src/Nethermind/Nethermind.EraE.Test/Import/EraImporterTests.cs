@@ -85,9 +85,10 @@ public class EraImporterTests
         string fakeAccumulatorPath = System.IO.Path.Combine(env.ExportPath, "fake_accumulators.txt");
         string[] accLines = await System.IO.File.ReadAllLinesAsync(
             System.IO.Path.Combine(env.ExportPath, EraExporter.AccumulatorFileName));
-        string[] fakeLines = accLines.Select(l =>
-            "0x0000000000000000000000000000000000000000000000000000000000000000 " +
-            l.Split(' ')[^1]).ToArray();
+        string[] fakeLines = new string[accLines.Length];
+        for (int i = 0; i < accLines.Length; i++)
+            fakeLines[i] = "0x0000000000000000000000000000000000000000000000000000000000000000 " +
+                           accLines[i].Split(' ')[^1];
         await System.IO.File.WriteAllLinesAsync(fakeAccumulatorPath, fakeLines);
 
         Assert.That(

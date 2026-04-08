@@ -13,7 +13,10 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
     private readonly BeaconApiHttpClient _client;
     private readonly Uri _baseUrl;
     private readonly int _maxRetries;
+    // Completed results only — written once per slot, then read-only
     private readonly ConcurrentDictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = new();
+    // In-flight fetches — prevents redundant parallel beacon node calls for the same slot
+    private readonly ConcurrentDictionary<long, Lazy<Task<(ValueHash256, ValueHash256)?>>> _inFlight = new();
 
     public BeaconApiRootsProvider(
         Uri baseUrl,
@@ -35,8 +38,20 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
         if (_cache.TryGetValue(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
             return cached;
 
-        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result =
-            await FetchWithRetryAsync(slot, cancellationToken).ConfigureAwait(false);
+        // Deduplicate concurrent callers for the same slot: only one fetch reaches the beacon node.
+        Lazy<Task<(ValueHash256, ValueHash256)?>> lazy = _inFlight.GetOrAdd(
+            slot, static (s, self) => new Lazy<Task<(ValueHash256, ValueHash256)?>>(
+                () => self.FetchWithRetryAsync(s, CancellationToken.None)), this);
+
+        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result;
+        try
+        {
+            result = await lazy.Value.ConfigureAwait(false);
+        }
+        finally
+        {
+            _inFlight.TryRemove(slot, out _);
+        }
 
         if (result.HasValue)
             _cache[slot] = result.Value;

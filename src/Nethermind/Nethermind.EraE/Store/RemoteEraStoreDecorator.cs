@@ -21,6 +21,9 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     private readonly IRemoteEraClient _client;
     private readonly string _downloadDir;
     private readonly int _maxEraSize;
+    // Bounded reader pool: capped at ProcessorCount*2 to stay within OS fd limits.
+    // Mainnet has ~1600 epochs; Linux default fd limit is 1024 — an unbounded pool would exhaust it.
+    private readonly int _maxOpenReaders;
 
     // Manifest fetched once on first remote access
     private IReadOnlyDictionary<int, RemoteEraEntry>? _manifest;
@@ -33,9 +36,10 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
 
-    // Open reader pool — one EraReader per epoch, reused across block reads.
-    // E2StoreReader uses RandomAccess (positional I/O), so concurrent reads are safe.
-    private readonly ConcurrentDictionary<int, EraReader> _openedReaders = new();
+    // Bounded reader pool — Lazy<EraReader> ensures at most one EraReader is constructed per epoch
+    // even when GetOrAdd races (the factory for the losing Lazy is never called).
+    // E2StoreReader uses RandomAccess (positional I/O), so concurrent reads on the same reader are safe.
+    private readonly ConcurrentDictionary<int, Lazy<EraReader>> _openedReaders = new();
 
     // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
     public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
@@ -55,6 +59,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _client = client;
         _downloadDir = downloadDir;
         _maxEraSize = maxEraSize;
+        _maxOpenReaders = Math.Max(Environment.ProcessorCount * 2, 8);
         Directory.CreateDirectory(downloadDir);
     }
 
@@ -70,7 +75,7 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         int epoch = (int)(number / _maxEraSize);
         string localPath = await EnsureEpochAvailableAsync(epoch, cancellation).ConfigureAwait(false);
 
-        EraReader reader = _openedReaders.GetOrAdd(epoch, static (_, path) => new EraReader(path), localPath);
+        EraReader reader = RentReader(epoch, localPath);
         if (number > reader.LastBlock) return (null, null);
         (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
@@ -96,8 +101,29 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _manifestLock.Dispose();
         foreach (Lazy<SemaphoreSlim> s in _epochLocks.Values)
             if (s.IsValueCreated) s.Value.Dispose();
-        foreach (EraReader reader in _openedReaders.Values)
-            reader.Dispose();
+        foreach (Lazy<EraReader> lazy in _openedReaders.Values)
+            if (lazy.IsValueCreated) lazy.Value.Dispose();
+    }
+
+    private EraReader RentReader(int epoch, string localPath)
+    {
+        if (_openedReaders.TryGetValue(epoch, out Lazy<EraReader>? existing))
+            return existing.Value;
+
+        // Evict the oldest (lowest-epoch) reader when the pool is at capacity.
+        // Import accesses epochs in ascending order, so the lowest epoch is always the least-recently-used.
+        if (_openedReaders.Count >= _maxOpenReaders)
+        {
+            int oldest = int.MaxValue;
+            foreach (int key in _openedReaders.Keys)
+                if (key < oldest) oldest = key;
+            if (_openedReaders.TryRemove(oldest, out Lazy<EraReader>? evicted) && evicted.IsValueCreated)
+                evicted.Value.Dispose();
+        }
+
+        Lazy<EraReader> lazy = _openedReaders.GetOrAdd(
+            epoch, static (_, path) => new Lazy<EraReader>(() => new EraReader(path)), localPath);
+        return lazy.Value;
     }
 
     private async Task<long> GetFirstBlockAsync(CancellationToken cancellation = default)

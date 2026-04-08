@@ -116,9 +116,9 @@ public class EraStoreTests
         string tmpDirectory = ctx.ResolveTempDirPath();
 
         string accPath = Path.Combine(tmpDirectory, EraExporter.AccumulatorFileName);
-        ISet<ValueHash256> trusted = (await File.ReadAllLinesAsync(accPath))
-            .Select(EraPathUtils.ExtractHashFromChecksumEntry)
-            .ToHashSet();
+        HashSet<ValueHash256> trusted = [];
+        foreach (string line in await File.ReadAllLinesAsync(accPath))
+            trusted.Add(EraPathUtils.ExtractHashFromChecksumEntry(line));
 
         using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, trusted);
 
