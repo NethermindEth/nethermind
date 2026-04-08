@@ -104,7 +104,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -127,18 +127,6 @@ jobs:
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           fi
-
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-${{ matrix.runner }}-outcome
-          path: test.outcome
-          retention-days: 1
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -184,7 +172,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -207,18 +195,6 @@ jobs:
             echo "::warning::Test process crashed (exit code $rc), retrying..."
             dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           fi
-
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-${{ matrix.runner }}-outcome
-          path: test.outcome
-          retention-days: 1
 
       - name: Upload coverage report
         if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
@@ -271,7 +247,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -297,34 +273,18 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release
           fi
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.runner }}-outcome
-          path: test.outcome
-          retention-days: 1
-
   tests-summary:
     name: Tests summary
     needs: [tests, tests-spec, tests-chunked]
     runs-on: ubuntu-latest
     steps:
-      - name: Download test outcomes
-        uses: actions/download-artifact@v8
-        with:
-          path: .outcomes
-          pattern: '*-outcome'
-
       - name: Ensure all tests passed
         run: |
-          data=$(cat .outcomes/*/test.outcome) && data=${data%?}
-          passed=$(echo "[$data]" | jq -r 'all')
-          [[ "$passed" == "true" ]] && exit 0 || exit 1
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-spec.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "success" \
+          ]]
 
   codecov-upload:
     name: Upload Codecov reports
