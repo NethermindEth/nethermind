@@ -33,17 +33,11 @@ internal class EraSlimReceiptDecoderTests
         expectedStateRoot.Bytes.CopyTo(stateRootEncoded.AsSpan(1));
 
         // Receipt content: tx_type(0x80) + state_root(33) + gas(0x80) + logs(0xc0) = 36 bytes
-        byte[] receiptContent = [0x80, .. stateRootEncoded, 0x80, 0xc0];
-        // Receipt list: list-prefix(1) + content(36) = 37 bytes
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        // Outer list: list-prefix(1) + receipt(37) = 38 bytes
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x80, .. stateRootEncoded, 0x80, 0xc0]);
 
-        // Act
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
 
-        // Assert
         receipts.Should().HaveCount(1);
         receipts[0].PostTransactionState.Should().Be(expectedStateRoot,
             "pre-Byzantium go-ethereum receipts encode the state root in the status field; " +
@@ -56,9 +50,7 @@ internal class EraSlimReceiptDecoderTests
     public void Decode_GethFormat_PostByzantiumSuccess_SetsStatusCode()
     {
         // Receipt content: tx_type(0x80) + status(0x01) + gas(0x80) + logs(0xc0) = 4 bytes
-        byte[] receiptContent = [0x80, 0x01, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x80, 0x01, 0x80, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
@@ -72,9 +64,7 @@ internal class EraSlimReceiptDecoderTests
     public void Decode_GethFormat_PostByzantiumFailure_SetsStatusCode()
     {
         // status = 0x80 (empty bytes = 0/failure in go-ethereum encoding)
-        byte[] receiptContent = [0x80, 0x80, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x80, 0x80, 0x80, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
@@ -89,9 +79,7 @@ internal class EraSlimReceiptDecoderTests
     [TestCase((byte)3)]
     public void Decode_GethFormat_TypedReceipt_SetsTxType(byte txType)
     {
-        byte[] receiptContent = [txType, 0x01, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([txType, 0x01, 0x80, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
@@ -105,9 +93,7 @@ internal class EraSlimReceiptDecoderTests
     public void Decode_GethFormat_DecodesCumulativeGasUsed()
     {
         // gas = 100 => 0x64
-        byte[] receiptContent = [0x80, 0x01, 0x64, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x80, 0x01, 0x64, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
         TxReceipt[] receipts = sut.Decode(encoded.AsMemory());
@@ -120,12 +106,9 @@ internal class EraSlimReceiptDecoderTests
     public void Decode_GethFormat_InvalidStatusLength_Throws()
     {
         // status = 2-byte string: 0x82 0x01 0x02
-        byte[] receiptContent = [0x80, 0x82, 0x01, 0x02, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x80, 0x82, 0x01, 0x02, 0x80, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
-
         Action act = () => sut.Decode(encoded.AsMemory());
 
         act.Should().Throw<RlpException>();
@@ -135,14 +118,18 @@ internal class EraSlimReceiptDecoderTests
     public void Decode_GethFormat_InvalidTxTypeLength_Throws()
     {
         // tx_type = 2-byte string
-        byte[] receiptContent = [0x82, 0x01, 0x02, 0x01, 0x80, 0xc0];
-        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
-        byte[] encoded = [(byte)(0xc0 + receipt.Length), .. receipt];
+        byte[] encoded = WrapAsGethReceipt([0x82, 0x01, 0x02, 0x01, 0x80, 0xc0]);
 
         EraSlimReceiptDecoder sut = new();
-
         Action act = () => sut.Decode(encoded.AsMemory());
 
         act.Should().Throw<RlpException>();
+    }
+
+    // go-ethereum receipt encoding: outer_list { receipt_list { content } }
+    private static byte[] WrapAsGethReceipt(byte[] receiptContent)
+    {
+        byte[] receipt = [(byte)(0xc0 + receiptContent.Length), .. receiptContent];
+        return [(byte)(0xc0 + receipt.Length), .. receipt];
     }
 }

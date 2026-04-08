@@ -20,8 +20,7 @@ internal class EraWriterTests
     [Test]
     public async Task Add_WithNonSequentialBlock_ThrowsArgumentException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block b0 = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         Block b2 = Build.A.Block.WithNumber(2).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -33,8 +32,7 @@ internal class EraWriterTests
     [Test]
     public Task Add_WithNullBlock_ThrowsArgumentNullException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Assert.That(async () => await sut.Add(null!, []), Throws.ArgumentNullException);
         return Task.CompletedTask;
@@ -43,8 +41,7 @@ internal class EraWriterTests
     [Test]
     public Task Add_PreMergeBlockWithoutTotalDifficulty_ThrowsArgumentException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty((UInt256?)null).TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.ArgumentException);
@@ -54,8 +51,7 @@ internal class EraWriterTests
     [Test]
     public Task Add_PreMergeBlockWithTdLowerThanDifficulty_ThrowsArgumentOutOfRangeException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block block = Build.A.Block.WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
@@ -68,8 +64,7 @@ internal class EraWriterTests
     [Test]
     public Task Add_PostMergeBlockWithoutTotalDifficulty_Succeeds()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
         Assert.That(async () => await sut.Add(block, []), Throws.Nothing);
@@ -79,8 +74,7 @@ internal class EraWriterTests
     [Test]
     public async Task Add_AfterFinalized_ThrowsEraException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         await sut.Add(block, []);
@@ -92,8 +86,7 @@ internal class EraWriterTests
     [Test]
     public async Task Add_WhenExceedingMaxEraSize_ThrowsArgumentException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         for (int i = 0; i < EraWriter.MaxEraSize; i++)
         {
@@ -108,8 +101,7 @@ internal class EraWriterTests
     [Test]
     public void Finalize_WithNoBlocksAdded_ThrowsEraException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
@@ -117,8 +109,7 @@ internal class EraWriterTests
     [Test]
     public async Task Finalize_WhenCalledTwice_ThrowsEraException()
     {
-        using MemoryStream stream = new();
-        using EraWriter sut = new(stream, Substitute.For<ISpecProvider>());
+        using EraWriter sut = CreateSut();
 
         Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
         await sut.Add(block, []);
@@ -127,64 +118,43 @@ internal class EraWriterTests
         Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
     }
 
-    [Test]
-    public async Task Finalize_PreMergeEpoch_ComponentIndexHasFourComponents()
+    [TestCase(false, TestName = "pre_merge")]
+    [TestCase(true, TestName = "post_merge")]
+    public async Task Finalize_ComponentIndexHasTotalDifficulty_MatchesMergeState(bool isPostMerge)
     {
         using TempPath tmpFile = TempPath.GetTempFile();
         using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
         {
-            Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+            Block block = isPostMerge
+                ? Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject
+                : Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             await sut.Add(block, []);
             await sut.Finalize();
         }
 
         using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
-        reader.HasTotalDifficulty.Should().BeTrue("pre-merge epoch has component-count=4");
+        reader.HasTotalDifficulty.Should().Be(!isPostMerge);
     }
 
-    [Test]
-    public async Task Finalize_PostMergeEpoch_ComponentIndexHasThreeComponents()
+    [TestCase(false, TestName = "pre_merge")]
+    [TestCase(true, TestName = "post_merge")]
+    public async Task Finalize_AccumulatorRootOffset_MatchesMergeState(bool isPostMerge)
     {
         using TempPath tmpFile = TempPath.GetTempFile();
         using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
         {
-            Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
+            Block block = isPostMerge
+                ? Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject
+                : Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
             await sut.Add(block, []);
             await sut.Finalize();
         }
 
         using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
-        reader.HasTotalDifficulty.Should().BeFalse("post-merge epoch has component-count=3");
-    }
-
-    [Test]
-    public async Task Finalize_PreMergeEpoch_AccumulatorRootOffsetIsValid()
-    {
-        using TempPath tmpFile = TempPath.GetTempFile();
-        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
-        {
-            Block block = Build.A.Block.WithNumber(0).WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
-            await sut.Add(block, []);
-            await sut.Finalize();
-        }
-
-        using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
-        reader.AccumulatorRootOffset.Should().BeGreaterThan(0);
-    }
-
-    [Test]
-    public async Task Finalize_PostMergeEpoch_AccumulatorRootOffsetIsNegativeOne()
-    {
-        using TempPath tmpFile = TempPath.GetTempFile();
-        using (EraWriter sut = new(tmpFile.Path, Substitute.For<ISpecProvider>()))
-        {
-            Block block = Build.A.Block.WithNumber(0).WithPostMergeRules().TestObject;
-            await sut.Add(block, []);
-            await sut.Finalize();
-        }
-
-        using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
-        reader.AccumulatorRootOffset.Should().Be(-1, "post-merge epoch has no AccumulatorRoot entry");
+        if (isPostMerge)
+            reader.AccumulatorRootOffset.Should().Be(-1, "post-merge epoch has no AccumulatorRoot entry");
+        else
+            reader.AccumulatorRootOffset.Should().BeGreaterThan(0);
     }
 
     [Test]
@@ -211,4 +181,6 @@ internal class EraWriterTests
 
         Assert.That(() => stream.ReadByte(), Throws.TypeOf<ObjectDisposedException>());
     }
+
+    private static EraWriter CreateSut() => new(new MemoryStream(), Substitute.For<ISpecProvider>());
 }

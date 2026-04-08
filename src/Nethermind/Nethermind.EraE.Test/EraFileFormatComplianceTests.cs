@@ -29,39 +29,54 @@ public class EraFileFormatComplianceTests
     private const ushort TypeAccumulatorRoot = 0x07;
     private const ushort TypeComponentIndex = 0x3267;
 
-    [Test]
-    public async Task File_PreMergeEpoch_FirstEntryIsVersion()
+    private const int SharedBlockCount = 3;
+
+    private TestEraFile _preMergeFile = null!;
+    private TestEraFile _postMergeFile = null!;
+
+    [OneTimeSetUp]
+    public async Task SetUpFiles()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        List<EntryRecord> entries = ReadAllEntries(file.FilePath);
+        _preMergeFile = await TestEraFile.Create(preMergeCount: SharedBlockCount, postMergeCount: 0);
+        _postMergeFile = await TestEraFile.Create(preMergeCount: 0, postMergeCount: SharedBlockCount);
+    }
+
+    [OneTimeTearDown]
+    public void TearDownFiles()
+    {
+        _preMergeFile.Dispose();
+        _postMergeFile.Dispose();
+    }
+
+    [Test]
+    public void File_PreMergeEpoch_FirstEntryIsVersion()
+    {
+        List<EntryRecord> entries = ReadAllEntries(_preMergeFile.FilePath);
 
         entries[0].Type.Should().Be(TypeVersion, "Version must be the first entry per spec");
         entries[0].Length.Should().Be(0, "Version entry carries no data");
     }
 
     [Test]
-    public async Task File_PreMergeEpoch_LastEntryIsComponentIndex()
+    public void File_PreMergeEpoch_LastEntryIsComponentIndex()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        List<EntryRecord> entries = ReadAllEntries(file.FilePath);
+        List<EntryRecord> entries = ReadAllEntries(_preMergeFile.FilePath);
 
         entries[^1].Type.Should().Be(TypeComponentIndex, "ComponentIndex must be the last entry per spec");
     }
 
     [Test]
-    public async Task File_PostMergeEpoch_LastEntryIsComponentIndex()
+    public void File_PostMergeEpoch_LastEntryIsComponentIndex()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 2);
-        List<EntryRecord> entries = ReadAllEntries(file.FilePath);
+        List<EntryRecord> entries = ReadAllEntries(_postMergeFile.FilePath);
 
         entries[^1].Type.Should().Be(TypeComponentIndex);
     }
 
     [Test]
-    public async Task File_AllEntries_HaveReservedBytesZero()
+    public void File_AllEntries_HaveReservedBytesZero()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
-        byte[] bytes = File.ReadAllBytes(file.FilePath);
+        byte[] bytes = File.ReadAllBytes(_preMergeFile.FilePath);
 
         long pos = 0;
         while (pos + EntryHeaderSize <= bytes.Length)
@@ -75,11 +90,9 @@ public class EraFileFormatComplianceTests
     }
 
     [Test]
-    public async Task File_PreMergeEpoch_SectionOrderIsHeaderBodyReceiptsTdAccumulatorIndex()
+    public void File_PreMergeEpoch_SectionOrderIsHeaderBodyReceiptsTdAccumulatorIndex()
     {
-        const int blockCount = 2;
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
-        List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
+        List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
         // Section ordering: all headers before any body
         types.LastIndexOf(TypeCompressedHeader).Should().BeLessThan(
@@ -103,56 +116,49 @@ public class EraFileFormatComplianceTests
     }
 
     [Test]
-    public async Task File_PostMergeEpoch_HasNoTdOrAccumulatorEntries()
+    public void File_PostMergeEpoch_HasNoTdOrAccumulatorEntries()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
-        List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
+        List<ushort> types = ReadAllEntries(_postMergeFile.FilePath).Select(e => e.Type).ToList();
 
         types.Should().NotContain(TypeTotalDifficulty, "post-merge epochs have no TotalDifficulty entries");
         types.Should().NotContain(TypeAccumulatorRoot, "post-merge epochs have no AccumulatorRoot entry");
     }
 
     [Test]
-    public async Task File_PreMergeEpoch_EntryCountsMatchBlockCount()
+    public void File_PreMergeEpoch_EntryCountsMatchBlockCount()
     {
-        const int blockCount = 3;
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: blockCount, postMergeCount: 0);
-        List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
+        List<ushort> types = ReadAllEntries(_preMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        types.Count(t => t == TypeCompressedHeader).Should().Be(blockCount);
-        types.Count(t => t == TypeCompressedBody).Should().Be(blockCount);
-        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(blockCount);
-        types.Count(t => t == TypeTotalDifficulty).Should().Be(blockCount);
+        types.Count(t => t == TypeCompressedHeader).Should().Be(SharedBlockCount);
+        types.Count(t => t == TypeCompressedBody).Should().Be(SharedBlockCount);
+        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(SharedBlockCount);
+        types.Count(t => t == TypeTotalDifficulty).Should().Be(SharedBlockCount);
         types.Count(t => t == TypeAccumulatorRoot).Should().Be(1);
         types.Count(t => t == TypeComponentIndex).Should().Be(1);
     }
 
     [Test]
-    public async Task File_PostMergeEpoch_EntryCountsMatchBlockCount()
+    public void File_PostMergeEpoch_EntryCountsMatchBlockCount()
     {
-        const int blockCount = 3;
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: blockCount);
-        List<ushort> types = ReadAllEntries(file.FilePath).Select(e => e.Type).ToList();
+        List<ushort> types = ReadAllEntries(_postMergeFile.FilePath).Select(e => e.Type).ToList();
 
-        types.Count(t => t == TypeCompressedHeader).Should().Be(blockCount);
-        types.Count(t => t == TypeCompressedBody).Should().Be(blockCount);
-        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(blockCount);
+        types.Count(t => t == TypeCompressedHeader).Should().Be(SharedBlockCount);
+        types.Count(t => t == TypeCompressedBody).Should().Be(SharedBlockCount);
+        types.Count(t => t == TypeCompressedSlimReceipts).Should().Be(SharedBlockCount);
     }
 
     [Test]
-    public async Task File_AccumulatorRootEntry_Is32Bytes()
+    public void File_AccumulatorRootEntry_Is32Bytes()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        EntryRecord accEntry = ReadAllEntries(file.FilePath).Single(e => e.Type == TypeAccumulatorRoot);
+        EntryRecord accEntry = ReadAllEntries(_preMergeFile.FilePath).Single(e => e.Type == TypeAccumulatorRoot);
 
         accEntry.Length.Should().Be(32, "AccumulatorRoot entry must be exactly 32 bytes (Bytes32)");
     }
 
     [Test]
-    public async Task File_TotalDifficultyEntries_AreEach32Bytes()
+    public void File_TotalDifficultyEntries_AreEach32Bytes()
     {
-        using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        List<EntryRecord> tdEntries = ReadAllEntries(file.FilePath)
+        List<EntryRecord> tdEntries = ReadAllEntries(_preMergeFile.FilePath)
             .Where(e => e.Type == TypeTotalDifficulty)
             .ToList();
 

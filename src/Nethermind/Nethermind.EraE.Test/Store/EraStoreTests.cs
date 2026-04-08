@@ -32,14 +32,10 @@ public class EraStoreTests
     [Test]
     public async Task FindBlockAndReceipts_WithKnownBlockNumber_ReturnsBlock()
     {
-        const int chainLength = 32;
-        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string tmpDirectory = ctx.ResolveTempDirPath();
+        await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
-
-        (Block? block, TxReceipt[]? receipts) = await eraStore.FindBlockAndReceipts(
-            eraStore.FirstBlock, ensureValidated: false);
+        (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(
+            env.EraStore.FirstBlock, ensureValidated: false);
 
         block.Should().NotBeNull();
         receipts.Should().NotBeNull();
@@ -48,13 +44,9 @@ public class EraStoreTests
     [Test]
     public async Task FindBlockAndReceipts_WithOutOfRangeNumber_ReturnsNull()
     {
-        const int chainLength = 32;
-        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string tmpDirectory = ctx.ResolveTempDirPath();
+        await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
-
-        (Block? block, TxReceipt[]? receipts) = await eraStore.FindBlockAndReceipts(99999, ensureValidated: false);
+        (Block? block, TxReceipt[]? receipts) = await env.EraStore.FindBlockAndReceipts(99999, ensureValidated: false);
 
         block.Should().BeNull();
         receipts.Should().BeNull();
@@ -63,14 +55,10 @@ public class EraStoreTests
     [Test]
     public async Task FindBlockAndReceipts_WithValidBlockNumber_ReturnsCorrectBlock()
     {
-        const int chainLength = 50;
-        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string tmpDirectory = ctx.ResolveTempDirPath();
+        await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
-        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
-
-        long targetBlock = eraStore.FirstBlock + 5;
-        (Block? block, _) = await eraStore.FindBlockAndReceipts(targetBlock, ensureValidated: false);
+        long targetBlock = env.EraStore.FirstBlock + 5;
+        (Block? block, _) = await env.EraStore.FindBlockAndReceipts(targetBlock, ensureValidated: false);
 
         block!.Number.Should().Be(targetBlock);
     }
@@ -78,14 +66,10 @@ public class EraStoreTests
     [Test]
     public async Task FindBlockAndReceipts_WithNegativeBlockNumber_ThrowsArgumentOutOfRangeException()
     {
-        const int chainLength = 32;
-        await using IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string tmpDirectory = ctx.ResolveTempDirPath();
-
-        using IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
+        await using EraStoreEnv env = await CreateDefaultEraStoreEnv();
 
         Assert.That(
-            async () => await eraStore.FindBlockAndReceipts(-1, ensureValidated: false),
+            async () => await env.EraStore.FindBlockAndReceipts(-1, ensureValidated: false),
             Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
@@ -142,9 +126,27 @@ public class EraStoreTests
             async () => await eraStore.FindBlockAndReceipts(eraStore.FirstBlock, ensureValidated: true),
             Throws.Nothing);
     }
+
+    private static async Task<EraStoreEnv> CreateDefaultEraStoreEnv(int chainLength = 32)
+    {
+        IContainer ctx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string tmpDirectory = ctx.ResolveTempDirPath();
+        IEraStore eraStore = ctx.Resolve<IEraStoreFactory>().Create(tmpDirectory, null);
+        return new EraStoreEnv(ctx, eraStore);
+    }
 }
 
 file static class ContainerAsyncExtension
 {
     public static Task<IContainer> AsTask(this IContainer container) => Task.FromResult(container);
 }
+
+internal sealed record EraStoreEnv(IContainer Ctx, IEraStore EraStore) : IAsyncDisposable
+{
+    public async ValueTask DisposeAsync()
+    {
+        EraStore.Dispose();
+        await Ctx.DisposeAsync();
+    }
+}
+

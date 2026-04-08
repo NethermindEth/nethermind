@@ -24,9 +24,7 @@ public class BlocksRootContextTests
     [Test]
     public void Constructor_WithParisBlockNumberAndPreShanghaiTimestamp_SetsHistoricalRootsType()
     {
-        MainnetSpecProvider specProvider = new();
-        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
+        using BlocksRootContext sut = CreateHistoricalRootsContext();
 
         sut.AccumulatorType.Should().Be(AccumulatorType.HistoricalRoots);
     }
@@ -71,9 +69,7 @@ public class BlocksRootContextTests
     [Test]
     public void HistoricalRoot_WhenNotFinalized_ThrowsInvalidOperationException()
     {
-        MainnetSpecProvider specProvider = new();
-        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
+        using BlocksRootContext sut = CreateHistoricalRootsContext();
 
         sut.Invoking(c => _ = c.HistoricalRoot).Should().Throw<InvalidOperationException>();
     }
@@ -101,9 +97,7 @@ public class BlocksRootContextTests
     [Test]
     public void FinalizeContext_InHistoricalRootsContext_SetsHistoricalRoot()
     {
-        MainnetSpecProvider specProvider = new();
-        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
-        using BlocksRootContext sut = new(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
+        using BlocksRootContext sut = CreateHistoricalRootsContext();
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ParisBlockNumber + 1).TestObject;
         sut.ProcessBlock(block,
             new ValueHash256("0xaabbccdd00000000000000000000000000000000000000000000000000000000"),
@@ -126,5 +120,12 @@ public class BlocksRootContextTests
         sut.FinalizeContext();
 
         sut.Invoking(c => _ = c.HistoricalSummary).Should().NotThrow();
+    }
+
+    private static BlocksRootContext CreateHistoricalRootsContext()
+    {
+        MainnetSpecProvider specProvider = new();
+        specProvider.UpdateMergeTransitionInfo(MainnetSpecProvider.ParisBlockNumber + 1);
+        return new BlocksRootContext(MainnetSpecProvider.ParisBlockNumber + 1, 1_600_000_000UL, specProvider);
     }
 }

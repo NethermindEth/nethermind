@@ -45,18 +45,10 @@ public class EraPathUtilsTests
 #pragma warning restore CS8625
     }
 
-    [Test]
-    public void ExtractHashFromChecksumEntry_WithHashOnly_ReturnsCorrectHash()
+    [TestCase("0xaabbccdd00000000000000000000000000000000000000000000000000000000", TestName = "hash_only")]
+    [TestCase("0xaabbccdd00000000000000000000000000000000000000000000000000000000 test-00000-aabbccdd.erae", TestName = "hash_and_filename")]
+    public void ExtractHashFromChecksumEntry_ReturnsCorrectHash(string input)
     {
-        string input = "0xaabbccdd00000000000000000000000000000000000000000000000000000000";
-        ValueHash256 result = EraPathUtils.ExtractHashFromChecksumEntry(input);
-        Assert.That(result.ToByteArray()[0], Is.EqualTo(0xaa));
-    }
-
-    [Test]
-    public void ExtractHashFromChecksumEntry_WithHashAndFilename_ReturnsHashPart()
-    {
-        string input = "0xaabbccdd00000000000000000000000000000000000000000000000000000000 test-00000-aabbccdd.erae";
         ValueHash256 result = EraPathUtils.ExtractHashFromChecksumEntry(input);
         Assert.That(result.ToByteArray()[0], Is.EqualTo(0xaa));
     }

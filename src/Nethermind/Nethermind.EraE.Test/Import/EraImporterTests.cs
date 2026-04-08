@@ -39,24 +39,13 @@ public class EraImporterTests
     public async Task Import_WithValidEraFiles_ImportsAllBlocksIntoTree()
     {
         const int chainLength = 32;
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment(chainLength);
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        await sut.Import(exportPath, 0, long.MaxValue, null);
+        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
 
         for (long i = 1; i < chainLength; i++)
         {
-            targetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull(
+            env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull(
                 $"block {i} should have been imported");
         }
     }
@@ -64,131 +53,69 @@ public class EraImporterTests
     [Test]
     public async Task Import_WithTrustedAccumulators_Succeeds()
     {
-        const int chainLength = 32;
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
-
-        string accumulatorPath = System.IO.Path.Combine(exportPath, EraExporter.AccumulatorFileName);
-
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
+        await using ImportEnvironment env = await CreateImportEnvironment();
+        string accumulatorPath = System.IO.Path.Combine(env.ExportPath, EraExporter.AccumulatorFileName);
 
         Assert.That(
-            () => sut.Import(exportPath, 0, long.MaxValue, accumulatorPath),
+            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, accumulatorPath),
             Throws.Nothing);
     }
 
     [Test]
     public async Task Import_WithModifiedChecksum_ThrowsEraVerificationException()
     {
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment();
 
-        string checksumPath = System.IO.Path.Combine(exportPath, EraExporter.ChecksumsSHA256FileName);
+        string checksumPath = System.IO.Path.Combine(env.ExportPath, EraExporter.ChecksumsSHA256FileName);
         string[] lines = await System.IO.File.ReadAllLinesAsync(checksumPath);
         lines[^1] = "0x0000000000000000000000000000000000000000000000000000000000000000 " +
                     System.IO.Path.GetFileName(lines[^1].Split(' ')[^1]);
         await System.IO.File.WriteAllLinesAsync(checksumPath, lines);
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-
         Assert.That(
-            () => sut.Import(exportPath, 0, long.MaxValue, null),
+            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null),
             Throws.TypeOf<EraVerificationException>());
     }
 
     [Test]
     public async Task Import_WithWrongTrustedAccumulator_ThrowsEraVerificationException()
     {
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment();
 
-        string fakeAccumulatorPath = System.IO.Path.Combine(exportPath, "fake_accumulators.txt");
+        string fakeAccumulatorPath = System.IO.Path.Combine(env.ExportPath, "fake_accumulators.txt");
         string[] accLines = await System.IO.File.ReadAllLinesAsync(
-            System.IO.Path.Combine(exportPath, EraExporter.AccumulatorFileName));
+            System.IO.Path.Combine(env.ExportPath, EraExporter.AccumulatorFileName));
         string[] fakeLines = accLines.Select(l =>
             "0x0000000000000000000000000000000000000000000000000000000000000000 " +
             l.Split(' ')[^1]).ToArray();
         await System.IO.File.WriteAllLinesAsync(fakeAccumulatorPath, fakeLines);
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-
         Assert.That(
-            () => sut.Import(exportPath, 0, long.MaxValue, fakeAccumulatorPath),
+            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, fakeAccumulatorPath),
             Throws.TypeOf<EraVerificationException>());
     }
 
     [Test]
     public async Task Import_WithPartialRange_ImportsOnlyRequestedBlocks()
     {
-        const int chainLength = 32;
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment();
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
-
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        await sut.Import(exportPath, 0, 15, null);
+        await env.Sut.Import(env.ExportPath, 0, 15, null);
 
         for (long i = 1; i <= 15; i++)
-            targetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull($"block {i} should have been imported");
+            env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None).Should().NotBeNull($"block {i} should have been imported");
 
-        targetTree.FindBlock(16, BlockTreeLookupOptions.None).Should().BeNull("block 16 is outside the requested range");
+        env.TargetTree.FindBlock(16, BlockTreeLookupOptions.None).Should().BeNull("block 16 is outside the requested range");
     }
 
     [Test]
     public async Task Import_WhenCalledTwice_DoesNotThrowAndIsIdempotent()
     {
-        const int chainLength = 32;
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment();
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
+        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
 
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-        await sut.Import(exportPath, 0, long.MaxValue, null);
-
-        Assert.That(() => sut.Import(exportPath, 0, long.MaxValue, null), Throws.Nothing,
+        Assert.That(() => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null), Throws.Nothing,
             "re-importing the same range must be idempotent");
     }
 
@@ -196,29 +123,21 @@ public class EraImporterTests
     public async Task ExportThenImport_RoundTrip_BlocksAndReceiptsMatchOriginal()
     {
         const int chainLength = 32;
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment(
+            chainLength,
+            b => b.AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true }));
 
-        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
-        IReceiptStorage sourceReceipts = sourceCtx.Resolve<IReceiptStorage>();
+        IReceiptStorage sourceReceipts = env.SourceCtx.Resolve<IReceiptStorage>();
 
-        BlockTree targetTree = Build.A.BlockTree()
-            .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
-            .TestObject;
+        await env.Sut.Import(env.ExportPath, 0, long.MaxValue, null);
 
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true })
-            .Build();
-
-        await targetCtx.Resolve<IEraImporter>().Import(exportPath, 0, long.MaxValue, null);
-
-        IReceiptStorage targetReceipts = targetCtx.Resolve<IReceiptStorage>();
+        IReceiptStorage targetReceipts = env.TargetCtx.Resolve<IReceiptStorage>();
+        IBlockTree sourceTree = env.SourceCtx.Resolve<IBlockTree>();
 
         for (long i = 1; i < chainLength; i++)
         {
             Block? original = sourceTree.FindBlock(i, BlockTreeLookupOptions.None);
-            Block? imported = targetTree.FindBlock(i, BlockTreeLookupOptions.None);
+            Block? imported = env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None);
 
             imported.Should().NotBeNull($"block {i} should exist after import");
             imported!.Hash.Should().Be(original!.Hash!, $"block {i} hash must match");
@@ -307,23 +226,42 @@ public class EraImporterTests
     [Test]
     public async Task Import_WhenBlockFailsValidation_ThrowsEraVerificationException()
     {
-        await using IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(32, from: 0, to: 0);
-        string exportPath = sourceCtx.ResolveTempDirPath();
+        await using ImportEnvironment env = await CreateImportEnvironment(
+            configure: b => b.AddSingleton<IBlockValidator>(Always.Invalid));
 
+        Assert.That(
+            () => env.Sut.Import(env.ExportPath, 0, long.MaxValue, null),
+            Throws.TypeOf<EraVerificationException>());
+    }
+
+    private static async Task<ImportEnvironment> CreateImportEnvironment(
+        int chainLength = 32,
+        Action<ContainerBuilder>? configure = null)
+    {
+        IContainer sourceCtx = await EraETestModule.CreateExportedEraEnv(chainLength, from: 0, to: 0);
+        string exportPath = sourceCtx.ResolveTempDirPath();
         IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
         BlockTree targetTree = Build.A.BlockTree()
             .WithBlocks(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!)
             .TestObject;
+        ContainerBuilder builder = EraETestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(targetTree);
+        configure?.Invoke(builder);
+        IContainer targetCtx = builder.Build();
+        return new ImportEnvironment(sourceCtx, targetCtx, exportPath, targetTree, targetCtx.Resolve<IEraImporter>());
+    }
 
-        await using IContainer targetCtx = EraETestModule.BuildContainerBuilder()
-            .AddSingleton<IBlockTree>(targetTree)
-            .AddSingleton<IBlockValidator>(Always.Invalid)
-            .Build();
-
-        IEraImporter sut = targetCtx.Resolve<IEraImporter>();
-
-        Assert.That(
-            () => sut.Import(exportPath, 0, long.MaxValue, null),
-            Throws.TypeOf<EraVerificationException>());
+    private sealed record ImportEnvironment(
+        IContainer SourceCtx,
+        IContainer TargetCtx,
+        string ExportPath,
+        BlockTree TargetTree,
+        IEraImporter Sut) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await TargetCtx.DisposeAsync();
+            await SourceCtx.DisposeAsync();
+        }
     }
 }

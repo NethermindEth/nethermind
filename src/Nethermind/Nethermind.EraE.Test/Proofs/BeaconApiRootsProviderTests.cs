@@ -24,13 +24,9 @@ public class BeaconApiRootsProviderTests
     [Test]
     public async Task GetBeaconRoots_WithValidSlot_ReturnsBothRoots()
     {
-        SequentialHttpMessageHandler handler = new();
-        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
-        handler.Enqueue(HttpStatusCode.OK, StateRootJson);
-
-        using BeaconApiRootsProvider sut = new(
-            new Uri("http://localhost:5052"),
-            new HttpClient(handler));
+        using BeaconApiRootsProvider sut = Build(
+            (HttpStatusCode.OK, HeadersJson),
+            (HttpStatusCode.OK, StateRootJson));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
@@ -42,14 +38,11 @@ public class BeaconApiRootsProviderTests
     [Test]
     public async Task GetBeaconRoots_WithSameSlotCalledTwice_MakesOnlyTwoHttpRequests()
     {
+        // Only 2 responses enqueued — a third request would throw
         SequentialHttpMessageHandler handler = new();
         handler.Enqueue(HttpStatusCode.OK, HeadersJson);
         handler.Enqueue(HttpStatusCode.OK, StateRootJson);
-        // Only 2 responses enqueued — a third request would throw
-
-        using BeaconApiRootsProvider sut = new(
-            new Uri("http://localhost:5052"),
-            new HttpClient(handler));
+        using BeaconApiRootsProvider sut = new(new Uri("http://localhost:5052"), new HttpClient(handler));
 
         await sut.GetBeaconRoots(1);
         await sut.GetBeaconRoots(1);
@@ -60,13 +53,8 @@ public class BeaconApiRootsProviderTests
     [Test]
     public async Task GetBeaconRoots_WhenHeadersResponseMissingDataField_ReturnsNull()
     {
-        SequentialHttpMessageHandler handler = new();
-        handler.Enqueue(HttpStatusCode.OK, """{"other":"x"}""");
         // State root endpoint must NOT be called — handler throws on any extra request
-
-        using BeaconApiRootsProvider sut = new(
-            new Uri("http://localhost:5052"),
-            new HttpClient(handler));
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.OK, """{"other":"x"}"""));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
@@ -76,12 +64,7 @@ public class BeaconApiRootsProviderTests
     [Test]
     public async Task GetBeaconRoots_WhenHeadersResponseIsNonSuccess_ReturnsNull()
     {
-        SequentialHttpMessageHandler handler = new();
-        handler.Enqueue(HttpStatusCode.NotFound, "{}");
-
-        using BeaconApiRootsProvider sut = new(
-            new Uri("http://localhost:5052"),
-            new HttpClient(handler));
+        using BeaconApiRootsProvider sut = Build((HttpStatusCode.NotFound, "{}"));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
@@ -91,17 +74,21 @@ public class BeaconApiRootsProviderTests
     [Test]
     public async Task GetBeaconRoots_WhenStateRootResponseIsNonSuccess_ReturnsNull()
     {
-        SequentialHttpMessageHandler handler = new();
-        handler.Enqueue(HttpStatusCode.OK, HeadersJson);
-        handler.Enqueue(HttpStatusCode.NotFound, "{}");
-
-        using BeaconApiRootsProvider sut = new(
-            new Uri("http://localhost:5052"),
-            new HttpClient(handler));
+        using BeaconApiRootsProvider sut = Build(
+            (HttpStatusCode.OK, HeadersJson),
+            (HttpStatusCode.NotFound, "{}"));
 
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
         result.Should().BeNull();
+    }
+
+    private static BeaconApiRootsProvider Build(params (HttpStatusCode StatusCode, string Body)[] responses)
+    {
+        SequentialHttpMessageHandler handler = new();
+        foreach ((HttpStatusCode statusCode, string body) in responses)
+            handler.Enqueue(statusCode, body);
+        return new BeaconApiRootsProvider(new Uri("http://localhost:5052"), new HttpClient(handler));
     }
 
     private sealed class SequentialHttpMessageHandler : HttpMessageHandler

@@ -58,22 +58,14 @@ public class AccumulatorCalculatorTests
         Assert.That(sut1.ComputeRoot(), Is.Not.EqualTo(sut2.ComputeRoot()));
     }
 
-    [Test]
-    public void GetProof_WithNegativeIndex_ThrowsArgumentOutOfRangeException()
+    [TestCase(-1, TestName = "negative")]
+    [TestCase(1, TestName = "at_count")]
+    public void GetProof_WithOutOfRangeIndex_ThrowsArgumentOutOfRangeException(int index)
     {
         using AccumulatorCalculator sut = new();
         sut.Add(Keccak.Zero, 1);
 
-        Assert.That(() => sut.GetProof(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
-    }
-
-    [Test]
-    public void GetProof_WithIndexAtCount_ThrowsArgumentOutOfRangeException()
-    {
-        using AccumulatorCalculator sut = new();
-        sut.Add(Keccak.Zero, 1);
-
-        Assert.That(() => sut.GetProof(1), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => sut.GetProof(index), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
