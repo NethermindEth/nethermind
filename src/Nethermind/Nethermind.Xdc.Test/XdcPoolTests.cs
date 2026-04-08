@@ -33,8 +33,7 @@ public class XdcPoolTests
     public void Add_SameVoteTwice_CountIsOne()
     {
         XdcPool<Vote> pool = new();
-        PrivateKey key = Build.A.PrivateKey.TestObject;
-        Vote vote = BuildVote(MakeBlockInfo(), key);
+        Vote vote = BuildVote(MakeBlockInfo(), TestItem.PrivateKeyA);
 
         pool.Add(vote);
         pool.Add(vote);
@@ -48,13 +47,12 @@ public class XdcPoolTests
         // A byzantine node could use a non-deterministic k to produce two valid signatures
         // for the same vote content. The pool must treat both as one vote from that signer.
         XdcPool<Vote> pool = new();
-        PrivateKey key = Build.A.PrivateKey.TestObject;
         BlockRoundInfo info = MakeBlockInfo();
-        Vote vote1 = BuildVote(info, key);
+        Vote vote1 = BuildVote(info, TestItem.PrivateKeyA);
         Vote vote2 = new(info, 0)
         {
             Signature = new Signature(new byte[65]),
-            Signer = key.Address
+            Signer = TestItem.PrivateKeyA.Address
         };
 
         // Same content and same signer, but not equal since signature is different
@@ -73,8 +71,8 @@ public class XdcPoolTests
     {
         XdcPool<Vote> pool = new();
         BlockRoundInfo info = MakeBlockInfo();
-        Vote vote1 = BuildVote(info, Build.A.PrivateKey.TestObject);
-        Vote vote2 = BuildVote(info, Build.A.PrivateKey.TestObject);
+        Vote vote1 = BuildVote(info, TestItem.PrivateKeyA);
+        Vote vote2 = BuildVote(info, TestItem.PrivateKeyB);
 
         pool.Add(vote1);
         pool.Add(vote2);
@@ -86,9 +84,8 @@ public class XdcPoolTests
     public void EndRound_RemovesItemsUpToRound()
     {
         XdcPool<Vote> pool = new();
-        PrivateKey key = Build.A.PrivateKey.TestObject;
-        Vote voteRound1 = BuildVote(MakeBlockInfo(round: 1), key);
-        Vote voteRound2 = BuildVote(MakeBlockInfo(round: 2), key);
+        Vote voteRound1 = BuildVote(MakeBlockInfo(round: 1), TestItem.PrivateKeyA);
+        Vote voteRound2 = BuildVote(MakeBlockInfo(round: 2), TestItem.PrivateKeyA);
 
         pool.Add(voteRound1);
         pool.Add(voteRound2);
