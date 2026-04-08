@@ -696,12 +696,37 @@ public partial class EthRpcModuleTests
         transaction.Should().BeOfType<EIP1559TransactionForRpc>(
             "precondition: untyped JSON falls through to EIP1559 default in DeriveTxType — this is the bug trigger");
 
-        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+        Result<Transaction> txResult = transaction.ToTransaction();
+        txResult.Data!.AccessList.Should().BeNull(
+            "precondition: ToTransaction must produce tx.AccessList = null, not AccessList.Empty — a non-null empty list triggers the EIP-2930 fork check");
+
+        // "0x0" targets genesis — explicitly a pre-Berlin block (the real-world bug occurs when
+        // targeting any historical block before the chain's Berlin activation).
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "0x0");
 
         serialized.Should().NotContain("EIP-2930 is not enabled",
             "eth_call simulation should not enforce access-list fork rules against the tx type");
         serialized.Should().Contain("\"result\"",
             "eth_call should succeed and return a result, not an internal error");
+    }
+
+    [Test]
+    public async Task Eth_call_without_type_on_post_Berlin_block_succeeds()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"to\":\"{TestItem.AddressB}\", \"data\":\"0x\"}}");
+
+        transaction.Should().BeOfType<EIP1559TransactionForRpc>(
+            "precondition: untyped JSON falls through to EIP1559 default in DeriveTxType");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+
+        serialized.Should().NotContain("EIP-2930 is not enabled",
+            "eth_call on post-Berlin blocks must never throw an EIP-2930 error");
+        serialized.Should().Contain("\"result\"",
+            "eth_call on a post-Berlin block should succeed regardless of fix");
     }
 
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)

@@ -443,6 +443,31 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x5208\",\"id\":67}"));
     }
 
+    [Test]
+    public async Task Eth_estimateGas_without_type_on_pre_Berlin_block_does_not_fail_with_EIP2930_error()
+    {
+        OverridableReleaseSpec releaseSpec = new(Istanbul.Instance);
+        TestSpecProvider specProvider = new(releaseSpec);
+        using Context ctx = await Context.Create(specProvider);
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"to\":\"{TestItem.AddressB}\", \"data\":\"0x\"}}");
+
+        transaction.Should().BeOfType<EIP1559TransactionForRpc>(
+            "precondition: untyped JSON falls through to EIP1559 default in DeriveTxType — this is the bug trigger");
+
+        Result<Transaction> txResult = transaction.ToTransaction();
+        txResult.Data!.AccessList.Should().BeNull(
+            "precondition: ToTransaction must produce tx.AccessList = null, not AccessList.Empty — a non-null empty list triggers the EIP-2930 fork check");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "0x0");
+
+        serialized.Should().NotContain("EIP-2930 is not enabled",
+            "eth_estimateGas simulation should not enforce access-list fork rules against the tx type");
+        serialized.Should().Contain("\"result\"",
+            "eth_estimateGas should succeed and return a result, not an internal error");
+    }
+
     private static async Task TestEstimateGasOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit, string message)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
