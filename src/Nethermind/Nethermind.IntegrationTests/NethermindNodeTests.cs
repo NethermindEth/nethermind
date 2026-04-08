@@ -35,12 +35,12 @@ public class NethermindNodeTests
         }
 
         _nethermindContainer = builder.Build();
-        
-        try 
+
+        try
         {
             await _nethermindContainer.StartAsync();
-        } 
-        catch 
+        }
+        catch
         {
             // Ignore start failures in negative tests; assertions will be made on container state/logs
         }
@@ -62,10 +62,10 @@ public class NethermindNodeTests
         _nethermindContainer.State.Should().Be(TestcontainersStates.Running);
 
         var rpcUrl = new Uri($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8545)}");
-        
+
         using var rpcClient = new BasicJsonRpcClient(rpcUrl, new EthereumJsonSerializer(), LimboLogs.Instance);
         var response = await rpcClient.Post("eth_blockNumber");
-        
+
         response.Should().NotBeNullOrEmpty();
         response.Should().Contain("\"result\":");
     }
@@ -74,9 +74,9 @@ public class NethermindNodeTests
     public async Task Nethermind_ShouldLog_ExpectedMessages()
     {
         await StartContainerAsync();
-        
+
         var cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
-        
+
         cleanStdout.Should().Contain("Nethermind is starting up");
         cleanStdout.Should().Contain("Initialization Completed");
     }
@@ -85,14 +85,14 @@ public class NethermindNodeTests
     public async Task Nethermind_ShouldFail_WhenNoConfigProvided()
     {
         var commandWithoutConfig = new[] { "--config", "nonexistent.json" };
-        
+
         await StartContainerAsync(commandWithoutConfig, waitForInit: false);
-        
+
         await Task.Delay(2000);
-        
+
         var cleanStdout = await _nethermindContainer.GetCleanStdoutAsync();
         var cleanStderr = await _nethermindContainer.GetCleanStderrAsync();
-        
+
         var combinedLogs = cleanStdout + cleanStderr;
         combinedLogs.Should().Contain("Configuration file not found");
     }
@@ -100,14 +100,14 @@ public class NethermindNodeTests
     [Test]
     public async Task Nethermind_ShouldProduceBlock_ViaEngineApi()
     {
-        var command = new[] 
-        { 
-            "--config", "sepolia", 
-            "--JsonRpc.Enabled", "true", 
-            "--JsonRpc.Host", "0.0.0.0", 
-            "--JsonRpc.Port", "8545", 
-            "--JsonRpc.EnginePort", "8551", 
-            "--JsonRpc.EngineHost", "0.0.0.0", 
+        var command = new[]
+        {
+            "--config", "sepolia",
+            "--JsonRpc.Enabled", "true",
+            "--JsonRpc.Host", "0.0.0.0",
+            "--JsonRpc.Port", "8545",
+            "--JsonRpc.EnginePort", "8551",
+            "--JsonRpc.EngineHost", "0.0.0.0",
             "--JsonRpc.JwtSecretFile", "jwt.hex",
             "--Merge.TerminalTotalDifficulty", "0",
             "--Merge.Enabled", "true",
@@ -128,7 +128,7 @@ public class NethermindNodeTests
         var jwtToken = Utils.CreateJwtToken(jwtSecretHex);
 
         var engineUrl = new Uri($"http://{_nethermindContainer.Hostname}:{_nethermindContainer.GetMappedPublicPort(8551)}");
-        
+
         using var httpClient = new HttpClient { BaseAddress = engineUrl };
         httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
         httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -147,14 +147,14 @@ public class NethermindNodeTests
     [Test]
     public async Task Nethermind_ShouldProduceBlocks_DifferentVersions_ViaEngineApi()
     {
-        var command = new[] 
-        { 
-            "--config", "sepolia", 
-            "--JsonRpc.Enabled", "true", 
-            "--JsonRpc.Host", "0.0.0.0", 
-            "--JsonRpc.Port", "8545", 
-            "--JsonRpc.EnginePort", "8551", 
-            "--JsonRpc.EngineHost", "0.0.0.0", 
+        var command = new[]
+        {
+            "--config", "sepolia",
+            "--JsonRpc.Enabled", "true",
+            "--JsonRpc.Host", "0.0.0.0",
+            "--JsonRpc.Port", "8545",
+            "--JsonRpc.EnginePort", "8551",
+            "--JsonRpc.EngineHost", "0.0.0.0",
             "--JsonRpc.JwtSecretFile", "jwt.hex",
             "--Merge.TerminalTotalDifficulty", "0",
             "--Merge.Enabled", "true",
@@ -178,7 +178,7 @@ public class NethermindNodeTests
 
         // V1 (Paris): starting from genesis timestamp 1633267481 (V1 range)
         await Utils.CreateBlocksAsync(httpClient, 100, 1, 1633267481L);
-        
+
         // V2 (Shanghai): > 1677557088
         await Utils.CreateBlocksAsync(httpClient, 100, 2, 1677557088L + 1200);
 
