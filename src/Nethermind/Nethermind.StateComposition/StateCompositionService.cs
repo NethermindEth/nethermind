@@ -141,6 +141,15 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
             _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!);
 
+            Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
+            Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
+            Metrics.StateCompScanBlock = header.Number;
+            Metrics.StateCompIncrementalBlock = header.Number;
+            Metrics.StateCompDiffsSinceBaseline = 0;
+            Metrics.StateCompScansCompleted++;
+            Metrics.StateCompContractsWithStorage = stats.ContractsWithStorage;
+            Metrics.StateCompEmptyAccounts = stats.EmptyAccounts;
+
             if (_config.PersistSnapshots)
                 _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
                     cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number));
@@ -250,6 +259,11 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                 CumulativeSizeStats updated = _stateHolder.IncrementalStats!.Value.ApplyDiff(diff);
                 _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot);
 
+                Metrics.UpdateFromCumulativeStats(updated);
+                Metrics.StateCompIncrementalBlock = head.Number;
+                Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
+                Metrics.StateCompDiffsApplied++;
+
                 if (_config.PersistSnapshots && head.Number % _config.SnapshotInterval == 0)
                     _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
                         updated, head.Number, head.Header.StateRoot,
@@ -262,6 +276,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             }
             catch (Exception ex)
             {
+                Metrics.StateCompDiffErrors++;
                 if (_logger.IsError)
                     _logger.Error("StateComposition: failed to compute incremental diff", ex);
             }
