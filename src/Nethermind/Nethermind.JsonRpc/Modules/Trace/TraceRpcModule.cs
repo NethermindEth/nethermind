@@ -60,7 +60,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             blockParameter ??= BlockParameter.Latest;
             call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+            SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
+            if (headerSearch.IsError)
+                return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
+
+            Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(headerSearch.Object!));
             return !txResult.Success(out Transaction? transaction, out string? error)
                 ? ResultWrapper<ParityTxTraceFromReplay>.Fail(error, ErrorCodes.InvalidInput)
                 : TraceTx(transaction, traceTypes, blockParameter, stateOverride);
@@ -90,7 +94,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             for (int i = 0; i < calls.Length; i++)
             {
                 calls[i].Transaction.EnsureDefaults(jsonRpcConfig.GasCap);
-                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true);
+                Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header));
                 if (!txResult.Success(out Transaction? tx, out string? error))
                 {
                     return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Fail(error, ErrorCodes.InvalidInput);
