@@ -7,6 +7,7 @@ ARG TARGETARCH
 
 # Copy build configuration files required by referenced projects
 COPY Directory.Build.props Directory.Build.props
+COPY Directory.Build.targets Directory.Build.targets
 COPY Directory.Packages.props Directory.Packages.props
 COPY global.json global.json
 
