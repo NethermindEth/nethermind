@@ -679,12 +679,10 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_without_type_on_pre_Berlin_block_does_not_fail_with_EIP2930_error()
     {
-        // Regression test for https://github.com/NethermindEth/nethermind/issues/11069
-        //
         // Scenario:
         // 1. Chain uses a pre-Berlin spec (no EIP-2930 / access lists)
         // 2. eth_call receives {"to":"...", "data":"..."} with no "type" field
-        // 3. DeriveTxType defaults to EIP1559TransactionForRpc (inherited behaviour from #9529)
+        // 3. DeriveTxType defaults to EIP1559TransactionForRpc
         // 4. EIP1559 -> AccessListTransactionForRpc.ToTransaction() used to set tx.AccessList = AccessList.Empty
         // 5. IGasPolicy.AccessListCost sees non-null access list, checks spec.UseTxAccessLists -> false -> throws
         // After the fix: tx.AccessList stays null, AccessListCost returns 0 without any fork check.
