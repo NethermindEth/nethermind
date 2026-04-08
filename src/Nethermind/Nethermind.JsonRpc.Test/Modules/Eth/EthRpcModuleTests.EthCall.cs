@@ -676,6 +676,36 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\",\"data\":\"0x\"},\"id\":67}"));
     }
 
+    [Test]
+    public async Task Eth_call_without_type_on_pre_Berlin_block_does_not_fail_with_EIP2930_error()
+    {
+        // Regression test for https://github.com/NethermindEth/nethermind/issues/11069
+        //
+        // Scenario:
+        // 1. Chain uses a pre-Berlin spec (no EIP-2930 / access lists)
+        // 2. eth_call receives {"to":"...", "data":"..."} with no "type" field
+        // 3. DeriveTxType defaults to EIP1559TransactionForRpc (inherited behaviour from #9529)
+        // 4. EIP1559 -> AccessListTransactionForRpc.ToTransaction() used to set tx.AccessList = AccessList.Empty
+        // 5. IGasPolicy.AccessListCost sees non-null access list, checks spec.UseTxAccessLists -> false -> throws
+        // After the fix: tx.AccessList stays null, AccessListCost returns 0 without any fork check.
+        OverridableReleaseSpec releaseSpec = new(Istanbul.Instance);
+        TestSpecProvider specProvider = new(releaseSpec);
+        using Context ctx = await Context.Create(specProvider);
+
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $"{{\"to\":\"{TestItem.AddressB}\", \"data\":\"0x\"}}");
+
+        transaction.Should().BeOfType<EIP1559TransactionForRpc>(
+            "precondition: untyped JSON falls through to EIP1559 default in DeriveTxType — this is the bug trigger");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+
+        serialized.Should().NotContain("EIP-2930 is not enabled",
+            "eth_call simulation should not enforce access-list fork rules against the tx type");
+        serialized.Should().Contain("\"result\"",
+            "eth_call should succeed and return a result, not an internal error");
+    }
+
     private static async Task TestEthCallOutOfGas(Context ctx, long? specifiedGasLimit, long expectedGasLimit)
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
