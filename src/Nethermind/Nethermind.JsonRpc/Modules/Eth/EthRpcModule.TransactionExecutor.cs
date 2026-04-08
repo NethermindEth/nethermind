@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                             return ResultWrapper<TResult, string>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
                         }
 
-                        string errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
+                        string? errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
                         return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
                     }
 
