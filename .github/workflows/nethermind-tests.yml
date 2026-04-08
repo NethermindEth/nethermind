@@ -276,7 +276,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Ensure all tests passed
+      - name: Check result
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
