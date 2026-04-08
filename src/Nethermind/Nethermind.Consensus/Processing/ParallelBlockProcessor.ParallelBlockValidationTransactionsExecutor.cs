@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -21,7 +20,6 @@ public partial class ParallelBlockProcessor
         IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
         ISpecProvider specProvider,
-        IBlocksConfig blocksConfig,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
     {
@@ -52,7 +50,7 @@ public partial class ParallelBlockProcessor
 
             Metrics.ResetBlockStats();
 
-            _txReceipts = blocksConfig.ParallelExecution && !block.IsGenesis ?
+            _txReceipts = !block.IsGenesis && _balManager.ParallelExecutionEnabled ?
                 ProcessTransactionsParallel(block, processingOptions, token) :
                 ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 

@@ -5,7 +5,6 @@ using System.Threading;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
 using Nethermind.Evm;
 using Nethermind.State.Proofs;
 
@@ -40,7 +39,7 @@ public class SimulateBlockValidationTransactionsExecutor(
             processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation;
         }
 
-        var result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
+        TxReceipt[] result = baseTransactionExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, token);
 
         // Many gas calculation not done with skip validation, but needed for response
         long currentGasUsedTotal = 0;

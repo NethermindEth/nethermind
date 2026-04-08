@@ -41,8 +41,8 @@ public class BlockAccessListManager(
     ILogManager logManager,
     IBlocksConfig blocksConfig)
 {
-
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
+    public bool ParallelExecutionEnabled { get; set; } = false;
     private BlockExecutionContext? _blockExecutionContext;
     private TxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private const int GasValidationChunkSize = 8;
