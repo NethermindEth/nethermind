@@ -41,7 +41,7 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
+        tx.AccessList = AccessList?.ToAccessList();
 
         return tx;
     }
