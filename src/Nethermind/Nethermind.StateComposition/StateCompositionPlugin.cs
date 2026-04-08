@@ -63,6 +63,10 @@ public class StateCompositionPlugin : INethermindPlugin
 
         stateHolder.RestoreFromSnapshot(snap);
 
+        Metrics.UpdateFromCumulativeStats(snap.Stats);
+        Metrics.StateCompIncrementalBlock = snap.BlockNumber;
+        Metrics.StateCompDiffsSinceBaseline = snap.DiffsSinceBaseline;
+
         if (logger.IsInfo)
             logger.Info($"StateComposition: restored from snapshot at block {snap.BlockNumber}, " +
                         $"diffs={snap.DiffsSinceBaseline}, accounts={snap.Stats.AccountsTotal}");
