@@ -1,15 +1,6 @@
 name: Sync Supported Chains
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker image"]
-    branches: [release/*]
-    types:
-      - completed
-
-  schedule:
-    - cron: "0 0 * * *"
-
   workflow_dispatch:
     inputs:
       nethermind_image:
@@ -48,7 +39,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           path: nethermind
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Set Matrix
         id: set-matrix
@@ -59,15 +50,7 @@ jobs:
             matrix=$(echo "$matrix" | jq --arg filter "${{ github.event.inputs.network_filter }}" '[.[] | select(.network | contains($filter))]')
           fi
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            requested_mode="${{ github.event.inputs.mode }}"
-          elif [ "${{ github.event_name }}" = "schedule" ]; then
-            requested_mode="Both"
-          else
-            requested_mode="HalfPath"
-          fi
-
-          requested_mode=$(echo "$requested_mode" | tr '[:upper:]' '[:lower:]')
+          requested_mode=$(echo "${{ github.event.inputs.mode }}" | tr '[:upper:]' '[:lower:]')
 
           case "$requested_mode" in
             both)
@@ -85,16 +68,19 @@ jobs:
               ;;
           esac
 
-          matrix=$(echo "$matrix" | jq --argjson modes "$modes" '
+          matrix=$(echo "$matrix" | jq --argjson modes "$modes" --arg run_id "$GITHUB_RUN_ID" '
             [.[] as $config
              | $modes[] as $mode
              | $config + {
                  mode: $mode,
                  runner_label: (
                    (if $mode == "Flat" then "f-" else "hp-" end)
-                   + env.GITHUB_RUN_ID + "-" + $config.network
+                   + $run_id + "-" + $config.network
                  )
                }]
+            | sort_by(if .mode == "Flat" then 0 else 1 end)
+            | to_entries
+            | map(.value + { batch_index: ((.key / 5) | floor) })
           ')
 
           echo "matrix=$(echo "$matrix" | jq -c .)" >> "$GITHUB_OUTPUT"
@@ -110,6 +96,14 @@ jobs:
       runner_label: ${{ steps.run-linode-action.outputs.runner_label }}
       machine_id: ${{ steps.run-linode-action.outputs.machine_id }}
     steps:
+      - name: Stagger runner creation (rate limit)
+        if: ${{ matrix.config.batch_index > 0 }}
+        env:
+          BATCH: ${{ matrix.config.batch_index }}
+        run: |
+          echo "Batch $BATCH — sleeping $(( BATCH * 10 ))s to avoid Linode rate limit"
+          sleep $(( BATCH * 10 ))
+
       - name: Install sshpass
         run: sudo apt-get update && sudo apt-get install -y sshpass
 
@@ -160,7 +154,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           clean: true
-          ref: ${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+          ref: ${{ github.ref_name || 'master' }}
 
       - name: Checkout tests repository
         uses: actions/checkout@v6
@@ -219,7 +213,7 @@ jobs:
           node_name="SyncSupportedChains-${network}-${sync_mode}-${GITHUB_RUN_ID}"
 
           if [ -z "${{ inputs.nethermind_image }}" ]; then
-            REF_NAME=${{ github.event.workflow_run.head_branch || github.ref_name || 'master' }}
+            REF_NAME="${{ github.ref_name }}"
             CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}")
             if [[ $CLEAN_REF == release/* ]]; then
               CLEAN_REF=$(echo "$CLEAN_REF" | sed 's/[^a-zA-Z0-9._-]/-/g')
