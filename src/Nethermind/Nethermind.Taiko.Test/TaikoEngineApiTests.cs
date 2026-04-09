@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using NUnit.Framework;
 using Nethermind.Core;
 using Nethermind.Consensus.Producers;
@@ -121,5 +122,48 @@ public class TaikoEngineApiTests
         {
             Assert.That(result.Result.Error, Does.Contain("Invalid payload timestamp"));
         }
+    }
+
+    [Test]
+    public async Task IsOnMainChainBehindHead_Override_PreventsAncestorReorgSkip()
+    {
+        // Taiko overrides IsOnMainChainBehindHead to always proceed (return true).
+        // Without the override, FCU to a canonical ancestor >32 blocks behind head would be skipped
+        // and UpdateMainChain would NOT be called. With the override, it must be called.
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+
+        Block deepAncestor = Build.A.Block.WithNumber(1).TestObject;
+        Block headBlock = Build.A.Block.WithNumber(34).TestObject;
+
+        blockTree.FindBlock(deepAncestor.Hash!, BlockTreeLookupOptions.DoNotCreateLevelIfMissing).Returns(deepAncestor);
+        blockTree.GetInfo(deepAncestor.Number, deepAncestor.Hash!).Returns(
+            (new BlockInfo(deepAncestor.Hash!, 0) { WasProcessed = true }, new ChainLevelInfo(true)));
+        blockTree.Head.Returns(headBlock);
+        blockTree.HeadHash.Returns(headBlock.Hash!);
+        blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+        blockTree.IsMainChain(Arg.Any<Hash256>()).Returns(true);
+
+        TaikoForkchoiceUpdatedHandler handler = new(
+            blockTree,
+            Substitute.For<IManualBlockFinalizationManager>(),
+            Substitute.For<IPoSSwitcher>(),
+            Substitute.For<IPayloadPreparationService>(),
+            Substitute.For<IBlockProcessingQueue>(),
+            Substitute.For<IBlockCacheService>(),
+            Substitute.For<IInvalidChainTracker>(),
+            Substitute.For<IMergeSyncController>(),
+            Substitute.For<IBeaconPivot>(),
+            Substitute.For<IPeerRefresher>(),
+            Substitute.For<ISpecProvider>(),
+            Substitute.For<ISyncPeerPool>(),
+            new MergeConfig(),
+            Substitute.For<ILogManager>()
+        );
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await handler.Handle(
+            new ForkchoiceStateV1(deepAncestor.Hash!, Keccak.Zero, Keccak.Zero), null, 1);
+
+        Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+        blockTree.Received().UpdateMainChain(Arg.Any<IReadOnlyList<Block>>(), true, true);
     }
 }

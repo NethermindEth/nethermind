@@ -94,7 +94,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (_blockTree.IsOnMainChainBehindOrEqualHead(newHeadBlock))
+        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
             errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
@@ -167,9 +167,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
-            if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (_blockTree.IsOnMainChainBehindOrEqualHead(newHeadBlock))
             {
-                return errorResult;
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
@@ -246,10 +247,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+        if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
-            return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
+            return result;
         }
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadBlock.Hash;
