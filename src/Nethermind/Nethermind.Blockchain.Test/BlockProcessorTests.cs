@@ -48,10 +48,12 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig());
+        IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(stateProvider, new ExecuteTransactionProcessorAdapter(transactionProcessor), HoodiSpecProvider.Instance, balManager);
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,
             rewardCalculator ?? NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            transactionsExecutor,
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -59,7 +61,8 @@ public class BlockProcessorTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            new BlockAccessListManager(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig()));
+            balManager);
+            
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,
