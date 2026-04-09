@@ -32,10 +32,18 @@ public class StateCompositionPlugin : INethermindPlugin
     {
         if (_api is null) return Task.CompletedTask;
 
+        ILogger logger = _api.LogManager.GetClassLogger<StateCompositionPlugin>();
         IStateCompositionConfig config = _api.Config<IStateCompositionConfig>();
+
+        // Force-instantiate the service so its constructor subscribes to
+        // IBlockTree.NewHeadBlock. Without this, lazy DI defers construction
+        // until the first RPC call and incremental diffs/metrics never fire.
+        _api.Context.Resolve<IStateCompositionService>();
+
         if (!config.PersistSnapshots) return Task.CompletedTask;
 
-        ILogger logger = _api.LogManager.GetClassLogger<StateCompositionPlugin>();
+        // Same reason — pruner subscribes to NewHeadBlock in its constructor.
+        _api.Context.Resolve<StateCompositionSnapshotPruner>();
 
         StateCompositionSnapshotStore store = _api.Context.Resolve<StateCompositionSnapshotStore>();
         IStateCompositionStateHolder stateHolder = _api.Context.Resolve<IStateCompositionStateHolder>();
