@@ -42,13 +42,15 @@ public class BlockAccessListManager(
     IBlocksConfig blocksConfig)
 {
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
-    public bool ParallelExecutionEnabled { get; set; } = false;
+    public bool Enabled { get; private set; }
+    public bool ParallelExecutionEnabled { get; private set; }
     private BlockExecutionContext? _blockExecutionContext;
     private TxProcessorWithWorldStateManager? _txProcessorWithWorldStateManager;
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
+    private bool _isBuilding;
 
-    public void Reset()
+    private void Reset()
     {
         _txProcessorWithWorldStateManager = null;
         _blockExecutionContext = null;
@@ -56,10 +58,29 @@ public class BlockAccessListManager(
         GeneratedBlockAccessList.Reset();
     }
 
-    public void Setup(Block block, bool parallel)
+    public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
-        if (parallel)
+        Enabled = spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
+        if (Enabled)
         {
+            _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
+            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding;
+            Reset();
+            // executor.SetBlockAccessListManager(this); // just pass in with DI?
+            _gasRemaining = suggestedBlock.GasUsed;
+
+            if (ParallelExecutionEnabled)
+            {
+                LoadPreStateToSuggestedBlockAccessList(spec, suggestedBlock);
+            }
+        }
+    }
+
+    public void Setup(Block block)
+    {
+        if (ParallelExecutionEnabled)
+        {
+            // reuse
             _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
         else
@@ -67,9 +88,6 @@ public class BlockAccessListManager(
             _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
         }
     }
-
-    public void SetGasUsed(long gasUsed)
-        => _gasRemaining = gasUsed;
 
     public void SpendGas(long gas)
         => _gasRemaining -= gas;
@@ -172,17 +190,34 @@ public class BlockAccessListManager(
 
     public void ApplyAuRaPreprocessingChanges(IReleaseSpec spec, Address withdrawalContractAddress)
     {
+        if (!Enabled)
+        {
+            return;
+        }
+
         stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero, UInt256.Zero);
         stateProvider.CreateAccount(withdrawalContractAddress, UInt256.Zero, UInt256.Zero);
         stateProvider.Commit(spec.ForSystemTransaction(true, false), commitRoots: false);
     }
 
-    public void SetBlockAccessList(Block block, IReleaseSpec spec)
+    public void SetBlockAccessList(Block block)
     {
-        _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-        block.GeneratedBlockAccessList = GeneratedBlockAccessList;
-        block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
-        block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+        if (!Enabled)
+        {
+            return;
+        }
+
+        if (block.IsGenesis)
+        {
+            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
+        }
+        else
+        {
+            _txProcessorWithWorldStateManager.GetPostExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+            block.GeneratedBlockAccessList = GeneratedBlockAccessList;
+            block.EncodedBlockAccessList = Rlp.Encode(GeneratedBlockAccessList).Bytes;
+            block.Header.BlockAccessListHash = new(ValueKeccak.Compute(block.EncodedBlockAccessList).Bytes);
+        }
     }
 
     public void ValidateBlockAccessList(Block block, ushort index, bool validateStorageReads = true)
@@ -289,10 +324,10 @@ public class BlockAccessListManager(
         new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec, ProcessingOptions options)
+    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         IWithdrawalProcessor withdrawalProcessor = new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager);
-        if (options.ContainsFlag(ProcessingOptions.ProducingBlock))
+        if (_isBuilding)
         {
             withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
         }

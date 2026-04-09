@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -40,7 +41,8 @@ public partial class BlockProcessor(
     IBlockhashStore blockHashStore,
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
-    IExecutionRequestsProcessor executionRequestsProcessor)
+    IExecutionRequestsProcessor executionRequestsProcessor,
+    BlockAccessListManager balManager)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
@@ -48,6 +50,9 @@ public partial class BlockProcessor(
     protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
+    private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
+    private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, balManager);
+    private SystemContractHandler _systemContractHandler;
 
     /// <summary>
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
@@ -61,6 +66,8 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
+        balManager.PrepareForProcessing(suggestedBlock, spec, options);
+        _systemContractHandler = balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -107,8 +114,10 @@ public partial class BlockProcessor(
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
-        StoreBeaconRoot(block, spec);
-        blockHashStore.ApplyBlockhashStateChanges(header, spec);
+        balManager.Setup(block);
+
+        _systemContractHandler.StoreBeaconRoot(block, spec);
+        _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         _stateProvider.Commit(spec, commitRoots: false);
 
         TxReceipt[] receipts;
@@ -130,13 +139,13 @@ public partial class BlockProcessor(
         header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
         ApplyMinerRewards(block, blockTracer, spec);
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _systemContractHandler.ProcessWithdrawals(block, spec);
 
         // We need to do a commit here as in _executionRequestsProcessor while executing system transactions
         // the spec has Eip158Enabled=false, so we end up persisting empty accounts created while processing withdrawals.
         _stateProvider.Commit(spec, commitRoots: false);
 
-        executionRequestsProcessor.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
+        _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -153,10 +162,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        if (spec.BlockLevelAccessListsEnabled)
-        {
-            block.Header.BlockAccessListHash = Keccak.OfAnEmptySequenceRlp;
-        }
+        balManager.SetBlockAccessList(block);
 
         header.Hash = header.CalculateHash();
 
@@ -308,5 +314,57 @@ public partial class BlockProcessor(
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
+    }
+
+    public interface ISystemContractHandler : IBeaconBlockRootHandler, IBlockhashStore, IWithdrawalProcessor, IExecutionRequestsProcessor
+    {
+    }
+
+    public class SystemContractHandler(
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        IBlockhashStore blockHashStore,
+        IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor) : ISystemContractHandler
+    {
+        public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
+            => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
+
+        public virtual void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer = null)
+            => beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
+
+        public AccessList? GetAccessList(Block block, IReleaseSpec spec)
+            => beaconBlockRootHandler.GetAccessList(block, spec);
+
+        public virtual void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+            => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
+
+        public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
+            => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
+
+        public virtual void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+            => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
+
+        public virtual void ProcessWithdrawals(Block block, IReleaseSpec spec)
+            => withdrawalProcessor.ProcessWithdrawals(block, spec);
+    }
+
+    public class BlockAccessListSystemContractHandler(
+        IBeaconBlockRootHandler beaconBlockRootHandler,
+        IBlockhashStore blockHashStore,
+        IWithdrawalProcessor withdrawalProcessor,
+        IExecutionRequestsProcessor executionRequestsProcessor,
+        BlockAccessListManager balManager) : SystemContractHandler(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor)
+    {
+        public override void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
+            => balManager.StoreBeaconRoot(block, spec);
+
+        public override void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+            => balManager.ApplyBlockhashStateChanges(blockHeader, spec);
+
+        public override void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+            => balManager.ProcessExecutionRequests(block, receipts, spec);
+
+        public override void ProcessWithdrawals(Block block, IReleaseSpec spec)
+            => balManager.ProcessWithdrawals(block, spec);
     }
 }

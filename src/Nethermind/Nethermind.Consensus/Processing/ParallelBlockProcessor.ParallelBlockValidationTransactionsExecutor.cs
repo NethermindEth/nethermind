@@ -20,37 +20,37 @@ public partial class ParallelBlockProcessor
         IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
         ISpecProvider specProvider,
+        BlockAccessListManager balManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
     {
-        private BlockAccessListManager? _balManager;
         private TxReceipt[] _txReceipts;
 
         public override void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
         {
-            if (_balManager is null)
+            if (!balManager.Enabled)
             {
                 base.SetBlockExecutionContext(blockExecutionContext);
             }
             else
             {
-                _balManager.SetBlockExecutionContext(blockExecutionContext);
+                balManager.SetBlockExecutionContext(blockExecutionContext);
             }
         }
 
-        public override void SetBlockAccessListManager(in BlockAccessListManager balManager)
-            => _balManager = balManager;
+        // public override void SetBlockAccessListManager(in BlockAccessListManager balManager)
+        //     => _balManager = balManager;
 
         public override TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            if (_balManager is null)
+            if (!balManager.Enabled)
             {
                 return base.ProcessTransactions(block, processingOptions, receiptsTracer, token);
             }
 
             Metrics.ResetBlockStats();
 
-            _txReceipts = !block.IsGenesis && _balManager.ParallelExecutionEnabled ?
+            _txReceipts = !block.IsGenesis && balManager.ParallelExecutionEnabled ?
                 ProcessTransactionsParallel(block, processingOptions, token) :
                 ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 
@@ -59,15 +59,15 @@ public partial class ParallelBlockProcessor
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            _balManager.ValidateBlockAccessList(block, 0);
+            balManager.ValidateBlockAccessList(block, 0);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
-                ProcessTransaction(_balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
+                ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
-                _balManager.SpendGas(currentTx.BlockGasUsed);
-                _balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
+                balManager.SpendGas(currentTx.BlockGasUsed);
+                balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
             }
 
             return [.. receiptsTracer.TxReceipts];
@@ -87,14 +87,14 @@ public partial class ParallelBlockProcessor
                 gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>();
             }
 
-            Task incrementalValidationTask = Task.Run(() => _balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
+            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
 
             // todo: change to Parallel.For?
             ParallelUnbalancedWork.For(
                 0,
                 len + 1,
                 ParallelUnbalancedWork.DefaultOptions,
-                (block, processingOptions, stateProvider: _stateProvider, balManager: _balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
+                (block, processingOptions, stateProvider: _stateProvider, balManager, receiptsTracers, gasResults, specProvider, txs: block.Transactions),
                 static (i, state) =>
                 {
                     if (i == 0)
