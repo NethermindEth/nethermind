@@ -875,9 +875,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         IPrecompile precompile = state.Env.CodeInfo.Precompile!;
 
-        // Expose remaining gas so DataGasCost() can use it (e.g., L1STATICCALL gas limiting)
-        PrecompileGasContext.AvailableGas = TGasPolicy.GetRemainingGas(in gas);
-
         IReleaseSpec spec = BlockExecutionContext.Spec;
         long baseGasCost = precompile.BaseGasCost(spec);
         long dataGasCost = precompile.DataGasCost(callData, spec);
@@ -907,6 +904,57 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         state.Gas = gas;
+
+        if (precompile is IPrecompileGasAware gasAwarePrecompile)
+        {
+            long remainingGas = TGasPolicy.GetRemainingGas(in gas);
+
+            try
+            {
+                Result<(byte[] returnValue, long gasConsumed)> output = gasAwarePrecompile.Run(callData, spec, remainingGas);
+
+                // Deduct dynamic gas (actual L1 consumption) regardless of success/failure.
+                // On L1 OOG the user loses the full gas limit — matching standard EVM sub-call semantics.
+                long gasConsumed = output.Data.gasConsumed;
+                if (gasConsumed > 0 && !TGasPolicy.UpdateGas(ref gas, gasConsumed))
+                {
+                    return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
+                }
+
+                state.Gas = gas;
+
+                if (!output)
+                {
+                    return new(
+                        output.Data.returnValue ?? [],
+                        precompileSuccess: false,
+                        shouldRevert: true,
+                        exceptionType: EvmExceptionType.PrecompileFailure
+                    )
+                    {
+                        SubstateError = GetErrorString(precompile, output.Error)
+                    };
+                }
+
+                return new(
+                    output.Data.returnValue,
+                    precompileSuccess: true,
+                    shouldRevert: false,
+                    exceptionType: EvmExceptionType.None
+                );
+            }
+            catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+            {
+                if (_logger.IsError) LogMissingDependency(precompile, exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException);
+                Environment.Exit(ExitCodes.MissingPrecompile);
+                throw; // Unreachable
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) LogExecutionException(precompile, exception);
+                return new(default, precompileSuccess: false, shouldRevert: true);
+            }
+        }
 
         try
         {

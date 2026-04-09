@@ -19,27 +19,19 @@ namespace Nethermind.Taiko.Precompiles;
 ///   [52:...)  calldata    — ABI-encoded function call (may be empty)
 ///
 /// Output: variable-length ABI-encoded return data from the L1 call.
-/// </summary>
-/// <summary>
+///
 /// Gas model:
 ///   BaseGasCost  = 2000 (fixed)
-///   DataGasCost  = 10000 (per-call overhead) + 16/byte (calldata) + actual L1 gas consumed
-///   The L1 call is executed during DataGasCost() via debug_traceCall, with gas limit =
-///   min(remaining L2 gas − overhead, configurable cap). Result is cached for Run() via [ThreadStatic].
+///   DataGasCost  = 10000 (per-call overhead) + 16/byte (calldata)
+///   Dynamic cost = actual L1 gas consumed (reported via IPrecompileGasAware.Run)
+///   The L1 call is executed during Run() via debug_traceCall, with gas limit =
+///   min(remainingGas, GasCap).
 /// </summary>
-public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
+public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrecompileGasAware
 {
     public static readonly L1StaticCallPrecompile Instance = new();
 
     private const string L1StaticCallFailed = "l1 static call failed";
-
-    /// <summary>
-    /// Cached result from DataGasCost() for consumption by Run().
-    /// Thread-safe: DataGasCost() and Run() execute sequentially on the same thread
-    /// in VirtualMachine.RunPrecompile(). Cleared after Run() consumes it.
-    /// </summary>
-    [ThreadStatic]
-    private static L1CallResult? s_cachedResult;
 
     private L1StaticCallPrecompile()
     {
@@ -54,9 +46,8 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1StaticCallFixedGasCost;
 
     /// <summary>
-    /// Executes the L1 call via debug_traceCall and returns static overhead + actual L1 gas consumed.
-    /// The call result is cached in <see cref="s_cachedResult"/> for <see cref="Run"/> to return.
-    /// The L1 gas limit is min(remaining L2 gas from <see cref="PrecompileGasContext"/>, <see cref="GasCap"/>).
+    /// Returns the static overhead cost: per-call overhead + per-byte calldata cost.
+    /// The dynamic L1 gas cost is handled by <see cref="Run(ReadOnlyMemory{byte}, IReleaseSpec, long)"/>.
     /// </summary>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
@@ -64,23 +55,35 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
             return 0L;
 
         int calldataLength = inputData.Length - L1PrecompileConstants.L1StaticCallMinInputLength;
-        long staticCost = L1PrecompileConstants.L1StaticCallPerCallOverhead
+        return L1PrecompileConstants.L1StaticCallPerCallOverhead
             + L1PrecompileConstants.L1StaticCallPerByteCalldataCost * calldataLength;
+    }
+
+    /// <summary>
+    /// Gas-aware execution: executes the L1 call, returns both the result and actual L1 gas consumed.
+    /// The VM deducts <c>gasConsumed</c> from the caller's remaining gas after this returns.
+    /// </summary>
+    public Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas)
+    {
+        L1PrecompileMetrics.L1StaticCallPrecompile++;
+
+        if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
+        {
+            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: rejected invalid input length {inputData.Length}, minimum {L1PrecompileConstants.L1StaticCallMinInputLength}");
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(Errors.InvalidInputLength);
+        }
 
         if (L1CallProvider is null)
         {
-            s_cachedResult = L1CallResult.Failure();
-            return staticCost;
+            if (Logger.IsWarn) Logger.Warn("L1STATICCALL: no L1CallProvider configured");
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StaticCallFailed);
         }
 
         Address contractAddress = new(inputData.Span[..Address.Size]);
         UInt256 blockNumber = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
         byte[] calldata = inputData.Span[(Address.Size + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
 
-        // Reserve base + static overhead so total precompile cost never exceeds available gas
-        long overhead = L1PrecompileConstants.L1StaticCallFixedGasCost + staticCost;
-        long affordableL1Gas = PrecompileGasContext.AvailableGas - overhead;
-        long gasLimit = Math.Min(Math.Max(0, affordableL1Gas), GasCap);
+        long gasLimit = Math.Min(Math.Max(0, remainingGas), GasCap);
 
         L1CallResult result;
         try
@@ -90,47 +93,39 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
         catch (Exception ex)
         {
             if (Logger.IsError) Logger.Error($"L1STATICCALL: exception in ExecuteTraceCall: {ex.Message}", ex);
-            result = L1CallResult.Failure();
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(L1StaticCallFailed);
         }
-
-        s_cachedResult = result;
 
         if (result.Failed || result.ReturnData is null)
-            return staticCost;
+        {
+            if (Logger.IsWarn) Logger.Warn("L1STATICCALL: L1 call failed");
+            // Report gasUsed even on failure — the L1 node did the work and the user must pay.
+            // On L1 OOG, gasUsed equals the full gas limit.
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(
+                L1StaticCallFailed, (Array.Empty<byte>(), result.GasUsed));
+        }
 
-        return staticCost + result.GasUsed;
+        if (result.ReturnData.Length > L1PrecompileConstants.L1StaticCallMaxReturnDataSize)
+        {
+            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: return data too large ({result.ReturnData.Length} bytes, max {L1PrecompileConstants.L1StaticCallMaxReturnDataSize})");
+            return Result<(byte[] returnValue, long gasConsumed)>.Fail(
+                L1StaticCallFailed, (Array.Empty<byte>(), result.GasUsed));
+        }
+
+        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: success, return_len={result.ReturnData.Length}, l1GasUsed={result.GasUsed}");
+
+        return (result.ReturnData, result.GasUsed);
     }
 
+    /// <summary>
+    /// Fallback for <see cref="IPrecompile.Run"/>. Delegates to gas-aware overload with <see cref="GasCap"/>.
+    /// </summary>
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        L1PrecompileMetrics.L1StaticCallPrecompile++;
+        Result<(byte[] returnValue, long gasConsumed)> result = Run(inputData, releaseSpec, GasCap);
+        if (!result)
+            return Result<byte[]>.Fail(result.Error!);
 
-        // Consume cached result from DataGasCost() — clear to prevent stale data
-        L1CallResult? cached = s_cachedResult;
-        s_cachedResult = null;
-
-        if (inputData.Length < L1PrecompileConstants.L1StaticCallMinInputLength)
-        {
-            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: rejected invalid input length {inputData.Length}, minimum {L1PrecompileConstants.L1StaticCallMinInputLength}");
-            return Errors.InvalidInputLength;
-        }
-
-        if (cached is null || cached.Value.Failed || cached.Value.ReturnData is null)
-        {
-            if (Logger.IsWarn) Logger.Warn("L1STATICCALL: call failed or no cached result");
-            return L1StaticCallFailed;
-        }
-
-        byte[] returnData = cached.Value.ReturnData;
-
-        if (returnData.Length > L1PrecompileConstants.L1StaticCallMaxReturnDataSize)
-        {
-            if (Logger.IsWarn) Logger.Warn($"L1STATICCALL: return data too large ({returnData.Length} bytes, max {L1PrecompileConstants.L1StaticCallMaxReturnDataSize})");
-            return L1StaticCallFailed;
-        }
-
-        if (Logger.IsDebug) Logger.Debug($"L1STATICCALL: success, return_len={returnData.Length}, l1GasUsed={cached.Value.GasUsed}");
-
-        return returnData;
+        return result.Data.returnValue;
     }
 }

@@ -25,4 +25,9 @@ namespace Nethermind.Evm.Precompiles
     {
         static TPrecompileTypeInstance Instance { get; }
     }
+
+    public interface IPrecompileGasAware: IPrecompile
+    {
+        Result<(byte[] returnValue, long gasConsumed)> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec, long remainingGas);
+    }
 }
