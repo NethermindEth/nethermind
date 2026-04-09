@@ -171,7 +171,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
         Assert.That(data.Count, Is.EqualTo(7));
@@ -210,7 +210,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = result.Data;
@@ -251,7 +251,7 @@ public class EthSimulateTestsBlocksAndTransactions
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new SimulateBlockMutatorTracerFactory());
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
             executor.Execute(payload, BlockParameter.Latest);
@@ -319,5 +319,66 @@ public class EthSimulateTestsBlocksAndTransactions
         IReadOnlyList<SimulateBlockResult<SimulateCallResult>> data = (IReadOnlyList<SimulateBlockResult<SimulateCallResult>>)successResponse.Result!;
         var logs = data[0].Calls.First().Logs.ToArray();
         Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+    }
+
+    [Test]
+    public async Task Test_eth_simulate_log_index_increments_across_transactions()
+    {
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        Address contractWith2Logs = new("0xc200000000000000000000000000000000000000");
+        Address contractWith1Log = new("0xc300000000000000000000000000000000000000");
+
+        SimulatePayload<TransactionForRpc> payload = new()
+        {
+            BlockStateCalls =
+            [
+                new()
+                {
+                    StateOverrides = new Dictionary<Address, AccountOverride>
+                    {
+                        { TestItem.AddressA, new AccountOverride { Balance = 100.Ether } },
+                        { contractWith2Logs, new AccountOverride { Code = Bytes.FromHexString("0x60006000a060006000a0") } },
+                        { contractWith1Log, new AccountOverride { Code = Bytes.FromHexString("0x60006000a0") } }
+                    },
+                    Calls =
+                    [
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractWith2Logs,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        },
+                        new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = contractWith1Log,
+                            Gas = 100_000,
+                            GasPrice = 0
+                        }
+                    ]
+                }
+            ]
+        };
+
+        SimulateTxExecutor<SimulateCallResult> executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new SimulateBlockMutatorTracerFactory());
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result = executor.Execute(payload, BlockParameter.Latest);
+
+        Assert.That((bool)result.Result, Is.True, result.Result.ToString());
+
+        var block = result.Data.First();
+        Assert.That(block.Calls, Has.Count.EqualTo(2));
+
+        var calls = block.Calls.ToArray();
+
+        var tx0Logs = calls[0].Logs.ToArray();
+        Assert.That(tx0Logs, Has.Length.EqualTo(2));
+        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+
+        var tx1Logs = calls[1].Logs.ToArray();
+        Assert.That(tx1Logs, Has.Length.EqualTo(1));
+        Assert.That(tx1Logs[0].LogIndex, Is.EqualTo(2ul));
     }
 }

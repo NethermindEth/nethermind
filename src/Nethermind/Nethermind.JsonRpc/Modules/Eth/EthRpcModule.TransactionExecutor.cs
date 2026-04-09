@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -20,47 +21,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
     public partial class EthRpcModule
     {
         // Single call executor
-        private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
+        private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
             private bool NoBaseFee { get; set; }
 
-            protected override string? Validate(TransactionForRpc call)
+            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
-                if (call is LegacyTransactionForRpc legacyTransaction)
-                {
-                    if (legacyTransaction.To is null && legacyTransaction.Input is null or { Length: 0 })
-                        return ContractCreationWithoutDataError;
-                }
-
-                if (call is EIP1559TransactionForRpc eip1559Transaction)
-                {
-                    if (eip1559Transaction.GasPrice != null)
-                        return GasPriceInEip1559Error;
-
-                    if (eip1559Transaction.MaxFeePerGas is not null && eip1559Transaction.MaxFeePerGas == 0)
-                        return ZeroMaxFeePerGasError;
-
-                    if (eip1559Transaction.MaxFeePerGas < eip1559Transaction.MaxPriorityFeePerGas)
-                        return MaxFeePerGasSmallerThanMaxPriorityFeePerGasError(
-                            eip1559Transaction.MaxFeePerGas,
-                            eip1559Transaction.MaxPriorityFeePerGas);
-                }
-
-                if (call is BlobTransactionForRpc blobTransaction)
-                {
-                    if (blobTransaction.BlobVersionedHashes is null || blobTransaction.BlobVersionedHashes.Length == 0)
-                        return AtLeastOneBlobInBlobTransactionError;
-
-                    if (blobTransaction.To is null)
-                        return MissingToInBlobTxError;
-
-                    if (blobTransaction.MaxFeePerBlobGas is not null && blobTransaction.MaxFeePerBlobGas == 0)
-                        return ZeroMaxFeePerBlobGasError;
-                }
-
-                return null;
-            }
+                IReleaseSpec spec = specProvider.GetSpec(header);
+                Result<Transaction> result = call.ToTransaction(validateUserInput: true, spec: spec);
+                if (result.IsError) return result;
 
             protected override Transaction Prepare(TransactionForRpc call)
             {
@@ -96,9 +66,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     searchResult ??= _blockFinder.SearchForHeader(blockParameter);
                     if (!searchResult.Value.IsError)
-                    {
-                        transactionCall.Gas = searchResult.Value.Object.GasLimit;
-                    }
+                        transactionCall.Gas = searchResult.Value.Object!.GasLimit;
                 }
 
                 // enforces gas cap
@@ -123,11 +91,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
                             return ResultWrapper<TResult, string>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
                         }
 
-                        var errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
+                        string? errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
                         return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
                     }
 
-                    return ResultWrapper<TResult>.Fail(errorMessage, ErrorCodes.InvalidInput, bodyData);
+                    return ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);
                 }
 
                 return ResultWrapper<TResult>.Success(bodyData);
@@ -146,8 +114,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             private const string ContractCreationWithoutDataError = "contract creation without any data provided";
         }
 
-        private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig)
+        private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
+            : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
@@ -157,13 +125,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
-
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }
         }
 
-        private class EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
-            : TxExecutor<UInt256?>(blockchainBridge, blockFinder, rpcConfig)
+        private class EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
+            : TxExecutor<UInt256?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
@@ -175,24 +142,21 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, bool optimize)
-            : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig)
+        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
+            : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
                 CallOutput result = _blockchainBridge.CreateAccessList(header, tx, token, optimize);
 
-                var rpcAccessListResult = new AccessListResultForRpc(
+                AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),
                     gasUsed: GetResultGas(tx, result),
                     result.Error);
 
-                if (result.InputError)
-                {
-                    return ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput);
-                }
-
-                return ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
+                return result.InputError
+                    ? ResultWrapper<AccessListResultForRpc?>.Fail(result.Error!, ErrorCodes.InvalidInput)
+                    : ResultWrapper<AccessListResultForRpc?>.Success(rpcAccessListResult);
             }
 
             private static UInt256 GetResultGas(Transaction transaction, CallOutput result)

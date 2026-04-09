@@ -7,6 +7,7 @@ using Nethermind.Int256;
 using System.Text.Json.Serialization;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Eth;
+using Nethermind.Core.Specs;
 using System;
 
 namespace Nethermind.Optimism.Rpc;
@@ -64,10 +65,12 @@ public class DepositTransactionForRpc : TransactionForRpc, IFromTransaction<Depo
         DepositReceiptVersion = receipt?.DepositReceiptVersion;
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
-        var tx = base.ToTransaction();
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
+        if (baseResult.IsError) return baseResult;
 
+        Transaction tx = baseResult.Data;
         tx.SourceHash = SourceHash ?? throw new ArgumentNullException(nameof(SourceHash));
         tx.SenderAddress = From ?? throw new ArgumentNullException(nameof(From));
         tx.To = To;

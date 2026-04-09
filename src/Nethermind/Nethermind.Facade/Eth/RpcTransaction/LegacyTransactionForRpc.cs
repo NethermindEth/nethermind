@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -87,11 +88,13 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         }
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
-        var tx = base.ToTransaction();
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
+        if (baseResult.IsError) return baseResult;
 
-        tx.Nonce = Nonce ?? 0; // TODO: Should we pick the last nonce?
+        Transaction tx = baseResult.Data;
+        tx.Nonce = Nonce ?? UInt256.Zero; // TODO: Should we pick the last nonce?
         tx.To = To;
         tx.GasLimit = Gas ?? 90_000;
         tx.Value = Value ?? 0;
@@ -99,21 +102,12 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
         tx.GasPrice = GasPrice ?? 0;
         tx.ChainId = ChainId;
         tx.SenderAddress = From ?? Address.Zero;
-        if ((R != 0 || S != 0) && (R is not null || S is not null))
+        if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v;
-            if (V is null)
-            {
-                v = 0;
-            }
-            else if (V.Value > 1)
-            {
-                v = V.Value.ToUInt64(null); // non protected
-            }
-            else
-            {
-                v = EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
-            }
+            ulong v = V is null ? 0
+                : V.Value > 1
+                    ? V.Value.ToUInt64(null) // non protected
+                    : EthereumEcdsaExtensions.CalculateV(ChainId ?? 0, V.Value == 1); // protected
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
