@@ -568,5 +568,31 @@ namespace Nethermind.Core.Test
             }
             return data;
         }
+
+        [Test]
+        public void CountItems_counts_single_byte_items()
+        {
+            byte[] data = [0x01, 0x02, 0x03];
+            int count = RlpHelpers.CountItems(data, 0, data.Length, 10);
+            count.Should().Be(3);
+        }
+
+        [Test]
+        public void CountItems_respects_maxSearch()
+        {
+            byte[] data = [0x01, 0x02, 0x03, 0x04, 0x05];
+            int count = RlpHelpers.CountItems(data, 0, data.Length, 2);
+            count.Should().Be(2);
+        }
+
+        [Test]
+        public void CountItems_throws_on_truncated_long_form_prefix()
+        {
+            // 0xB8 = long string prefix (expects 1 byte of length to follow)
+            // But only the prefix byte is provided — data is truncated.
+            byte[] truncatedData = [0xB8];
+            Action act = () => RlpHelpers.CountItems(truncatedData, 0, truncatedData.Length, 10);
+            act.Should().Throw<RlpException>();
+        }
     }
 }

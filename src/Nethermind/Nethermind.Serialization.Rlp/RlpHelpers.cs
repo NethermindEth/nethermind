@@ -163,7 +163,13 @@ internal static class RlpHelpers
         int numberOfItems = 0;
         while (position < end && numberOfItems < maxSearch)
         {
-            position += PeekNextRlpLength(data, position);
+            int length = PeekNextRlpLength(data, position);
+            if (length < 1)
+            {
+                ThrowRlpException("RLP item length is zero — malformed data would cause infinite loop");
+            }
+
+            position += length;
             numberOfItems++;
         }
         return numberOfItems;
@@ -283,4 +289,8 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static long ThrowNotPositiveLong()
         => throw new RlpException("Long value is not a non-negative value");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowRlpException(string message)
+        => throw new RlpException(message);
 }
