@@ -49,6 +49,7 @@ public partial class BlockProcessor(
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
+    protected readonly BlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
     private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, balManager);
@@ -66,8 +67,8 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        balManager.PrepareForProcessing(suggestedBlock, spec, options);
-        _systemContractHandler = balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
+        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
+        _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -114,7 +115,7 @@ public partial class BlockProcessor(
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
-        balManager.Setup(block);
+        _balManager.Setup(block);
 
         _systemContractHandler.StoreBeaconRoot(block, spec);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
@@ -162,7 +163,7 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
-        balManager.SetBlockAccessList(block);
+        _balManager.SetBlockAccessList(block);
 
         header.Hash = header.CalculateHash();
 

@@ -66,7 +66,8 @@ internal class XdcBlockProcessorTests
             Substitute.For<IBlockhashStore>(),
             NullLogManager.Instance,
             Substitute.For<IWithdrawalProcessor>(),
-            Substitute.For<IExecutionRequestsProcessor>())
+            Substitute.For<IExecutionRequestsProcessor>(),
+            Substitute.For<BlockAccessListManager>())
         { }
 
         public new BlockExecutionContext CreateBlockExecutionContext(BlockHeader header, IReleaseSpec spec)

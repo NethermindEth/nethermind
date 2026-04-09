@@ -61,9 +61,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockhashStore, BlockhashStore>()
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
-            .AddDecorator<IBlockProcessor, ParallelBlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
+            .Add<BlockAccessListManager>()
             .AddScoped<IProcessingStats, ProcessingStats>()
             .AddScoped<IBlockchainProcessor, BlockchainProcessor>()
             .AddScoped<IRewardCalculator, IRewardCalculatorSource, ITransactionProcessor>((rewardSource, txP) => rewardSource.Get(txP))
@@ -128,7 +128,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
     {
         protected override void Load(ContainerBuilder builder) => builder
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
-            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, ParallelBlockProcessor.ParallelBlockValidationTransactionsExecutor>()
+            .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
             .AddScoped<ITransactionProcessorAdapter, ExecuteTransactionProcessorAdapter>();
     }
 }
