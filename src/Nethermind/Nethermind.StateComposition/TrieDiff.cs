@@ -46,7 +46,10 @@ public readonly record struct TrieDiff(
     int ContractsWithStorageAdded,
     int ContractsWithStorageRemoved,
     int EmptyAccountsAdded,
-    int EmptyAccountsRemoved
+    int EmptyAccountsRemoved,
+
+    // Optional per-depth distribution delta. Null when TrackDepthIncrementally is disabled.
+    DepthDelta? DepthDelta = null
 )
 {
     public int NetAccounts => AccountsAdded - AccountsRemoved;

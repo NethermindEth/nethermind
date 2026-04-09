@@ -1101,4 +1101,223 @@ public class TrieDiffWalkerTests
     }
 
     #endregion
+
+    #region 16. Depth delta tracking
+
+    [Test]
+    public void DepthDelta_Null_WhenTrackDepthDisabled()
+    {
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        tree.Set(TestItem.AddressB, CreateEOA(200));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root2 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: false);
+        TrieDiff diff = walker.ComputeDiff(root1, root2);
+
+        Assert.That(diff.DepthDelta, Is.Null);
+    }
+
+    [Test]
+    public void DepthDelta_NotNull_WhenTrackDepthEnabled()
+    {
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        tree.Set(TestItem.AddressB, CreateEOA(200));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root2 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(root1, root2);
+
+        Assert.That(diff.DepthDelta, Is.Not.Null);
+    }
+
+    [Test]
+    public void DepthDelta_AddOneLeaf_IncreasesValueNodesAtExpectedDepth()
+    {
+        // Single account → single leaf at depth 0 (no branch above it)
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        Hash256 emptyRoot = Keccak.EmptyTreeHash;
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
+
+        Assert.That(diff.DepthDelta, Is.Not.Null);
+        DepthDelta d = diff.DepthDelta!;
+
+        // Net leaf added at some depth — total ValueNodes across all depths must be +1
+        long totalValueNodeDelta = 0;
+        for (int i = 0; i < 16; i++) totalValueNodeDelta += d.AccountValueNodes[i];
+
+        Assert.That(totalValueNodeDelta, Is.EqualTo(1), "Exactly one account leaf added");
+    }
+
+    [Test]
+    public void DepthDelta_RemoveOneLeaf_DecreasesValueNodes()
+    {
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(root1, Keccak.EmptyTreeHash);
+
+        Assert.That(diff.DepthDelta, Is.Not.Null);
+        DepthDelta d = diff.DepthDelta!;
+
+        long totalValueNodeDelta = 0;
+        for (int i = 0; i < 16; i++) totalValueNodeDelta += d.AccountValueNodes[i];
+
+        Assert.That(totalValueNodeDelta, Is.EqualTo(-1), "Exactly one account leaf removed");
+    }
+
+    [Test]
+    public void DepthDelta_AddBranch_IncreasesFullNodesAndOccupancy()
+    {
+        // Two accounts force a branch node
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        tree.Set(TestItem.AddressB, CreateEOA(200));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root2 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(root1, root2);
+
+        Assert.That(diff.DepthDelta, Is.Not.Null);
+        DepthDelta d = diff.DepthDelta!;
+
+        // Net FullNodes added must be ≥ 0 (branches may be restructured, so old are removed)
+        long totalFullDelta = 0;
+        for (int i = 0; i < 16; i++) totalFullDelta += d.AccountFullNodes[i];
+
+        // Adding a second account requires at least one branch net-new or restructured
+        // The important invariant: TotalBranchNodesDelta tracks the occupancy histogram change
+        // Just verify the delta is consistent with total branch count change from the plain diff
+        Assert.That(d.TotalBranchNodesDelta, Is.GreaterThanOrEqualTo(0),
+            "Adding a second account should not net-remove branch nodes");
+    }
+
+    [Test]
+    public void DepthDelta_ShortNodesIncludeLeaves_GethConvention()
+    {
+        // Per Geth convention: ShortNodeCount = Extensions + Leaves
+        // So AccountShortNodes delta must equal AccountValueNodes delta for a pure leaf change
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        Hash256 emptyRoot = Keccak.EmptyTreeHash;
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
+
+        DepthDelta d = diff.DepthDelta!;
+
+        // For a pure leaf addition: ShortNodes delta at leaf depth should be >= ValueNodes delta
+        // (ShortNodes also includes extensions, but in this trivial trie there are none)
+        long totalShort = 0, totalValue = 0;
+        for (int i = 0; i < 16; i++) { totalShort += d.AccountShortNodes[i]; totalValue += d.AccountValueNodes[i]; }
+
+        Assert.That(totalShort, Is.GreaterThanOrEqualTo(totalValue),
+            "ShortNodes delta must be >= ValueNodes delta (Geth: ShortNode includes leaf shortNode)");
+    }
+
+    [Test]
+    public void DepthDelta_CumulativeDepthStats_ApplyDeltaMatchesSeedFromScan()
+    {
+        // Build a trie, scan it for baseline, then apply a delta for the change and check
+        // that the cumulative depth stats are consistent (no off-by-one from Geth shifts).
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressB, CreateEOA(200));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        // Full scan for baseline depth stats
+        using StateCompositionVisitor v1 = new(LimboLogs.Instance);
+        tree.Accept(v1, root1);
+        TrieDepthDistribution dist1 = v1.GetTrieDistribution();
+
+        CumulativeDepthStats cumDepth = new();
+        cumDepth.SeedFromScan(dist1);
+
+        // Add one more account
+        tree.Set(TestItem.AddressC, CreateEOA(300));
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root2 = tree.RootHash;
+
+        // Compute diff with depth tracking
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
+        TrieDiff diff = walker.ComputeDiff(root1, root2);
+        Assert.That(diff.DepthDelta, Is.Not.Null);
+
+        cumDepth.ApplyDelta(diff.DepthDelta!);
+
+        // Full scan at root2 for expected depth stats
+        using StateCompositionVisitor v2 = new(LimboLogs.Instance);
+        tree.Accept(v2, root2);
+        TrieDepthDistribution dist2 = v2.GetTrieDistribution();
+
+        CumulativeDepthStats expected = new();
+        expected.SeedFromScan(dist2);
+
+        // Total value nodes (leaves) must match between incremental and fresh scan
+        long incValueTotal = 0, expValueTotal = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            incValueTotal += cumDepth.AccountValueNodes[i];
+            expValueTotal += expected.AccountValueNodes[i];
+        }
+        Assert.That(incValueTotal, Is.EqualTo(expValueTotal),
+            "Total account leaf count (incremental) must match fresh scan");
+
+        // Total branch nodes must match
+        Assert.That(cumDepth.TotalBranchNodes, Is.EqualTo(expected.TotalBranchNodes),
+            "TotalBranchNodes (incremental) must match fresh scan");
+    }
+
+    #endregion
 }

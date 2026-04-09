@@ -21,6 +21,7 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     private bool _isInitialized;
 
     private CumulativeSizeStats? _incrementalStats;
+    private readonly CumulativeDepthStats _currentDepthStats = new();
     private long _incrementalBlock;
     private int _diffsSinceBaseline;
     private Hash256? _lastProcessedStateRoot;
@@ -45,6 +46,11 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
     public CumulativeSizeStats? IncrementalStats
     {
         get { lock (_lock) return _incrementalStats; }
+    }
+
+    public CumulativeDepthStats CurrentDepthStats
+    {
+        get { lock (_lock) return _currentDepthStats; }
     }
 
     public long IncrementalBlock
@@ -87,7 +93,8 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
         }
     }
 
-    public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot)
+    public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot,
+        TrieDepthDistribution? depthDistribution = null)
     {
         lock (_lock)
         {
@@ -95,10 +102,14 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline = 0;
             _lastProcessedStateRoot = stateRoot;
+            _currentDepthStats.Reset();
+            if (depthDistribution.HasValue)
+                _currentDepthStats.SeedFromScan(depthDistribution.Value);
         }
     }
 
-    public void UpdateIncremental(CumulativeSizeStats updated, long blockNumber, Hash256 stateRoot)
+    public void UpdateIncremental(CumulativeSizeStats updated, long blockNumber, Hash256 stateRoot,
+        DepthDelta? depthDelta = null)
     {
         lock (_lock)
         {
@@ -106,6 +117,8 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline++;
             _lastProcessedStateRoot = stateRoot;
+            if (depthDelta is not null)
+                _currentDepthStats.ApplyDelta(depthDelta);
         }
     }
 
@@ -120,6 +133,7 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
             // _isInitialized stays false — baseline scan data (TopN, distribution)
             // is not persisted. getCachedStats() returns incremental stats;
             // getTrieDistribution() requires a fresh scan.
+            // TODO (Phase C): restore _currentDepthStats from snapshot when snapshot schema is extended.
         }
     }
 }
