@@ -49,7 +49,7 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
     public static string Name => "L1STATICCALL";
     public static IL1CallProvider? L1CallProvider { get; set; }
     public static ILogger Logger { get; set; }
-    public static long GasCap { get; set; } = L1PrecompileConstants.L1CallDefaultGasCap;
+    public static long GasCap => L1PrecompileConstants.L1CallMaxGasCap;
 
     public long BaseGasCost(IReleaseSpec releaseSpec) => L1PrecompileConstants.L1StaticCallFixedGasCost;
 

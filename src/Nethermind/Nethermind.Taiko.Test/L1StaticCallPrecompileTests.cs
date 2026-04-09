@@ -16,7 +16,6 @@ namespace Nethermind.Taiko.Test;
 public class L1StaticCallPrecompileTests
 {
     private const long MockGasUsed = 5000L;
-    private const long TestGasCap = 30_000_000L;
     private const long TestAvailableGas = 1_000_000L;
 
     private L1StaticCallPrecompile _precompile = null!;
@@ -28,7 +27,6 @@ public class L1StaticCallPrecompileTests
         _precompile = L1StaticCallPrecompile.Instance;
         _spec = new TaikoReleaseSpec { IsL1StaticCallEnabled = true, TaikoL2Address = Address.Zero };
         L1StaticCallPrecompile.Logger = default;
-        L1StaticCallPrecompile.GasCap = TestGasCap;
         PrecompileGasContext.AvailableGas = TestAvailableGas;
     }
 
@@ -36,7 +34,6 @@ public class L1StaticCallPrecompileTests
     public void TearDown()
     {
         L1StaticCallPrecompile.L1CallProvider = null;
-        L1StaticCallPrecompile.GasCap = L1PrecompileConstants.L1CallDefaultGasCap;
         PrecompileGasContext.AvailableGas = 0;
     }
 
@@ -108,7 +105,6 @@ public class L1StaticCallPrecompileTests
         MockL1CallProvider mock = MockL1CallProvider.Returning(new byte[32], MockGasUsed);
         L1StaticCallPrecompile.L1CallProvider = mock;
         PrecompileGasContext.AvailableGas = 50_000;
-        L1StaticCallPrecompile.GasCap = 30_000_000;
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
         _precompile.DataGasCost(input, _spec);
@@ -123,12 +119,11 @@ public class L1StaticCallPrecompileTests
         MockL1CallProvider mock = MockL1CallProvider.Returning(new byte[32], MockGasUsed);
         L1StaticCallPrecompile.L1CallProvider = mock;
         PrecompileGasContext.AvailableGas = 100_000_000;
-        L1StaticCallPrecompile.GasCap = 30_000_000;
 
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
         _precompile.DataGasCost(input, _spec);
 
-        Assert.That(mock.LastGasLimit, Is.EqualTo(30_000_000));
+        Assert.That(mock.LastGasLimit, Is.EqualTo(L1PrecompileConstants.L1CallMaxGasCap));
     }
 
     // --- Run (with DataGasCost cache) ---

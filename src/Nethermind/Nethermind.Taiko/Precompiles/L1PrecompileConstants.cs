@@ -45,8 +45,8 @@ public static class L1PrecompileConstants
     public const int L1StaticCallMaxReturnDataSize = 24576;
 
     /// <summary>
-    /// Default safety cap for the gas limit passed to L1 debug_traceCall.
+    /// Maximum gas limit passed to L1 debug_traceCall.
     /// The actual limit is min(remainingL2Gas, this cap).
     /// </summary>
-    public const long L1CallDefaultGasCap = 30_000_000L;
+    public const long L1CallMaxGasCap = 30_000_000L;
 }
