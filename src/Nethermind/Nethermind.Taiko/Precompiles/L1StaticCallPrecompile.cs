@@ -25,7 +25,7 @@ namespace Nethermind.Taiko.Precompiles;
 ///   BaseGasCost  = 2000 (fixed)
 ///   DataGasCost  = 10000 (per-call overhead) + 16/byte (calldata) + actual L1 gas consumed
 ///   The L1 call is executed during DataGasCost() via debug_traceCall, with gas limit =
-///   min(remaining L2 gas, configurable cap). Result is cached for Run() via [ThreadStatic].
+///   min(remaining L2 gas − overhead, configurable cap). Result is cached for Run() via [ThreadStatic].
 /// </summary>
 public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
 {
@@ -77,8 +77,10 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>
         UInt256 blockNumber = new(inputData.Span[Address.Size..(Address.Size + L1PrecompileConstants.BlockNumberBytes)], isBigEndian: true);
         byte[] calldata = inputData.Span[(Address.Size + L1PrecompileConstants.BlockNumberBytes)..].ToArray();
 
-        // Remaining L2 gas bounds L1 work; safety cap prevents unbounded calls
-        long gasLimit = Math.Min(PrecompileGasContext.AvailableGas, GasCap);
+        // Reserve base + static overhead so total precompile cost never exceeds available gas
+        long overhead = L1PrecompileConstants.L1StaticCallFixedGasCost + staticCost;
+        long affordableL1Gas = PrecompileGasContext.AvailableGas - overhead;
+        long gasLimit = Math.Min(Math.Max(0, affordableL1Gas), GasCap);
 
         L1CallResult result;
         try

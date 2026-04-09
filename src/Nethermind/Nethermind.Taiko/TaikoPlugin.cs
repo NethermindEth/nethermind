@@ -99,6 +99,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
             _api.Context.Resolve<IJsonSerializer>(),
             logManager,
             L1PrecompileConstants.L1RpcTimeout);
+        _api.DisposeStack.Push((IDisposable)l1RpcClient);
 
         if (sloadEnabled)
         {

@@ -6,6 +6,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Taiko.Precompiles;
 
+/// <summary>
+/// Retrieves storage values from L1 contracts via eth_getStorageAt RPC.
+/// </summary>
 public interface IL1StorageProvider
 {
     UInt256? GetStorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey);

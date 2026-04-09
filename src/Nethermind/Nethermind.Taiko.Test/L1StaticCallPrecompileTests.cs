@@ -113,7 +113,8 @@ public class L1StaticCallPrecompileTests
         byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
         _precompile.DataGasCost(input, _spec);
 
-        Assert.That(mock.LastGasLimit, Is.EqualTo(50_000));
+        // overhead = BaseGasCost(2000) + PerCallOverhead(10000) = 12000
+        Assert.That(mock.LastGasLimit, Is.EqualTo(38_000));
     }
 
     [Test]
