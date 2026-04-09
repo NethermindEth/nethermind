@@ -12,6 +12,18 @@ namespace Nethermind.StateComposition.Test;
 [TestFixture]
 public class CumulativeDepthStatsTests
 {
+    /// <summary>
+    /// Produces an empty-but-seeded instance so <see cref="CumulativeDepthStats.ApplyDelta"/>
+    /// takes effect. Required since the IsSeeded gate no-ops deltas on a cold baseline
+    /// (the gate is what prevents negative gauges across restarts).
+    /// </summary>
+    private static CumulativeDepthStats NewSeededEmpty()
+    {
+        CumulativeDepthStats s = new();
+        s.SeedFromSnapshot(new CumulativeDepthStats());
+        return s;
+    }
+
     // ------------------------------------------------------------------
     // 1. SeedFromScan round-trip: values written by SeedFromScan must
     //    produce the same gauge values as UpdateFromDistribution when
@@ -70,7 +82,7 @@ public class CumulativeDepthStatsTests
     [Test]
     public void ApplyDelta_SingleBucketIncrement_OnlyTargetBucketChanges()
     {
-        CumulativeDepthStats stats = new();
+        CumulativeDepthStats stats = NewSeededEmpty();
 
         DepthDelta delta = new();
         delta.AccountValueNodes[5] = 1;
@@ -108,7 +120,7 @@ public class CumulativeDepthStatsTests
     [Test]
     public void ApplyDelta_MultipleDeltas_Compound()
     {
-        CumulativeDepthStats stats = new();
+        CumulativeDepthStats stats = NewSeededEmpty();
 
         for (int i = 0; i < 3; i++)
         {
@@ -133,7 +145,7 @@ public class CumulativeDepthStatsTests
     [Test]
     public void ApplyDelta_NegativeDelta_Decrements()
     {
-        CumulativeDepthStats stats = new();
+        CumulativeDepthStats stats = NewSeededEmpty();
 
         // First add 5 leaves at depth 7
         DepthDelta addDelta = new();
@@ -191,7 +203,7 @@ public class CumulativeDepthStatsTests
     [Test]
     public void Clone_IsDeepCopy_MutatingOriginalDoesNotAffectClone()
     {
-        CumulativeDepthStats original = new();
+        CumulativeDepthStats original = NewSeededEmpty();
         DepthDelta delta = new();
         delta.AccountFullNodes[3] = 10;
         original.ApplyDelta(delta);

@@ -36,9 +36,22 @@ public sealed class CumulativeDepthStats
     public long TotalBranchNodes    { get; set; }
     public long TotalBranchChildren { get; set; }
 
+    /// <summary>
+    /// True once a baseline has been installed via <see cref="SeedFromScan"/> or
+    /// <see cref="SeedFromSnapshot"/>. Until that happens, <see cref="ApplyDelta"/>
+    /// is a no-op — applying deltas on top of an unseeded (all-zero) baseline would
+    /// push gauges negative whenever a diff removes more nodes than it adds at a
+    /// given depth. The gate guarantees gauges stay at 0 until a correct baseline is
+    /// available, eliminating the "negative metrics" failure mode across restarts
+    /// and cold starts.
+    /// </summary>
+    public bool IsSeeded { get; private set; }
+
     /// <summary>Apply a diff delta in-place. Allocation-free on the hot path.</summary>
+    /// <remarks>No-op until <see cref="IsSeeded"/> is true.</remarks>
     public void ApplyDelta(DepthDelta d)
     {
+        if (!IsSeeded) return;
         for (int i = 0; i < 16; i++)
         {
             AccountFullNodes[i]  += d.AccountFullNodes[i];
@@ -69,6 +82,7 @@ public sealed class CumulativeDepthStats
         Array.Clear(BranchOccupancy);
         TotalBranchNodes    = 0;
         TotalBranchChildren = 0;
+        IsSeeded            = false;
     }
 
     /// <summary>
@@ -121,9 +135,32 @@ public sealed class CumulativeDepthStats
         }
         TotalBranchNodes    = nodes;
         TotalBranchChildren = children;
+        IsSeeded            = true;
     }
 
-    /// <summary>Deep copy. Used for snapshot persistence (Phase C stub).</summary>
+    /// <summary>
+    /// Install a baseline previously persisted in a snapshot (Phase C). Copies the
+    /// raw physical-depth arrays as-is — no Geth shift conversion (the snapshot is
+    /// already in unshifted form).
+    /// </summary>
+    public void SeedFromSnapshot(CumulativeDepthStats source)
+    {
+        Reset();
+        Array.Copy(source.AccountFullNodes,  AccountFullNodes,  16);
+        Array.Copy(source.AccountShortNodes, AccountShortNodes, 16);
+        Array.Copy(source.AccountValueNodes, AccountValueNodes, 16);
+        Array.Copy(source.AccountNodeBytes,  AccountNodeBytes,  16);
+        Array.Copy(source.StorageFullNodes,  StorageFullNodes,  16);
+        Array.Copy(source.StorageShortNodes, StorageShortNodes, 16);
+        Array.Copy(source.StorageValueNodes, StorageValueNodes, 16);
+        Array.Copy(source.StorageNodeBytes,  StorageNodeBytes,  16);
+        Array.Copy(source.BranchOccupancy,   BranchOccupancy,   16);
+        TotalBranchNodes    = source.TotalBranchNodes;
+        TotalBranchChildren = source.TotalBranchChildren;
+        IsSeeded            = true;
+    }
+
+    /// <summary>Deep copy. Used for snapshot persistence.</summary>
     public CumulativeDepthStats Clone()
     {
         CumulativeDepthStats c = new();
@@ -138,6 +175,7 @@ public sealed class CumulativeDepthStats
         Array.Copy(BranchOccupancy,   c.BranchOccupancy,   16);
         c.TotalBranchNodes    = TotalBranchNodes;
         c.TotalBranchChildren = TotalBranchChildren;
+        c.IsSeeded            = IsSeeded;
         return c;
     }
 }

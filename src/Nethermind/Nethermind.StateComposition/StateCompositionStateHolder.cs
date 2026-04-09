@@ -133,7 +133,14 @@ public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
             // _isInitialized stays false — baseline scan data (TopN, distribution)
             // is not persisted. getCachedStats() returns incremental stats;
             // getTrieDistribution() requires a fresh scan.
-            // TODO (Phase C): restore _currentDepthStats from snapshot when snapshot schema is extended.
+
+            // Phase C: restore depth stats baseline if the snapshot carried one.
+            // When absent the depth stats stay unseeded, which means incremental
+            // deltas are dropped until a fresh scan seeds them — preventing
+            // negative gauges from applying deltas on a zero baseline.
+            _currentDepthStats.Reset();
+            if (snapshot.DepthStats is { IsSeeded: true } persisted)
+                _currentDepthStats.SeedFromSnapshot(persisted);
         }
     }
 }

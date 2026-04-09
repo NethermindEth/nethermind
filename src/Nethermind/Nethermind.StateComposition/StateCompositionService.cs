@@ -154,7 +154,8 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
             if (_config.PersistSnapshots)
                 _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
-                    cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number));
+                    cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number,
+                    _stateHolder.CurrentDepthStats.Clone()));
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: scan completed in {sw.Elapsed}. " +
@@ -272,7 +273,8 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                     _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
                         updated, head.Number, head.Header.StateRoot,
                         _stateHolder.DiffsSinceBaseline,
-                        _stateHolder.LastScanMetadata?.BlockNumber ?? 0));
+                        _stateHolder.LastScanMetadata?.BlockNumber ?? 0,
+                        _stateHolder.CurrentDepthStats.Clone()));
 
                 if (_logger.IsDebug)
                     _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
