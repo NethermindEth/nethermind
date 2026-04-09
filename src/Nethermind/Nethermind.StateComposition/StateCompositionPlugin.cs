@@ -39,15 +39,12 @@ public class StateCompositionPlugin : INethermindPlugin
         // Force-instantiate the service so its constructor subscribes to
         // IBlockTree.NewHeadBlock. Without this, lazy DI defers construction
         // until the first RPC call and incremental diffs/metrics never fire.
-        _api.Context.Resolve<IStateCompositionService>();
+        _api.Context.Resolve<StateCompositionService>();
 
         if (!config.PersistSnapshots) return Task.CompletedTask;
 
-        // Same reason — pruner subscribes to NewHeadBlock in its constructor.
-        _api.Context.Resolve<StateCompositionSnapshotPruner>();
-
         StateCompositionSnapshotStore store = _api.Context.Resolve<StateCompositionSnapshotStore>();
-        IStateCompositionStateHolder stateHolder = _api.Context.Resolve<IStateCompositionStateHolder>();
+        StateCompositionStateHolder stateHolder = _api.Context.Resolve<StateCompositionStateHolder>();
         IBlockTree blockTree = _api.Context.Resolve<IBlockTree>();
 
         StateCompositionSnapshot? snapshot;

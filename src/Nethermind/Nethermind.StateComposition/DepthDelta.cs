@@ -25,6 +25,29 @@ public sealed class DepthDelta
     public long TotalBranchNodesDelta;
     public long TotalBranchChildrenDelta;
 
+    /// <summary>
+    /// Returns true when every array element and both scalars are zero.
+    /// Used to skip the 149-setter <see cref="Metrics.UpdateFromDepthStats"/> call
+    /// on blocks that do not change the depth distribution.
+    /// </summary>
+    public bool IsEmpty()
+    {
+        if (TotalBranchNodesDelta != 0 || TotalBranchChildrenDelta != 0)
+            return false;
+
+        for (int i = 0; i < 16; i++)
+        {
+            if (AccountFullNodes[i]  != 0 || AccountShortNodes[i] != 0 ||
+                AccountValueNodes[i] != 0 || AccountNodeBytes[i]  != 0 ||
+                StorageFullNodes[i]  != 0 || StorageShortNodes[i] != 0 ||
+                StorageValueNodes[i] != 0 || StorageNodeBytes[i]  != 0 ||
+                BranchOccupancy[i]   != 0)
+                return false;
+        }
+
+        return true;
+    }
+
     /// <summary>Zero all arrays and scalars so the instance can be reused for the next diff.</summary>
     public void Clear()
     {

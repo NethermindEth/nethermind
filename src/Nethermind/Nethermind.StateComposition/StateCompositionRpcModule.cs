@@ -11,8 +11,8 @@ using Nethermind.JsonRpc;
 namespace Nethermind.StateComposition;
 
 public class StateCompositionRpcModule(
-    IStateCompositionService service,
-    IStateCompositionStateHolder stateHolder,
+    StateCompositionService service,
+    StateCompositionStateHolder stateHolder,
     IBlockTree blockTree,
     StateCompositionSnapshotStore snapshotStore)
     : IStateCompositionRpcModule
@@ -56,13 +56,12 @@ public class StateCompositionRpcModule(
             ResultWrapper<ScanMetadata?>.Success(stateHolder.LastScanMetadata));
     }
 
-    public async Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
+    public Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
     {
-        Result<TrieDepthDistribution> result = await service.GetTrieDistributionAsync()
-            .ConfigureAwait(false);
-        return !result.Success(out TrieDepthDistribution dist, out var error) ?
+        Result<TrieDepthDistribution> result = service.GetTrieDistribution();
+        return Task.FromResult(!result.Success(out TrieDepthDistribution dist, out var error) ?
             ResultWrapper<TrieDepthDistribution>.Fail(error, ErrorCodes.ResourceUnavailable) :
-            ResultWrapper<TrieDepthDistribution>.Success(dist);
+            ResultWrapper<TrieDepthDistribution>.Success(dist));
     }
 
     public Task<ResultWrapper<bool>> statecomp_cancelScan()

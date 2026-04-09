@@ -28,24 +28,6 @@ public class StateCompositionVisitorTests
     }
 
     [Test]
-    public void Visitor_IsFullDbScan()
-    {
-        Assert.That(_visitor.IsFullDbScan, Is.True);
-    }
-
-    [Test]
-    public void Visitor_ExtraReadFlag_IsHintCacheMiss()
-    {
-        Assert.That(_visitor.ExtraReadFlag, Is.EqualTo(ReadFlags.HintCacheMiss));
-    }
-
-    [Test]
-    public void Visitor_ExpectAccounts()
-    {
-        Assert.That(_visitor.ExpectAccounts, Is.True);
-    }
-
-    [Test]
     public void Visitor_ShouldVisit_AlwaysReturnsTrue()
     {
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
@@ -67,8 +49,9 @@ public class StateCompositionVisitorTests
         _visitor.ShouldVisit(in ctx2, in hash);
         _visitor.ShouldVisit(in ctx3, in hash);
 
-        // Create a branch node to trigger TotalBranchNodes count
-        TrieNode branchNode = new(NodeType.Branch, [0xc0]);
+        // Create a branch node to trigger TotalBranchNodes count.
+        // Use valid empty-branch RLP (17 × 0x80 = all-null children + null value).
+        TrieNode branchNode = new(NodeType.Branch, EmptyBranchRlp());
         StateCompositionContext branchCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in branchCtx, branchNode);
 
@@ -120,7 +103,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_SeparatesAccountAndStorageTries()
     {
-        TrieNode node = new(NodeType.Branch, [0xc0, 0x01, 0x02, 0x03]);
+        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
 
         StateCompositionContext accountCtx = new(default, level: 1, isStorage: false, branchChildIndex: null);
         StateCompositionContext storageCtx = new(default, level: 1, isStorage: true, branchChildIndex: null);
@@ -141,7 +124,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_TracksDepthDistribution()
     {
-        TrieNode node = new(NodeType.Branch, [0xc0, 0x01]);
+        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
 
         // Visit branches at depths 0, 1, 2
         for (int depth = 0; depth < 3; depth++)
@@ -163,9 +146,7 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_TracksByteSizes()
     {
-        byte[] rlp = new byte[100];
-        rlp[0] = 0xc0;
-        TrieNode node = new(NodeType.Branch, rlp);
+        TrieNode node = new(NodeType.Branch, EmptyBranchRlp());
 
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in ctx, node);
@@ -173,32 +154,6 @@ public class StateCompositionVisitorTests
         StateCompositionStats stats = _visitor.GetStats(1, null);
 
         Assert.That(stats.AccountTrieNodeBytes, Is.GreaterThan(0));
-    }
-
-    [Test]
-    public void Visitor_ThreadLocalAggregation()
-    {
-        // Simulate multithreaded access by visiting from main thread
-        // ThreadLocal creates separate counters per thread
-        SimulateAccounts(5, hasCode: true, hasStorage: false);
-
-        StateCompositionStats stats = _visitor.GetStats(1, null);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stats.AccountsTotal, Is.EqualTo(5));
-            Assert.That(stats.ContractsTotal, Is.EqualTo(5));
-        }
-    }
-
-    [Test]
-    public void Visitor_DisposesThreadLocal()
-    {
-        _visitor.Dispose();
-
-        // After dispose, accessing _localCounters.Values would throw
-        // Just verify no exception on dispose itself
-        Assert.Pass("Dispose completed without error");
     }
 
     [Test]
@@ -357,11 +312,8 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_BranchOccupancyDistribution_HasCorrectShape()
     {
-        // Stub TrieNodes don't have fully decoded RLP, so IsChildNull will be
-        // caught by the try-catch guard. This test verifies the distribution
-        // array is correctly shaped and returned via GetTrieDistribution().
-        byte[] rlp = [0xc0];
-        TrieNode branchNode = new(NodeType.Branch, rlp);
+        // Use valid empty-branch RLP so IsChildNull can decode correctly.
+        TrieNode branchNode = new(NodeType.Branch, EmptyBranchRlp());
 
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         _visitor.VisitBranch(in ctx, branchNode);
@@ -408,6 +360,19 @@ public class StateCompositionVisitorTests
             // Sorted descending by size — contract 2 (3x50=150) > contract 1 (1x2=2)
             Assert.That(stats.TopContractsBySize[0].TotalSize, Is.GreaterThan(stats.TopContractsBySize[1].TotalSize));
         }
+    }
+
+    /// <summary>
+    /// Returns a valid RLP-encoded empty branch node (17 × 0x80).
+    /// Needed so that <see cref="TrieNode.IsChildNull"/> can decode without throwing.
+    /// </summary>
+    private static byte[] EmptyBranchRlp()
+    {
+        // 17 items of 0x80 (RLP null/empty), list length = 17, short-list prefix = 0xC0 + 17 = 0xD1
+        byte[] rlp = new byte[18];
+        rlp[0] = 0xD1;
+        for (int i = 1; i <= 17; i++) rlp[i] = 0x80;
+        return rlp;
     }
 
     private void SimulateAccounts(int count, bool hasCode, bool hasStorage)

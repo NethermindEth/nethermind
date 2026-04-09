@@ -24,7 +24,9 @@ public class GethConventionRegressionTests
     {
         using StateCompositionVisitor visitor = new(LimboLogs.Instance);
 
-        TrieNode branchNode = new(NodeType.Branch, [0xc0, 0x01, 0x02]);
+        // Valid empty-branch RLP (17 × 0x80) so IsChildNull can decode without throwing.
+        byte[] emptyBranchRlp = new byte[18]; emptyBranchRlp[0] = 0xD1; for (int i = 1; i <= 17; i++) emptyBranchRlp[i] = 0x80;
+        TrieNode branchNode = new(NodeType.Branch, emptyBranchRlp);
         TrieNode extNode = new(NodeType.Extension, [0xc0, 0x01]);
         TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
 

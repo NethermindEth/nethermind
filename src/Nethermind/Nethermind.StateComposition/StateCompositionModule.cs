@@ -18,13 +18,11 @@ public class StateCompositionModule : Module
 
         builder.RegisterType<StateCompositionStateHolder>()
             .AsSelf()
-            .As<IStateCompositionStateHolder>()
             .SingleInstance();
 
         builder
             .AddSingleton<StateCompositionSnapshotStore>()
-            .AddSingleton<StateCompositionSnapshotPruner>()
-            .AddSingleton<IStateCompositionService, StateCompositionService>()
+            .AddSingleton<StateCompositionService>()
             .RegisterSingletonJsonRpcModule<IStateCompositionRpcModule, StateCompositionRpcModule>();
     }
 }

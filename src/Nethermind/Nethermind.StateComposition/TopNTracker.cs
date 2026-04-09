@@ -34,6 +34,17 @@ internal sealed class TopNTracker(int topN)
     }
 
     /// <summary>
+    /// Returns true if <paramref name="entry"/> would be inserted into at least one of the 4
+    /// ranking categories. Used to defer expensive <see cref="ImmutableArray"/> allocation
+    /// until we know the entry actually ranks — most contracts never rank and can skip the freeze.
+    /// </summary>
+    public bool WouldInsert(in TopContractEntry entry) =>
+        WouldTryInsert(TopByDepth, TopByDepthCount, entry, CompareByDepth)
+        || WouldTryInsert(TopByNodes, TopByNodesCount, entry, CompareByTotalNodes)
+        || WouldTryInsert(TopByValueNodes, TopByValueNodesCount, entry, CompareByValueNodes)
+        || WouldTryInsert(TopBySize, TopBySizeCount, entry, CompareBySize);
+
+    /// <summary>
     /// Merge another tracker's entries into this one.
     /// </summary>
     public void MergeFrom(TopNTracker other)
@@ -115,6 +126,23 @@ internal sealed class TopNTracker(int topN)
         // Replace if new entry is greater than current minimum
         if (comparer(entry, heap[minIdx]) > 0)
             heap[minIdx] = entry;
+    }
+
+    private bool WouldTryInsert(TopContractEntry[] heap, int count, in TopContractEntry entry, EntryComparer comparer)
+    {
+        // Not yet full — any entry would be inserted
+        if (count < topN)
+            return true;
+
+        // Full: insert only if entry beats the current minimum
+        int minIdx = 0;
+        for (int i = 1; i < topN; i++)
+        {
+            if (comparer(heap[i], heap[minIdx]) < 0)
+                minIdx = i;
+        }
+
+        return comparer(entry, heap[minIdx]) > 0;
     }
 
     private void MergeTopN(TopContractEntry[] target, ref int targetCount,

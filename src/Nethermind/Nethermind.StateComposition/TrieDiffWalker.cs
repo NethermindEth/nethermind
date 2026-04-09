@@ -555,16 +555,16 @@ public sealed class TrieDiffWalker
     private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
         ITrieNodeResolver resolver, bool isStorage, int depth)
     {
-        var oldLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
-        var newLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
+        var oldLeaves = new Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)>();
+        var newLeaves = new Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)>();
 
         CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves, depth);
         CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves, depth);
 
         // Diff leaves by full path for correct semantic counts
-        foreach (KeyValuePair<Hash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
+        foreach (KeyValuePair<ValueHash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
         {
-            Hash256 fullPath = kvp.Key;
+            ValueHash256 fullPath = kvp.Key;
             (TrieNode newLeaf, TreePath newLeafPath) = kvp.Value;
 
             if (oldLeaves.Remove(fullPath, out (TrieNode Leaf, TreePath Path) oldEntry))
@@ -586,7 +586,7 @@ public sealed class TrieDiffWalker
         }
 
         // Remaining old leaves not matched → genuinely removed
-        foreach (KeyValuePair<Hash256, (TrieNode Leaf, TreePath Path)> kvp in oldLeaves)
+        foreach (KeyValuePair<ValueHash256, (TrieNode Leaf, TreePath Path)> kvp in oldLeaves)
         {
             (TrieNode oldLeaf, TreePath oldLeafPath) = kvp.Value;
             TreePath leafPath = oldLeafPath;
@@ -600,7 +600,7 @@ public sealed class TrieDiffWalker
     /// to the caller for correct diff matching.
     /// </summary>
     private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
-        bool isStorage, bool added, Dictionary<Hash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
+        bool isStorage, bool added, Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
 
@@ -685,10 +685,10 @@ public sealed class TrieDiffWalker
                 // Store path BEFORE appending leaf key (needed for GetAddressHash)
                 TreePath pathAtLeaf = path;
 
-                // Compute full path for matching
+                // Compute full path for matching — use ValueHash256 directly to avoid allocation
                 int prevLen = path.Length;
                 if (node.Key is not null) path.AppendMut(node.Key);
-                Hash256 fullPath = path.Path.ToCommitment();
+                ValueHash256 fullPath = path.Path;
                 path.TruncateMut(prevLen);
 
                 leaves[fullPath] = (node, pathAtLeaf);

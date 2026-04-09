@@ -3,9 +3,11 @@
 
 #nullable enable
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using NSubstitute;
@@ -16,14 +18,35 @@ namespace Nethermind.StateComposition.Test;
 [TestFixture]
 public class StateCompositionRpcModuleTests
 {
+    // Minimal subclass that lets tests override only what they need without
+    // satisfying the full StateCompositionService constructor.
+    private class FakeService : StateCompositionService
+    {
+        public bool CancelScanCalled { get; private set; }
+
+        public FakeService() : base(
+            Substitute.For<Nethermind.State.IStateReader>(),
+            Substitute.For<Nethermind.State.IWorldStateManager>(),
+            Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(),
+            new StateCompositionSnapshotStore(new MemDb()),
+            Substitute.For<IStateCompositionConfig>(),
+            Nethermind.Logging.LimboLogs.Instance)
+        { }
+
+        public override void CancelScan()
+        {
+            CancelScanCalled = true;
+        }
+    }
+
     [Test]
     public async Task GetCachedStats_ReturnsNullStats_WhenNotInitialized()
     {
-        IStateCompositionStateHolder stateHolder = Substitute.For<IStateCompositionStateHolder>();
-        stateHolder.IsInitialized.Returns(false);
+        StateCompositionStateHolder stateHolder = new();
 
         StateCompositionRpcModule rpc = new(
-            Substitute.For<IStateCompositionService>(),
+            new FakeService(),
             stateHolder,
             Substitute.For<IBlockTree>(),
             new StateCompositionSnapshotStore(new MemDb()));
@@ -36,11 +59,10 @@ public class StateCompositionRpcModuleTests
     [Test]
     public async Task GetCacheMetadata_ReturnsNull_WhenNeverScanned()
     {
-        IStateCompositionStateHolder stateHolder = Substitute.For<IStateCompositionStateHolder>();
-        stateHolder.LastScanMetadata.Returns((ScanMetadata?)null);
+        StateCompositionStateHolder stateHolder = new();
 
         StateCompositionRpcModule rpc = new(
-            Substitute.For<IStateCompositionService>(),
+            new FakeService(),
             stateHolder,
             Substitute.For<IBlockTree>(),
             new StateCompositionSnapshotStore(new MemDb()));
@@ -53,18 +75,18 @@ public class StateCompositionRpcModuleTests
     [Test]
     public async Task CancelScan_ReturnsTrue()
     {
-        IStateCompositionService service = Substitute.For<IStateCompositionService>();
+        FakeService service = new();
 
         StateCompositionRpcModule rpc = new(
             service,
-            Substitute.For<IStateCompositionStateHolder>(),
+            new StateCompositionStateHolder(),
             Substitute.For<IBlockTree>(),
             new StateCompositionSnapshotStore(new MemDb()));
 
         JsonRpc.ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
         Assert.That(result.Data, Is.True);
-        service.Received(1).CancelScan();
+        Assert.That(service.CancelScanCalled, Is.True);
     }
 
     [Test]
@@ -74,8 +96,8 @@ public class StateCompositionRpcModuleTests
         blockTree.Head.Returns((Block?)null);
 
         StateCompositionRpcModule rpc = new(
-            Substitute.For<IStateCompositionService>(),
-            Substitute.For<IStateCompositionStateHolder>(),
+            new FakeService(),
+            new StateCompositionStateHolder(),
             blockTree,
             new StateCompositionSnapshotStore(new MemDb()));
 
@@ -91,8 +113,8 @@ public class StateCompositionRpcModuleTests
         blockTree.Head.Returns(Build.A.Block.TestObject);
 
         StateCompositionRpcModule rpc = new(
-            Substitute.For<IStateCompositionService>(),
-            Substitute.For<IStateCompositionStateHolder>(),
+            new FakeService(),
+            new StateCompositionStateHolder(),
             blockTree,
             new StateCompositionSnapshotStore(new MemDb()));
 
