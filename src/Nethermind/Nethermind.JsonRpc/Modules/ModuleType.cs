@@ -38,7 +38,6 @@ namespace Nethermind.JsonRpc.Modules
             Trace,
             TxPool,
             Web3,
-            Personal,
             Proof,
             Net,
             Parity,
