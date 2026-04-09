@@ -7,6 +7,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -46,6 +47,11 @@ namespace Nethermind.Consensus.Processing
                     _balBuilder?.GeneratedBlockAccessList.IncrementBlockAccessIndex();
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+
+                    if (!processingOptions.ContainsFlag(ProcessingOptions.NoValidation) && block.Header.GasUsed > block.Header.GasLimit)
+                    {
+                        throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
+                    }
 
                     if (shouldValidateBlockAccessList)
                     {

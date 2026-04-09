@@ -87,11 +87,13 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         long cumulativeBlockStateGas = prevState + gasConsumed.BlockStateGas;
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
+        Block.Header.RegularGasUsed = cumulativeBlockGas;
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
         Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
 
         // Track cumulative receipt gas (post-refund)
         _cumulativeReceiptGas += gasConsumed.SpentGas;
+        Block.Header.ReceiptGasUsed = _cumulativeReceiptGas;
 
         Debug.Assert(_txReceipts.Count + 1 == _cumulativeBlockGasPerTx.Count,
             "Receipt and gas tracking lists must remain synchronized");
@@ -252,10 +254,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
         // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
         (long cumulativeRegular, long cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
+        Block.Header.RegularGasUsed = cumulativeRegular;
         Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
         _cumulativeReceiptGas = _txReceipts.Count > 0 ? _txReceipts[^1].GasUsedTotal : 0;
+        Block.Header.ReceiptGasUsed = _cumulativeReceiptGas;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -268,6 +272,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _txReceipts.Clear();
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeReceiptGas = 0;
+        Block.Header.RegularGasUsed = 0;
+        Block.Header.ReceiptGasUsed = 0;
 
         _otherTracer.StartNewBlockTrace(block);
     }

@@ -477,14 +477,15 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            long maxTransactionGasLimit = spec.IsEip8037Enabled
-                ? header.GasLimit
-                : header.GasLimit - header.GasUsed;
+            long gasUsedForAllowance = spec.IsEip8037Enabled
+                ? header.RegularGasUsed
+                : spec.IsEip7778Enabled
+                    ? header.ReceiptGasUsed
+                    : header.GasUsed;
+            long maxTransactionGasLimit = header.GasLimit - gasUsedForAllowance;
             if (tx.GasLimit > maxTransactionGasLimit)
             {
-                string limitDescription = spec.IsEip8037Enabled
-                    ? $"{header.GasLimit}"
-                    : $"{header.GasLimit} - {header.GasUsed}";
+                string limitDescription = $"{header.GasLimit} - {gasUsedForAllowance}";
                 TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
                 return TransactionResult.BlockGasLimitExceeded;
             }
