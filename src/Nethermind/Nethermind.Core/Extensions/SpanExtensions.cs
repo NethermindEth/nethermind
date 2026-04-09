@@ -82,7 +82,7 @@ namespace Nethermind.Core.Extensions
 
             fixed (byte* input = &Unsafe.Add(ref MemoryMarshal.GetReference(bytes), leadingZeros / 2))
             {
-                var createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
+                StringParams createParams = new StringParams(input, bytes.Length, leadingZeros, withZeroX);
                 return string.Create(length, createParams, static (chars, state) =>
                 {
 

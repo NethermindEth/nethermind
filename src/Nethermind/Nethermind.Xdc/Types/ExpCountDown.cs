@@ -40,7 +40,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
     private int NextTimeout()
     {
         int exp = Math.Min(_currentExponent, _maxExponent);
-        var timeout = _initialDuration * (int)Math.Pow(_base, exp);
+        int timeout = _initialDuration * (int)Math.Pow(_base, exp);
         _currentExponent++;
         return timeout;
     }
@@ -56,7 +56,7 @@ public class ExpCountDown : IDisposable, IExpCountDown
 
     private void ScheduleNext()
     {
-        var timeout = NextTimeout();
+        int timeout = NextTimeout();
         _timer?.Dispose();
         _timer = new Timer(_ => _callback?.Invoke(), null, timeout, uint.MaxValue);
     }

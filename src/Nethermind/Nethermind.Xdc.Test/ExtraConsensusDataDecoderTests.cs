@@ -36,7 +36,7 @@ internal class ExtraConsensusDataDecoderTests
     {
         ExtraFieldsV2 extraFields = new ExtraFieldsV2(1, new QuorumCertificate(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0));
         ExtraConsensusDataDecoder decoder = new();
-        var stream = new RlpStream(decoder.GetLength(extraFields));
+        RlpStream stream = new RlpStream(decoder.GetLength(extraFields));
         decoder.Encode(stream, extraFields);
 
         ExtraFieldsV2 decodedExtraData;

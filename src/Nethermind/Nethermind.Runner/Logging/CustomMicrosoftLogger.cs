@@ -24,7 +24,7 @@ namespace Nethermind.Runner.Logging
 
             ArgumentNullException.ThrowIfNull(formatter);
 
-            var message = formatter(state, exception);
+            string message = formatter(state, exception);
             switch (logLevel)
             {
                 case LogLevel.Error:

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
@@ -24,7 +26,7 @@ public class AuRaGasLimitOverrideFactory(
 {
     public AuRaContractGasLimitOverride? GetGasLimitCalculator()
     {
-        var blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
+        IDictionary<long, Address> blockGasLimitContractTransitions = parameters.BlockGasLimitContractTransitions;
 
         if (blockGasLimitContractTransitions?.Any() == true)
         {

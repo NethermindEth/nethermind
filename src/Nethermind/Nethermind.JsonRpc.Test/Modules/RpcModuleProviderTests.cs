@@ -156,9 +156,9 @@ public class RpcModuleProviderTests
         moduleProvider.Check("admin_exportHistory", _context).Should().Be(ModuleResolution.Enabled);
         moduleProvider.Check("admin_addPeer", _context).Should().Be(ModuleResolution.Enabled);
 
-        var adminClass = await moduleProvider.Rent("admin_addPeer", true);
+        IRpcModule adminClass = await moduleProvider.Rent("admin_addPeer", true);
         (adminClass is IAdminRpcModule).Should().BeTrue();
-        var historyClass = await moduleProvider.Rent("admin_exportHistory", true);
+        IRpcModule historyClass = await moduleProvider.Rent("admin_exportHistory", true);
         (historyClass is IEraAdminRpcModule).Should().BeTrue();
     }
 

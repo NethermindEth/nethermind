@@ -76,13 +76,13 @@ internal class XdcSealValidatorTests
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
         byte[] extraLongSignature = new byte[66];
-        var keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
+        byte[] keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
         keyASig.CopyTo(extraLongSignature, 0);
         yield return new TestCaseData(header, extraLongSignature);
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        var keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
+        byte[] keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig);
     }
 
@@ -170,7 +170,7 @@ internal class XdcSealValidatorTests
             PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
             PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
 
-            var extraFieldsV2 = new ExtraFieldsV2(1800, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1));
+            ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(1800, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1));
             headerBuilder.WithExtraFieldsV2(extraFieldsV2);
             headerBuilder.WithValidators(masterSigners.Select(m => m.Address).ToArray());
             headerBuilder.WithAuthor(masterSigners[0].Address);
@@ -185,7 +185,7 @@ internal class XdcSealValidatorTests
             PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
             PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
 
-            var extraFieldsV2 = new ExtraFieldsV2(901, CreateQc(new BlockRoundInfo(Hash256.Zero, 900, 1), masterSigners, 1));
+            ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(901, CreateQc(new BlockRoundInfo(Hash256.Zero, 900, 1), masterSigners, 1));
             headerBuilder.WithExtraFieldsV2(extraFieldsV2);
             headerBuilder.WithValidators(Array.Empty<byte>());
             headerBuilder.WithAuthor(masterSigners[1].Address);

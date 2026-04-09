@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (item.Address is not null)
                 {
-                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out var storagePaths))
+                    if (!itemsGroupedByAccount.TryGetValue(item.Address, out List<(TreePath path, StateSyncItem syncItem)> storagePaths))
                     {
                         storagePaths = new List<(TreePath, StateSyncItem)>();
                         itemsGroupedByAccount[item.Address] = storagePaths;
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.StateSync
                 requestedNodeIndex++;
             }
 
-            foreach (var kvp in itemsGroupedByAccount)
+            foreach (KeyValuePair<Hash256AsKey?, List<(TreePath path, StateSyncItem syncItem)>> kvp in itemsGroupedByAccount)
             {
                 using DeferredRlpItemList.Builder.Writer groupWriter = rootWriter.BeginContainer();
                 groupWriter.WriteValue(kvp.Key?.Value.Bytes.ToArray());

@@ -54,7 +54,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
         }
 
-        var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 

@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .Build()
             );
 
-            var api = new NethermindApi(apiDependencies);
+            NethermindApi api = new NethermindApi(apiDependencies);
             MockOutNethermindApi(api);
             return api;
         }

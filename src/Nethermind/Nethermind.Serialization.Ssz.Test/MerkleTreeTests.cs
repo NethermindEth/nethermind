@@ -304,8 +304,8 @@ namespace Nethermind.Serialization.Ssz.Test
                 baselineTree.Insert(_testLeaves[0]);
             }
 
-            var leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(static l => (uint)l).ToArray();
-            var result = baselineTree.GetLeaves(leafIndexes);
+            uint[] leafIndexes = Enumerable.Range(0, (int)nodesCount).Select(static l => (uint)l).ToArray();
+            MerkleTreeNode[] result = baselineTree.GetLeaves(leafIndexes);
             for (int i = 0; i < result.Length; i++)
             {
                 result[i].Hash.Should().NotBe(Keccak.Zero);

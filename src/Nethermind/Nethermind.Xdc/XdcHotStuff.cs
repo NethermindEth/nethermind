@@ -338,7 +338,7 @@ namespace Nethermind.Xdc
             if (head.ExtraConsensusData?.QuorumCert is null)
                 throw new InvalidOperationException("Head block missing consensus data.");
 
-            var votingRound = head.ExtraConsensusData.BlockRound;
+            ulong votingRound = head.ExtraConsensusData.BlockRound;
             if (_highestVotedRound >= votingRound)
                 return;
 
@@ -415,14 +415,14 @@ namespace Nethermind.Xdc
                 return false;
             }
 
-            var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             if ((long)parent.Timestamp + spec.MinePeriod > now)
             {
                 //Not enough time has passed since last block
                 return false;
             }
 
-            var fallbackPeriod = spec.TimeoutPeriod / 2;
+            int fallbackPeriod = spec.TimeoutPeriod / 2;
             if ((long)parent.Timestamp + fallbackPeriod < now)
             {
                 // If we are too far into the mining period, we will not wait for QC voting to finish and proceed with whatever is highest
@@ -462,7 +462,7 @@ namespace Nethermind.Xdc
             }
             else
             {
-                var epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
+                EpochSwitchInfo epochSwitchInfo = _epochSwitchManager.GetEpochSwitchInfo(currentHead);
                 currentMasternodes = epochSwitchInfo.Masternodes;
             }
 

@@ -43,8 +43,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
 
             StorageRangesMessageSerializer serializer = new();
 
-            var serialized = serializer.Serialize(msg);
-            using var deserialized = serializer.Deserialize(serialized);
+            byte[] serialized = serializer.Serialize(msg);
+            using StorageRangeMessage deserialized = serializer.Deserialize(serialized);
 
             SerializerTester.TestZero(serializer, msg);
         }

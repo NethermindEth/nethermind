@@ -198,7 +198,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Receiving_request_before_status_fails()
         {
-            var msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
             msg.StartBlockHash = TestItem.KeccakA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
@@ -214,7 +214,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Get_headers_when_blocks_are_missing_at_the_end()
         {
-            var headers = new BlockHeader[5];
+            BlockHeader[] headers = new BlockHeader[5];
             headers[0] = Build.A.BlockHeader.TestObject;
             headers[1] = Build.A.BlockHeader.TestObject;
             headers[2] = Build.A.BlockHeader.TestObject;
@@ -247,7 +247,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Get_headers_when_blocks_are_missing_in_the_middle()
         {
-            var headers = new BlockHeader[5];
+            BlockHeader[] headers = new BlockHeader[5];
             headers[0] = Build.A.BlockHeader.TestObject;
             headers[1] = Build.A.BlockHeader.TestObject;
             headers[2] = null;
@@ -659,7 +659,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleIncomingStatusMessage()
         {
-            using var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using StatusMessage statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();

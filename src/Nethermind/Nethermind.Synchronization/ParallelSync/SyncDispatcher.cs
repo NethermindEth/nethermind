@@ -312,7 +312,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
-                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    TaskCompletionSource<object> previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
                     previous?.TrySetResult(null);
                 }
             }

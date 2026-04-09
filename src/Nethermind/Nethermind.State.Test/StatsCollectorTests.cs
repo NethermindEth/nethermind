@@ -14,6 +14,7 @@ using Nethermind.Evm.State;
 using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Store.Test
 {
@@ -31,7 +32,7 @@ namespace Nethermind.Store.Test
             StateReader stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
             BlockHeader baseBlock;
 
-            using (var _ = stateProvider.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.AddressA, 1);
                 stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
@@ -67,7 +68,7 @@ namespace Nethermind.Store.Test
             };
 
             stateReader.RunTreeVisitor(statsCollector, baseBlock, visitingOptions);
-            var stats = statsCollector.Stats;
+            TrieStats stats = statsCollector.Stats;
 
             stats.CodeCount.Should().Be(1);
             stats.MissingCode.Should().Be(1);

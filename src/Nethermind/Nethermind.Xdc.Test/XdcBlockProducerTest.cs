@@ -34,7 +34,7 @@ internal class XdcBlockProducerTest
         xdcReleaseSpec.EpochLength.Returns(900);
         xdcReleaseSpec.GasLimitBoundDivisor.Returns(1);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(xdcReleaseSpec);
-        var epochManager = Substitute.For<IEpochSwitchManager>();
+        IEpochSwitchManager epochManager = Substitute.For<IEpochSwitchManager>();
         IWorldState stateProvider = Substitute.For<IWorldState>();
         stateProvider.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
 
@@ -47,11 +47,11 @@ internal class XdcBlockProducerTest
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 
-        var xdcContext = new XdcConsensusContext();
+        XdcConsensusContext xdcContext = new XdcConsensusContext();
         xdcContext.SetNewRound(1);
         xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, parent.Number), 0, masterNodes);
 
-        var quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
+        IQuorumCertificateManager quorumCertificateManager = Substitute.For<IQuorumCertificateManager>();
         quorumCertificateManager.VerifyCertificate(Arg.Any<QuorumCertificate>(), Arg.Any<XdcBlockHeader>(), out _).Returns(true);
 
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();

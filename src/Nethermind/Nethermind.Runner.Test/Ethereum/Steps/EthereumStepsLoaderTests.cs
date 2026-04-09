@@ -36,7 +36,7 @@ public class EthereumStepsLoaderTests
     [Test]
     public void BuildInSteps_IsCorrect()
     {
-        var steps = new HashSet<StepInfo>();
+        HashSet<StepInfo> steps = new HashSet<StepInfo>();
         steps.AddRange(LoadStepInfoFromAssembly(typeof(InitializeBlockTree).Assembly));
         steps.AddRange(LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly));
 

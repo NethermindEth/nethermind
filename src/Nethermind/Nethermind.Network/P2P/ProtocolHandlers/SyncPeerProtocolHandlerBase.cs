@@ -365,7 +365,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetReceiptsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
             if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");

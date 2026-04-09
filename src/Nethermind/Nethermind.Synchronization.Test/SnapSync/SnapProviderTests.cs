@@ -163,7 +163,7 @@ public class SnapProviderTests
         AccountProofCollector proofCollector = new(accountHash.Bytes,
             new ValueHash256[] { Keccak.Zero, slots[^1].Path });
         stateTree.Accept(proofCollector, stateTree.RootHash);
-        var proof = proofCollector.BuildResult();
+        AccountProof proof = proofCollector.BuildResult();
 
         using IContainer container = CreateContainer();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -287,9 +287,9 @@ public class SnapProviderTests
 
         TestMemDb db = new TestMemDb();
         NodeStorage nodeStorage = new NodeStorage(db);
-        var adapter = new SnapUpperBoundAdapter(new RawScopedTrieStore(nodeStorage));
+        SnapUpperBoundAdapter adapter = new SnapUpperBoundAdapter(new RawScopedTrieStore(nodeStorage));
         StateTree stree = new StateTree(adapter, LimboLogs.Instance);
-        var factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
+        TestSnapTrieFactory factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         SnapProviderHelper.AddAccountRange(
                 factory,
                 0,
@@ -315,15 +315,15 @@ public class SnapProviderTests
         TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
         StateTree st = new StateTree(trieStore, LimboLogs.Instance);
         {
-            using var _ = trieStore.BeginBlockCommit(0);
-            foreach (var entry in entries)
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            foreach ((Hash256, Account) entry in entries)
             {
                 st.Set(entry.Item1, entry.Item2);
             }
             st.Commit();
         }
 
-        var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
+        SnapServer ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
         return (ss, st.RootHash);
     }
 }

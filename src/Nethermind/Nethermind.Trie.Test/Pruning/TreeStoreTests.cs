@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Test.Pruning
             BlockHeader? baseBlock = null;
             for (int i = 0; i < 4; i++)
             {
-                using (var _ = fullTrieStore.BeginScope(baseBlock))
+                using (IDisposable _ = fullTrieStore.BeginScope(baseBlock))
                 {
                     pt.Set(TestItem.KeccakA.BytesToArray(), TestItem.Keccaks[i].BytesToArray());
                     using (fullTrieStore.BeginStateBlockCommit(i + 1, trieNode))
@@ -567,7 +567,7 @@ namespace Nethermind.Trie.Test.Pruning
         public void Trie_store_multi_threaded_scenario()
         {
             IWorldState worldState = TestWorldStateFactory.CreateForTest();
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
             worldState.CreateAccount(TestItem.AddressA, 1000);
             worldState.CreateAccount(TestItem.AddressB, 1000);
         }
@@ -849,18 +849,18 @@ namespace Nethermind.Trie.Test.Pruning
                 committer.CommitNode(ref emptyPath, node);
             }
 
-            var originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+            TrieNode originalNode = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
 
             IReadOnlyTrieStore readOnlyTrieStore = fullTrieStore.AsReadOnly();
-            var readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
+            TrieNode readOnlyNode = readOnlyTrieStore.FindCachedOrUnknown(null, TreePath.Empty, node.Keccak);
 
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,
                 static eq => eq.Including(static t => t.Keccak)
                     .Including(static t => t.NodeType));
 
-            var origRlp = originalNode.FullRlp;
-            var readOnlyRlp = readOnlyNode.FullRlp;
+            CappedArray<byte> origRlp = originalNode.FullRlp;
+            CappedArray<byte> readOnlyRlp = readOnlyNode.FullRlp;
             readOnlyRlp.Should().BeEquivalentTo(origRlp);
 
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
@@ -878,7 +878,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             Account account = new(1);
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
             }
@@ -888,7 +888,7 @@ namespace Nethermind.Trie.Test.Pruning
             account = account.WithChangedBalance(2);
 
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
             }
@@ -1154,7 +1154,7 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 WorldState worldState = new WorldState(
                     new TrieStoreScopeProvider(new TestRawTrieStore(nodeStorage), memDbProvider.CodeDb, LimboLogs.Instance), LimboLogs.Instance);
-                using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+                using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
                 worldState.CreateAccountIfNotExists(address, UInt256.One);
                 worldState.Set(new StorageCell(address, slot), TestItem.KeccakB.BytesToArray());
                 worldState.Commit(MainnetSpecProvider.Instance.GenesisSpec);
@@ -1629,7 +1629,7 @@ namespace Nethermind.Trie.Test.Pruning
                 for (int i = 1; i < rootsToTests.Count; i++)
                 {
                     Console.Error.WriteLine($"Verify {i}");
-                    var rootsToTest = rootsToTests[i];
+                    Hash256 rootsToTest = rootsToTests[i];
                     TrieStatsCollector collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
                     ptree.Accept(collector, rootHash: rootsToTest);
                     collector.Stats.MissingNodes.Should().Be(0);

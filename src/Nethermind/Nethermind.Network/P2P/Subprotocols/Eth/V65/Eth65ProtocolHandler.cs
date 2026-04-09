@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetPooledTransactionsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             if (Logger.IsTrace)

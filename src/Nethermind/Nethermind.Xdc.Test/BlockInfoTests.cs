@@ -18,7 +18,7 @@ internal class BlockInfoTests
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(genesisBlock.Hash!, 1, genesisBlock.Number);
 
-        var result = XdcExtensions.ValidateBlockInfo(blockInfo, genesisBlock);
+        bool result = XdcExtensions.ValidateBlockInfo(blockInfo, genesisBlock);
 
         Assert.That(result, Is.True);
     }
@@ -31,7 +31,7 @@ internal class BlockInfoTests
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound - 1, headBlock.Number);
 
-        var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
+        bool result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
         Assert.That(result, Is.False);
     }
@@ -46,7 +46,7 @@ internal class BlockInfoTests
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(parentBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
 
-        var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
+        bool result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
         Assert.That(result, Is.False);
     }
@@ -61,7 +61,7 @@ internal class BlockInfoTests
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, parentBlock.Number);
 
-        var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
+        bool result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
         Assert.That(result, Is.False);
     }
@@ -75,7 +75,7 @@ internal class BlockInfoTests
 
         BlockRoundInfo blockInfo = new BlockRoundInfo(headBlock.Hash!, headBlock.ExtraConsensusData!.BlockRound, headBlock.Number);
 
-        var result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
+        bool result = XdcExtensions.ValidateBlockInfo(blockInfo, headBlock);
 
         Assert.That(result, Is.True);
     }

@@ -46,7 +46,7 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
                 return null;
             }
 
-            var parsedValue = UInt256.Parse(response);
+            UInt256 parsedValue = UInt256.Parse(response);
             if (_logger.IsDebug) _logger.Debug($"L1SLOAD: eth_getStorageAt success — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, value={parsedValue}");
             return parsedValue;
         }

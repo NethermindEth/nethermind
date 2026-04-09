@@ -183,7 +183,7 @@ public sealed class JsonRpcService : IJsonRpcService
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
-        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
 

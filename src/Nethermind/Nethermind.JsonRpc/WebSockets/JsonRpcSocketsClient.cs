@@ -118,7 +118,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
     {
         await foreach (ProcessRequest request in _processChannel.Reader.ReadAllAsync(cancellationToken))
         {
-            await using var _ = request;
+            await using ProcessRequest _ = request;
             await HandleRequest(request.Buffer, cancellationToken);
         }
     }

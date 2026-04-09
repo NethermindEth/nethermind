@@ -205,7 +205,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
@@ -272,7 +272,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 }
         }
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new PseudoNethermindModule(spec, configProvider, LimboLogs.Instance))
             .AddModule(new TestEnvironmentModule(nodeKey, $"{nameof(E2ESyncTests)} {dbMode} {isPostMerge}"))
             .AddSingleton<IDisconnectsAnalyzer, ImmediateDisconnectFailure>()
@@ -790,7 +790,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public async Task WatchForDisconnection(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
             try
             {
                 await act(cts.Token);
@@ -823,7 +823,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token, cancellationToken);
             try
             {
                 await act(cts.Token);

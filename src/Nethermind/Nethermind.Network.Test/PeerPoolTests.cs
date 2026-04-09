@@ -30,7 +30,7 @@ public class PeerPoolTests
     [Test]
     public async Task PeerPool_ShouldThrottleSource_WhenFull()
     {
-        var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
         TestNodeSource nodeSource = new TestNodeSource();
         PeerPool pool = new PeerPool(
@@ -78,18 +78,18 @@ public class PeerPoolTests
     [Test]
     public async Task PeerPool_RunPeerCommit_ShouldContinueAfterNoPendingChange()
     {
-        var trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        var nodeSource = new TestNodeSource();
-        var stats = Substitute.For<INodeStatsManager>();
-        var storage = new TestNetworkStorage();
-        var networkConfig = new NetworkConfig
+        ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
+        TestNodeSource nodeSource = new TestNodeSource();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        TestNetworkStorage storage = new TestNetworkStorage();
+        NetworkConfig networkConfig = new NetworkConfig
         {
             PeersPersistenceInterval = 50,
             MaxActivePeers = 0,
             MaxCandidatePeerCount = 0
         };
 
-        var pool = new PeerPool(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+        PeerPool pool = new PeerPool(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
 
         storage.Pending = false;
         pool.Start();

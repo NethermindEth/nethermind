@@ -487,7 +487,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
@@ -924,7 +924,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
 

@@ -109,7 +109,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
         using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
         IWorldState worldState = source.WorldState;
         ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
-        var length = new UInt256(storageCell);
+        UInt256 length = new UInt256(storageCell);
         Address[] candidates = new Address[(ulong)length];
         for (int i = 0; i < length; i++)
         {
@@ -133,7 +133,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         Address[] candidates = GetCandidates(blockHeader);
 
-        using var candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
+        using ArrayPoolList<CandidateStake> candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
         foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)

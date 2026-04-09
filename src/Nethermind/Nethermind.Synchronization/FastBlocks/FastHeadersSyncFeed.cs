@@ -94,7 +94,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             get
             {
-                var headersEstimate = Volatile.Read(ref _headersEstimate);
+                long headersEstimate = Volatile.Read(ref _headersEstimate);
                 if (headersEstimate < 0)
                 {
                     headersEstimate = CalculateHeadersInQueue();
@@ -108,7 +108,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private long CalculateHeadersInQueue()
         {
             // Reuse the enumerator
-            using var enumerator = _dependencies.GetEnumerator();
+            using IEnumerator<KeyValuePair<long, HeadersSyncBatch>> enumerator = _dependencies.GetEnumerator();
 
             long count = 0;
             while (enumerator.MoveNext())
@@ -123,7 +123,7 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             get
             {
-                var memoryEstimate = Volatile.Read(ref _memoryEstimate);
+                ulong memoryEstimate = Volatile.Read(ref _memoryEstimate);
                 if (memoryEstimate == ulong.MaxValue)
                 {
                     memoryEstimate = CalculateMemoryInQueue();
@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private ulong CalculateMemoryInQueue()
         {
             // Reuse the enumerator
-            using var enumerator = _dependencies.GetEnumerator();
+            using IEnumerator<KeyValuePair<long, HeadersSyncBatch>> enumerator = _dependencies.GetEnumerator();
 
             ulong amount = 0;
             while (enumerator.MoveNext())
@@ -419,17 +419,17 @@ namespace Nethermind.Synchronization.FastBlocks
                     Dictionary<long, string> all = new();
                     StringBuilder builder = new();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
-                    foreach (var headerDependency in _dependencies)
+                    foreach (KeyValuePair<long, HeadersSyncBatch> headerDependency in _dependencies)
                     {
                         all.TryAdd(headerDependency.Value.EndNumber, $"  DEPENDENCY {headerDependency.Value}");
                     }
 
-                    foreach (var pendingBatch in _pending)
+                    foreach (HeadersSyncBatch pendingBatch in _pending)
                     {
                         all.TryAdd(pendingBatch.EndNumber, $"  PENDING    {pendingBatch}");
                     }
 
-                    foreach (var sentBatch in _sent)
+                    foreach (HeadersSyncBatch sentBatch in _sent)
                     {
                         all.TryAdd(sentBatch.EndNumber, $"  SENT       {sentBatch}");
                     }
@@ -660,7 +660,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             UInt256? totalDifficulty = nextHeaderTotalDifficulty;
-            foreach (var blockHeader in headersToAdd.AsSpan())
+            foreach (BlockHeader blockHeader in headersToAdd.AsSpan())
             {
                 blockHeader.TotalDifficulty = totalDifficulty;
                 totalDifficulty = DetermineParentTotalDifficulty(blockHeader);

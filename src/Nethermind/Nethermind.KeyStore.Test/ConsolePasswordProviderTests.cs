@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.ConsoleHelpers;
@@ -16,14 +17,14 @@ public class ConsolePasswordProviderTests
     [Test]
     public void Alternative_provider_sets_correctly()
     {
-        var emptyPasswordProvider = new FilePasswordProvider(static address => string.Empty);
-        var consolePasswordProvider1 = emptyPasswordProvider
+        FilePasswordProvider emptyPasswordProvider = new FilePasswordProvider(static address => string.Empty);
+        BasePasswordProvider consolePasswordProvider1 = emptyPasswordProvider
                                         .OrReadFromConsole("Test1");
 
         Assert.That(consolePasswordProvider1 is FilePasswordProvider, Is.True);
         Assert.That(((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message, Is.EqualTo("Test1"));
 
-        var consolePasswordProvider2 = consolePasswordProvider1
+        BasePasswordProvider consolePasswordProvider2 = consolePasswordProvider1
                                         .OrReadFromConsole("Test2");
 
         Assert.That(consolePasswordProvider2 is FilePasswordProvider, Is.True);
@@ -34,16 +35,16 @@ public class ConsolePasswordProviderTests
     public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))] ConsolePasswordProviderTest test)
     {
         IConsoleWrapper consoleWrapper = Substitute.For<IConsoleWrapper>();
-        var chars = test.InputChars;
-        var iterator = 0;
+        ConsoleKeyInfo[] chars = test.InputChars;
+        int iterator = 0;
         consoleWrapper.ReadKey(true).Returns(s =>
         {
             ConsoleKeyInfo key = chars[iterator];
             ++iterator;
             return key;
         });
-        var passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
-        var password = passwordProvider.GetPassword(Address.Zero);
+        ConsolePasswordProvider passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
+        SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password.IsReadOnly(), Is.True);
         Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
     }

@@ -160,7 +160,7 @@ public class StartBlockProducerAuRa(
         (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. _parameters.RewriteBytecodeTimestampParsed];
         ContractRewriter? contractRewriter = rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0 ? new(rewriteBytecode, rewriteBytecodeTimestamp) : null;
 
-        var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
+        BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),

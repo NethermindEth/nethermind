@@ -52,7 +52,7 @@ namespace Nethermind.Wallet
 
         public Address NewAccount(SecureString passphrase)
         {
-            using var privateKeyGenerator = new PrivateKeyGenerator();
+            using PrivateKeyGenerator privateKeyGenerator = new PrivateKeyGenerator();
             PrivateKey key = privateKeyGenerator.Generate();
             _keys.Add(key.Address, key);
             _isUnlocked.Add(key.Address, true);
@@ -101,14 +101,14 @@ namespace Nethermind.Wallet
         }
         public Signature Sign(Hash256 message, Address address, SecureString passphrase)
         {
-            if (!_isUnlocked.TryGetValue(address, out var value)) throw new SecurityException("Account does not exist.");
+            if (!_isUnlocked.TryGetValue(address, out bool value)) throw new SecurityException("Account does not exist.");
 
             if (!value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
 
             return Sign(message, address);
         }
 
-        public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out var unlocked) && unlocked;
+        public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out bool unlocked) && unlocked;
 
         private bool CheckPassword(Address address, SecureString passphrase)
         {
@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Hash256 message, Address address)
         {
-            var rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

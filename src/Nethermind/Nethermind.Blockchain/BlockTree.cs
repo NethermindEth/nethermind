@@ -1368,7 +1368,7 @@ namespace Nethermind.Blockchain
             // Yes, this is measurably faster
             using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(blockNumbers);
 
-            for (var i = 0; i < blockInfos.Count; i++)
+            for (int i = 0; i < blockInfos.Count; i++)
             {
                 (long number, BlockInfo blockInfo) = blockInfos[i];
 

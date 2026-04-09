@@ -25,13 +25,13 @@ namespace Nethermind.Blockchain.Receipts
 
         public ReceiptsRecoveryResult TryRecover(ReceiptRecoveryBlock block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
-            var canRecover = block.TransactionCount == receipts?.Length;
+            bool canRecover = block.TransactionCount == receipts?.Length;
             if (canRecover)
             {
-                var needRecover = NeedRecover(receipts, forceRecoverSender);
+                bool needRecover = NeedRecover(receipts, forceRecoverSender);
                 if (needRecover)
                 {
-                    using var ctx = CreateRecoveryContext(block, forceRecoverSender);
+                    using IReceiptsRecovery.IRecoveryContext ctx = CreateRecoveryContext(block, forceRecoverSender);
                     for (int receiptIndex = 0; receiptIndex < block.TransactionCount; receiptIndex++)
                     {
                         if (receipts.Length > receiptIndex)
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public IReceiptsRecovery.IRecoveryContext CreateRecoveryContext(ReceiptRecoveryBlock block, bool forceRecoverSender = false)
         {
-            var releaseSpec = _specProvider.GetSpec(block.Header);
+            IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
             return new RecoveryContext(releaseSpec, block, forceRecoverSender, _ecdsa);
         }
 

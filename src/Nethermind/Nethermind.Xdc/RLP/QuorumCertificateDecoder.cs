@@ -75,7 +75,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
                 int signatureContentLength = SignaturesLength(item);
                 stream.StartSequence(signatureContentLength);
                 Span<byte> sigBuffer = stackalloc byte[Signature.Size];
-                foreach (var sig in item.Signatures)
+                foreach (Signature sig in item.Signatures)
                 {
                     sig.WriteBytesWithRecoveryTo(sigBuffer);
                     stream.Encode(sigBuffer);

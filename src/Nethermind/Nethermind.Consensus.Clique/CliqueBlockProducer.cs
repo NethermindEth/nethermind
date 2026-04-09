@@ -457,7 +457,7 @@ public class CliqueBlockProducer : IBlockProducer
         // Ensure the timestamp has the correct delay
         header.Timestamp = Math.Max(parentHeader.Timestamp + _config.BlockPeriod, _timestamper.UnixTime.Seconds);
 
-        var spec = _specProvider.GetSpec(header);
+        IReleaseSpec spec = _specProvider.GetSpec(header);
 
         header.BaseFeePerGas = BaseFeeCalculator.Calculate(parentHeader, spec);
         // Set the correct difficulty

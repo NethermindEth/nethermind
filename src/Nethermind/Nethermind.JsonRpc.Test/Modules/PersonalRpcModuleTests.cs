@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string passphrase = "testPass";
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_newAccount", passphrase);
-            var accountsNow = _wallet.GetAccounts();
+            Address[] accountsNow = _wallet.GetAccounts();
             Assert.That(accountsNow.Length, Is.EqualTo(accountsBefore + 1), "length");
             Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\",\"id\":67}}"));
         }

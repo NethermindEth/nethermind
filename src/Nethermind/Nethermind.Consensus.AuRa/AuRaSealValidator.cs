@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 
@@ -93,7 +94,7 @@ namespace Nethermind.Consensus.AuRa
                     }
                 }
 
-                var currentStep = _stepCalculator.CurrentStep;
+                long currentStep = _stepCalculator.CurrentStep;
 
                 if (step > currentStep + rejectedStepDrift)
                 {
@@ -132,7 +133,7 @@ namespace Nethermind.Consensus.AuRa
                         return false;
                     }
 
-                    var expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, step, 0);
+                    UInt256 expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, step, 0);
                     if (header.Difficulty != expectedDifficulty)
                     {
                         if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
@@ -148,7 +149,7 @@ namespace Nethermind.Consensus.AuRa
         {
             if (header.IsGenesis) return true;
 
-            var author = GetSealer(header);
+            Address author = GetSealer(header);
 
             if (author != header.Beneficiary)
             {
@@ -225,14 +226,14 @@ namespace Nethermind.Consensus.AuRa
 
                 long step = header.AuRaStep.Value;
                 Address author = header.Beneficiary;
-                var hash = header.Hash;
+                Hash256 hash = header.Hash;
                 int index = BinarySearch(step);
                 bool contains = index >= 0;
-                var item = new AuthorBlock(author, hash);
+                AuthorBlock item = new AuthorBlock(author, hash);
                 bool containsSibling = false;
                 if (contains)
                 {
-                    var stepElement = _list[index];
+                    AuthorBlockForStep stepElement = _list[index];
                     contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AuthorBlock == item;
                     if (!contains)
                     {
@@ -269,10 +270,10 @@ namespace Nethermind.Consensus.AuRa
             /// <param name="validatorCount"></param>
             private void ClearOldCache(long step, int validatorCount)
             {
-                var siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * validatorCount;
-                var oldestStepToKeep = step - siblingMaliceDetectionPeriod;
-                var index = BinarySearch(oldestStepToKeep);
-                var positiveIndex = index >= 0 ? index : ~index;
+                int siblingMaliceDetectionPeriod = CacheSizeFullRoundsMultiplier * validatorCount;
+                long oldestStepToKeep = step - siblingMaliceDetectionPeriod;
+                int index = BinarySearch(oldestStepToKeep);
+                int positiveIndex = index >= 0 ? index : ~index;
                 if (positiveIndex > 0)
                 {
                     _list.RemoveRange(0, positiveIndex);

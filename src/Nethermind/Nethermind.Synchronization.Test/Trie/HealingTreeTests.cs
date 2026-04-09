@@ -156,7 +156,7 @@ public class HealingTreeTests
             IWorldState mainWorldState = server.Resolve<MainProcessingContext>().WorldState;
             IBlockTree blockTree = server.Resolve<IBlockTree>();
 
-            using var _ = mainWorldState.BeginScope(blockTree.Head?.Header);
+            using IDisposable _ = mainWorldState.BeginScope(blockTree.Head?.Header);
 
             for (int i = 0; i < 100; i++)
             {
@@ -196,7 +196,7 @@ public class HealingTreeTests
             allValues.AsSpan().Sort(((k1, k2) => ((IComparer<byte[]>)Bytes.Comparer).Compare(k1.Key, k2.Key)));
 
             // Copy from server to client, but randomly remove some of them.
-            foreach (var kv in allValues.AsSpan())
+            foreach (KeyValuePair<byte[], byte[]?> kv in allValues.AsSpan())
             {
                 if (random.NextDouble() < 0.9)
                 {
@@ -208,7 +208,7 @@ public class HealingTreeTests
         void AssertStorage(IContainer client)
         {
             IWorldState mainWorldState = client.Resolve<MainProcessingContext>().WorldState;
-            using var _ = mainWorldState.BeginScope(baseBlock);
+            using IDisposable _ = mainWorldState.BeginScope(baseBlock);
 
             for (int i = 0; i < 100; i++)
             {

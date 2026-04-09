@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Test
 
         private IConsensusDataSource<T> GetSource<T>(Uri uri)
         {
-            var serializer = GetSerializer();
+            IJsonSerializer serializer = GetSerializer();
             if (uri.IsFile)
             {
                 return new FileConsensusDataSource<T>(uri, serializer);
@@ -249,7 +249,7 @@ namespace Nethermind.JsonRpc.Test
                 if (token is JsonObject jObject)
                 {
                     JsonObject copy = new JsonObject();
-                    foreach (var prop in jObject)
+                    foreach (KeyValuePair<string, JsonNode?> prop in jObject)
                     {
                         JsonNode? child = prop.Value;
                         if (child is JsonObject || child is JsonArray)

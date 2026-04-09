@@ -169,8 +169,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo info = historyInfo.Value;
 
             // Assumes if blockCount is ever greater than the BlockNumber then BlockNumber must fall within integer size limits
-            var effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : blockCount;
-            var tempBlockCount = effectiveBlockCount + 1;
+            int effectiveBlockCount = info.BlockNumber < blockCount - 1 ? (int)info.BlockNumber + 1 : blockCount;
+            int tempBlockCount = effectiveBlockCount + 1;
             ArrayPoolList<UInt256> baseFeePerGas = new(tempBlockCount, tempBlockCount);
             ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
             ArrayPoolList<double> gasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
@@ -285,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             int txIndex = 0;
             ArrayPoolList<UInt256> percentileValues = new(rewardPercentiles.Length);
 
-            foreach (var percentile in rewardPercentiles)
+            foreach (double percentile in rewardPercentiles)
             {
                 double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
                 while (txIndex < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)

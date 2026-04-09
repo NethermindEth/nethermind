@@ -86,7 +86,7 @@ public class ZeroNettyP2PHandlerTests
         handler.EnableSnappy();
 
         // Create compressed data that will exceed MaxSnappyLength when decompressed
-        var data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
+        byte[] data = Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray());
 
         // Create a packet with our compressed data
         IByteBuffer content = Unpooled.Buffer(data.Length);

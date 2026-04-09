@@ -287,7 +287,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.False);
     }
 
@@ -324,7 +324,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.False);
     }
 
@@ -359,7 +359,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.ReturnValue[31] == 0, Is.True);
     }
 
@@ -430,7 +430,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
         vmThread.Join(ThreadJoinTimeout);
 
         // we check if bytecode execution failed
-        var resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
+        GethLikeTxTrace resultTraces = (tracer.InnerTracer as GethLikeTxMemoryTracer).BuildResult();
         Assert.That(resultTraces.Failed, Is.True);
     }
 

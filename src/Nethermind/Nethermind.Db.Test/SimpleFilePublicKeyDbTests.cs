@@ -37,7 +37,7 @@ public class SimpleFilePublicKeyDbTests
 
         using (filePublicKeyDb.StartWriteBatch())
         {
-            foreach (var kv in dict)
+            foreach (KeyValuePair<byte[], byte[]> kv in dict)
             {
                 filePublicKeyDb[kv.Key] = kv.Value;
             }
@@ -45,7 +45,7 @@ public class SimpleFilePublicKeyDbTests
 
         SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
         Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
-        foreach (var kv in dict)
+        foreach (KeyValuePair<byte[], byte[]> kv in dict)
         {
             Assert.That(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value), Is.True);
         }

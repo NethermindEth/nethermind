@@ -58,7 +58,7 @@ internal class XdcBlockProducer : BlockProducerBase
             throw new ArgumentException("Only XDC header are supported.");
 
         QuorumCertificate highestCert = xdcContext.HighestQC;
-        var currentRound = xdcContext.CurrentRound;
+        ulong currentRound = xdcContext.CurrentRound;
 
         if (payloadAttributes is XdcPayloadAttributes xdcPayloadAttributes)
         {

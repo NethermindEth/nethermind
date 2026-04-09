@@ -15,6 +15,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
 using NSubstitute;
 using NUnit.Framework;
+using System;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -58,7 +59,7 @@ public class GenesisBuilderTests
         });
         (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec, genesisPostProcessor);
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         genesisLoader.Build();
         chainSpec.Allocations.Should().BeNull();
     }
@@ -92,15 +93,15 @@ public class GenesisBuilderTests
         ChainSpec chainSpec = LoadChainSpec(path);
         (GenesisBuilder genesisLoader, IWorldState stateProvider) = BuildGenesisBuilder(chainSpec);
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         return genesisLoader.Build();
     }
 
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 }

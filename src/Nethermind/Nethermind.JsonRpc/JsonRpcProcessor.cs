@@ -89,7 +89,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                 {
                     id = idNumber;
                 }
-                else if (idElement.TryGetDecimal(out var value))
+                else if (idElement.TryGetDecimal(out decimal value))
                 {
                     id = value;
                 }

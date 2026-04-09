@@ -88,15 +88,15 @@ namespace Nethermind.JsonRpc.Client
 
         private void AddAuthorizationHeader()
         {
-            var url = _client.BaseAddress.ToString();
+            string url = _client.BaseAddress.ToString();
             if (!url.Contains('@'))
             {
                 return;
             }
 
-            var urlData = url.Split("://");
-            var data = urlData[1].Split("@")[0];
-            var encodedData = Base64Encode(data);
+            string[] urlData = url.Split("://");
+            string data = urlData[1].Split("@")[0];
+            string encodedData = Base64Encode(data);
             _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", encodedData);
         }
 

@@ -127,7 +127,7 @@ namespace Nethermind.Network.Rlpx
                 // - so with two groups and 32 logical cores, we would have 128 threads
                 // Max at 8 threads per group for 16 threads total
                 // Min of 2 threads per group for 4 threads total
-                var threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
+                int threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
                 _bossGroup = new MultithreadEventLoopGroup(threads);
                 _workerGroup = new MultithreadEventLoopGroup(threads);
 
@@ -170,8 +170,8 @@ namespace Nethermind.Network.Rlpx
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
                 // Replacing to prevent double dispose which hangs
-                var bossGroup = Interlocked.Exchange(ref _bossGroup, null);
-                var workerGroup = Interlocked.Exchange(ref _workerGroup, null);
+                IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
+                IEventLoopGroup workerGroup = Interlocked.Exchange(ref _workerGroup, null);
                 await Task.WhenAll(
                     bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
                     workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,

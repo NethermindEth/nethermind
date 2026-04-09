@@ -118,7 +118,7 @@ public class WebSocketExtensionsTests
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        var processor = Substitute.For<IJsonRpcProcessor>();
+        IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
         {
             (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
@@ -131,11 +131,11 @@ public class WebSocketExtensionsTests
             }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
         }.ToAsyncEnumerable());
 
-        var service = Substitute.For<IJsonRpcService>();
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
-        var localStats = Substitute.For<IJsonRpcLocalStats>();
+        IJsonRpcLocalStats localStats = Substitute.For<IJsonRpcLocalStats>();
 
-        var webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
+        JsonRpcSocketsClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             RpcEndpoint.Ws,
@@ -148,7 +148,7 @@ public class WebSocketExtensionsTests
 
         webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
         {
-            var par = x.Arg<JsonRpcResult>();
+            JsonRpcResult par = x.Arg<JsonRpcResult>();
             return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
         });
 

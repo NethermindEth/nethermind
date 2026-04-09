@@ -20,7 +20,7 @@ internal static class XdcTestHelper
 
     public static PrivateKey[] GeneratePrivateKeys(int count)
     {
-        var keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
         return keyBuilder.Generate(count).ToArray();
     }
 
@@ -33,10 +33,10 @@ internal static class XdcTestHelper
 
     public static Signature[] CreateVoteSignatures(BlockRoundInfo roundInfo, ulong gapNumber, PrivateKey[] keys)
     {
-        var encoder = new VoteDecoder();
+        VoteDecoder encoder = new VoteDecoder();
         IEnumerable<Signature> signatures = keys.Select(k =>
         {
-            var stream = new KeccakRlpStream();
+            KeccakRlpStream stream = new KeccakRlpStream();
             encoder.Encode(stream, new Vote(roundInfo, gapNumber), RlpBehaviors.ForSealing);
             return ecdsa.Sign(k, stream.GetValueHash());
         }).ToArray();
@@ -45,11 +45,11 @@ internal static class XdcTestHelper
 
     public static Timeout BuildSignedTimeout(PrivateKey key, ulong round, ulong gap)
     {
-        var decoder = new TimeoutDecoder();
-        var timeout = new Timeout(round, signature: null, gap);
+        TimeoutDecoder decoder = new TimeoutDecoder();
+        Timeout timeout = new Timeout(round, signature: null, gap);
         Rlp rlp = decoder.Encode(timeout, Nethermind.Serialization.Rlp.RlpBehaviors.ForSealing);
-        var hash = Keccak.Compute(rlp.Bytes).ValueHash256;
-        var signature = new EthereumEcdsa(0).Sign(key, hash);
+        ValueHash256 hash = Keccak.Compute(rlp.Bytes).ValueHash256;
+        Signature signature = new EthereumEcdsa(0).Sign(key, hash);
         return new Timeout(round, signature, gap) { Signer = key.Address };
     }
 
@@ -64,8 +64,8 @@ internal static class XdcTestHelper
 
     public static Vote BuildSignedVote(BlockRoundInfo info, ulong gap, PrivateKey key)
     {
-        var vote = new Vote(info, gap);
-        var stream = new KeccakRlpStream();
+        Vote vote = new Vote(info, gap);
+        KeccakRlpStream stream = new KeccakRlpStream();
         decoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = ecdsa.Sign(key, stream.GetValueHash());
         vote.Signer = key.Address;

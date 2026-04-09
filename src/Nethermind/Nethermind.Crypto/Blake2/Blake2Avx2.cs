@@ -23,26 +23,26 @@ public unsafe partial class Blake2Compression
         // Rotate shuffle masks. We can safely convert the ref to a pointer because the compiler guarantees the
         // data is in a fixed location, and the ref itself is converted from a pointer. Same for the IV below.
         byte* prm = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Rormask));
-        var r24 = Avx2.BroadcastVector128ToVector256(prm);
-        var r16 = Avx2.BroadcastVector128ToVector256(prm + Vector128<byte>.Count);
+        Vector256<byte> r24 = Avx2.BroadcastVector128ToVector256(prm);
+        Vector256<byte> r16 = Avx2.BroadcastVector128ToVector256(prm + Vector128<byte>.Count);
 
-        var row1 = Avx.LoadVector256(sh);
-        var row2 = Avx.LoadVector256(sh + Vector256<ulong>.Count);
+        Vector256<ulong> row1 = Avx.LoadVector256(sh);
+        Vector256<ulong> row2 = Avx.LoadVector256(sh + Vector256<ulong>.Count);
 
         ulong* piv = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Ivle));
-        var row3 = Avx.LoadVector256(piv);
-        var row4 = Avx.LoadVector256(piv + Vector256<ulong>.Count);
+        Vector256<ulong> row3 = Avx.LoadVector256(piv);
+        Vector256<ulong> row4 = Avx.LoadVector256(piv + Vector256<ulong>.Count);
 
         row4 = Avx2.Xor(row4, Avx.LoadVector256(sh + Vector256<ulong>.Count * 2)); // t[] and f[]
 
-        var m0 = Avx2.BroadcastVector128ToVector256(m);
-        var m1 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count);
-        var m2 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 2);
-        var m3 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 3);
-        var m4 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 4);
-        var m5 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 5);
-        var m6 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 6);
-        var m7 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 7);
+        Vector256<ulong> m0 = Avx2.BroadcastVector128ToVector256(m);
+        Vector256<ulong> m1 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count);
+        Vector256<ulong> m2 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 2);
+        Vector256<ulong> m3 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 3);
+        Vector256<ulong> m4 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 4);
+        Vector256<ulong> m5 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 5);
+        Vector256<ulong> m6 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 6);
+        Vector256<ulong> m7 = Avx2.BroadcastVector128ToVector256(m + Vector128<ulong>.Count * 7);
         Vector256<ulong> t0;
         Vector256<ulong> t1;
         Vector256<ulong> b0;

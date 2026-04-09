@@ -27,10 +27,10 @@ public class TimeoutCertificateDecoderTests
     [TestCaseSource(nameof(TcCases))]
     public void EncodeDecode_RoundTrip_Matches_AllFields(TimeoutCertificate tc, bool useRlpStream)
     {
-        var decoder = new TimeoutCertificateDecoder();
+        TimeoutCertificateDecoder decoder = new TimeoutCertificateDecoder();
 
         Rlp encoded = decoder.Encode(tc);
-        var stream = new RlpStream(encoded.Bytes);
+        RlpStream stream = new RlpStream(encoded.Bytes);
         TimeoutCertificate decoded;
         if (useRlpStream)
         {

@@ -26,7 +26,7 @@ public class OverlayTrieStoreTests
 
         PatriciaTree patriciaTree = new PatriciaTree(existingStore, LimboLogs.Instance);
         {
-            using var _ = existingStore.BeginBlockCommit(0);
+            using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
             patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
             patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
             patriciaTree.Commit();

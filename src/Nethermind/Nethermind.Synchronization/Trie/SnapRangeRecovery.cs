@@ -53,7 +53,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             if (peer == null) return null;
                             try
                             {
-                                var result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                                IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
                                     fullPath,
                                     cts.Token);
                                 if (result is not null) return result;
@@ -93,7 +93,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ValueHash256 queryPath,
         CancellationToken cancellationToken)
     {
-        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out var snapProtocol)) return null;
+        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer snapProtocol)) return null;
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.

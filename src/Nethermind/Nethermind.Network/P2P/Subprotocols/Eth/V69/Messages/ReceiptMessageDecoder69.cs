@@ -109,7 +109,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
     private static int GetLogsLength(TxReceipt item)
     {
         int logsLength = 0;
-        for (var i = 0; i < item.Logs.Length; i++)
+        for (int i = 0; i < item.Logs.Length; i++)
         {
             logsLength += Rlp.LengthOf(item.Logs[i]);
         }
@@ -153,7 +153,7 @@ public sealed class ReceiptMessageDecoder69(bool skipStateAndStatus = false) : R
 
         rlpStream.StartSequence(logsLength);
         LogEntry[] logs = item.Logs;
-        for (var i = 0; i < logs.Length; i++)
+        for (int i = 0; i < logs.Length; i++)
         {
             rlpStream.Encode(logs[i]);
         }

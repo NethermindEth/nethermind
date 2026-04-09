@@ -597,7 +597,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            if (_previouslyPendingItems.TryRemove(syncItem.Key, out var responseBytes))
+            if (_previouslyPendingItems.TryRemove(syncItem.Key, out byte[] responseBytes))
             {
                 if (_logger.IsTrace) _logger.Trace($"Using cache for key {syncItem.Key}");
                 int invalidNodes = 0;
@@ -653,7 +653,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
-            _newPendingItems.TryRemove(syncItem.Key, out var _);
+            _newPendingItems.TryRemove(syncItem.Key, out byte[] _);
             if (syncItem.IsRoot)
             {
                 if (!VerifyStorageUpdated(syncItem, data))

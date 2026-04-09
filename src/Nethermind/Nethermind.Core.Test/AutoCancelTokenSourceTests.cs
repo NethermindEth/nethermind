@@ -60,7 +60,7 @@ public class AutoCancelTokenSourceTests
             cts.Token.ThrowIfCancellationRequested();
         });
 
-        var act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
+        Func<Task> act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
         act.Should().ThrowAsync<InvalidOperationException>();
     }
 }

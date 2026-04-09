@@ -145,7 +145,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+                RocksDbConfigFactory configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
                 using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -506,7 +506,7 @@ namespace Nethermind.Db.Test
             {
                 sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
                 sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) });
-                using var view = sortedKeyValueStore.GetViewBetween([0], [9]);
+                using ISortedView view = sortedKeyValueStore.GetViewBetween([0], [9]);
 
                 i = 0;
                 while (view.MoveNext())
@@ -521,7 +521,7 @@ namespace Nethermind.Db.Test
 
             CheckView(sortedKeyValue);
 
-            using var snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
             for (i = 0; i < entryCount; i++)
             {
                 _db[[i, i, i]] = [(byte)(i + 1), (byte)(i + 1), (byte)(i + 1)];
@@ -637,7 +637,7 @@ namespace Nethermind.Db.Test
                 // The "Next" lexicographical key is mathematically [01, 00, 00, 00].
 
                 // Resize array to fit the new leading '1'
-                var overflowKey = new byte[nextKey.Length + 1];
+                byte[] overflowKey = new byte[nextKey.Length + 1];
                 overflowKey[0] = 1;
                 // The rest are already 0 from default initialization, so we return.
                 return overflowKey;

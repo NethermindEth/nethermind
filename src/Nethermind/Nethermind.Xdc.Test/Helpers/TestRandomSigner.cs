@@ -6,6 +6,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -24,8 +25,8 @@ internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTre
 
     public Signature Sign(in ValueHash256 message)
     {
-        var switchInfo = epochSwitchManager.GetEpochSwitchInfo((XdcBlockHeader)blockTree.Head!.Header)!;
-        var c = switchInfo.Masternodes[_rnd.Next(switchInfo.Masternodes.Length)];
+        EpochSwitchInfo switchInfo = epochSwitchManager.GetEpochSwitchInfo((XdcBlockHeader)blockTree.Head!.Header)!;
+        Address c = switchInfo.Masternodes[_rnd.Next(switchInfo.Masternodes.Length)];
         Key = masternodeCandidates.Find(k => k.Address == c)!;
         return _ecdsa.Sign(Key, in message);
     }

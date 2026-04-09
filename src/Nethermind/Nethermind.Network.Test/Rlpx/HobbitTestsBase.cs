@@ -32,7 +32,7 @@ public abstract class HobbitTestsBase
     [SetUp]
     public void Setup()
     {
-        var (A, B) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipherA = new FrameCipher(A.AesSecret);
         _macProcessorA = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);

@@ -113,7 +113,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             ? CreatePreimageAddressKey(address)
             : ValueKeccak.Compute(address.Bytes);
 
-        using var stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
+        using NettyRlpStream stream = AccountDecoder.Slim.EncodeToNewNettyStream(corruptedAccount);
         accountDb.Set(addrKey.BytesAsSpan[..20], stream.AsSpan().ToArray());
     }
 

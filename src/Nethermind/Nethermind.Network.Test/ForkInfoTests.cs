@@ -341,7 +341,7 @@ public class ForkInfoTests
         ISpecProvider specProvider = MainnetSpecProvider.Instance;
         if (UseTimestampSpec)
         {
-            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+            ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
             ChainSpec spec = loader.LoadEmbeddedOrFromFile($"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/TimestampForkIdTest.json");
             specProvider = new ChainSpecBasedSpecProvider(spec);
         }
@@ -381,7 +381,7 @@ public class ForkInfoTests
 
     public static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile(Path.Combine(path, chainSpec));
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);

@@ -50,10 +50,10 @@ namespace Nethermind.Network.Benchmarks
                 SerializerInfo.Create(new StatusMessageSerializer())
                 );
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
-            var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
-            var tree = Build.A.BlockTree().TestObject;
+            EthereumEcdsa ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
+            BlockTree tree = Build.A.BlockTree().TestObject;
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-            var specProvider = MainnetSpecProvider.Instance;
+            MainnetSpecProvider specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
                 new BlobTxStorage(),

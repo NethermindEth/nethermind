@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
             uint curStartingPath = 0;
             uint partitionSize = (uint)(((ulong)uint.MaxValue + 1) / (ulong)_accountRangePartitionCount);
 
-            for (var i = 0; i < _accountRangePartitionCount; i++)
+            for (int i = 0; i < _accountRangePartitionCount; i++)
             {
                 AccountRangePartition partition = new AccountRangePartition();
 
@@ -299,7 +299,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueHash256> codeHashes)
         {
-            foreach (var hash in codeHashes)
+            foreach (ValueHash256 hash in codeHashes)
             {
                 CodesToRetrieve.Enqueue(hash);
             }
@@ -402,7 +402,7 @@ namespace Nethermind.Synchronization.SnapSync
             else
             {
                 //default - no split
-                var storageRange = new StorageRange
+                StorageRange storageRange = new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
                     StartingHash = lastProcessedHash.IncrementPath(),
@@ -549,7 +549,7 @@ namespace Nethermind.Synchronization.SnapSync
                             double totalAllLargeStorageProgress = 0;
                             // totalLargeStorage changes over time, but thats fine.
                             long totalLargeStorage = queuedStorage;
-                            foreach (var keyValuePair in _largeStorageProgress)
+                            foreach (KeyValuePair<ValueHash256, LargeProgressStatus> keyValuePair in _largeStorageProgress)
                             {
                                 totalAllLargeStorageProgress += keyValuePair.Value.CalculateProgress();
                                 totalLargeStorage++;
@@ -662,7 +662,7 @@ namespace Nethermind.Synchronization.SnapSync
             internal double CalculateProgress()
             {
                 double total = 0;
-                foreach (var keyValuePair in _partitionRemaining)
+                foreach (KeyValuePair<ValueHash256, double> keyValuePair in _partitionRemaining)
                 {
                     total += keyValuePair.Value;
                 }

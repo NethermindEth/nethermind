@@ -190,7 +190,7 @@ public class PatriciaTreeBulkSetterTests
             }
         ).SetName("replace");
 
-        var reappliedEntry =
+        List<(Hash256 key, byte[] value)> reappliedEntry =
             new List<(Hash256 key, byte[] value)>()
             {
                 (new Hash256("abaa000000000000000000000000000000000000000000000000000000000000"), MakeRandomValue(rng, canBeNull: false)),
@@ -277,7 +277,7 @@ public class PatriciaTreeBulkSetterTests
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -285,7 +285,7 @@ public class PatriciaTreeBulkSetterTests
             pTree.Commit();
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
             }
@@ -328,7 +328,7 @@ public class PatriciaTreeBulkSetterTests
         PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
         pTree.RootHash = Keccak.EmptyTreeHash;
 
-        foreach (var existingItem in existingItems)
+        foreach ((Hash256 key, byte[] value) existingItem in existingItems)
         {
             pTree.Set(existingItem.key.Bytes, existingItem.value);
         }
@@ -336,7 +336,7 @@ public class PatriciaTreeBulkSetterTests
         pTree.UpdateRootHash();
 
         using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-        foreach (var valueTuple in items)
+        foreach ((Hash256 key, byte[] value) valueTuple in items)
         {
             entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
         }
@@ -360,7 +360,7 @@ public class PatriciaTreeBulkSetterTests
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -369,7 +369,7 @@ public class PatriciaTreeBulkSetterTests
 
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
             }
@@ -418,7 +418,7 @@ public class PatriciaTreeBulkSetterTests
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -427,7 +427,7 @@ public class PatriciaTreeBulkSetterTests
 
 
             long sw = Stopwatch.GetTimestamp();
-            foreach (var valueTuple in items)
+            foreach ((Hash256 key, byte[] value) valueTuple in items)
             {
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(items.Count);
                 entries.Add(new PatriciaTree.BulkSetEntry(valueTuple.key, valueTuple.value));
@@ -470,7 +470,7 @@ public class PatriciaTreeBulkSetterTests
             PatriciaTree pTree = new PatriciaTree(trieStore, LimboLogs.Instance);
             pTree.RootHash = Keccak.EmptyTreeHash;
 
-            foreach (var existingItem in existingItems)
+            foreach ((Hash256 key, byte[] value) existingItem in existingItems)
             {
                 pTree.Set(existingItem.key.Bytes, existingItem.value);
             }
@@ -478,7 +478,7 @@ public class PatriciaTreeBulkSetterTests
 
             long sw = Stopwatch.GetTimestamp();
 
-            foreach (var valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
+            foreach ((Hash256 key, byte[] value) valueTuple in items) pTree.Set(valueTuple.key.Bytes, valueTuple.value);
 
             pTree.Commit();
 

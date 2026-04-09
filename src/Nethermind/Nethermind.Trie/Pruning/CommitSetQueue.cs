@@ -84,7 +84,7 @@ public class CommitSetQueue
             BlockCommitSet upperBound = new BlockCommitSet(blockNumber);
             upperBound.Seal(new TrieNode(NodeType.Unknown, Keccak.MaxValue));
 
-            var result = new ArrayPoolListRef<BlockCommitSet>();
+            ArrayPoolListRef<BlockCommitSet> result = new ArrayPoolListRef<BlockCommitSet>();
             result.AddRange(_queue.GetViewBetween(lowerBound, upperBound));
             return result;
         }
@@ -94,7 +94,7 @@ public class CommitSetQueue
     {
         lock (_queue)
         {
-            var result = new ArrayPoolListRef<BlockCommitSet>();
+            ArrayPoolListRef<BlockCommitSet> result = new ArrayPoolListRef<BlockCommitSet>();
             while (_queue.Count > 0)
             {
                 BlockCommitSet min = _queue.Min;
