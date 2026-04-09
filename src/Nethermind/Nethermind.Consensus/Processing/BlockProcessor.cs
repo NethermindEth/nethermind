@@ -67,7 +67,6 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        _blockTransactionsExecutor.SetBlockAccessListManager(_balManager);
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
         ApplyDaoTransition(suggestedBlock);
