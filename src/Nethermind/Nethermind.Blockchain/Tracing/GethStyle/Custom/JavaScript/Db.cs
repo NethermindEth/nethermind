@@ -23,7 +23,7 @@ public class Db
 
     public ITypedArray<byte> getState(object address, object hash)
     {
-        using var handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(32, out byte[] array);
 
         ReadOnlySpan<byte> bytes = WorldState.Get(new StorageCell(address.ToAddress(), hash.GetHash()));
         if (bytes.Length < array.Length)

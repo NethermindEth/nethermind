@@ -37,8 +37,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 return AcceptTxResult.Accepted;
             }
 
-            var txPermissions = GetPermissions(tx, parentHeader);
-            var txType = GetTxType(tx, txPermissions.ContractExists);
+            (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) txPermissions = GetPermissions(tx, parentHeader);
+            ITransactionPermissionContract.TxPermissions txType = GetTxType(tx, txPermissions.ContractExists);
             if (_logger.IsTrace) _logger.Trace($"Given transaction: {tx.Hash} sender: {tx.SenderAddress} to: {tx.To} value: {tx.Value}, gas_price: {tx.GasPrice}. " +
                                                $"Permissions required: {txType}, got: {txPermissions}.");
             return (txPermissions.Permissions & txType) == txType ? AcceptTxResult.Accepted : AcceptTxResultAuRa.PermissionDenied.WithMessage($"permission denied for tx type: {txType}, actual permissions: {txPermissions.Permissions}");
@@ -46,8 +46,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            var key = (parentHeader.Hash, tx.SenderAddress);
-            return _cache.Permissions.TryGet(key, out var txCachedPermissions)
+            (Hash256 Hash, Address SenderAddress) key = (parentHeader.Hash, tx.SenderAddress);
+            return _cache.Permissions.TryGet(key, out (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) txCachedPermissions)
                 ? txCachedPermissions
                 : GetPermissionsFromContract(tx, parentHeader, key);
         }
@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 }
             }
 
-            var result = (txPermissions, contractExists);
+            (ITransactionPermissionContract.TxPermissions txPermissions, bool contractExists) result = (txPermissions, contractExists);
 
             if (shouldCache)
             {

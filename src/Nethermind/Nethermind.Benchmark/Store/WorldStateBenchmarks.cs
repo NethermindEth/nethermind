@@ -45,7 +45,7 @@ public class WorldStateBenchmarks
             .Build();
 
         IWorldState worldState = _globalWorldState = _container.Resolve<IMainProcessingContext>().WorldState;
-        using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
         Random rand = new Random(0);
         byte[] randomBuffer = new byte[20];
@@ -106,7 +106,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -121,7 +121,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -145,7 +145,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -161,7 +161,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)
@@ -188,7 +188,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
 
         for (int i = 0; i < _loopSize; i++)
         {
@@ -204,7 +204,7 @@ public class WorldStateBenchmarks
     {
         Random rand = new Random(1);
         IWorldState worldState = _globalWorldState;
-        using var _ = worldState.BeginScope(_baseBlock);
+        using IDisposable _ = worldState.BeginScope(_baseBlock);
         byte[] randomBuffer = new byte[20];
 
         for (int i = 0; i < _loopSize; i++)

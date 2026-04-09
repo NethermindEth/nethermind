@@ -77,7 +77,7 @@ namespace Nethermind.Consensus.AuRa
         {
             void UnFinalizeBlock(BlockHeader blockHeader, BatchWrite batch)
             {
-                var info = GetBlockInfo(blockHeader);
+                (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo)? info = GetBlockInfo(blockHeader);
                 if (info is not null)
                 {
                     (ChainLevelInfo chainLevel, BlockInfo blockInfo) = info.Value;
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa
             BlockHeader header = e.Blocks[0].Header;
             if (_blockTree.WasProcessed(header.Number, header.Hash!))
             {
-                using var batch = _chainLevelInfoRepository.StartBatch();
+                using BatchWrite batch = _chainLevelInfoRepository.StartBatch();
                 // need to un-finalize blocks
                 int minSealersForFinalization = GetMinSealersForFinalization(header.Number);
                 for (int i = 1; i < minSealersForFinalization; i++)
@@ -175,7 +175,7 @@ namespace Nethermind.Consensus.AuRa
 
                 using (BatchWrite batch = _chainLevelInfoRepository.StartBatch())
                 {
-                    var info = GetBlockInfo(block);
+                    (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo)? info = GetBlockInfo(block);
                     if (info is not null)
                     {
                         (ChainLevelInfo? chainLevel, BlockInfo? blockInfo) = info.Value;
@@ -209,7 +209,7 @@ namespace Nethermind.Consensus.AuRa
                                 block = _blockTree.FindParentHeader(block, BlockTreeLookupOptions.None);
                                 if (block is null)
                                     break;
-                                var parentInfo = GetBlockInfo(block);
+                                (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo)? parentInfo = GetBlockInfo(block);
                                 if (parentInfo is null)
                                     break;
                                 (chainLevel, blockInfo) = parentInfo.Value;

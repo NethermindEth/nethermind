@@ -39,7 +39,7 @@ public class PluginLoaderTests
             typeof(TestPlugin));
         loader.Load();
         loader.OrderPlugins(new PluginConfig { PluginOrder = [] });
-        var expected = new List<Type>
+        List<Type> expected = new List<Type>
         {
             typeof(AuRaPlugin),
             typeof(CliquePlugin),
@@ -67,7 +67,7 @@ public class PluginLoaderTests
             new PluginConfig { PluginOrder = ["Hive", "Test", "NethDev", "Ethash", "Clique", "Aura"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new List<Type>
         {
             typeof(HivePlugin),
             typeof(TestPlugin),
@@ -115,7 +115,7 @@ public class PluginLoaderTests
             new PluginConfig() { PluginOrder = ["Hive", "NethDev", "Ethash"] };
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new List<Type>
         {
             typeof(HivePlugin),
             typeof(NethDevPlugin),
@@ -138,7 +138,7 @@ public class PluginLoaderTests
             new PluginConfig();
         loader.OrderPlugins(pluginConfig);
 
-        var expected = new List<Type>
+        List<Type> expected = new List<Type>
         {
             typeof(HealthChecksPlugin),
             typeof(EthashPlugin),

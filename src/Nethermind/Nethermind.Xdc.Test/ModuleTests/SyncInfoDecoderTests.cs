@@ -63,10 +63,10 @@ public class SyncInfoDecoderTests
     [TestCaseSource(nameof(SyncInfoCases))]
     public void EncodeDecode_RoundTrip_Matches_AllFields(SyncInfo syncInfo, bool useRlpStream)
     {
-        var decoder = new SyncInfoDecoder();
+        SyncInfoDecoder decoder = new SyncInfoDecoder();
 
         Rlp encoded = decoder.Encode(syncInfo);
-        var stream = new RlpStream(encoded.Bytes);
+        RlpStream stream = new RlpStream(encoded.Bytes);
         SyncInfo decoded;
 
         if (useRlpStream)
@@ -134,7 +134,7 @@ public class SyncInfoDecoderTests
             )
         );
 
-        var decoder = new SyncInfoDecoder();
+        SyncInfoDecoder decoder = new SyncInfoDecoder();
         Rlp encoded = decoder.Encode(syncInfo);
 
         int expectedTotal = decoder.GetLength(syncInfo, RlpBehaviors.None);
@@ -145,7 +145,7 @@ public class SyncInfoDecoderTests
     [Test]
     public void Encode_Null_ReturnsEmptySequence()
     {
-        var decoder = new SyncInfoDecoder();
+        SyncInfoDecoder decoder = new SyncInfoDecoder();
 
         Rlp encoded = decoder.Encode(null!);
 
@@ -155,7 +155,7 @@ public class SyncInfoDecoderTests
     [Test]
     public void Decode_Null_ReturnsNull()
     {
-        var decoder = new SyncInfoDecoder();
+        SyncInfoDecoder decoder = new SyncInfoDecoder();
         SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
@@ -164,7 +164,7 @@ public class SyncInfoDecoderTests
     [Test]
     public void Decode_EmptyByteArray_ValueDecoderContext_ReturnsNull()
     {
-        var decoder = new SyncInfoDecoder();
+        SyncInfoDecoder decoder = new SyncInfoDecoder();
         Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(Rlp.OfEmptyList.Bytes);
 
         SyncInfo decoded = decoder.Decode(ref decoderContext);

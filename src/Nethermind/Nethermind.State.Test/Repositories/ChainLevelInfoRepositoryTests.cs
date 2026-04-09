@@ -23,7 +23,7 @@ public class ChainLevelInfoRepositoryTests
         ChainLevelInfo level10 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakB, 0));
 
         {
-            using var _ = repository.StartBatch();
+            using BatchWrite _ = repository.StartBatch();
             repository.PersistLevel(1, level1);
             repository.PersistLevel(10, level10);
         }
@@ -42,7 +42,7 @@ public class ChainLevelInfoRepositoryTests
         ChainLevelInfo level1 = new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 0));
 
         {
-            using var _ = repository.StartBatch();
+            using BatchWrite _ = repository.StartBatch();
             repository.PersistLevel(1, level1);
         }
 

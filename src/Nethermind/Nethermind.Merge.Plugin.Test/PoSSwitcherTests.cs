@@ -38,9 +38,9 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 expectedTtd = 10;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+            ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);

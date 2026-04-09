@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private UInt256 CalculateNonce(Address address, BlockHeader baseBlock, IDictionary<Address, UInt256> nonces)
         {
-            if (!nonces.TryGetValue(address, out var nonce))
+            if (!nonces.TryGetValue(address, out UInt256 nonce))
             {
                 nonce = _stateReader.GetNonce(baseBlock, address);
             }

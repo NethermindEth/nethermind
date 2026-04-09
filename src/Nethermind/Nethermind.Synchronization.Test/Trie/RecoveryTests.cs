@@ -171,7 +171,7 @@ public class RecoveryTests
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
-            var alloc = new SyncPeerAllocation(peers[0], allocationContexts);
+            SyncPeerAllocation alloc = new SyncPeerAllocation(peers[0], allocationContexts);
             return alloc;
         });
         return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);

@@ -121,7 +121,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            var act = async () => await stepsManager.InitializeAll(source.Token);
+            Func<Task> act = async () => await stepsManager.InitializeAll(source.Token);
             await act.Should().ThrowAsync<StepDependencyException>();
         }
 
@@ -187,7 +187,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .AddSingleton<EthereumStepsManager>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
 
-            foreach (var stepInfo in stepInfos)
+            foreach (StepInfo stepInfo in stepInfos)
             {
                 builder.AddStep(stepInfo);
             }

@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             BlockHeader header = headerSearch.Object!.Clone();
             Block block = new(header, [tx], []);
 
-            using var env = tracerEnv.BuildAndOverride(header, stateOverride);
+            using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
             ITracer tracer = env.Component;
 
             ParityTraceTypes traceTypes1 = GetParityTypes(traceTypes);
@@ -340,7 +340,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> TraceBlock(Block block, ParityLikeBlockTracer tracer)
         {
-            using var env = tracerEnv.BuildAndOverride(block.Header);
+            using Scope<ITracer> env = tracerEnv.BuildAndOverride(block.Header);
             ITracer tracer2 = env.Component;
 
             return TraceBlockDirect(tracer2, block, tracer);
@@ -356,7 +356,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer)
         {
-            using var env = tracerEnv.BuildAndOverride(baseBlock);
+            using Scope<ITracer> env = tracerEnv.BuildAndOverride(baseBlock);
             ITracer tracer2 = env.Component;
 
             using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();

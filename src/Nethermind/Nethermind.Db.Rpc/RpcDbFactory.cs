@@ -37,7 +37,7 @@ namespace Nethermind.Db.Rpc
 
         public IDb CreateDb(DbSettings dbSettings)
         {
-            var rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
+            IDb rocksDb = _wrappedRocksDbFactory.CreateDb(dbSettings);
             return WrapWithRpc(rocksDb);
         }
 

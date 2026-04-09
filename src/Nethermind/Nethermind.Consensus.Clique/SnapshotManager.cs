@@ -288,7 +288,7 @@ namespace Nethermind.Consensus.Clique
 
                 // Resolve the authorization key and check against signers
                 Address signer = header.Author;
-                if (!snapshot.Signers.TryGetValue(signer, out var value)) throw new InvalidOperationException("Unauthorized signer");
+                if (!snapshot.Signers.TryGetValue(signer, out long value)) throw new InvalidOperationException("Unauthorized signer");
                 if (HasSignedRecently(snapshot, number, signer)) throw new InvalidOperationException($"Recently signed (trying to sign {number} when last signed {value} with {snapshot.Signers.Count} signers)");
 
                 snapshot.Signers[signer] = number;

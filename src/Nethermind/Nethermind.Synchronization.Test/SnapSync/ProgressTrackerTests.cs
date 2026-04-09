@@ -166,7 +166,7 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker(enableStorageSplits: true);
 
-        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256 lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
         StorageRange storageRange = new StorageRange()
@@ -203,7 +203,7 @@ public class ProgressTrackerTests
     {
         using ProgressTracker progressTracker = CreateProgressTracker();
 
-        var lastProcessedHash = new ValueHash256(lastProcessed);
+        ValueHash256 lastProcessedHash = new ValueHash256(lastProcessed);
         ValueHash256? limitHash = limit is null ? (ValueHash256?)null : new ValueHash256(limit);
 
         StorageRange storageRange = new StorageRange()

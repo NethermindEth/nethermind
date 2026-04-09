@@ -61,7 +61,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
 
         Hash256 stateRoot;
         IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
-        using (var _ = worldState.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis))
         {
             worldState.CreateAccount(TestItem.AddressA, 100000);
             worldState.Commit(London.Instance);
@@ -810,7 +810,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         (IWorldState stateProvider, Hash256 root) = CreateInitialState(code);
 
         BlockHeader baseBlock;
-        using (var _ = stateProvider.BeginScope(_blockTree.Head?.Header))
+        using (IDisposable _ = stateProvider.BeginScope(_blockTree.Head?.Header))
         {
             for (int i = 0; i < 10000; i++)
             {
@@ -871,7 +871,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
     private (IWorldState, Hash256) CreateInitialState(byte[]? code)
     {
         IWorldState stateProvider = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         AddAccount(stateProvider, TestItem.AddressA, 1.Ether);
         AddAccount(stateProvider, TestItem.AddressB, 1.Ether);

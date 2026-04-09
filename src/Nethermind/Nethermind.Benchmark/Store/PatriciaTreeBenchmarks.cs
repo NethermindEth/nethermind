@@ -496,7 +496,7 @@ namespace Nethermind.Benchmarks.Store
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            var originalRootHash = Keccak.EmptyTreeHash;
+            Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
             for (int i = 0; i < _largerEntryCount; i++)
@@ -517,7 +517,7 @@ namespace Nethermind.Benchmarks.Store
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            var originalRootHash = Keccak.EmptyTreeHash;
+            Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_repeatedlyFactor);
@@ -544,7 +544,7 @@ namespace Nethermind.Benchmarks.Store
                 Prune.WhenCacheReaches(1.MiB),
                 Persist.EveryNBlock(2), NullLogManager.Instance);
             StateTree tempTree = new StateTree(trieStore, NullLogManager.Instance);
-            var originalRootHash = Keccak.EmptyTreeHash;
+            Hash256 originalRootHash = Keccak.EmptyTreeHash;
             tempTree.RootHash = Keccak.EmptyTreeHash;
 
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> bulkSet = new(_repeatedlyFactor);

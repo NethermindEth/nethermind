@@ -327,7 +327,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
-            using var handle = Thread.CurrentThread.SetHighestPriority();
+            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
             // Have block, switch off background GC timer
             GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
             IsProcessingBlock = true;

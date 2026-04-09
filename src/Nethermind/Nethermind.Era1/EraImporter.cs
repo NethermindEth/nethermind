@@ -231,7 +231,7 @@ public class EraImporter(
             throw new EraVerificationException($"Block validation failed: {error}");
         }
 
-        var addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
+        AddBlockResult addResult = await blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ShouldProcess);
         switch (addResult)
         {
             case AddBlockResult.AlreadyKnown:

@@ -49,7 +49,7 @@ namespace Nethermind.Trie.Test
         {
             // Fixed seed for reproducible fuzzing
             const int fuzzSeed = 12345;
-            var random = new Random(fuzzSeed);
+            Random random = new Random(fuzzSeed);
 
             _logger.Info($"Fuzzing pruning scenarios with seed: {fuzzSeed}");
 
@@ -62,12 +62,12 @@ namespace Nethermind.Trie.Test
             _logger.Info($"Scenario: {accountsCount} accounts, {blocksCount} blocks, maxDepth: {maxDepth}, storageOps: {storageOperationsPerBlock}");
 
             // Create pruning context with random configuration
-            var pruningContext = PruningContext.InMemory
+            PruningContext pruningContext = PruningContext.InMemory
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
             // Randomly choose between different pruning strategies
-            var strategyChoice = random.Next(0, 3);
+            int strategyChoice = random.Next(0, 3);
             switch (strategyChoice)
             {
                 case 0:
@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Test
             pruningContext = pruningContext.WithMaxDepth(maxDepth).TurnOnPrune();
 
             // Generate random accounts and operations
-            var accounts = new List<int>();
+            List<int> accounts = new List<int>();
             for (int i = 0; i < accountsCount; i++)
             {
                 accounts.Add(i);
@@ -98,23 +98,23 @@ namespace Nethermind.Trie.Test
                 for (int op = 0; op < operationsInBlock; op++)
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
-                    var operation = random.Next(0, 4);
+                    int operation = random.Next(0, 4);
 
                     switch (operation)
                     {
                         case 0: // Create/Update account balance
-                            var balance = (UInt256)random.Next(1, 1000);
+                            UInt256 balance = (UInt256)random.Next(1, 1000);
                             pruningContext.SetAccountBalance(accountIndex, balance);
                             break;
 
                         case 1: // Set storage
-                            var storageKey = random.Next(1, 10);
-                            var storageValue = random.Next(1, 100);
+                            int storageKey = random.Next(1, 10);
+                            int storageValue = random.Next(1, 100);
                             pruningContext.SetStorage(accountIndex, storageKey, storageValue);
                             break;
 
                         case 2: // Delete storage
-                            var deleteKey = random.Next(1, 10);
+                            int deleteKey = random.Next(1, 10);
                             pruningContext.DeleteStorage(accountIndex, deleteKey);
                             break;
 
@@ -128,10 +128,10 @@ namespace Nethermind.Trie.Test
                 for (int storageOp = 0; storageOp < storageOperationsPerBlock; storageOp++)
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
-                    var storageKey = random.Next(1, 10);
-                    var storageValue = random.Next(1, 100);
+                    int storageKey = random.Next(1, 10);
+                    int storageValue = random.Next(1, 100);
 
-                    var storageOperation = random.Next(0, 3);
+                    int storageOperation = random.Next(0, 3);
                     switch (storageOperation)
                     {
                         case 0:
@@ -160,7 +160,7 @@ namespace Nethermind.Trie.Test
                     for (int branchOp = 0; branchOp < random.Next(1, 3); branchOp++)
                     {
                         int accountIndex = accounts[random.Next(accounts.Count)];
-                        var balance = (UInt256)random.Next(1, 1000);
+                        UInt256 balance = (UInt256)random.Next(1, 1000);
                         pruningContext.SetAccountBalance(accountIndex, balance);
                     }
 

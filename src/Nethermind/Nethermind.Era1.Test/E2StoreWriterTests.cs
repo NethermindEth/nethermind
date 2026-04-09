@@ -87,7 +87,7 @@ internal class E2StoreWriterTests
 
         await sut.WriteEntryAsSnappy(EntryTypes.CompressedHeader, TestBytes);
         stream.Position = E2StoreWriter.HeaderSize;
-        using var snappy = new SnappyStream(stream, System.IO.Compression.CompressionMode.Decompress);
+        using SnappyStream snappy = new SnappyStream(stream, System.IO.Compression.CompressionMode.Decompress);
         byte[] buffer = new byte[32];
 
         Assert.That(() => snappy.Read(buffer), Throws.Nothing);
@@ -132,7 +132,7 @@ internal class E2StoreWriterTests
         sut.Dispose();
 
         using E2StoreReader reader = new E2StoreReader(tmpFile);
-        (var readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode<byte[]>(position, buf => buf.ToArray(), EntryTypes.CompressedHeader, default);
+        (byte[]? readBytes, _) = await reader.ReadSnappyCompressedEntryAndDecode<byte[]>(position, buf => buf.ToArray(), EntryTypes.CompressedHeader, default);
         Assert.That(readBytes, Is.EquivalentTo(TestBytes));
     }
 }

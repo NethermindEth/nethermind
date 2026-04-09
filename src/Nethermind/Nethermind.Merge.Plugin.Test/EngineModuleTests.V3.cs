@@ -253,7 +253,7 @@ public partial class EngineModuleTests
                             """;
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
-        var rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
+        JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse? response = (rpcResponse) as JsonRpcErrorResponse;
         Assert.That(response?.Error, Is.Not.Null);
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
@@ -512,7 +512,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        for (var i = 1; i < BlockCount; i++)
+        for (int i = 1; i < BlockCount; i++)
         {
             await AddNewBlockV3(rpcModule, chain, 1);
         }

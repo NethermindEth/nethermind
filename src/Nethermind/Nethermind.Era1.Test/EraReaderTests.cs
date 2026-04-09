@@ -110,7 +110,7 @@ internal class EraReaderTests
     {
         using AccumulatorCalculator calculator = new();
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
-        foreach (var tmpFileAddedContent in tmpFile.AddedContents)
+        foreach ((Block, TxReceipt[]) tmpFileAddedContent in tmpFile.AddedContents)
         {
             calculator.Add(tmpFileAddedContent.Item1.Hash!, tmpFileAddedContent.Item1.TotalDifficulty!.Value);
         }

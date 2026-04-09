@@ -55,11 +55,11 @@ public sealed class UnusedNewExpressionAnalyzer : DiagnosticAnalyzer
     private static void AnalyzeOperationBlock(OperationBlockAnalysisContext context)
     {
         // Candidates: locals assigned from `new T(...)` whose constructor lacks [ConstructorWithSideEffect]
-        var candidates = new Dictionary<ILocalSymbol, (Location Location, INamedTypeSymbol CreatedType)>(
+        Dictionary<ILocalSymbol, (Location Location, INamedTypeSymbol CreatedType)> candidates = new Dictionary<ILocalSymbol, (Location Location, INamedTypeSymbol CreatedType)>(
             SymbolEqualityComparer.Default);
 
         // Locals that are referenced anywhere after declaration
-        var referencedLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
+        HashSet<ILocalSymbol> referencedLocals = new HashSet<ILocalSymbol>(SymbolEqualityComparer.Default);
 
         foreach (IOperation operation in context.OperationBlocks.SelectMany(Flatten))
         {
@@ -118,7 +118,7 @@ public sealed class UnusedNewExpressionAnalyzer : DiagnosticAnalyzer
 
     private static IEnumerable<IOperation> Flatten(IOperation root)
     {
-        var stack = new Stack<IOperation>();
+        Stack<IOperation> stack = new Stack<IOperation>();
         stack.Push(root);
 
         while (stack.Count > 0)

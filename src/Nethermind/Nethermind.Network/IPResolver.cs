@@ -111,7 +111,7 @@ public class IPResolver : IIPResolver
 
         try
         {
-            foreach (var s in GetIPSources())
+            foreach (IIPSource s in GetIPSources())
             {
                 (bool success, IPAddress ip) = await s.TryGetIP();
                 if (success)

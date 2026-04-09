@@ -42,7 +42,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        foreach (var blockNumber in EnumerateBlockNumber())
+        foreach (long blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
             yield return (result.Block, result.Receipts);
@@ -187,13 +187,13 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 

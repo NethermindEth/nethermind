@@ -42,7 +42,7 @@ public class HttpContextFactory
     {
         ArgumentNullException.ThrowIfNull(featureCollection);
 
-        var httpContext = new DefaultHttpContext(featureCollection);
+        DefaultHttpContext httpContext = new DefaultHttpContext(featureCollection);
         Initialize(httpContext, featureCollection);
         return httpContext;
     }

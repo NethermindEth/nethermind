@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.AuRa
             IValidatorContract GetValidatorContract() => new ValidatorContract(_transactionProcessor, _abiEncoder, validator.GetContractAddress(), _stateProvider, _readOnlyTxProcessorSource, _signer);
             IReportingValidatorContract GetReportingValidatorContract() => new ReportingValidatorContract(_abiEncoder, validator.GetContractAddress(), _signer);
 
-            var validSealerStrategy = new ValidSealerStrategy();
+            ValidSealerStrategy validSealerStrategy = new ValidSealerStrategy();
             long startBlockNumber = startBlock ?? AuRaValidatorBase.DefaultStartBlockNumber;
 
             ContractBasedValidator GetContractBasedValidator() =>

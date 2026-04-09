@@ -24,14 +24,14 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            var variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
+            string variableName = string.IsNullOrEmpty(category) ? name : $"{category}.{name}";
             bool isSet = _args.ContainsKey(variableName);
             return (isSet, isSet ? _args[variableName] : null);
         }
 
         public IEnumerable<(string Category, string Name)> GetConfigKeys()
         {
-            var argsPairs = _args.Keys.Select(static k => k.Split('.')).Select(static a =>
+            IEnumerable<(string, string)> argsPairs = _args.Keys.Select(static k => k.Split('.')).Select(static a =>
             {
                 if (a.Length == 0)
                 {

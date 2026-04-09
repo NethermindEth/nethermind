@@ -448,7 +448,7 @@ public class TrieNodeTests
         visitor.VisitBranchReceived[(TreePath.Empty, node)].Should().Be(1);
         for (byte i = 0; i < 16; i++)
         {
-            var hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
+            string hex = "0x" + i.ToString("x2")[1] + "000000000000000000000000000000000000000000000000000000000000000";
             visitor.VisitLeafReceived[(new(new(Bytes.FromHexString(hex)), 1), ctx.AccountLeaf, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
         }
     }
@@ -838,7 +838,7 @@ public class TrieNodeTests
         trieNode.SetChild(4, child);
 
         trieNode.PrunePersistedRecursively(1);
-        var trieStore = Substitute.For<ITrieNodeResolver>();
+        ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
@@ -854,7 +854,7 @@ public class TrieNodeTests
         trieNode.SetChild(0, child);
 
         trieNode.PrunePersistedRecursively(1);
-        var trieStore = Substitute.For<ITrieNodeResolver>();
+        ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
         trieStore.FindCachedOrUnknown(Arg.Any<TreePath>(), Arg.Any<Hash256>()).Returns(child);
         TreePath emptyPath = TreePath.Empty;
         trieNode.GetChild(trieStore, ref emptyPath, 0).Should().Be(child);
@@ -955,7 +955,7 @@ public class TrieNodeTests
         TrieNode restoredBranch = new(NodeType.Branch, rlp);
 
         TrieNode clone = restoredBranch.Clone();
-        var restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
+        TrieNode restoredLeaf1 = clone.GetChild(trieStore, ref emptyPath, 1);
         restoredLeaf1.Should().NotBeNull();
         restoredLeaf1.ResolveNode(trieStore, TreePath.Empty);
         restoredLeaf1.Value.ToArray().Should().BeEquivalentTo(leaf1.Value.ToArray());

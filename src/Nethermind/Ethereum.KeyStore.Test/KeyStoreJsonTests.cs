@@ -44,7 +44,7 @@ namespace Ethereum.KeyStore.Test
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(config, _serializer, new AesEncrypter(config, logManager), _cryptoRandom, logManager, new PrivateKeyStoreIOSettingsProvider(config));
 
-            var testsContent = File.ReadAllText("basic_tests.json");
+            string testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<Dictionary<string, KeyStoreTestModel>>(testsContent);
         }
 
@@ -65,7 +65,7 @@ namespace Ethereum.KeyStore.Test
 
             try
             {
-                var securedPass = new SecureString();
+                SecureString securedPass = new SecureString();
                 testModel.Password.ToCharArray().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);

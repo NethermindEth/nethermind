@@ -101,12 +101,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction1.Signature!.V = 37;
             stateProvider.CreateAccount(transaction1.SenderAddress!, UInt256.UInt128MaxValue);
 
-            var transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction2 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(120).TestObject;
             transaction2.Signature!.V = 37;
 
-            var transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
+            Transaction transaction3 = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyD, false)
                 .WithSenderAddress(Address.FromNumber((UInt256)blockNumber))
                 .WithNonce(110).TestObject;
             transaction2.Signature.V = 37;

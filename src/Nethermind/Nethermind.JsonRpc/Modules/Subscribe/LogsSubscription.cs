@@ -76,9 +76,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             if (isAfterFromBlock && isBeforeToBlock)
             {
-                var filterLogs = GetFilterLogs(blockHeader, receipts, removed);
+                IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
 
-                foreach (var filterLog in filterLogs)
+                foreach (FilterLog filterLog in filterLogs)
                 {
                     using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         for (int j = 0; j < receipt.Logs!.Length; j++)
                         {
-                            var receiptLog = receipt.Logs[j];
+                            LogEntry receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
                                 yield return new FilterLog(

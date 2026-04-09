@@ -33,7 +33,7 @@ public class LocalDbContext(
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)
     {
-        foreach (var (address, account) in accounts)
+        foreach ((Hash256? address, Account? account) in accounts)
             StateTree.Set(address, account);
         StateTree.Commit();
     }

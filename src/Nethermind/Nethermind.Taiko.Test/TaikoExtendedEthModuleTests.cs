@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Text.Json;
 using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
@@ -10,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Taiko.Rpc;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,7 +30,7 @@ public class TaikoExtendedEthModuleTests
             .AddModule(new TaikoModule())
             .Build();
 
-        var act = () => container.Resolve<ITaikoExtendedEthRpcModule>();
+        Func<ITaikoExtendedEthRpcModule> act = () => container.Resolve<ITaikoExtendedEthRpcModule>();
         act.Should().NotThrow();
     }
 
@@ -74,7 +77,7 @@ public class TaikoExtendedEthModuleTests
         IL1OriginStore originStore = Substitute.For<IL1OriginStore>();
         TaikoExtendedEthModule rpc = new TaikoExtendedEthModule(new SyncConfig(), originStore);
 
-        var buildPayloadArgsId = new int[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
+        int[] buildPayloadArgsId = new int[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 };
         L1Origin origin = new L1Origin(0, TestItem.KeccakA, 1, Hash256.Zero, buildPayloadArgsId);
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
 
@@ -89,23 +92,23 @@ public class TaikoExtendedEthModuleTests
         int expectedLengthInChars = ValueHash256.Length * 2 + 2;
 
         // Create odd length hash values
-        var l2BlockHash = new ValueHash256("0x35a48c5b3ee5b1b2a365fcd1aa68c738d1c06474578087a78fa79dd45de6214");
-        var l1BlockHash = new ValueHash256("0x2daf7e4b06ca2d3a82c775d9e9ad0c973545a608684146cda0df5f7d71188a5");
+        ValueHash256 l2BlockHash = new ValueHash256("0x35a48c5b3ee5b1b2a365fcd1aa68c738d1c06474578087a78fa79dd45de6214");
+        ValueHash256 l1BlockHash = new ValueHash256("0x2daf7e4b06ca2d3a82c775d9e9ad0c973545a608684146cda0df5f7d71188a5");
 
         L1Origin origin = new L1Origin(0, l2BlockHash, 1, l1BlockHash, null);
         originStore.ReadL1Origin((UInt256)0).Returns(origin);
 
-        var result = rpc.taiko_l1OriginByID(0).Result.Data;
+        L1Origin? result = rpc.taiko_l1OriginByID(0).Result.Data;
         result.Should().Be(origin);
 
         // Serialize the RPC result and verify hash values have even-length hex string
-        var serializer = new Serialization.Json.EthereumJsonSerializer();
-        var json = serializer.Serialize(result);
+        EthereumJsonSerializer serializer = new Serialization.Json.EthereumJsonSerializer();
+        string json = serializer.Serialize(result);
 
         // Parse the JSON to extract the hash values
-        var jsonDoc = System.Text.Json.JsonDocument.Parse(json);
-        var l2BlockHashString = jsonDoc.RootElement.GetProperty("l2BlockHash").GetString();
-        var l1BlockHashString = jsonDoc.RootElement.GetProperty("l1BlockHash").GetString();
+        JsonDocument jsonDoc = System.Text.Json.JsonDocument.Parse(json);
+        string? l2BlockHashString = jsonDoc.RootElement.GetProperty("l2BlockHash").GetString();
+        string? l1BlockHashString = jsonDoc.RootElement.GetProperty("l1BlockHash").GetString();
 
         l2BlockHashString.Should().NotBeNull();
         l2BlockHashString!.Length.Should().Be(expectedLengthInChars);

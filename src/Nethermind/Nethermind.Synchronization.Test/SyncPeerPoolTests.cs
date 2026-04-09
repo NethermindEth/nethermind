@@ -594,12 +594,12 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         await SetupPeers(ctx, 1);
 
-        var thePeer = ctx.Pool.InitializedPeers.First();
+        PeerInfo thePeer = ctx.Pool.InitializedPeers.First();
         INodeStats nodeStat = Substitute.For<INodeStats>();
         ctx.Stats.GetOrAdd(thePeer.SyncPeer.Node).Returns(nodeStat);
         nodeStat.GetCurrentRequestLimit(RequestType.Headers).Returns(999);
 
-        var limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
+        int? limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
 
         limit.Should().Be(999);
     }
@@ -611,7 +611,7 @@ public class SyncPeerPoolTests
         using CancellationTokenSource cts = new CancellationTokenSource();
         cts.CancelAfter(100);
 
-        var result = await ctx.Pool.AllocateAndRun(
+        IOwnedReadOnlyList<BlockHeader>? result = await ctx.Pool.AllocateAndRun(
             static (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
             BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
 

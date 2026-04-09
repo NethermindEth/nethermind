@@ -16,7 +16,7 @@ public class NoBlockRewardsTests
     {
         Block block = Build.A.Block.WithNumber(10).WithUncles(Build.A.Block.WithNumber(9).TestObject).TestObject;
         NoBlockRewards calculator = NoBlockRewards.Instance;
-        var rewards = calculator.CalculateRewards(block);
+        BlockReward[] rewards = calculator.CalculateRewards(block);
         Assert.That(rewards, Is.Empty);
     }
 }

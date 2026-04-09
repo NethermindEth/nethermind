@@ -45,7 +45,7 @@ public partial class KzgPointEvaluationPrecompile : IPrecompile<KzgPointEvaluati
         ReadOnlySpan<byte> proof = inputSpan[144..192];
         Span<byte> hash = stackalloc byte[32];
 
-        var success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) &&
+        bool success = KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, hash) &&
             hash.SequenceEqual(versionedHash) &&
             KzgPolynomialCommitments.VerifyProof(commitment, z, y, proof);
 

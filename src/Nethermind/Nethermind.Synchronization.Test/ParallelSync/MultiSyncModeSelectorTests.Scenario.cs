@@ -221,7 +221,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number);
                             SyncProgressResolver.GetTotalDifficulty(Arg.Any<Hash256>()).Returns(info =>
                             {
-                                var hash = info.Arg<Hash256>();
+                                Hash256 hash = info.Arg<Hash256>();
 
                                 foreach (BlockHeader scenarioHeader in ScenarioHeaders)
                                 {

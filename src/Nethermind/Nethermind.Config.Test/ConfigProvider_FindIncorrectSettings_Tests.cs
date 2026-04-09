@@ -23,7 +23,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
             .Returns(call =>
             {
                 IDictionary vars = _env.GetEnvironmentVariables();
-                var key = call.Arg<string>();
+                string key = call.Arg<string>();
 
                 return vars.Contains(key) ? vars[key] : null;
             });

@@ -99,7 +99,7 @@ public class XdcBlockHeader(
 
     public static XdcBlockHeader FromBlockHeader(BlockHeader src)
     {
-        var x = new XdcBlockHeader(
+        XdcBlockHeader x = new XdcBlockHeader(
             src.ParentHash,
             src.UnclesHash,
             src.Beneficiary,

@@ -29,7 +29,7 @@ public class Era1ModuleTests
     [Test]
     public async Task ExportAndImportTwoBlocksAndReceipts()
     {
-        using var tmpFile = TempPath.GetTempFile();
+        using TempPath tmpFile = TempPath.GetTempFile();
         Block block0 = Build.A.Block
             .WithNumber(0)
             .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty)
@@ -79,26 +79,26 @@ public class Era1ModuleTests
     [TestCase("mainnet")]
     public async Task ImportAndExportGethFiles(string network)
     {
-        var eraFiles = EraPathUtils.GetAllEraFiles($"testdata/{network}", network);
+        IEnumerable<string> eraFiles = EraPathUtils.GetAllEraFiles($"testdata/{network}", network);
 
         Assert.That(eraFiles.Count(), Is.GreaterThan(0));
 
-        var specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
+        ChainSpecBasedSpecProvider specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
         {
             SealEngineType = SealEngineType.BeaconChain,
             Parameters = new ChainParameters(),
             EngineChainSpecParametersProvider = Substitute.For<IChainSpecParametersProvider>()
         });
 
-        foreach (var era in eraFiles)
+        foreach (string era in eraFiles)
         {
-            var readFromFile = new List<(Block b, TxReceipt[] r)>();
+            List<(Block b, TxReceipt[] r)> readFromFile = new List<(Block b, TxReceipt[] r)>();
 
-            using var tmpFile = TempPath.GetTempFile();
+            using TempPath tmpFile = TempPath.GetTempFile();
             {
-                using var builder = new EraWriter(tmpFile.Path, specProvider);
+                using EraWriter builder = new EraWriter(tmpFile.Path, specProvider);
 
-                using var eraEnumerator = new EraReader(era);
+                using EraReader eraEnumerator = new EraReader(era);
                 await foreach ((Block b, TxReceipt[] r) in eraEnumerator)
                 {
                     await builder.Add(b, r);
@@ -164,7 +164,7 @@ public class Era1ModuleTests
         {
             using EraWriter builder = new EraWriter(tmpFile.Path, testBlockchain.SpecProvider);
 
-            foreach (var block in blocks)
+            foreach (Block block in blocks)
             {
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }
@@ -182,7 +182,7 @@ public class Era1ModuleTests
     public async Task TestEraBuilderCreatesCorrectIndex()
     {
         BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
-        using var tmpFile = TempPath.GetTempFile();
+        using TempPath tmpFile = TempPath.GetTempFile();
         List<(Block, TxReceipt[])> toAddBlocks = new List<(Block, TxReceipt[])>();
         testBlockchain.BranchProcessor.BlockProcessed += (sender, blockArgs) =>
         {
@@ -231,14 +231,14 @@ public class Era1ModuleTests
                 }));
         });
 
-        using var tmpFile = TempPath.GetTempFile();
+        using TempPath tmpFile = TempPath.GetTempFile();
 
         Block genesis = testBlockchain.BlockFinder.FindBlock(0)!;
 
         int numOfBlocks = 16;
         int numOfTx = 1000;
         UInt256 nonce = 0;
-        var blocks = new List<Block>
+        List<Block> blocks = new List<Block>
         {
             genesis
         };
@@ -267,9 +267,9 @@ public class Era1ModuleTests
 
         {
             using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
-            foreach (var block in blocks)
+            foreach (Block block in blocks)
             {
-                foreach (var item in block.Transactions)
+                foreach (Transaction item in block.Transactions)
                     item.SenderAddress = null;
                 await builder.Add(block, testBlockchain.ReceiptStorage.Get(block));
             }
@@ -279,7 +279,7 @@ public class Era1ModuleTests
 
         using EraReader iterator = new EraReader(tmpFile.Path);
 
-        await using var enu = iterator.GetAsyncEnumerator();
+        await using IAsyncEnumerator<(Block, TxReceipt[])> enu = iterator.GetAsyncEnumerator();
         for (int i = 0; i < numOfBlocks; i++)
         {
             Assert.That(await enu.MoveNextAsync(), Is.True, $"Expected block {i} from the iterator, but it returned false.");

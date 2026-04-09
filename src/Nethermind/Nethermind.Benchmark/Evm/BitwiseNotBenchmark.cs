@@ -31,8 +31,8 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            ref var refA = ref MemoryMarshal.AsRef<ulong>(a.AsSpan());
-            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c.AsSpan());
+            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a.AsSpan());
+            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(c.AsSpan());
 
             refBuffer = ~refA;
             Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);

@@ -33,8 +33,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
-                var validatorInfo = new ValidatorInfo(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
-                var rlp = Rlp.Encode(validatorInfo);
+                ValidatorInfo validatorInfo = new ValidatorInfo(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
+                Rlp rlp = Rlp.Encode(validatorInfo);
                 _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
                 _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));
                 _latestFinalizedValidatorsBlockNumber = finalizingBlockNumber;
@@ -70,7 +70,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private ValidatorInfo FindValidatorInfo(in long blockNumber)
         {
-            var currentValidatorInfo = GetLatestValidatorInfo();
+            ValidatorInfo currentValidatorInfo = GetLatestValidatorInfo();
             while (currentValidatorInfo.FinalizingBlockNumber >= blockNumber)
             {
                 currentValidatorInfo = LoadValidatorInfo(currentValidatorInfo.PreviousFinalizingBlockNumber);
@@ -81,7 +81,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private ValidatorInfo GetLatestValidatorInfo()
         {
-            var info = _latestValidatorInfo ??= LoadValidatorInfo(_latestFinalizedValidatorsBlockNumber);
+            ValidatorInfo info = _latestValidatorInfo ??= LoadValidatorInfo(_latestFinalizedValidatorsBlockNumber);
             Metrics.ValidatorsCount = info.Validators.Length;
             return info;
         }
@@ -90,7 +90,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (blockNumber > EmptyBlockNumber)
             {
-                var bytes = _db.Get(GetKey(blockNumber));
+                byte[] bytes = _db.Get(GetKey(blockNumber));
                 return bytes is not null ? Rlp.Decode<ValidatorInfo>(bytes) : null;
             }
 

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
@@ -21,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             int pendingValidatorsCheck = decoderContext.Position + sequenceLength;
 
             long blockNumber = decoderContext.DecodeLong();
-            var blockHash = decoderContext.DecodeKeccak();
+            Hash256 blockHash = decoderContext.DecodeKeccak();
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();
             int addressCheck = decoderContext.Position + addressSequenceLength;

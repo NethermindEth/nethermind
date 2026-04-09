@@ -599,7 +599,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     // Testing purpose only
     internal void SyncPruneQueue()
     {
-        using (var _ = _pruningLock.EnterScope())
+        using (Lock.Scope _ = _pruningLock.EnterScope())
         {
             SyncPruneNonLocked();
         }
@@ -702,7 +702,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (count == 0) return;
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(count);
-        using var _ = candidateSets;
+        using ArrayPoolList<BlockCommitSet> _ = candidateSets;
 
         bool shouldTrackPastKey =
             // Its disabled
@@ -1016,10 +1016,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private void FlushNonBlockingBuffer()
     {
-        using var _ = _scopeLock.EnterScope();
+        using Lock.Scope _ = _scopeLock.EnterScope();
         if (_commitBuffer is null) return;
 
-        using var _2 = _pruningLock.EnterScope();
+        using Lock.Scope _2 = _pruningLock.EnterScope();
 
         FlushCommitBufferNoLock();
     }
@@ -1257,7 +1257,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_commitSetQueue.IsEmpty) return;
 
         (ArrayPoolList<BlockCommitSet> candidateSets, long? finalizedBlockNumber) = DetermineCommitSetToPersistInSnapshot(_commitSetQueue.Count);
-        using var _ = candidateSets;
+        using ArrayPoolList<BlockCommitSet> _ = candidateSets;
         if (LastPersistedBlockNumber == 0 && candidateSets.Count == 0 && _commitSetQueue.TryDequeue(out BlockCommitSet anyCommitSet))
         {
             // No commit set to persist, likely as not enough block was processed to reached prune boundary
@@ -1291,7 +1291,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     public void PersistCache(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("Full Pruning Persist Cache started.");
-        using var _ = _pruningLock.EnterScope();
+        using Lock.Scope _ = _pruningLock.EnterScope();
 
         long start = Stopwatch.GetTimestamp();
         int commitSetCount = 0;
@@ -1372,8 +1372,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     public StableLockScope PrepareStableState(CancellationToken cancellationToken)
     {
-        var scopeLockScope = _scopeLock.EnterScope();
-        var pruneLockScope = _pruningLock.EnterScope();
+        Lock.Scope scopeLockScope = _scopeLock.EnterScope();
+        Lock.Scope pruneLockScope = _pruningLock.EnterScope();
 
         try
         {
@@ -1696,7 +1696,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];
             TrieStoreDirtyNodesCache mainShard = _trieStore._dirtyNodes[shardIdx];
 
-            var hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
+            bool hasInBuffer = bufferShard.TryGetValue(key, out TrieNode bufferNode);
             if (isReadOnly)
             {
                 if (hasInBuffer)
@@ -1742,7 +1742,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         // we returning a copy to avoid multithreaded access
-        var trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
+        TrieNode trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;

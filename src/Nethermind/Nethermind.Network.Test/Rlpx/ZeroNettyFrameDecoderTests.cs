@@ -32,7 +32,7 @@ public class ZeroNettyFrameDecoderTests
     [SetUp]
     public void Setup()
     {
-        var (_, B) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets _, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipher = new FrameCipher(B.AesSecret);
         _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);

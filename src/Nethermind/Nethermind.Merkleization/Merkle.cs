@@ -21,7 +21,7 @@ public static partial class Merkle
         // ZeroHashes[0] will be UInt256.Zero
         for (int i = 1; i < 64; i++)
         {
-            var previous = ZeroHashes[i - 1];
+            UInt256 previous = ZeroHashes[i - 1];
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
             ZeroHashes[i] = new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(concatenation)));
@@ -82,8 +82,8 @@ public static partial class Merkle
 
     public static void MixIn(ref UInt256 root, int value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
-        var lengthPart = new UInt256((ulong)value, v, v, v);
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
+        UInt256 lengthPart = new UInt256((ulong)value, v, v, v);
         root = HashConcatenation(root, lengthPart, 0);
     }
 
@@ -104,7 +104,7 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, int value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
         root = new UInt256((ulong)value, v, v, v);
     }
 
@@ -115,7 +115,7 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, long value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
         root = new UInt256((ulong)value, v, v, v);
     }
 

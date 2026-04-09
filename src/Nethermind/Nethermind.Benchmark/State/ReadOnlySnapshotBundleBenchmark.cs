@@ -178,7 +178,7 @@ public class ReadOnlySnapshotBundleBenchmark
         _hitSlots = new (Address, UInt256)[ArraySize];
         for (int i = 0; i < ArraySize; i++)
         {
-            var range = storageRanges[i % storageRanges.Count];
+            (int AddressStart, int StorageCount, int SlotsPerAccount) range = storageRanges[i % storageRanges.Count];
             int storageAccountIndex = range.AddressStart + (i / storageRanges.Count % range.StorageCount);
             UInt256 slot = (UInt256)(ulong)((i * 97 % range.SlotsPerAccount) + 1);
             _hitSlots[i] = (DeriveAddress(storageAccountIndex), slot);

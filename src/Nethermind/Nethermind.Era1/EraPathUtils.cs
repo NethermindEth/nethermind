@@ -14,7 +14,7 @@ public static class EraPathUtils
 
     public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network, IFileSystem fileSystem)
     {
-        var entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions()
+        string[] entries = fileSystem.Directory.GetFiles(directoryPath, "*.era1", new EnumerationOptions()
         {
             RecurseSubdirectories = false,
             MatchCasing = MatchCasing.PlatformDefault

@@ -22,7 +22,7 @@ namespace Nethermind.Db.Blooms
 
         public int Read(long index, Span<byte> element)
         {
-            if (_store.TryGetValue(index, out var found))
+            if (_store.TryGetValue(index, out byte[] found))
             {
                 found.CopyTo(element);
                 return found.Length;

@@ -77,7 +77,7 @@ namespace Nethermind.Serialization.Json
         {
             SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out IJsonTypeInfoResolver[] additionalResolvers);
 
-            var result = new JsonSerializerOptions
+            JsonSerializerOptions result = new JsonSerializerOptions
             {
                 WriteIndented = indented,
                 NewLine = "\n",
@@ -181,8 +181,8 @@ namespace Nethermind.Serialization.Json
 
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            var countingWriter = GetPipeWriter(stream, leaveOpen);
-            using var writer = new Utf8JsonWriter(countingWriter, CreateWriterOptions(indented));
+            CountingStreamPipeWriter countingWriter = GetPipeWriter(stream, leaveOpen);
+            using Utf8JsonWriter writer = new Utf8JsonWriter(countingWriter, CreateWriterOptions(indented));
             JsonSerializer.Serialize(writer, value, GetSerializerOptions(indented));
             countingWriter.Complete();
 
@@ -199,7 +199,7 @@ namespace Nethermind.Serialization.Json
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, CancellationToken cancellationToken, bool indented = false, bool leaveOpen = true)
         {
-            var writer = GetPipeWriter(stream, leaveOpen);
+            CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen);
             await JsonSerializer.SerializeAsync(writer, value, GetSerializerOptions(indented), cancellationToken);
             await writer.CompleteAsync();
 
@@ -209,7 +209,7 @@ namespace Nethermind.Serialization.Json
 
         public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
         {
-            using var jsonWriter = new Utf8JsonWriter((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
+            using Utf8JsonWriter jsonWriter = new Utf8JsonWriter((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
             JsonSerializer.Serialize(jsonWriter, value, GetSerializerOptions(indented));
             return Task.CompletedTask;
         }

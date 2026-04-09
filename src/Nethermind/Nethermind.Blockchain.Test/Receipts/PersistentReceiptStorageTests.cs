@@ -104,7 +104,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
         _storage.Get(block).Should().BeEquivalentTo(receipts, ReceiptCompareOpt);
@@ -141,7 +141,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_receipts_for_block_without_recovering_sender()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
         foreach (Transaction tx in block.Transactions)
         {
             tx.SenderAddress = null;
@@ -211,7 +211,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_insert()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.TryGetReceiptsIterator(0, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
         iterator.TryGetNext(out TxReceiptStructRef receiptStructRef).Should().BeTrue();
@@ -223,7 +223,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator()
     {
-        var (block, _) = InsertBlock();
+        (Block? block, TxReceipt[] _) = InsertBlock();
 
         _storage.ClearCache();
         _storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator).Should().BeTrue();
@@ -237,7 +237,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block_with_iterator_from_cache_after_get()
     {
-        var (block, receipts) = InsertBlock();
+        (Block? block, TxReceipt[]? receipts) = InsertBlock();
 
         _storage.ClearCache();
         _storage.Get(block);
@@ -264,7 +264,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void HasBlock_should_returnTrueForKnownHash()
     {
-        var (block, _) = InsertBlock();
+        (Block? block, TxReceipt[] _) = InsertBlock();
         _storage.HasBlock(block.Number, block.Hash!).Should().BeTrue();
     }
 

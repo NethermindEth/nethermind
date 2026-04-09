@@ -14,8 +14,8 @@ public class SequenceTests
     [Test]
     public void Sequence_whitespace_slice()
     {
-        var end = new TestReadOnlySequenceSegment("\r\nabc"u8.ToArray(), 2);
-        var start = new TestReadOnlySequenceSegment("  "u8.ToArray(), 0, end);
+        TestReadOnlySequenceSegment end = new TestReadOnlySequenceSegment("\r\nabc"u8.ToArray(), 2);
+        TestReadOnlySequenceSegment start = new TestReadOnlySequenceSegment("  "u8.ToArray(), 0, end);
         ReadOnlySequence<byte> sequence = new ReadOnlySequence<byte>(start, 0, end, 5);
 
         sequence.TrimStart().ToArray().Should().Equal("abc"u8.ToArray());

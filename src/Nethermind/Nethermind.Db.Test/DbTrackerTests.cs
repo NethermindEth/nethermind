@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using FluentAssertions;
@@ -47,7 +48,7 @@ public class DbTrackerTests
         dbFactory.CreateDb(new DbSettings("TestDb", "TestDb"));
 
         tracker.GetAllDbMeta().Count().Should().Be(1);
-        var firstEntry = tracker.GetAllDbMeta().First();
+        KeyValuePair<string, IDbMeta> firstEntry = tracker.GetAllDbMeta().First();
         firstEntry.Key.Should().Be("TestDb");
     }
 
@@ -58,7 +59,7 @@ public class DbTrackerTests
     {
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
         (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater((builder) => builder.AddSingleton<IBlockProcessingQueue>(queue));
-        using var _ = container;
+        using IContainer _ = container;
 
         // Reset
         Metrics.DbReads["TestDb"] = 0;
@@ -81,7 +82,7 @@ public class DbTrackerTests
     public void DoesNotUpdateIfIntervalHasNotPassed()
     {
         (IContainer container, Action updateAction, FakeDb fakeDb) = ConfigureMetricUpdater();
-        using var _ = container;
+        using IContainer _ = container;
 
         container.Resolve<IDbFactory>().CreateDb(new DbSettings("TestDb", "TestDb"));
 

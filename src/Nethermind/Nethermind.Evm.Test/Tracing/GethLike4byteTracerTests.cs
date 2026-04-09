@@ -60,7 +60,7 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
                 .DelegateCall(TestItem.AddressC, 50000)
                 .STOP()
                 .Done;
-            var singleCall4ByteIds = new Dictionary<string, int>
+            Dictionary<string, int> singleCall4ByteIds = new Dictionary<string, int>
                 {
                     { "0x62b15678-1", 1 }
                 };

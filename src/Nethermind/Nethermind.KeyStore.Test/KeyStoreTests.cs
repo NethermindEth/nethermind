@@ -128,7 +128,7 @@ public class KeyStoreTests
 
         string notAKeyPath = Path.Combine(test.KeyStoreConfig.KeyStoreDirectory, "not_a_key");
 
-        using (var stream = File.Create(notAKeyPath))
+        using (FileStream stream = File.Create(notAKeyPath))
         {
         }
 
@@ -227,13 +227,13 @@ public class KeyStoreTests
         TestContext test = new TestContext();
         const string bomBytesHex = "efbbbf";
         const string validBytesHex = "7b2276";
-        var (key, _) = test.Store.GenerateKey(test.TestPasswordSecured);
-        var directory = test.KeyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
-        var addressHex = key.Address.ToString(false, false);
-        var file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
-        var bytes = File.ReadAllBytes(file);
+        (PrivateKey key, Result _) = test.Store.GenerateKey(test.TestPasswordSecured);
+        string directory = test.KeyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
+        string addressHex = key.Address.ToString(false, false);
+        string file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
+        byte[] bytes = File.ReadAllBytes(file);
         test.Store.DeleteKey(key.Address);
-        var bytesHex = bytes.ToHexString();
+        string bytesHex = bytes.ToHexString();
         bytesHex.Should().NotStartWith(bomBytesHex);
         bytesHex.Should().StartWith(validBytesHex);
     }

@@ -246,7 +246,7 @@ namespace Nethermind.Synchronization.SnapSync
             int respLength = response.Count;
             for (int reqIndex = 0; reqIndex < request.Paths.Count; reqIndex++)
             {
-                var requestedPath = request.Paths[reqIndex];
+                AccountWithStorageStartingHash requestedPath = request.Paths[reqIndex];
 
                 if (reqIndex < respLength)
                 {

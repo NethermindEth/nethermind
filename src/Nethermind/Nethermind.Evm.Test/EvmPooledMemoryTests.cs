@@ -280,16 +280,16 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void GetTrace_memory_should_not_bleed_between_txs()
     {
-        var first = new byte[] {
+        byte[] first = new byte[] {
             0x5b, 0x38, 0x36, 0x59, 0x59, 0x59, 0x59, 0x52, 0x3a, 0x60, 0x05, 0x30,
             0xf4, 0x05, 0x56};
-        var second = new byte[] {
+        byte[] second = new byte[] {
             0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
             0x56};
 
-        var a = Run(second).ToString();
+        string a = Run(second).ToString();
         Run(first);
-        var b = Run(second).ToString();
+        string b = Run(second).ToString();
 
         Assert.That(b, Is.EqualTo(a));
     }
@@ -297,7 +297,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     [Test]
     public void GetTrace_memory_should_not_overflow()
     {
-        var input = new byte[] {
+        byte[] input = new byte[] {
             0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
             0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
         Run(input);
@@ -331,7 +331,7 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             LimboLogs.Instance);
 
         Hash256 stateRoot = null;
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(to, 123);
         stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
 

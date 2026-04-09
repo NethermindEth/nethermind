@@ -626,7 +626,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                 {
                     // Insert ordered for improved performance
-                    foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict.OrderBy(static kvp => kvp.Key))
                         batch.Set(kvp.Key.Value, kvp.Value);
                 }
 

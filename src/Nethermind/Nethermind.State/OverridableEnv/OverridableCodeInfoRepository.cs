@@ -21,9 +21,9 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public CodeInfo GetCachedCodeInfo(Address codeSource, bool followDelegation, IReleaseSpec vmSpec, out Address? delegationAddress)
     {
         delegationAddress = null;
-        if (_precompileOverrides.TryGetValue(codeSource, out var precompile)) return precompile.codeInfo;
+        if (_precompileOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, Address initialAddr) precompile)) return precompile.codeInfo;
 
-        if (_codeOverrides.TryGetValue(codeSource, out var result))
+        if (_codeOverrides.TryGetValue(codeSource, out (CodeInfo codeInfo, ValueHash256 codeHash) result))
         {
             return !result.codeInfo.IsEmpty &&
                    ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegationAddress) &&
@@ -59,13 +59,13 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         [NotNullWhen(true)] out Address? delegatedAddress)
     {
         delegatedAddress = null;
-        return _codeOverrides.TryGetValue(address, out var result)
+        return _codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) result)
             ? ICodeInfoRepository.TryGetDelegatedAddress(result.codeInfo.CodeSpan, out delegatedAddress)
             : codeInfoRepository.TryGetDelegation(address, vmSpec, out delegatedAddress);
     }
 
 
-    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out var result)
+    public ValueHash256 GetExecutableCodeHash(Address address, IReleaseSpec spec) => _codeOverrides.TryGetValue(address, out (CodeInfo codeInfo, ValueHash256 codeHash) result)
         ? result.codeHash
         : codeInfoRepository.GetExecutableCodeHash(address, spec);
 
@@ -77,7 +77,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 
     public void ResetPrecompileOverrides()
     {
-        foreach (var (_, precompileInfo) in _precompileOverrides)
+        foreach ((Address _, (CodeInfo codeInfo, Address initialAddr) precompileInfo) in _precompileOverrides)
         {
             _codeOverrides.Remove(precompileInfo.initialAddr);
         }

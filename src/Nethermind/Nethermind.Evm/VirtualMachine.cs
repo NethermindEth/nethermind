@@ -1122,7 +1122,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        var opcodeArray = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
@@ -1160,7 +1160,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);

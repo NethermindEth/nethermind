@@ -16,10 +16,10 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public long Add(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
-            if (!_items.TryGetValue(key, out var list))
+            (ulong Round, Hash256 hash) key = item.PoolKey();
+            if (!_items.TryGetValue(key, out ArrayPoolList<T> list))
             {
                 //128 should be enough to cover all master nodes and some extras
                 list = new ArrayPoolList<T>(128);
@@ -33,9 +33,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public void EndRound(ulong round)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            foreach (var key in _items.Keys)
+            foreach ((ulong Round, Hash256 Hash) key in _items.Keys)
             {
                 if (key.Round <= round && _items.Remove(key, out ArrayPoolList<T> list))
                 {
@@ -47,9 +47,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public IReadOnlyCollection<T> GetItems(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
+            (ulong Round, Hash256 hash) key = item.PoolKey();
             if (_items.TryGetValue(key, out ArrayPoolList<T> list))
             {
                 //Allocating a new array since it goes outside the lock
@@ -61,9 +61,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public long GetCount(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
+            (ulong Round, Hash256 hash) key = item.PoolKey();
             if (_items.TryGetValue(key, out ArrayPoolList<T> list))
             {
                 return list.Count;

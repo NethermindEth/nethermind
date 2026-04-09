@@ -229,7 +229,7 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
 
-            var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
+            TestRawTrieStore trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
             StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
 
             Pruner = new(
