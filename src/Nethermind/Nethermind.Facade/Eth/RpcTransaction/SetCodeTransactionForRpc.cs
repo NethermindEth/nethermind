@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -13,7 +14,7 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public override TxType? Type => TxType;
 
     [JsonDiscriminator]
-    public AuthorizationListForRpc AuthorizationList { get; set; }
+    public AuthorizationListForRpc? AuthorizationList { get; set; }
 
     [JsonConstructor]
     public SetCodeTransactionForRpc() { }
@@ -24,13 +25,17 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
         AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
+
+        if (tx.SupportsAuthorizationList)
+        {
+            tx.AuthorizationList = AuthorizationList?.ToAuthorizationList() ?? [];
+        }
 
         return tx;
     }

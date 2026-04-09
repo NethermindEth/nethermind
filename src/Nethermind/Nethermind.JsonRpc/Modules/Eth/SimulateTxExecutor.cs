@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
@@ -21,6 +22,7 @@ public class SimulateTxExecutor<TTrace>(
     IBlockchainBridge blockchainBridge,
     IBlockFinder blockFinder,
     IJsonRpcConfig rpcConfig,
+    ISpecProvider specProvider,
     ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory,
     ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult<TTrace>>, SimulatePayload<TransactionForRpc>,
@@ -29,7 +31,7 @@ public class SimulateTxExecutor<TTrace>(
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
-    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call)
+    protected override Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
     {
         List<BlockStateCall<TransactionWithSourceDetails>>? blockStateCalls = null;
 
@@ -52,7 +54,8 @@ public class SimulateTxExecutor<TTrace>(
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
 
-                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation);
+                        IReleaseSpec spec = specProvider.GetSpec(header);
+                        Result<Transaction> txResult = callTransactionModel.ToTransaction(validateUserInput: call.Validation, spec: spec);
                         if (!txResult.Success(out Transaction? tx, out string? error))
                         {
                             return error;
@@ -174,7 +177,7 @@ public class SimulateTxExecutor<TTrace>(
 
         using CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
 
-        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call);
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
             : Execute(header.Clone(), data, stateOverride, timeout.Token);
