@@ -945,6 +945,12 @@ public static partial class Metrics
     /// </summary>
     public static void UpdateFromDepthStats(CumulativeDepthStats s)
     {
+        // Gate: until a baseline scan (or persisted snapshot) has seeded the
+        // cumulative arrays, applying deltas would drive gauges negative. Skip
+        // publishing in that case — gauges stay at their last known value (0 on
+        // cold start) instead of being polluted with drift.
+        if (!s.IsSeeded) return;
+
         // Account trie — FullNodes and ShortNodes are direct; ValueNodes are shifted
         StateCompAccountTrieDepth_0_FullNodes  = s.AccountFullNodes[0];
         StateCompAccountTrieDepth_0_ShortNodes = s.AccountShortNodes[0];

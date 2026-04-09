@@ -8,9 +8,16 @@ namespace Nethermind.StateComposition;
 
 /// <summary>
 /// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
-/// Field order: 13 longs (CumulativeSizeStats), blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber.
-/// Legacy snapshots (11 stat longs) will fail to decode and are discarded by the plugin,
-/// which then triggers a fresh scan to rebuild the baseline with the new schema.
+/// Field order:
+///   1. 13 longs (CumulativeSizeStats)
+///   2. blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber
+///   3. depthPresent (long; 1 = depth stats follow, 0 = absent)
+///   4. [optional] 162 longs of CumulativeDepthStats:
+///        10 arrays × 16 longs (Account{Full,Short,Value,Bytes}, Storage{Full,Short,Value,Bytes}, BranchOccupancy)
+///        + TotalBranchNodes + TotalBranchChildren
+/// Legacy snapshots (11 stat longs, or 13 longs without depth fields) will fail to
+/// decode and are discarded by the plugin, which then triggers a fresh scan to
+/// rebuild the baseline with the new schema.
 /// </summary>
 public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompositionSnapshot>
 {
@@ -41,6 +48,30 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         stream.Encode(item.StateRoot);
         stream.Encode(item.DiffsSinceBaseline);
         stream.Encode(item.ScanBlockNumber);
+
+        // Depth stats: present only if seeded. Stored as a leading marker long
+        // (1 = present, 0 = absent) followed by 162 longs (10×16 + 2 scalars)
+        // when present.
+        CumulativeDepthStats? depth = item.DepthStats;
+        if (depth is not null && depth.IsSeeded)
+        {
+            stream.Encode(1L);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountFullNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountShortNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountValueNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountNodeBytes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageFullNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageShortNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageValueNodes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageNodeBytes[i]);
+            for (int i = 0; i < 16; i++) stream.Encode(depth.BranchOccupancy[i]);
+            stream.Encode(depth.TotalBranchNodes);
+            stream.Encode(depth.TotalBranchChildren);
+        }
+        else
+        {
+            stream.Encode(0L);
+        }
     }
 
     private static int GetContentLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -67,6 +98,28 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         contentLength += Rlp.LengthOf(item.StateRoot);
         contentLength += Rlp.LengthOf(item.DiffsSinceBaseline);
         contentLength += Rlp.LengthOf(item.ScanBlockNumber);
+
+        // Depth stats marker + 162 longs when seeded
+        CumulativeDepthStats? depth = item.DepthStats;
+        if (depth is not null && depth.IsSeeded)
+        {
+            contentLength += Rlp.LengthOf(1L);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountFullNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountShortNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountValueNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountNodeBytes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageFullNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageShortNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageValueNodes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageNodeBytes[i]);
+            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.BranchOccupancy[i]);
+            contentLength += Rlp.LengthOf(depth.TotalBranchNodes);
+            contentLength += Rlp.LengthOf(depth.TotalBranchChildren);
+        }
+        else
+        {
+            contentLength += Rlp.LengthOf(0L);
+        }
 
         return contentLength;
     }
@@ -102,6 +155,30 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         int diffsSinceBaseline = ctx.DecodeInt();
         long scanBlockNumber = ctx.DecodeLong();
 
-        return new StateCompositionSnapshot(stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber);
+        // Depth stats: marker long followed by 162 longs when present.
+        long depthPresent = ctx.DecodeLong();
+        CumulativeDepthStats? depthStats = null;
+        if (depthPresent == 1L)
+        {
+            depthStats = new CumulativeDepthStats();
+            for (int i = 0; i < 16; i++) depthStats.AccountFullNodes[i]  = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.AccountShortNodes[i] = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.AccountValueNodes[i] = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.AccountNodeBytes[i]  = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.StorageFullNodes[i]  = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.StorageShortNodes[i] = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.StorageValueNodes[i] = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.StorageNodeBytes[i]  = ctx.DecodeLong();
+            for (int i = 0; i < 16; i++) depthStats.BranchOccupancy[i]   = ctx.DecodeLong();
+            depthStats.TotalBranchNodes    = ctx.DecodeLong();
+            depthStats.TotalBranchChildren = ctx.DecodeLong();
+            // Round-trip through SeedFromSnapshot on a fresh instance to flip IsSeeded=true
+            // without duplicating the field-copy logic.
+            CumulativeDepthStats seeded = new();
+            seeded.SeedFromSnapshot(depthStats);
+            depthStats = seeded;
+        }
+
+        return new StateCompositionSnapshot(stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats);
     }
 }

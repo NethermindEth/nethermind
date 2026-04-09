@@ -14,4 +14,5 @@ public readonly record struct StateCompositionSnapshot(
     long BlockNumber,
     Hash256 StateRoot,
     int DiffsSinceBaseline,
-    long ScanBlockNumber);
+    long ScanBlockNumber,
+    CumulativeDepthStats? DepthStats = null);
