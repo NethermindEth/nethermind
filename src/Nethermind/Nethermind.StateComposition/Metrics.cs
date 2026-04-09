@@ -101,5 +101,7 @@ public static class Metrics
         StateCompStorageTrieExtensions = s.StorageTrieExtensions;
         StateCompStorageTrieLeaves = s.StorageTrieLeaves;
         StateCompStorageTrieBytes = s.StorageTrieBytes;
+        StateCompContractsWithStorage = s.ContractsWithStorage;
+        StateCompEmptyAccounts = s.EmptyAccounts;
     }
 }

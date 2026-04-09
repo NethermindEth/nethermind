@@ -728,7 +728,9 @@ public class TrieDiffWalkerTests
             StorageTrieExtensionsAdded: 1, StorageTrieExtensionsRemoved: 0,
             StorageTrieLeavesAdded: 20, StorageTrieLeavesRemoved: 5,
             StorageTrieBytesAdded: 2000, StorageTrieBytesRemoved: 500,
-            StorageSlotsAdded: 20, StorageSlotsRemoved: 5
+            StorageSlotsAdded: 20, StorageSlotsRemoved: 5,
+            ContractsWithStorageAdded: 4, ContractsWithStorageRemoved: 1,
+            EmptyAccountsAdded: 2, EmptyAccountsRemoved: 1
         );
 
         Assert.That(diff.NetAccounts, Is.EqualTo(3));
@@ -738,6 +740,8 @@ public class TrieDiffWalkerTests
         Assert.That(diff.NetStorageTrieNodes, Is.EqualTo(21)); // (8+1+20) - (3+0+5)
         Assert.That(diff.NetAccountTrieBytes, Is.EqualTo(600));
         Assert.That(diff.NetStorageTrieBytes, Is.EqualTo(1500));
+        Assert.That(diff.NetContractsWithStorage, Is.EqualTo(3));
+        Assert.That(diff.NetEmptyAccounts, Is.EqualTo(1));
     }
 
     #endregion

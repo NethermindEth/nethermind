@@ -8,7 +8,9 @@ namespace Nethermind.StateComposition;
 
 /// <summary>
 /// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
-/// Field order: 11 longs (CumulativeSizeStats), blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber.
+/// Field order: 13 longs (CumulativeSizeStats), blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber.
+/// Legacy snapshots (11 stat longs) will fail to decode and are discarded by the plugin,
+/// which then triggers a fresh scan to rebuild the baseline with the new schema.
 /// </summary>
 public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompositionSnapshot>
 {
@@ -19,7 +21,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
 
-        // CumulativeSizeStats (11 fields)
+        // CumulativeSizeStats (13 fields)
         stream.Encode(item.Stats.AccountsTotal);
         stream.Encode(item.Stats.ContractsTotal);
         stream.Encode(item.Stats.StorageSlotsTotal);
@@ -31,6 +33,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         stream.Encode(item.Stats.StorageTrieExtensions);
         stream.Encode(item.Stats.StorageTrieLeaves);
         stream.Encode(item.Stats.StorageTrieBytes);
+        stream.Encode(item.Stats.ContractsWithStorage);
+        stream.Encode(item.Stats.EmptyAccounts);
 
         // Snapshot metadata
         stream.Encode(item.BlockNumber);
@@ -43,7 +47,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     {
         int contentLength = 0;
 
-        // CumulativeSizeStats (11 longs)
+        // CumulativeSizeStats (13 longs)
         contentLength += Rlp.LengthOf(item.Stats.AccountsTotal);
         contentLength += Rlp.LengthOf(item.Stats.ContractsTotal);
         contentLength += Rlp.LengthOf(item.Stats.StorageSlotsTotal);
@@ -55,6 +59,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         contentLength += Rlp.LengthOf(item.Stats.StorageTrieExtensions);
         contentLength += Rlp.LengthOf(item.Stats.StorageTrieLeaves);
         contentLength += Rlp.LengthOf(item.Stats.StorageTrieBytes);
+        contentLength += Rlp.LengthOf(item.Stats.ContractsWithStorage);
+        contentLength += Rlp.LengthOf(item.Stats.EmptyAccounts);
 
         // Metadata
         contentLength += Rlp.LengthOf(item.BlockNumber);
@@ -74,7 +80,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     {
         ctx.ReadSequenceLength();
 
-        // CumulativeSizeStats (11 longs)
+        // CumulativeSizeStats (13 longs)
         CumulativeSizeStats stats = new(
             AccountsTotal: ctx.DecodeLong(),
             ContractsTotal: ctx.DecodeLong(),
@@ -86,7 +92,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             StorageTrieBranches: ctx.DecodeLong(),
             StorageTrieExtensions: ctx.DecodeLong(),
             StorageTrieLeaves: ctx.DecodeLong(),
-            StorageTrieBytes: ctx.DecodeLong());
+            StorageTrieBytes: ctx.DecodeLong(),
+            ContractsWithStorage: ctx.DecodeLong(),
+            EmptyAccounts: ctx.DecodeLong());
 
         // Metadata
         long blockNumber = ctx.DecodeLong();
