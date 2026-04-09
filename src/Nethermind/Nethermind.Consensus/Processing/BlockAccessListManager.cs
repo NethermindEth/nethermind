@@ -475,7 +475,7 @@ public class BlockAccessListManager(
             {
                 worldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, block, logManager);
             }
-            WorldState = new TracedAccessWorldState(worldState);
+            WorldState = new TracedAccessWorldState(worldState, parallel);
             WorldState.SetIndex(balIndex);
             EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);

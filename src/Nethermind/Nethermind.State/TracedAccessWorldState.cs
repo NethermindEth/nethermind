@@ -15,7 +15,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.State;
 
-public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldState(innerWorldState), IPreBlockCaches
+public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) : WrappedWorldState(innerWorldState), IPreBlockCaches
 {
     private readonly BlockAccessList _generatingBlockAccessList = new();
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
@@ -271,12 +271,15 @@ public class TracedAccessWorldState(IWorldState innerWorldState) : WrappedWorldS
                     GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
-        AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-        if (slotChanges is not null && slotChanges.Changes.Count == 1)
+        if (parallel)
         {
-            return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
+            AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
+            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+            if (slotChanges is not null && slotChanges.Changes.Count == 1)
+            {
+                return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
+            }
         }
 
         return _innerWorldState.Get(storageCell);

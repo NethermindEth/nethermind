@@ -220,7 +220,7 @@ public class BlockProcessorTests
     {
         Block suggested = Build.A.Block.WithBlockAccessList(new()).WithGasUsed(37_568).TestObject;
         BlockAccessListBasedWorldState balStateProvider = new(TestWorldStateFactory.CreateForTest(), 0, suggested, LimboLogs.Instance);
-        TracedAccessWorldState stateProvider = new(balStateProvider);
+        TracedAccessWorldState stateProvider = new(balStateProvider, true);
 
         ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
         transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
