@@ -9,17 +9,64 @@ using Nethermind.Core.Collections;
 namespace Nethermind.JsonRpc.Data;
 
 [JsonConverter(typeof(TraceCallManyRequestConverter))]
-public class TraceCallManyRequest : IDisposable
+public class TraceCallManyRequest : IJsonRpcParam, IDisposable
 {
-    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; init; } = new(0);
+    private const int MaxCallCount = 1024;
+
+    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; set; } = new(0);
 
     public void Dispose() => Calls.Dispose();
 
+    /// <summary>
+    /// Used by the JSON-RPC framework to deserialize from a JsonElement.
+    /// Validates array length before allocating objects.
+    /// </summary>
+    public void ReadJson(JsonElement jsonValue, JsonSerializerOptions options)
+    {
+        JsonDocument? doc = null;
+        try
+        {
+            if (jsonValue.ValueKind == JsonValueKind.String)
+            {
+                doc = JsonDocument.Parse(jsonValue.GetString()!);
+                jsonValue = doc.RootElement;
+            }
+
+            if (jsonValue.ValueKind != JsonValueKind.Array)
+            {
+                throw new ArgumentException("Expected an array of calls");
+            }
+
+            int count = jsonValue.GetArrayLength();
+            if (count > MaxCallCount)
+            {
+                throw new ArgumentException($"Too many calls ({count}). Max is {MaxCallCount}.");
+            }
+
+            ArrayPoolList<TransactionForRpcWithTraceTypes> calls = new(count);
+            foreach (JsonElement element in jsonValue.EnumerateArray())
+            {
+                TransactionForRpcWithTraceTypes? call = element.Deserialize<TransactionForRpcWithTraceTypes>(options);
+                if (call is not null)
+                {
+                    calls.Add(call);
+                }
+            }
+
+            Calls = calls;
+        }
+        finally
+        {
+            doc?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Used by JsonSerializer.Deserialize (e.g., in tests).
+    /// Streaming deserialization with early termination on limit.
+    /// </summary>
     private class TraceCallManyRequestConverter : JsonConverter<TraceCallManyRequest>
     {
-        // Hard safety cap to prevent excessive deserialization regardless of config
-        private const int MaxCallCount = 1024;
-
         public override TraceCallManyRequest Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
             if (reader.TokenType != JsonTokenType.StartArray)
@@ -39,7 +86,7 @@ public class TraceCallManyRequest : IDisposable
                 if (calls.Count >= MaxCallCount)
                 {
                     calls.Dispose();
-                    throw new JsonException($"Too many calls. Hard limit is {MaxCallCount}.");
+                    throw new JsonException($"Too many calls. Max is {MaxCallCount}.");
                 }
 
                 TransactionForRpcWithTraceTypes? call = JsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(ref reader, options);
