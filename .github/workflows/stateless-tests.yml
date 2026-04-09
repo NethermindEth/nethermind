@@ -40,7 +40,7 @@ jobs:
           retention-days: 1
 
   test:
-    name: Test
+    name: Run ${{ matrix.input }}
     needs: build
     runs-on: ubuntu-latest
     strategy:
@@ -79,7 +79,7 @@ jobs:
           echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
             { echo "Checksum failed"; exit 1; }
 
-      - name: Test Nethermind guest
+      - name: Run Nethermind guest
         timeout-minutes: 5
         working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
         run: make run INPUT="${{ matrix.input }}"

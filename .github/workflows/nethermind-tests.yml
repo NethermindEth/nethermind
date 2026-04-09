@@ -27,19 +27,18 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
-    runs-on: ${{ matrix.os.runner }}
+    name: Run ${{ matrix.project }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    continue-on-error: true
     outputs:
       collect_coverage: ${{ env.COLLECT_COVERAGE }}
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - { runner: ubuntu-latest, label: ubuntu-latest }
-          - { runner: ubuntu-24.04-arm, label: ubuntu-24.04-arm }
-          - { runner: windows-latest, label: windows-latest }
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
         project:
           - Nethermind.Abi.Test
           - Nethermind.Api.Test
@@ -86,16 +85,16 @@ jobs:
           - Nethermind.Wallet.Test
           - Nethermind.Xdc.Test
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Db.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.JsonRpc.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.KeyStore.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Discovery.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Dns.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Enr.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Network.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Runner.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Sockets.Test }
-          - { os: { runner: macos-latest, label: macos-latest }, project: Nethermind.Synchronization.Test }
+          - { runner: macos-latest, project: Nethermind.Db.Test }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test }
+          - { runner: macos-latest, project: Nethermind.KeyStore.Test }
+          - { runner: macos-latest, project: Nethermind.Network.Discovery.Test }
+          - { runner: macos-latest, project: Nethermind.Network.Dns.Test }
+          - { runner: macos-latest, project: Nethermind.Network.Enr.Test }
+          - { runner: macos-latest, project: Nethermind.Network.Test }
+          - { runner: macos-latest, project: Nethermind.Runner.Test }
+          - { runner: macos-latest, project: Nethermind.Sockets.Test }
+          - { runner: macos-latest, project: Nethermind.Synchronization.Test }
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -104,7 +103,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -114,7 +113,7 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
-          flags="${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
+          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           rc=$?
@@ -128,20 +127,8 @@ jobs:
             dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           fi
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-${{ matrix.os.label }}-outcome
-          path: test.outcome
-          retention-days: 1
-
       - name: Upload coverage report
-        if: matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
+        if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}-coverage
@@ -149,16 +136,15 @@ jobs:
           retention-days: 1
 
   tests-spec:
-    name: Run ${{ matrix.project }} [${{ matrix.os.label }}]
-    runs-on: ${{ matrix.os.runner }}
+    name: Run ${{ matrix.project }} (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - { runner: ubuntu-latest, label: ubuntu-latest }
-          - { runner: ubuntu-24.04-arm, label: ubuntu-24.04-arm }
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -184,7 +170,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -194,7 +180,7 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.project }}
         run: |
-          flags="${{ matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
+          flags="${{ matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true' && '--coverage --coverage-output-format cobertura --coverage-settings $GITHUB_WORKSPACE/src/Nethermind/codecoverage.config' || '' }}"
           set +e
           dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           rc=$?
@@ -208,20 +194,8 @@ jobs:
             dotnet test --project ${{ matrix.project }}.csproj -c release $flags
           fi
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-${{ matrix.os.label }}-outcome
-          path: test.outcome
-          retention-days: 1
-
       - name: Upload coverage report
-        if: matrix.os.label == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
+        if: matrix.runner == 'ubuntu-latest' && env.COLLECT_COVERAGE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.project }}-coverage
@@ -229,18 +203,17 @@ jobs:
           retention-days: 1
 
   tests-chunked:
-    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.os.label }}]
-    runs-on: ${{ matrix.os.runner }}
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - { runner: ubuntu-latest, label: ubuntu-latest }
-          - { runner: ubuntu-24.04-arm, label: ubuntu-24.04-arm }
-          - { runner: windows-latest, label: windows-latest }
-          - { runner: macos-latest, label: macos-latest }
+        runner:
+          - ubuntu-latest
+          - ubuntu-24.04-arm
+          - windows-latest
+          - macos-latest
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -271,7 +244,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -297,34 +270,19 @@ jobs:
             dotnet test --project ${{ matrix.test.project }}.csproj -c release
           fi
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.os.label }}-outcome
-          path: test.outcome
-          retention-days: 1
-
   tests-summary:
     name: Tests summary
     needs: [tests, tests-spec, tests-chunked]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Download test outcomes
-        uses: actions/download-artifact@v8
-        with:
-          path: .outcomes
-          pattern: '*-outcome'
-
-      - name: Ensure all tests passed
+      - name: Check result
         run: |
-          data=$(cat .outcomes/*/test.outcome) && data=${data%?}
-          passed=$(echo "[$data]" | jq -r 'all')
-          [[ "$passed" == "true" ]] && exit 0 || exit 1
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-spec.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "success" \
+          ]]
 
   codecov-upload:
     name: Upload Codecov reports
