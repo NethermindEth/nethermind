@@ -603,6 +603,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToDeepAncestor);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadStatus.LatestValidHash.Should().Be(b1Hash, "spec mandates latestValidHash == forkchoiceState.headBlockHash when skipping");
         chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — ancestor is beyond the 32-block depth limit, skip is permitted by spec");
     }
 
