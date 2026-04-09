@@ -103,8 +103,20 @@ public readonly ref struct TransactionSubstate
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
-    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
-        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (!Utf8.IsValid(span))
+            return span.ToHexString(true);
+
+        string decoded = Encoding.UTF8.GetString(span);
+        foreach (char c in decoded)
+        {
+            if (char.IsControl(c) && c != '\t' && c != '\n' && c != '\r')
+                return span.ToHexString(true);
+        }
+
+        return decoded;
+    }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {
