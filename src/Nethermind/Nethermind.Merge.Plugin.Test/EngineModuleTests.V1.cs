@@ -588,8 +588,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorBeyondDepthLimit_SkipsUpdate()
     {
-        // FCU to an ancestor MORE than 32 blocks behind head must be skipped (treated as already canonical).
-        // Builds a chain of 34 blocks, then sends FCU to block at H=1 (33 blocks behind head at H=34).
+        // Spec: client MAY skip the update when headBlockHash is a canonical ancestor more than 32 blocks behind head.
+        // Nethermind skips in this case. Builds a chain of 34 blocks, then sends FCU to H=1 (33 blocks behind H=34).
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
@@ -603,7 +603,7 @@ public partial class EngineModuleTests
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToDeepAncestor);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b34Hash, "head must stay at H=34 — ancestor is beyond the 32-block depth limit");
+        chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — ancestor is beyond the 32-block depth limit, skip is permitted by spec");
     }
 
     [Test]
