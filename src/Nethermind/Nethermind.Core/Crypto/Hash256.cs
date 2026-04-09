@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -14,7 +15,7 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
-    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
+    public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>, IHash64bit<ValueHash256>
     {
         public static GenericEqualityComparer<ValueHash256> EqualityComparer { get; } = new();
 
@@ -61,6 +62,8 @@ namespace Nethermind.Core.Crypto
         public bool Equals(Hash256? other) => _bytes.Equals(other?.ValueHash256._bytes ?? default);
 
         public override int GetHashCode() => GetChainedHashCode(SpanExtensions.InstanceRandom);
+
+        public long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<Vector256<byte>, byte>(ref Unsafe.AsRef(in _bytes)));
 
         public int GetChainedHashCode(uint previousHash) => Bytes.FastHash() ^ (int)previousHash;
 

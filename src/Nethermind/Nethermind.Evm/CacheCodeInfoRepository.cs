@@ -68,7 +68,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         bool result = CodeInfoRepository.SetDelegation(_worldState, codeSource, authority, spec, out ValueHash256 codeHash, out byte[] authorizedBuffer);
         if (result && codeSource != Address.Zero && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(codeHash, new CodeInfo(authorizedBuffer));
+            _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
     }
 
@@ -76,33 +76,11 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     private sealed class CodeLruCache
     {
-        private const int CacheCount = 16;
-        private const int CacheMax = CacheCount - 1;
-        private readonly ClockCache<ValueHash256, CodeInfo>[] _caches;
+        private readonly AssociativeCache<ValueHash256, CodeInfo> _cache = new(MemoryAllowance.CodeCacheSize);
 
-        public CodeLruCache()
-        {
-            _caches = new ClockCache<ValueHash256, CodeInfo>[CacheCount];
-            for (int i = 0; i < _caches.Length; i++)
-            {
-                // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new ClockCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, comparer: ValueHash256.EqualityComparer);
-            }
-        }
+        public CodeInfo? Get(in ValueHash256 codeHash) => _cache.Get(in codeHash);
 
-        public CodeInfo? Get(in ValueHash256 codeHash)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            return cache.Get(codeHash);
-        }
-
-        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
-        {
-            ClockCache<ValueHash256, CodeInfo> cache = _caches[GetCacheIndex(codeHash)];
-            cache.Set(codeHash, codeInfo);
-        }
-
-        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+        public void Set(in ValueHash256 codeHash, CodeInfo codeInfo) => _cache.Set(in codeHash, codeInfo);
 
         public bool TryGet(in ValueHash256 codeHash, [NotNullWhen(true)] out CodeInfo? codeInfo)
         {
@@ -110,12 +88,6 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
             return codeInfo is not null;
         }
 
-        internal void Clear()
-        {
-            foreach (ClockCache<ValueHash256, CodeInfo> cache in _caches)
-            {
-                cache.Clear();
-            }
-        }
+        internal void Clear() => _cache.Clear();
     }
 }

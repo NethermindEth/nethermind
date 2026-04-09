@@ -86,6 +86,7 @@ public class XdcModule : Module
             .AddSingleton<IForensicsProcessor, ForensicsProcessor>()
 
             // Validators
+            .AddSingleton<IBlockValidator, XdcBlockValidator>()
             .AddSingleton<IHeaderValidator, XdcHeaderValidator>()
             .AddSingleton<ISealValidator, XdcSealValidator>()
             .AddSingleton<IUnclesValidator, MustBeEmptyUnclesValidator>()
