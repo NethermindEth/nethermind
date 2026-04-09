@@ -32,23 +32,21 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
     {
         bool hasEngineApi = _jsonRpcConfig.EnabledModules.Any(static m => m.Equals(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
         long? maxRequestBodySize = hasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize;
-        JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, hasEngineApi, _jsonRpcConfig.EnabledModules, maxRequestBodySize);
+
+        RpcEndpoint defaultEndpoint = RpcEndpoint.Http;
+        if (includeWebSockets && _jsonRpcConfig.WebSocketsPort == _jsonRpcConfig.Port)
+        {
+            defaultEndpoint |= RpcEndpoint.Ws;
+        }
+
+        JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, defaultEndpoint, hasEngineApi, _jsonRpcConfig.EnabledModules, maxRequestBodySize);
 
         Add(defaultUrl.Port, defaultUrl);
 
-        if (includeWebSockets)
+        if (includeWebSockets && _jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
         {
-            if (_jsonRpcConfig.WebSocketsPort != _jsonRpcConfig.Port)
-            {
-                JsonRpcUrl defaultWebSocketUrl = (JsonRpcUrl)defaultUrl.Clone();
-                defaultWebSocketUrl.Port = _jsonRpcConfig.WebSocketsPort;
-                defaultWebSocketUrl.RpcEndpoint = RpcEndpoint.Ws;
-                Add(defaultWebSocketUrl.Port, defaultWebSocketUrl);
-            }
-            else
-            {
-                defaultUrl.RpcEndpoint |= RpcEndpoint.Ws;
-            }
+            JsonRpcUrl defaultWebSocketUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.WebSocketsPort, RpcEndpoint.Ws, hasEngineApi, _jsonRpcConfig.EnabledModules, maxRequestBodySize);
+            Add(defaultWebSocketUrl.Port, defaultWebSocketUrl);
         }
 
         BuildEngineUrls(includeWebSockets);
@@ -70,19 +68,20 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 "or to 0.0.0.0 if your CL Client is on a separate machine");
             return;
         }
+        RpcEndpoint endpoint = RpcEndpoint.Http;
+        if (includeWebSockets)
+        {
+            endpoint |= RpcEndpoint.Ws;
+        }
+
         JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
-            RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray(),
+            endpoint, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray(),
             SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
         if (ContainsKey(url.Port))
         {
             if (_logger.IsWarn) _logger.Warn($"Execution Engine wants port {url.Port}, but port already in use; skipping...");
             return;
-        }
-
-        if (includeWebSockets)
-        {
-            url.RpcEndpoint |= RpcEndpoint.Ws;
         }
 
         Add(url.Port, url);
@@ -97,12 +96,14 @@ public class JsonRpcUrlCollection : Dictionary<int, JsonRpcUrl>, IJsonRpcUrlColl
                 JsonRpcUrl url = JsonRpcUrl.Parse(additionalRpcUrl);
                 if (!includeWebSockets && url.RpcEndpoint.HasFlag(RpcEndpoint.Ws))
                 {
-                    url.RpcEndpoint &= ~RpcEndpoint.Ws;
-                    if (url.RpcEndpoint == RpcEndpoint.None)
+                    RpcEndpoint endpointWithoutWs = url.RpcEndpoint & ~RpcEndpoint.Ws;
+                    if (endpointWithoutWs == RpcEndpoint.None)
                     {
                         if (_logger.IsInfo) _logger.Info($"Additional JSON RPC URL '{url}' has web socket endpoint type and web sockets are not enabled; skipping...");
                         continue;
                     }
+
+                    url = new JsonRpcUrl(url.Scheme, url.Host, url.Port, endpointWithoutWs, url.IsAuthenticated, url.EnabledModules.ToArray(), url.MaxRequestBodySize);
                 }
 
                 if (url.IsModuleEnabled(ModuleType.Engine) && _jsonRpcConfig.EnginePort is not null &&
