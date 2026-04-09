@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -35,13 +36,17 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
         V = YParity ?? 0;
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
         if (baseResult.IsError) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
+
+        if (tx.SupportsAccessList)
+        {
+            tx.AccessList = AccessList?.ToAccessList() ?? Core.Eip2930.AccessList.Empty;
+        }
 
         return tx;
     }
