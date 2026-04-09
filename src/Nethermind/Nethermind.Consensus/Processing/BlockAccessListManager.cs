@@ -66,7 +66,6 @@ public class BlockAccessListManager(
             _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
             ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding;
             Reset();
-            // executor.SetBlockAccessListManager(this); // just pass in with DI?
             _gasRemaining = suggestedBlock.GasUsed;
 
             if (ParallelExecutionEnabled)
