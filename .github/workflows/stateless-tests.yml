@@ -1,0 +1,95 @@
+name: Stateless execution tests
+
+on:
+  merge_group:
+    types: [checks_requested]
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Nethermind
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+        run: make build
+
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  test:
+    name: Test
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - input: 150026.bin
+            hash: 39cadfc5f37f60c93bb39c9ca2a6db651f7e0f6de1d32177bdedf07c72005fd7
+          - input: 24721542.bin
+            hash: f7075aff304f5011d4e97d759ed30780f65ad8533786f3164f894628686c865d
+          - input: 24723632.bin
+            hash: a61f086b06a477f66944419904b0095f110a74dcca9b183c209300741f143407
+          - input: 24723668.bin
+            hash: 603c28f63cb3fa69206e941027f0af811d24ab062c8188edf32cfa564b94b82e
+          - input: 24772857.bin
+            hash: 5b314cb62f825ad87e1527f1ffb510453b4e3e67ab800e2984483e82214ddd15
+          - input: 24777027.bin
+            hash: 1f739f2c35965e32db367034143dab6b39895b1cc3bca852f80144342c501596
+          - input: 24777988.bin
+            hash: f92a634fe3aec70f825beb49841c2503b810fecf3a1d32beb63eef97519fbe6d
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind
+          path: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+
+      - name: Download input
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest/bin
+        run: |
+          curl -sSL "https://us-southeast-1.linodeobjects.com/zktests/${{ matrix.input }}" \
+            -o "${{ matrix.input }}"
+          echo "${{ matrix.hash }}  ${{ matrix.input }}" | sha256sum --status -c - || \
+            { echo "Checksum failed"; exit 1; }
+
+      - name: Test Nethermind guest
+        timeout-minutes: 5
+        working-directory: src/Nethermind/Nethermind.Stateless.ZiskGuest
+        run: make run INPUT="${{ matrix.input }}"
+
+  status:
+    name: Status
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check result
+        run: |
+          [[ "${{ needs.test.result }}" == "success" ]]

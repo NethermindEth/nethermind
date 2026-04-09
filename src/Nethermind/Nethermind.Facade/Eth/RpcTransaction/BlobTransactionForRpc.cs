@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -34,7 +35,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Result<Transaction> ToTransaction(bool validateUserInput = false)
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
         if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
             return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
@@ -54,12 +55,16 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
             return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
 
-        Result<Transaction> baseResult = base.ToTransaction(validateUserInput);
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
         if (!baseResult) return baseResult;
 
         Transaction tx = baseResult.Data;
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-        tx.BlobVersionedHashes = BlobVersionedHashes;
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
 
         return tx;
     }
