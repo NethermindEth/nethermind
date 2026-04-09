@@ -167,9 +167,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (!blockInfo.WasProcessed)
         {
-            if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult))
+            if (_blockTree.IsOnMainChainBehindOrEqualHead(newHeadBlock))
             {
-                return errorResult;
+                if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
+                return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
             }
 
             BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
@@ -284,7 +285,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+        _blockTree.ForkChoiceUpdated(
+            ResolveZeroHash(forkchoiceState.FinalizedBlockHash, _blockTree.FinalizedHash),
+            ResolveZeroHash(forkchoiceState.SafeBlockHash, _blockTree.SafeHash));
         return null;
     }
 
@@ -332,7 +335,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
 
-        _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
+        _blockTree.ForkChoiceUpdated(
+            ResolveZeroHash(forkchoiceState.FinalizedBlockHash, _blockTree.FinalizedHash),
+            ResolveZeroHash(forkchoiceState.SafeBlockHash, _blockTree.SafeHash));
         return ForkchoiceUpdatedV1Result.Valid(isPayloadSimulated ? null : payloadId, forkchoiceState.HeadBlockHash);
     }
 
@@ -361,6 +366,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     }
 
     private bool IsInconsistent(Hash256 blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
+
+    private static Hash256 ResolveZeroHash(Hash256 hash, Hash256? knownHash) =>
+        hash == Keccak.Zero ? knownHash ?? Keccak.Zero : hash;
 
     private Block? GetBlock(Hash256 headBlockHash)
     {
