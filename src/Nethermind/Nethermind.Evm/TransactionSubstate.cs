@@ -110,15 +110,18 @@ public readonly ref struct TransactionSubstate
         if (!Utf8.IsValid(span))
             return span.ToHexString(true);
 
-        string decoded = Encoding.UTF8.GetString(span);
-        ReadOnlySpan<char> chars = decoded.AsSpan();
+        // C0 control chars (except \t \n \r) and DEL are single bytes in UTF-8 — check on span before allocating string.
+        // C0: 0x00–0x08, 0x0B–0x0C, 0x0E–0x1F | DEL: 0x7F
+        if (span.IndexOfAnyInRange((byte)0x00, (byte)0x08) >= 0 ||
+            span.IndexOfAnyInRange((byte)0x0B, (byte)0x0C) >= 0 ||
+            span.IndexOfAnyInRange((byte)0x0E, (byte)0x1F) >= 0 ||
+            span.IndexOfAnyInRange((byte)0x7F, (byte)0x7F) >= 0)
+            return span.ToHexString(true);
 
-        // Reject char.IsControl chars except the safe whitespace \t, \n, \r.
-        // C0: 0x00–0x08, 0x0B–0x0C, 0x0E–0x1F | DEL: 0x7F | C1: 0x80–0x9F
-        if (chars.IndexOfAnyInRange('\x00', '\x08') >= 0 ||
-            chars.IndexOfAnyInRange('\x0B', '\x0C') >= 0 ||
-            chars.IndexOfAnyInRange('\x0E', '\x1F') >= 0 ||
-            chars.IndexOfAnyInRange('\x7F', '\x9F') >= 0)
+        string decoded = Encoding.UTF8.GetString(span);
+
+        // C1 control chars (U+0080–U+009F) are 2-byte UTF-8 sequences — must check on decoded chars.
+        if (decoded.AsSpan().IndexOfAnyInRange('\x80', '\x9F') >= 0)
             return span.ToHexString(true);
 
         return decoded;
