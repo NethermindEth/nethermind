@@ -194,6 +194,7 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
+            IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,
                 new AuRaChainSpecEngineParameters(),
@@ -207,9 +208,7 @@ namespace Nethermind.AuRa.Test
                 blockTree,
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
                 new ExecutionRequestsProcessor(transactionProcessor),
-                BlobBaseFeeCalculator.Instance,
-                Substitute.For<IBlockhashProvider>(),
-                new BlocksConfig(),
+                new BlockAccessListManager(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig()),
                 auRaValidator: null,
                 txFilter,
                 contractRewriter: contractRewriter);
@@ -219,7 +218,7 @@ namespace Nethermind.AuRa.Test
                 GnosisSpecProvider.Instance,
                 stateProvider,
                 new BeaconBlockRootHandler(transactionProcessor, stateProvider),
-                Substitute.For<IBlockhashProvider>(),
+                blockhashProvider,
                 LimboLogs.Instance);
 
             return (branchProcessor, stateProvider, blockTree);

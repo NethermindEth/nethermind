@@ -35,6 +35,7 @@ using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -57,7 +58,8 @@ public class BlockProcessorTests
             Substitute.For<IBlockhashStore>(),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            new BlockAccessListManager(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig()));
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,

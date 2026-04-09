@@ -180,7 +180,7 @@ public class StartBlockProducerAuRa(
             blockTree,
             NullWithdrawalProcessor.Instance,
             new ExecutionRequestsProcessor(txProcessor),
-            null,//fix
+            new BlockAccessListManager(worldState, specProvider, blockhashProvider, logManager, blocksConfig),
             _validator,
             auRaTxFilter,
             CreateGasLimitCalculator() as AuRaContractGasLimitOverride,

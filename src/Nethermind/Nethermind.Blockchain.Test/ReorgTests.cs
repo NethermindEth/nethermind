@@ -28,6 +28,7 @@ using Nethermind.Evm.State;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -101,7 +102,8 @@ public class ReorgTests
             new BlockhashStore(stateProvider),
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
-            new ExecutionRequestsProcessor(transactionProcessor));
+            new ExecutionRequestsProcessor(transactionProcessor),
+            new BlockAccessListManager(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig()));
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,

@@ -35,7 +35,6 @@ namespace Nethermind.Consensus.Processing;
 
 public class BlockAccessListManager(
     IWorldState stateProvider,
-    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
     ISpecProvider specProvider,
     IBlockhashProvider blockHashProvider,
     ILogManager logManager,
@@ -81,11 +80,11 @@ public class BlockAccessListManager(
         if (ParallelExecutionEnabled)
         {
             // reuse
-            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new ParallelTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blocksConfig.ParallelExecution, blockHashProvider, specProvider, stateProvider, logManager);
         }
         else
         {
-            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+            _txProcessorWithWorldStateManager = new SequentialTxProcessorWithWorldStateManager(block, _blockExecutionContext.Value, blockHashProvider, specProvider, stateProvider, logManager);
         }
     }
 
@@ -402,14 +401,13 @@ public class BlockAccessListManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ILogManager logManager)
         {
             int len = block.Transactions.Length;
             _txProcessorsWithWorldStates = new TxProcessorWithWorldState[len + 2];
             for (int i = 0; i < len + 2; i++)
             {
-                _txProcessorsWithWorldStates[i] = new(block, blockExecutionContext, i, parallel, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+                _txProcessorsWithWorldStates[i] = new(block, blockExecutionContext, i, parallel, blockHashProvider, specProvider, stateProvider, logManager);
             }
         }
 
@@ -427,10 +425,9 @@ public class BlockAccessListManager(
         IBlockhashProvider blockHashProvider,
         ISpecProvider specProvider,
         IWorldState stateProvider,
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
         ILogManager logManager) : TxProcessorWithWorldStateManager
     {
-        private readonly TxProcessorWithWorldState _txProcessorWithWorldState = new(block, blockExecutionContext, 0, false, blockHashProvider, specProvider, stateProvider, blobBaseFeeCalculator, logManager);
+        private readonly TxProcessorWithWorldState _txProcessorWithWorldState = new(block, blockExecutionContext, 0, false, blockHashProvider, specProvider, stateProvider, logManager);
 
         public TxProcessorWithWorldState Get(int? _)
             => _txProcessorWithWorldState;
@@ -461,7 +458,6 @@ public class BlockAccessListManager(
             IBlockhashProvider blockHashProvider,
             ISpecProvider specProvider,
             IWorldState stateProvider,
-            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
             ILogManager logManager)
         {
 
@@ -474,7 +470,7 @@ public class BlockAccessListManager(
             WorldState = new TracedAccessWorldState(worldState);
             WorldState.SetIndex(balIndex);
             EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
-            TxProcessor = new(blobBaseFeeCalculator, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
+            TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
             TxProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
         }

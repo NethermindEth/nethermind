@@ -19,9 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Evm.State;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Evm;
-using Nethermind.Config;
 
 namespace Nethermind.Merge.AuRa;
 
@@ -38,9 +35,7 @@ public class AuRaMergeBlockProcessor(
     IBlockFinder blockTree,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-    IBlockhashProvider blockhashProvider,
-    IBlocksConfig blocksConfig,
+    BlockAccessListManager balManager,
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -57,9 +52,7 @@ public class AuRaMergeBlockProcessor(
         blockTree,
         withdrawalProcessor,
         executionRequestsProcessor,
-        blobBaseFeeCalculator,
-        blockhashProvider,
-        blocksConfig,
+        balManager,
         validator,
         txFilter,
         gasLimitOverride,
