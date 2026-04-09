@@ -6,7 +6,7 @@ using Nethermind.Core.Attributes;
 
 namespace Nethermind.StateComposition;
 
-public static class Metrics
+public static partial class Metrics
 {
     [GaugeMetric]
     [Description("Total accounts in state")]

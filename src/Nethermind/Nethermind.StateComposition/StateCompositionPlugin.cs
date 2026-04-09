@@ -87,6 +87,9 @@ public class StateCompositionPlugin : INethermindPlugin
         stateHolder.RestoreFromSnapshot(snap);
 
         Metrics.UpdateFromCumulativeStats(snap.Stats);
+        // Phase A: depth-distribution gauges are NOT populated on snapshot restore because
+        // snapshots do not persist TrieDepthDistribution (Phase C will add that).
+        // The gauges will be populated on the next full scan.
         Metrics.StateCompIncrementalBlock = snap.BlockNumber;
         Metrics.StateCompDiffsSinceBaseline = snap.DiffsSinceBaseline;
 
