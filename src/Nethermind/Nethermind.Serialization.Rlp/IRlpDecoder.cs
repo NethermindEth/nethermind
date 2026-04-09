@@ -16,7 +16,7 @@ namespace Nethermind.Serialization.Rlp
         int GetLength(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 
-    public interface IRlpStreamEncoder<T> : IRlpDecoder<T>
+    public interface IRlpStreamEncoder<in T> : IRlpDecoder<T>
     {
         void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }

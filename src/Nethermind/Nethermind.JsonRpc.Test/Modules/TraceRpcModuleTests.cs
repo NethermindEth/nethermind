@@ -1156,6 +1156,7 @@ public class TraceRpcModuleTests
             blockFinder,
             new JsonRpcConfig(),
             Substitute.For<IBlockchainBridge>(),
+            Substitute.For<ISpecProvider>(),
             Substitute.For<IBlocksConfig>());
     }
 }
