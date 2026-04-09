@@ -19,6 +19,8 @@ namespace Nethermind.StateComposition;
 public sealed class TrieDiffWalker
 {
     private readonly ITrieNodeResolver _resolver;
+    private readonly bool _trackDepth;
+    private readonly DepthDelta _depthDelta;
 
     // Mutable counters accumulated during a single ComputeDiff call.
     // Reset at the start of each call.
@@ -36,9 +38,11 @@ public sealed class TrieDiffWalker
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    public TrieDiffWalker(ITrieNodeResolver resolver)
+    public TrieDiffWalker(ITrieNodeResolver resolver, bool trackDepth = false)
     {
         _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+        _trackDepth = trackDepth;
+        _depthDelta = new DepthDelta();
     }
 
     /// <summary>
@@ -48,6 +52,7 @@ public sealed class TrieDiffWalker
     public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
     {
         ResetCounters();
+        if (_trackDepth) _depthDelta.Clear();
 
         Hash256? oldHash = NormalizeHash(oldRoot);
         Hash256? newHash = NormalizeHash(newRoot);
@@ -55,7 +60,7 @@ public sealed class TrieDiffWalker
         if (oldHash == newHash) return default;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, _resolver, isStorage: false);
+        DiffSubtree(oldHash, newHash, ref path, _resolver, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
@@ -70,7 +75,8 @@ public sealed class TrieDiffWalker
             _storageTrieBytesAdded, _storageTrieBytesRemoved,
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
-            _emptyAccountsAdded, _emptyAccountsRemoved
+            _emptyAccountsAdded, _emptyAccountsRemoved,
+            DepthDelta: _trackDepth ? _depthDelta : null
         );
     }
 
@@ -79,7 +85,7 @@ public sealed class TrieDiffWalker
     /// If both hashes are equal → skip (content-addressed fast path).
     /// If only one exists → collect entire subtree as added or removed.
     /// </summary>
-    private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         // Fast path: identical subtrees
         if (oldHash == newHash) return;
@@ -89,7 +95,7 @@ public sealed class TrieDiffWalker
         {
             TrieNode newNode = resolver.FindCachedOrUnknown(in path, newHash!);
             newNode.ResolveNode(resolver, in path);
-            CollectSubtree(newNode, ref path, resolver, isStorage, added: true);
+            CollectSubtree(newNode, ref path, resolver, isStorage, added: true, depth: depth);
             return;
         }
 
@@ -97,7 +103,7 @@ public sealed class TrieDiffWalker
         {
             TrieNode oldNode = resolver.FindCachedOrUnknown(in path, oldHash);
             oldNode.ResolveNode(resolver, in path);
-            CollectSubtree(oldNode, ref path, resolver, isStorage, added: false);
+            CollectSubtree(oldNode, ref path, resolver, isStorage, added: false, depth: depth);
             return;
         }
 
@@ -107,14 +113,14 @@ public sealed class TrieDiffWalker
         TrieNode newResolved = resolver.FindCachedOrUnknown(in path, newHash);
         newResolved.ResolveNode(resolver, in path);
 
-        DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage);
+        DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage, depth);
     }
 
     /// <summary>
     /// Compare two resolved nodes. Dispatches based on matching node types.
     /// On type mismatch, collects both subtrees independently.
     /// </summary>
-    private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         if (oldNode.NodeType != newNode.NodeType)
         {
@@ -122,20 +128,20 @@ public sealed class TrieDiffWalker
             // Can't just collect both subtrees independently — that would double-count
             // accounts/contracts/slots that exist in both. Instead, enumerate leaves
             // from both sides, match by full path, and diff semantically.
-            DiffMismatchedNodes(oldNode, newNode, ref path, resolver, isStorage);
+            DiffMismatchedNodes(oldNode, newNode, ref path, resolver, isStorage, depth);
             return;
         }
 
         switch (oldNode.NodeType)
         {
             case NodeType.Branch:
-                DiffBranches(oldNode, newNode, ref path, resolver, isStorage);
+                DiffBranches(oldNode, newNode, ref path, resolver, isStorage, depth);
                 break;
             case NodeType.Extension:
-                DiffExtensions(oldNode, newNode, ref path, resolver, isStorage);
+                DiffExtensions(oldNode, newNode, ref path, resolver, isStorage, depth);
                 break;
             case NodeType.Leaf:
-                DiffLeaves(oldNode, newNode, ref path, resolver, isStorage);
+                DiffLeaves(oldNode, newNode, ref path, resolver, isStorage, depth);
                 break;
         }
     }
@@ -144,12 +150,21 @@ public sealed class TrieDiffWalker
     /// Compare two branch nodes. Record both branch nodes, then diff each of the 16 children.
     /// Uses hash comparison for fast skip of identical children.
     /// </summary>
-    private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         // Record the branch nodes themselves (old removed, new added)
         RecordNode(NodeType.Branch, oldBranch.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Branch, newBranch.FullRlp.Length, isStorage, added: true);
 
+        if (_trackDepth)
+        {
+            int d = Math.Min(depth, 15);
+            // Remove old branch, add new branch at this depth
+            RecordDepthBranch(oldBranch, d, isStorage, added: false);
+            RecordDepthBranch(newBranch, d, isStorage, added: true);
+        }
+
+        int childDepth = depth + 1;
         for (int i = 0; i < 16; i++)
         {
             Hash256? oldChildHash = oldBranch.GetChildHash(i);
@@ -162,7 +177,7 @@ public sealed class TrieDiffWalker
 
                 int prevLen = path.Length;
                 path.AppendMut(i);
-                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage);
+                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage, childDepth);
                 path.TruncateMut(prevLen);
                 continue;
             }
@@ -186,7 +201,7 @@ public sealed class TrieDiffWalker
                     // New is hash-referenced
                     TrieNode newChild = resolver.FindCachedOrUnknown(in path, newChildHash);
                     newChild.ResolveNode(resolver, in path);
-                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
                 }
                 else
                 {
@@ -195,7 +210,7 @@ public sealed class TrieDiffWalker
                     if (newChild is not null)
                     {
                         newChild.ResolveNode(resolver, in path);
-                        CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                        CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
                     }
                 }
             }
@@ -206,7 +221,7 @@ public sealed class TrieDiffWalker
                 {
                     TrieNode oldChild = resolver.FindCachedOrUnknown(in path, oldChildHash);
                     oldChild.ResolveNode(resolver, in path);
-                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
                 }
                 else
                 {
@@ -214,7 +229,7 @@ public sealed class TrieDiffWalker
                     if (oldChild is not null)
                     {
                         oldChild.ResolveNode(resolver, in path);
-                        CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                        CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
                     }
                 }
             }
@@ -231,17 +246,17 @@ public sealed class TrieDiffWalker
                 {
                     oldChild.ResolveNode(resolver, in path);
                     newChild.ResolveNode(resolver, in path);
-                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage);
+                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage, childDepth);
                 }
                 else if (oldChild is not null)
                 {
                     oldChild.ResolveNode(resolver, in path);
-                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
                 }
                 else if (newChild is not null)
                 {
                     newChild.ResolveNode(resolver, in path);
-                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
                 }
             }
 
@@ -253,7 +268,7 @@ public sealed class TrieDiffWalker
     /// Compare two extension nodes. If keys match, recurse into child.
     /// If keys differ, collect both subtrees independently.
     /// </summary>
-    private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         byte[]? oldKey = oldExt.Key;
         byte[]? newKey = newExt.Key;
@@ -264,16 +279,24 @@ public sealed class TrieDiffWalker
             RecordNode(NodeType.Extension, oldExt.FullRlp.Length, isStorage, added: false);
             RecordNode(NodeType.Extension, newExt.FullRlp.Length, isStorage, added: true);
 
+            if (_trackDepth)
+            {
+                int d = Math.Min(depth, 15);
+                RecordDepthShort(oldExt.FullRlp.Length, d, isStorage, added: false);
+                RecordDepthShort(newExt.FullRlp.Length, d, isStorage, added: true);
+            }
+
             // Extension child hash is at RLP index 1
             Hash256? oldChildHash = oldExt.GetChildHash(1);
             Hash256? newChildHash = newExt.GetChildHash(1);
 
             int prevLen = path.Length;
             path.AppendMut(oldKey);
+            int childDepth = depth + oldKey.Length;
 
             if (oldChildHash is not null && newChildHash is not null)
             {
-                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage);
+                DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage, childDepth);
             }
             else
             {
@@ -287,17 +310,17 @@ public sealed class TrieDiffWalker
                 {
                     oldChild.ResolveNode(resolver, in path);
                     newChild.ResolveNode(resolver, in path);
-                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage);
+                    DiffNodes(oldChild, newChild, ref path, resolver, isStorage, childDepth);
                 }
                 else if (oldChild is not null)
                 {
                     oldChild.ResolveNode(resolver, in path);
-                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false);
+                    CollectSubtree(oldChild, ref path, resolver, isStorage, added: false, childDepth);
                 }
                 else if (newChild is not null)
                 {
                     newChild.ResolveNode(resolver, in path);
-                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true);
+                    CollectSubtree(newChild, ref path, resolver, isStorage, added: true, childDepth);
                 }
             }
 
@@ -306,8 +329,8 @@ public sealed class TrieDiffWalker
         else
         {
             // Different key prefixes: entirely different subtrees
-            CollectSubtree(oldExt, ref path, resolver, isStorage, added: false);
-            CollectSubtree(newExt, ref path, resolver, isStorage, added: true);
+            CollectSubtree(oldExt, ref path, resolver, isStorage, added: false, depth);
+            CollectSubtree(newExt, ref path, resolver, isStorage, added: true, depth);
         }
     }
 
@@ -316,11 +339,19 @@ public sealed class TrieDiffWalker
     /// For account trie: decode accounts to detect contract/storage changes.
     /// For storage trie: each leaf is one storage slot.
     /// </summary>
-    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ITrieNodeResolver resolver, bool isStorage)
+    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         // Record both leaf nodes (old removed, new added)
         RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Leaf, newLeaf.FullRlp.Length, isStorage, added: true);
+
+        if (_trackDepth)
+        {
+            int d = Math.Min(depth, 15);
+            // Old leaf removed, new leaf added (same path = modification, both short+value counters net to zero)
+            RecordDepthLeaf(oldLeaf.FullRlp.Length, d, isStorage, added: false);
+            RecordDepthLeaf(newLeaf.FullRlp.Length, d, isStorage, added: true);
+        }
 
         if (isStorage)
         {
@@ -366,20 +397,40 @@ public sealed class TrieDiffWalker
         Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
         ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
         TreePath storagePath = TreePath.Empty;
-        DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true);
+        // Storage tries always start at depth 0 (independent trie)
+        DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
     }
 
     /// <summary>
     /// Recursively collect all nodes in a subtree as either added or removed.
     /// Also counts accounts, contracts, and storage slots at leaves.
     /// </summary>
-    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added)
+    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int depth)
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
+
+        if (_trackDepth)
+        {
+            int d = Math.Min(depth, 15);
+            switch (node.NodeType)
+            {
+                case NodeType.Branch:
+                    RecordDepthBranch(node, d, isStorage, added);
+                    break;
+                case NodeType.Extension:
+                    RecordDepthShort(node.FullRlp.Length, d, isStorage, added);
+                    break;
+                case NodeType.Leaf:
+                    RecordDepthLeaf(node.FullRlp.Length, d, isStorage, added);
+                    break;
+            }
+        }
 
         switch (node.NodeType)
         {
             case NodeType.Branch:
+            {
+                int childDepth = depth + 1;
                 for (int i = 0; i < 16; i++)
                 {
                     Hash256? childHash = node.GetChildHash(i);
@@ -390,7 +441,7 @@ public sealed class TrieDiffWalker
                         path.AppendMut(i);
                         TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                         child.ResolveNode(resolver, in path);
-                        CollectSubtree(child, ref path, resolver, isStorage, added);
+                        CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
                         path.TruncateMut(prevLen);
                     }
                     else if (!node.IsChildNull(i))
@@ -402,24 +453,26 @@ public sealed class TrieDiffWalker
                         if (child is not null)
                         {
                             child.ResolveNode(resolver, in path);
-                            CollectSubtree(child, ref path, resolver, isStorage, added);
+                            CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
                         }
                         path.TruncateMut(prevLen);
                     }
                 }
                 break;
+            }
 
             case NodeType.Extension:
             {
                 Hash256? childHash = node.GetChildHash(1);
                 int prevLen = path.Length;
                 path.AppendMut(node.Key!);
+                int childDepth = depth + (node.Key?.Length ?? 1);
 
                 if (childHash is not null)
                 {
                     TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                     child.ResolveNode(resolver, in path);
-                    CollectSubtree(child, ref path, resolver, isStorage, added);
+                    CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
                 }
                 else
                 {
@@ -428,7 +481,7 @@ public sealed class TrieDiffWalker
                     if (child is not null)
                     {
                         child.ResolveNode(resolver, in path);
-                        CollectSubtree(child, ref path, resolver, isStorage, added);
+                        CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
                     }
                 }
 
@@ -488,7 +541,7 @@ public sealed class TrieDiffWalker
 
             TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
             storageRootNode.ResolveNode(storageResolver, in storagePath);
-            CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added);
+            CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added, depth: 0);
         }
     }
 
@@ -500,13 +553,13 @@ public sealed class TrieDiffWalker
     /// only count genuinely new or removed items.
     /// </summary>
     private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
-        ITrieNodeResolver resolver, bool isStorage)
+        ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         var oldLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
         var newLeaves = new Dictionary<Hash256, (TrieNode Leaf, TreePath Path)>();
 
-        CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves);
-        CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves);
+        CollectSubtreeForDiff(oldNode, ref path, resolver, isStorage, added: false, oldLeaves, depth);
+        CollectSubtreeForDiff(newNode, ref path, resolver, isStorage, added: true, newLeaves, depth);
 
         // Diff leaves by full path for correct semantic counts
         foreach (KeyValuePair<Hash256, (TrieNode Leaf, TreePath Path)> kvp in newLeaves)
@@ -547,13 +600,32 @@ public sealed class TrieDiffWalker
     /// to the caller for correct diff matching.
     /// </summary>
     private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
-        bool isStorage, bool added, Dictionary<Hash256, (TrieNode Leaf, TreePath Path)> leaves)
+        bool isStorage, bool added, Dictionary<Hash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
+
+        if (_trackDepth)
+        {
+            int d = Math.Min(depth, 15);
+            switch (node.NodeType)
+            {
+                case NodeType.Branch:
+                    RecordDepthBranch(node, d, isStorage, added);
+                    break;
+                case NodeType.Extension:
+                    RecordDepthShort(node.FullRlp.Length, d, isStorage, added);
+                    break;
+                case NodeType.Leaf:
+                    RecordDepthLeaf(node.FullRlp.Length, d, isStorage, added);
+                    break;
+            }
+        }
 
         switch (node.NodeType)
         {
             case NodeType.Branch:
+            {
+                int childDepth = depth + 1;
                 for (int i = 0; i < 16; i++)
                 {
                     Hash256? childHash = node.GetChildHash(i);
@@ -563,7 +635,7 @@ public sealed class TrieDiffWalker
                         path.AppendMut(i);
                         TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                         child.ResolveNode(resolver, in path);
-                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
                         path.TruncateMut(prevLen);
                     }
                     else if (!node.IsChildNull(i))
@@ -574,23 +646,25 @@ public sealed class TrieDiffWalker
                         if (child is not null)
                         {
                             child.ResolveNode(resolver, in path);
-                            CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                            CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
                         }
                         path.TruncateMut(prevLen);
                     }
                 }
                 break;
+            }
 
             case NodeType.Extension:
             {
                 Hash256? childHash = node.GetChildHash(1);
                 int prevLen = path.Length;
                 path.AppendMut(node.Key!);
+                int childDepth = depth + (node.Key?.Length ?? 1);
                 if (childHash is not null)
                 {
                     TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                     child.ResolveNode(resolver, in path);
-                    CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                    CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
                 }
                 else
                 {
@@ -599,7 +673,7 @@ public sealed class TrieDiffWalker
                     if (child is not null)
                     {
                         child.ResolveNode(resolver, in path);
-                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves);
+                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
                     }
                 }
                 path.TruncateMut(prevLen);
@@ -710,6 +784,90 @@ public sealed class TrieDiffWalker
     {
         if (hash is null) return null;
         return hash == Keccak.EmptyTreeHash ? null : hash;
+    }
+
+    /// <summary>
+    /// Count the non-null children of a branch node. Used for branch-occupancy histogram deltas.
+    /// Wraps IsChildNull access in a try/catch because test stub TrieNodes may not be fully decoded.
+    /// </summary>
+    private static int CountBranchChildren(TrieNode branch)
+    {
+        int count = 0;
+        try
+        {
+            for (int i = 0; i < 16; i++)
+            {
+                if (!branch.IsChildNull(i)) count++;
+            }
+        }
+        catch
+        {
+            // Stub nodes used in unit tests may throw on IsChildNull; treat as 0
+        }
+        return count;
+    }
+
+    /// <summary>Record a branch node add/remove in the depth delta arrays.</summary>
+    private void RecordDepthBranch(TrieNode branch, int depth, bool isStorage, bool added)
+    {
+        int sign = added ? 1 : -1;
+        long bytes = branch.FullRlp.Length;
+        if (isStorage)
+        {
+            _depthDelta.StorageFullNodes[depth]  += sign;
+            _depthDelta.StorageNodeBytes[depth]  += sign * bytes;
+        }
+        else
+        {
+            _depthDelta.AccountFullNodes[depth]  += sign;
+            _depthDelta.AccountNodeBytes[depth]  += sign * bytes;
+            // Branch occupancy histogram
+            int children = CountBranchChildren(branch);
+            if (children > 0)
+            {
+                _depthDelta.BranchOccupancy[children - 1]    += sign;
+                _depthDelta.TotalBranchNodesDelta            += sign;
+                _depthDelta.TotalBranchChildrenDelta         += sign * children;
+            }
+        }
+    }
+
+    /// <summary>Record an extension node add/remove in the depth delta arrays.</summary>
+    private void RecordDepthShort(long rlpLen, int depth, bool isStorage, bool added)
+    {
+        int sign = added ? 1 : -1;
+        if (isStorage)
+        {
+            _depthDelta.StorageShortNodes[depth] += sign;
+            _depthDelta.StorageNodeBytes[depth]  += sign * rlpLen;
+        }
+        else
+        {
+            _depthDelta.AccountShortNodes[depth] += sign;
+            _depthDelta.AccountNodeBytes[depth]  += sign * rlpLen;
+        }
+    }
+
+    /// <summary>
+    /// Record a leaf node add/remove in the depth delta arrays.
+    /// Both ShortNodes (Geth convention: leaf is a shortNode) and ValueNodes are updated.
+    /// ValueNodes[depth] stores physical leaves (unshifted); the +1 shift is applied at metrics time.
+    /// </summary>
+    private void RecordDepthLeaf(long rlpLen, int depth, bool isStorage, bool added)
+    {
+        int sign = added ? 1 : -1;
+        if (isStorage)
+        {
+            _depthDelta.StorageShortNodes[depth] += sign;
+            _depthDelta.StorageValueNodes[depth] += sign;
+            _depthDelta.StorageNodeBytes[depth]  += sign * rlpLen;
+        }
+        else
+        {
+            _depthDelta.AccountShortNodes[depth] += sign;
+            _depthDelta.AccountValueNodes[depth] += sign;
+            _depthDelta.AccountNodeBytes[depth]  += sign * rlpLen;
+        }
     }
 
     private void ResetCounters()

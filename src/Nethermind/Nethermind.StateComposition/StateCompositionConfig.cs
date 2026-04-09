@@ -16,4 +16,5 @@ public class StateCompositionConfig : IStateCompositionConfig
     public bool PersistSnapshots { get; set; } = true;
     public int SnapshotBlocksToKeep { get; set; } = 10_000;
     public int SnapshotInterval { get; set; } = 1;
+    public bool TrackDepthIncrementally { get; set; } = true;
 }

@@ -936,4 +936,222 @@ public static partial class Metrics
         StateCompMaxStorageDepth     = dist.MaxStorageDepth;
         StateCompAvgBranchOccupancy  = dist.AvgBranchOccupancy;
     }
+
+    /// <summary>
+    /// Populate all 149 depth-distribution gauges from a <see cref="CumulativeDepthStats"/> instance.
+    /// The Geth +1 shift for ValueNodeCount is applied here at presentation time:
+    ///   gauge at depth d gets AccountValueNodes[d-1] (physical leaves at depth d-1).
+    /// All other arrays map directly (no shift).
+    /// </summary>
+    public static void UpdateFromDepthStats(CumulativeDepthStats s)
+    {
+        // Account trie — FullNodes and ShortNodes are direct; ValueNodes are shifted
+        StateCompAccountTrieDepth_0_FullNodes  = s.AccountFullNodes[0];
+        StateCompAccountTrieDepth_0_ShortNodes = s.AccountShortNodes[0];
+        StateCompAccountTrieDepth_0_ValueNodes = 0; // no physical depth -1
+        StateCompAccountTrieDepth_0_Bytes      = s.AccountNodeBytes[0];
+
+        StateCompAccountTrieDepth_1_FullNodes  = s.AccountFullNodes[1];
+        StateCompAccountTrieDepth_1_ShortNodes = s.AccountShortNodes[1];
+        StateCompAccountTrieDepth_1_ValueNodes = s.AccountValueNodes[0];
+        StateCompAccountTrieDepth_1_Bytes      = s.AccountNodeBytes[1];
+
+        StateCompAccountTrieDepth_2_FullNodes  = s.AccountFullNodes[2];
+        StateCompAccountTrieDepth_2_ShortNodes = s.AccountShortNodes[2];
+        StateCompAccountTrieDepth_2_ValueNodes = s.AccountValueNodes[1];
+        StateCompAccountTrieDepth_2_Bytes      = s.AccountNodeBytes[2];
+
+        StateCompAccountTrieDepth_3_FullNodes  = s.AccountFullNodes[3];
+        StateCompAccountTrieDepth_3_ShortNodes = s.AccountShortNodes[3];
+        StateCompAccountTrieDepth_3_ValueNodes = s.AccountValueNodes[2];
+        StateCompAccountTrieDepth_3_Bytes      = s.AccountNodeBytes[3];
+
+        StateCompAccountTrieDepth_4_FullNodes  = s.AccountFullNodes[4];
+        StateCompAccountTrieDepth_4_ShortNodes = s.AccountShortNodes[4];
+        StateCompAccountTrieDepth_4_ValueNodes = s.AccountValueNodes[3];
+        StateCompAccountTrieDepth_4_Bytes      = s.AccountNodeBytes[4];
+
+        StateCompAccountTrieDepth_5_FullNodes  = s.AccountFullNodes[5];
+        StateCompAccountTrieDepth_5_ShortNodes = s.AccountShortNodes[5];
+        StateCompAccountTrieDepth_5_ValueNodes = s.AccountValueNodes[4];
+        StateCompAccountTrieDepth_5_Bytes      = s.AccountNodeBytes[5];
+
+        StateCompAccountTrieDepth_6_FullNodes  = s.AccountFullNodes[6];
+        StateCompAccountTrieDepth_6_ShortNodes = s.AccountShortNodes[6];
+        StateCompAccountTrieDepth_6_ValueNodes = s.AccountValueNodes[5];
+        StateCompAccountTrieDepth_6_Bytes      = s.AccountNodeBytes[6];
+
+        StateCompAccountTrieDepth_7_FullNodes  = s.AccountFullNodes[7];
+        StateCompAccountTrieDepth_7_ShortNodes = s.AccountShortNodes[7];
+        StateCompAccountTrieDepth_7_ValueNodes = s.AccountValueNodes[6];
+        StateCompAccountTrieDepth_7_Bytes      = s.AccountNodeBytes[7];
+
+        StateCompAccountTrieDepth_8_FullNodes  = s.AccountFullNodes[8];
+        StateCompAccountTrieDepth_8_ShortNodes = s.AccountShortNodes[8];
+        StateCompAccountTrieDepth_8_ValueNodes = s.AccountValueNodes[7];
+        StateCompAccountTrieDepth_8_Bytes      = s.AccountNodeBytes[8];
+
+        StateCompAccountTrieDepth_9_FullNodes  = s.AccountFullNodes[9];
+        StateCompAccountTrieDepth_9_ShortNodes = s.AccountShortNodes[9];
+        StateCompAccountTrieDepth_9_ValueNodes = s.AccountValueNodes[8];
+        StateCompAccountTrieDepth_9_Bytes      = s.AccountNodeBytes[9];
+
+        StateCompAccountTrieDepth_10_FullNodes  = s.AccountFullNodes[10];
+        StateCompAccountTrieDepth_10_ShortNodes = s.AccountShortNodes[10];
+        StateCompAccountTrieDepth_10_ValueNodes = s.AccountValueNodes[9];
+        StateCompAccountTrieDepth_10_Bytes      = s.AccountNodeBytes[10];
+
+        StateCompAccountTrieDepth_11_FullNodes  = s.AccountFullNodes[11];
+        StateCompAccountTrieDepth_11_ShortNodes = s.AccountShortNodes[11];
+        StateCompAccountTrieDepth_11_ValueNodes = s.AccountValueNodes[10];
+        StateCompAccountTrieDepth_11_Bytes      = s.AccountNodeBytes[11];
+
+        StateCompAccountTrieDepth_12_FullNodes  = s.AccountFullNodes[12];
+        StateCompAccountTrieDepth_12_ShortNodes = s.AccountShortNodes[12];
+        StateCompAccountTrieDepth_12_ValueNodes = s.AccountValueNodes[11];
+        StateCompAccountTrieDepth_12_Bytes      = s.AccountNodeBytes[12];
+
+        StateCompAccountTrieDepth_13_FullNodes  = s.AccountFullNodes[13];
+        StateCompAccountTrieDepth_13_ShortNodes = s.AccountShortNodes[13];
+        StateCompAccountTrieDepth_13_ValueNodes = s.AccountValueNodes[12];
+        StateCompAccountTrieDepth_13_Bytes      = s.AccountNodeBytes[13];
+
+        StateCompAccountTrieDepth_14_FullNodes  = s.AccountFullNodes[14];
+        StateCompAccountTrieDepth_14_ShortNodes = s.AccountShortNodes[14];
+        StateCompAccountTrieDepth_14_ValueNodes = s.AccountValueNodes[13];
+        StateCompAccountTrieDepth_14_Bytes      = s.AccountNodeBytes[14];
+
+        StateCompAccountTrieDepth_15_FullNodes  = s.AccountFullNodes[15];
+        StateCompAccountTrieDepth_15_ShortNodes = s.AccountShortNodes[15];
+        StateCompAccountTrieDepth_15_ValueNodes = s.AccountValueNodes[14];
+        StateCompAccountTrieDepth_15_Bytes      = s.AccountNodeBytes[15];
+
+        // Storage trie — same shift pattern
+        StateCompStorageTrieDepth_0_FullNodes  = s.StorageFullNodes[0];
+        StateCompStorageTrieDepth_0_ShortNodes = s.StorageShortNodes[0];
+        StateCompStorageTrieDepth_0_ValueNodes = 0;
+        StateCompStorageTrieDepth_0_Bytes      = s.StorageNodeBytes[0];
+
+        StateCompStorageTrieDepth_1_FullNodes  = s.StorageFullNodes[1];
+        StateCompStorageTrieDepth_1_ShortNodes = s.StorageShortNodes[1];
+        StateCompStorageTrieDepth_1_ValueNodes = s.StorageValueNodes[0];
+        StateCompStorageTrieDepth_1_Bytes      = s.StorageNodeBytes[1];
+
+        StateCompStorageTrieDepth_2_FullNodes  = s.StorageFullNodes[2];
+        StateCompStorageTrieDepth_2_ShortNodes = s.StorageShortNodes[2];
+        StateCompStorageTrieDepth_2_ValueNodes = s.StorageValueNodes[1];
+        StateCompStorageTrieDepth_2_Bytes      = s.StorageNodeBytes[2];
+
+        StateCompStorageTrieDepth_3_FullNodes  = s.StorageFullNodes[3];
+        StateCompStorageTrieDepth_3_ShortNodes = s.StorageShortNodes[3];
+        StateCompStorageTrieDepth_3_ValueNodes = s.StorageValueNodes[2];
+        StateCompStorageTrieDepth_3_Bytes      = s.StorageNodeBytes[3];
+
+        StateCompStorageTrieDepth_4_FullNodes  = s.StorageFullNodes[4];
+        StateCompStorageTrieDepth_4_ShortNodes = s.StorageShortNodes[4];
+        StateCompStorageTrieDepth_4_ValueNodes = s.StorageValueNodes[3];
+        StateCompStorageTrieDepth_4_Bytes      = s.StorageNodeBytes[4];
+
+        StateCompStorageTrieDepth_5_FullNodes  = s.StorageFullNodes[5];
+        StateCompStorageTrieDepth_5_ShortNodes = s.StorageShortNodes[5];
+        StateCompStorageTrieDepth_5_ValueNodes = s.StorageValueNodes[4];
+        StateCompStorageTrieDepth_5_Bytes      = s.StorageNodeBytes[5];
+
+        StateCompStorageTrieDepth_6_FullNodes  = s.StorageFullNodes[6];
+        StateCompStorageTrieDepth_6_ShortNodes = s.StorageShortNodes[6];
+        StateCompStorageTrieDepth_6_ValueNodes = s.StorageValueNodes[5];
+        StateCompStorageTrieDepth_6_Bytes      = s.StorageNodeBytes[6];
+
+        StateCompStorageTrieDepth_7_FullNodes  = s.StorageFullNodes[7];
+        StateCompStorageTrieDepth_7_ShortNodes = s.StorageShortNodes[7];
+        StateCompStorageTrieDepth_7_ValueNodes = s.StorageValueNodes[6];
+        StateCompStorageTrieDepth_7_Bytes      = s.StorageNodeBytes[7];
+
+        StateCompStorageTrieDepth_8_FullNodes  = s.StorageFullNodes[8];
+        StateCompStorageTrieDepth_8_ShortNodes = s.StorageShortNodes[8];
+        StateCompStorageTrieDepth_8_ValueNodes = s.StorageValueNodes[7];
+        StateCompStorageTrieDepth_8_Bytes      = s.StorageNodeBytes[8];
+
+        StateCompStorageTrieDepth_9_FullNodes  = s.StorageFullNodes[9];
+        StateCompStorageTrieDepth_9_ShortNodes = s.StorageShortNodes[9];
+        StateCompStorageTrieDepth_9_ValueNodes = s.StorageValueNodes[8];
+        StateCompStorageTrieDepth_9_Bytes      = s.StorageNodeBytes[9];
+
+        StateCompStorageTrieDepth_10_FullNodes  = s.StorageFullNodes[10];
+        StateCompStorageTrieDepth_10_ShortNodes = s.StorageShortNodes[10];
+        StateCompStorageTrieDepth_10_ValueNodes = s.StorageValueNodes[9];
+        StateCompStorageTrieDepth_10_Bytes      = s.StorageNodeBytes[10];
+
+        StateCompStorageTrieDepth_11_FullNodes  = s.StorageFullNodes[11];
+        StateCompStorageTrieDepth_11_ShortNodes = s.StorageShortNodes[11];
+        StateCompStorageTrieDepth_11_ValueNodes = s.StorageValueNodes[10];
+        StateCompStorageTrieDepth_11_Bytes      = s.StorageNodeBytes[11];
+
+        StateCompStorageTrieDepth_12_FullNodes  = s.StorageFullNodes[12];
+        StateCompStorageTrieDepth_12_ShortNodes = s.StorageShortNodes[12];
+        StateCompStorageTrieDepth_12_ValueNodes = s.StorageValueNodes[11];
+        StateCompStorageTrieDepth_12_Bytes      = s.StorageNodeBytes[12];
+
+        StateCompStorageTrieDepth_13_FullNodes  = s.StorageFullNodes[13];
+        StateCompStorageTrieDepth_13_ShortNodes = s.StorageShortNodes[13];
+        StateCompStorageTrieDepth_13_ValueNodes = s.StorageValueNodes[12];
+        StateCompStorageTrieDepth_13_Bytes      = s.StorageNodeBytes[13];
+
+        StateCompStorageTrieDepth_14_FullNodes  = s.StorageFullNodes[14];
+        StateCompStorageTrieDepth_14_ShortNodes = s.StorageShortNodes[14];
+        StateCompStorageTrieDepth_14_ValueNodes = s.StorageValueNodes[13];
+        StateCompStorageTrieDepth_14_Bytes      = s.StorageNodeBytes[14];
+
+        StateCompStorageTrieDepth_15_FullNodes  = s.StorageFullNodes[15];
+        StateCompStorageTrieDepth_15_ShortNodes = s.StorageShortNodes[15];
+        StateCompStorageTrieDepth_15_ValueNodes = s.StorageValueNodes[14];
+        StateCompStorageTrieDepth_15_Bytes      = s.StorageNodeBytes[15];
+
+        // Branch occupancy — direct mapping (index i = branches with (i+1) children)
+        StateCompAccountTrieBranchOccupancy_1_Children  = s.BranchOccupancy[0];
+        StateCompAccountTrieBranchOccupancy_2_Children  = s.BranchOccupancy[1];
+        StateCompAccountTrieBranchOccupancy_3_Children  = s.BranchOccupancy[2];
+        StateCompAccountTrieBranchOccupancy_4_Children  = s.BranchOccupancy[3];
+        StateCompAccountTrieBranchOccupancy_5_Children  = s.BranchOccupancy[4];
+        StateCompAccountTrieBranchOccupancy_6_Children  = s.BranchOccupancy[5];
+        StateCompAccountTrieBranchOccupancy_7_Children  = s.BranchOccupancy[6];
+        StateCompAccountTrieBranchOccupancy_8_Children  = s.BranchOccupancy[7];
+        StateCompAccountTrieBranchOccupancy_9_Children  = s.BranchOccupancy[8];
+        StateCompAccountTrieBranchOccupancy_10_Children = s.BranchOccupancy[9];
+        StateCompAccountTrieBranchOccupancy_11_Children = s.BranchOccupancy[10];
+        StateCompAccountTrieBranchOccupancy_12_Children = s.BranchOccupancy[11];
+        StateCompAccountTrieBranchOccupancy_13_Children = s.BranchOccupancy[12];
+        StateCompAccountTrieBranchOccupancy_14_Children = s.BranchOccupancy[13];
+        StateCompAccountTrieBranchOccupancy_15_Children = s.BranchOccupancy[14];
+        StateCompAccountTrieBranchOccupancy_16_Children = s.BranchOccupancy[15];
+
+        // Scalar derivation
+        StateCompAvgAccountPathDepth = WeightedAvgDepth(s.AccountFullNodes, s.AccountShortNodes, s.AccountValueNodes);
+        StateCompAvgStoragePathDepth = WeightedAvgDepth(s.StorageFullNodes, s.StorageShortNodes, s.StorageValueNodes);
+        StateCompMaxAccountDepth     = LastNonZeroDepth(s.AccountFullNodes, s.AccountShortNodes, s.AccountValueNodes);
+        StateCompMaxStorageDepth     = LastNonZeroDepth(s.StorageFullNodes, s.StorageShortNodes, s.StorageValueNodes) + 1; // Geth +1 convention
+        StateCompAvgBranchOccupancy  = s.TotalBranchNodes > 0 ? (double)s.TotalBranchChildren / s.TotalBranchNodes : 0.0;
+    }
+
+    private static double WeightedAvgDepth(long[] full, long[] shrt, long[] value)
+    {
+        long totalNodes = 0;
+        long weightedSum = 0;
+        for (int i = 0; i < 16; i++)
+        {
+            long nodesAtDepth = full[i] + shrt[i] + value[i];
+            totalNodes  += nodesAtDepth;
+            weightedSum += nodesAtDepth * i;
+        }
+        return totalNodes > 0 ? (double)weightedSum / totalNodes : 0.0;
+    }
+
+    private static long LastNonZeroDepth(long[] full, long[] shrt, long[] value)
+    {
+        for (int i = 15; i >= 0; i--)
+        {
+            if (full[i] + shrt[i] + value[i] > 0) return i;
+        }
+        return 0;
+    }
 }

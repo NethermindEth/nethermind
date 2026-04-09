@@ -41,4 +41,8 @@ public interface IStateCompositionConfig : IConfig
     [ConfigItem(Description = "Write a snapshot every N blocks (1 = every block)",
         DefaultValue = "1")]
     int SnapshotInterval { get; set; }
+
+    [ConfigItem(Description = "Track per-depth trie distribution incrementally on every new head block",
+        DefaultValue = "true")]
+    bool TrackDepthIncrementally { get; set; }
 }

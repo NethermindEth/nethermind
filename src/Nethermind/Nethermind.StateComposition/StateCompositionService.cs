@@ -139,12 +139,13 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             _stateHolder.SetBaseline(stats, dist);
             _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
             CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
-            _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!);
+            _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!, dist);
 
             // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
             // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
             Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
             Metrics.UpdateFromDistribution(dist);
+            Metrics.UpdateFromDepthStats(_stateHolder.CurrentDepthStats);
             Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
             Metrics.StateCompScanBlock = header.Number;
             Metrics.StateCompIncrementalBlock = header.Number;
@@ -254,13 +255,15 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
 
                 using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
                 IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
-                TrieDiffWalker walker = new(resolver);
+                TrieDiffWalker walker = new(resolver, _config.TrackDepthIncrementally);
 
                 TrieDiff diff = walker.ComputeDiff(prevRoot, head.Header.StateRoot);
                 CumulativeSizeStats updated = _stateHolder.IncrementalStats!.Value.ApplyDiff(diff);
-                _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot);
+                _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot, diff.DepthDelta);
 
                 Metrics.UpdateFromCumulativeStats(updated);
+                if (_config.TrackDepthIncrementally)
+                    Metrics.UpdateFromDepthStats(_stateHolder.CurrentDepthStats);
                 Metrics.StateCompIncrementalBlock = head.Number;
                 Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
                 Metrics.StateCompDiffsApplied++;
