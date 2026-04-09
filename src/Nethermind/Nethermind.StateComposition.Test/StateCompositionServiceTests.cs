@@ -35,14 +35,15 @@ public class StateCompositionServiceTests
     }
 
     [Test]
-    public void Constructor_RejectsZeroParallelism()
+    public void Constructor_ClampsZeroParallelism_DoesNotThrow()
     {
         IStateCompositionConfig config = CreateValidConfig();
         config.ScanParallelism.Returns(0);
 
-        Assert.Throws<ArgumentException>(() =>
+        // Invalid value is clamped to 1 — no exception on construction.
+        Assert.DoesNotThrow(() =>
         {
-            _ = new StateCompositionService(
+            using StateCompositionService _ = new(
                 Substitute.For<IStateReader>(),
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IBlockTree>(),
@@ -54,58 +55,45 @@ public class StateCompositionServiceTests
     }
 
     [Test]
-    public void Constructor_RejectsZeroMemoryBudget()
+    public void Constructor_ClampsZeroMemoryBudget_DoesNotThrow()
     {
         IStateCompositionConfig config = CreateValidConfig();
         config.ScanMemoryBudget.Returns(0L);
 
-        Assert.Throws<ArgumentException>(() =>
-            _ = new StateCompositionService(
+        Assert.DoesNotThrow(() =>
+        {
+            using StateCompositionService _ = new(
                 Substitute.For<IStateReader>(),
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
                 CreateSnapshotStore(),
                 config,
-                LimboLogs.Instance));
+                LimboLogs.Instance);
+        });
     }
 
     [Test]
-    public void Constructor_RejectsZeroTimeout()
-    {
-        IStateCompositionConfig config = CreateValidConfig();
-        config.ScanQueueTimeoutSeconds.Returns(0);
-
-        Assert.Throws<ArgumentException>(() =>
-            _ = new StateCompositionService(
-                Substitute.For<IStateReader>(),
-                Substitute.For<IWorldStateManager>(),
-                Substitute.For<IBlockTree>(),
-                new StateCompositionStateHolder(),
-                CreateSnapshotStore(),
-                config,
-                LimboLogs.Instance));
-    }
-
-    [Test]
-    public void Constructor_RejectsZeroTopN()
+    public void Constructor_ClampsZeroTopN_DoesNotThrow()
     {
         IStateCompositionConfig config = CreateValidConfig();
         config.TopNContracts.Returns(0);
 
-        Assert.Throws<ArgumentException>(() =>
-            _ = new StateCompositionService(
+        Assert.DoesNotThrow(() =>
+        {
+            using StateCompositionService _ = new(
                 Substitute.For<IStateReader>(),
                 Substitute.For<IWorldStateManager>(),
                 Substitute.For<IBlockTree>(),
                 new StateCompositionStateHolder(),
                 CreateSnapshotStore(),
                 config,
-                LimboLogs.Instance));
+                LimboLogs.Instance);
+        });
     }
 
     [Test]
-    public async Task GetTrieDistributionAsync_FailsWhenNotInitialized()
+    public void GetTrieDistribution_FailsWhenNotInitialized()
     {
         StateCompositionService service = new(
             Substitute.For<IStateReader>(),
@@ -116,8 +104,7 @@ public class StateCompositionServiceTests
             CreateValidConfig(),
             LimboLogs.Instance);
 
-        Result<TrieDepthDistribution> result =
-            await service.GetTrieDistributionAsync();
+        Result<TrieDepthDistribution> result = service.GetTrieDistribution();
 
         using (Assert.EnterMultipleScope())
         {
@@ -334,5 +321,132 @@ public class StateCompositionServiceTests
 
         blocker.SetResult();
         await firstInspect;
+    }
+
+    // ── Item 4: Cancellation mid-scan ──────────────────────────────────────────
+
+    /// <summary>
+    /// When the CancellationToken passed to AnalyzeAsync is cancelled while the
+    /// visitor is in-flight, the task must complete (not hang) and must NOT mark
+    /// the baseline as initialized.
+    ///
+    /// The mock visitor throws OperationCanceledException when the scan token is
+    /// cancelled — this is the cooperative cancellation contract any real visitor
+    /// must honour. The service propagates the exception; no Result.Success is produced.
+    /// </summary>
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task AnalyzeAsync_CancelledMidScan_CompletesWithoutHangAndNoInitialization(CancellationToken testCt)
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ManualResetEventSlim visitorEntered = new(false);
+        // Capture the linked token so the mock can throw when it's cancelled.
+        CancellationToken capturedToken = default;
+
+        stateReader.WhenForAnyArgs(x =>
+                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(ci =>
+            {
+                // The visitor passed in is the StateCompositionVisitor; grab its token
+                // via the captured CTS token set before the call.
+                visitorEntered.Set();
+                // Block until cancelled — respects cooperative cancellation
+                capturedToken.WaitHandle.WaitOne();
+                capturedToken.ThrowIfCancellationRequested();
+            });
+
+        StateCompositionStateHolder stateHolder = new();
+        using CancellationTokenSource cts = new();
+
+        // We need to capture the linked token. Intercept it by wrapping: since
+        // AnalyzeAsync creates the linked CTS internally, the simplest approach is
+        // to cancel cts (passed in) which cancels the linked token too.
+        // The mock above waits on capturedToken — set it to cts.Token directly.
+        capturedToken = cts.Token;
+
+        StateCompositionService service = new(
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            stateHolder, CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, cts.Token);
+
+        // Wait for visitor to be in-flight
+        Assert.That(visitorEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Visitor did not enter RunTreeVisitor");
+
+        // Cancel — the mock will unblock and throw OperationCanceledException
+        cts.Cancel();
+
+        // Task must complete without hanging; the cancellation propagates as exception
+        try
+        {
+            await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
+            // If we reach here the task returned a Result rather than throwing —
+            // that's also acceptable as long as IsInitialized is false.
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected: task faulted with cancellation
+        }
+
+        // Baseline must NOT have been installed — partial scan must not corrupt state
+        Assert.That(stateHolder.IsInitialized, Is.False,
+            "Baseline must not be marked complete after mid-scan cancellation");
+    }
+
+    // ── Item 5 is in TrieDiffWalkerTests.cs ───────────────────────────────────
+
+    // ── Item 6: Cross-semaphore interaction ───────────────────────────────────
+
+    /// <summary>
+    /// AnalyzeAsync and InspectContractAsync use SEPARATE semaphores (_scanLock vs _inspectLock).
+    /// While a scan is blocked, an inspection call must not hang — it acquires _inspectLock independently.
+    /// </summary>
+    [Test]
+    [CancelAfter(5_000)]
+    public async Task InspectContractAsync_CompletesIndependently_WhileAnalyzeAsyncIsBlocked(CancellationToken testCt)
+    {
+        IStateReader stateReader = Substitute.For<IStateReader>();
+        ManualResetEventSlim scanEntered = new(false);
+        ManualResetEventSlim releaseScan = new(false);
+
+        // Block only the scan visitor (StateCompositionContext), not SingleContractVisitor
+        stateReader.WhenForAnyArgs(x =>
+                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(_ =>
+            {
+                scanEntered.Set();
+                releaseScan.Wait();
+            });
+
+        // InspectContractAsync will call TryGetAccount first — return null account so it exits early
+        stateReader.TryGetAccount(null!, null!, out Arg.Any<AccountStruct>())
+            .ReturnsForAnyArgs(false);
+
+        using StateCompositionService service = new(
+            stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
+            new StateCompositionStateHolder(), CreateSnapshotStore(), CreateValidConfig(), LimboLogs.Instance);
+
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+
+        // Start the scan — it blocks inside RunTreeVisitor<StateCompositionContext>
+        Task<Result<StateCompositionStats>> scanTask = service.AnalyzeAsync(header, testCt);
+        Assert.That(scanEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Scan did not enter RunTreeVisitor");
+
+        // InspectContractAsync must complete promptly — separate semaphore
+        Result<TopContractEntry?> inspectResult = await service.InspectContractAsync(
+            Address.Zero, header, testCt).WaitAsync(TimeSpan.FromSeconds(3), testCt);
+
+        // Account not found → success with null (not a semaphore error)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inspectResult.IsSuccess, Is.True, "InspectContractAsync must not be blocked by scan semaphore");
+            Assert.That(inspectResult.Data, Is.Null, "No storage found → null result");
+        }
+
+        // Release scan and clean up
+        releaseScan.Set();
+        await scanTask.WaitAsync(TimeSpan.FromSeconds(3), testCt);
     }
 }

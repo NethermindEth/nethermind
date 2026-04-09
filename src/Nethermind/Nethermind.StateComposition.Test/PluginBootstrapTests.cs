@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Text.Json;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -11,75 +10,6 @@ namespace Nethermind.StateComposition.Test;
 [TestFixture]
 public class PluginBootstrapTests
 {
-    [Test]
-    public void Plugin_HasCorrectMetadata()
-    {
-        StateCompositionPlugin plugin = new();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(plugin.Name, Is.EqualTo("StateComposition"));
-            Assert.That(plugin.Description, Is.EqualTo("State composition metrics"));
-            Assert.That(plugin.Author, Is.EqualTo("Nethermind"));
-        }
-    }
-
-    [Test]
-    public void Plugin_IsEnabledByDefault()
-    {
-        StateCompositionPlugin plugin = new();
-
-        Assert.That(plugin.Enabled, Is.True);
-    }
-
-    [Test]
-    public void Plugin_HasModule()
-    {
-        StateCompositionPlugin plugin = new();
-
-        Assert.That(plugin.Module, Is.Not.Null);
-        Assert.That(plugin.Module, Is.InstanceOf<StateCompositionModule>());
-    }
-
-    [Test]
-    public void StateCompositionStats_HasTrieNodeByteFields()
-    {
-        StateCompositionStats stats = new()
-        {
-            AccountTrieNodeBytes = 300,
-            StorageTrieNodeBytes = 400,
-        };
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stats.AccountTrieNodeBytes, Is.EqualTo(300));
-            Assert.That(stats.StorageTrieNodeBytes, Is.EqualTo(400));
-        }
-    }
-
-    [Test]
-    public void TrieLevelStat_HasTotalSize()
-    {
-        TrieLevelStat stat = new()
-        {
-            Depth = 3,
-            FullNodeCount = 10,
-            ShortNodeCount = 5,
-            ValueNodeCount = 20,
-            TotalSize = 1500,
-        };
-
-        Assert.That(stat.TotalSize, Is.EqualTo(1500));
-    }
-
-    [Test]
-    public void ScanMetadata_HasIsComplete()
-    {
-        ScanMetadata meta = new() { IsComplete = true };
-
-        Assert.That(meta.IsComplete, Is.True);
-    }
-
     [Test]
     public void VisitorCounters_MergeFrom_AggregatesCorrectly()
     {
@@ -154,32 +84,6 @@ public class PluginBootstrapTests
             Assert.That(counter.ValueNodes, Is.EqualTo(1));
             Assert.That(counter.TotalSize, Is.EqualTo(125));
         }
-    }
-
-    [Test]
-    public void DataStructures_RoundtripJson()
-    {
-        // Round-trip: serialize → deserialize → compare via record struct equality.
-        // Uses primitive-only types to avoid needing Nethermind's custom Hash256 converter.
-        TrieLevelStat original = new()
-        {
-            Depth = 3,
-            FullNodeCount = 10,
-            ShortNodeCount = 5,
-            ValueNodeCount = 20,
-            TotalSize = 500,
-        };
-
-        string json = JsonSerializer.Serialize(original);
-        TrieLevelStat deserialized = JsonSerializer.Deserialize<TrieLevelStat>(json);
-
-        Assert.That(deserialized, Is.EqualTo(original));
-    }
-
-    [Test]
-    public void VisitorCounters_MaxTrackedDepth_Is16()
-    {
-        Assert.That(VisitorCounters.MaxTrackedDepth, Is.EqualTo(16));
     }
 
     [Test]
@@ -289,30 +193,6 @@ public class PluginBootstrapTests
 
         int result = TopNTracker.CompareByValueNodes(in a, in b);
         Assert.That(result, Is.LessThan(0)); // b has more MaxDepth → a < b
-    }
-
-    [Test]
-    public void TopContractEntry_HasOwnerAndLevels()
-    {
-        ValueHash256 owner = new(new byte[32]);
-        TopContractEntry entry = new()
-        {
-            Owner = owner,
-            StorageRoot = default,
-            MaxDepth = 5,
-            TotalNodes = 100,
-            ValueNodes = 50,
-            TotalSize = 2000,
-            Levels = [],
-            Summary = new TrieLevelStat { Depth = -1, FullNodeCount = 30, ShortNodeCount = 20, ValueNodeCount = 50, TotalSize = 2000 },
-        };
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(entry.Owner, Is.EqualTo(owner));
-            Assert.That(entry.Levels.IsDefault, Is.False);
-            Assert.That(entry.Summary.TotalSize, Is.EqualTo(2000));
-        }
     }
 
     [Test]

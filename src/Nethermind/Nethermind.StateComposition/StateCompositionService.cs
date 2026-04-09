@@ -20,12 +20,12 @@ namespace Nethermind.StateComposition;
 /// Orchestrates state composition analysis using <see cref="StateCompositionVisitor"/>
 /// and <see cref="IStateReader"/> for trie traversal.
 /// </summary>
-public sealed class StateCompositionService : IStateCompositionService, IDisposable
+public class StateCompositionService : IDisposable
 {
     private readonly IStateReader _stateReader;
     private readonly IWorldStateManager _worldStateManager;
     private readonly IBlockTree _blockTree;
-    private readonly IStateCompositionStateHolder _stateHolder;
+    private readonly StateCompositionStateHolder _stateHolder;
     private readonly StateCompositionSnapshotStore _snapshotStore;
     private readonly IStateCompositionConfig _config;
     private readonly ILogManager _logManager;
@@ -40,7 +40,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         IStateReader stateReader,
         IWorldStateManager worldStateManager,
         IBlockTree blockTree,
-        IStateCompositionStateHolder stateHolder,
+        StateCompositionStateHolder stateHolder,
         StateCompositionSnapshotStore snapshotStore,
         IStateCompositionConfig config,
         ILogManager logManager)
@@ -54,21 +54,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         _logManager = logManager;
         _logger = logManager.GetClassLogger<StateCompositionService>();
 
-        ValidateConfig(config);
-
         _blockTree.NewHeadBlock += OnNewHeadBlock;
-    }
-
-    private static void ValidateConfig(IStateCompositionConfig config)
-    {
-        if (config.ScanParallelism <= 0)
-            throw new ArgumentException("ScanParallelism must be positive", nameof(config));
-        if (config.ScanMemoryBudget <= 0)
-            throw new ArgumentException("ScanMemoryBudget must be positive", nameof(config));
-        if (config.ScanQueueTimeoutSeconds <= 0)
-            throw new ArgumentException("ScanQueueTimeoutSeconds must be positive", nameof(config));
-        if (config.TopNContracts <= 0)
-            throw new ArgumentException("TopNContracts must be positive", nameof(config));
     }
 
     public async Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct)
@@ -89,13 +75,25 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: starting full scan at block {header.Number}, root {header.StateRoot}");
 
+            int topN = Math.Max(1, _config.TopNContracts);
+            if (_config.TopNContracts <= 0 && _logger.IsWarn)
+                _logger.Warn($"StateComposition: TopNContracts={_config.TopNContracts} is invalid; clamped to {topN}");
+
+            int parallelism = Math.Max(1, _config.ScanParallelism);
+            if (_config.ScanParallelism <= 0 && _logger.IsWarn)
+                _logger.Warn($"StateComposition: ScanParallelism={_config.ScanParallelism} is invalid; clamped to {parallelism}");
+
+            long memoryBudget = Math.Max(1, _config.ScanMemoryBudget);
+            if (_config.ScanMemoryBudget <= 0 && _logger.IsWarn)
+                _logger.Warn($"StateComposition: ScanMemoryBudget={_config.ScanMemoryBudget} is invalid; clamped to {memoryBudget}");
+
             using StateCompositionVisitor visitor = new(
-                _logManager, _config.TopNContracts, _config.ExcludeStorage, linkedCts.Token);
+                _logManager, topN, _config.ExcludeStorage, linkedCts.Token);
 
             VisitingOptions options = new()
             {
-                MaxDegreeOfParallelism = _config.ScanParallelism,
-                FullScanMemoryBudget = _config.ScanMemoryBudget,
+                MaxDegreeOfParallelism = parallelism,
+                FullScanMemoryBudget = memoryBudget,
             };
 
             PeriodicTimer progressTimer = new(TimeSpan.FromSeconds(8));
@@ -171,13 +169,13 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    public Task<Result<TrieDepthDistribution>> GetTrieDistributionAsync()
+    public Result<TrieDepthDistribution> GetTrieDistribution()
     {
         if (_stateHolder.IsInitialized)
-            return Task.FromResult(Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution));
+            return Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution);
 
-        return Task.FromResult(Result<TrieDepthDistribution>.Fail(
-            "No cached data available. Run statecomp_getStats() first to trigger a scan."));
+        return Result<TrieDepthDistribution>.Fail(
+            "No cached data available. Run statecomp_getStats() first to trigger a scan.");
     }
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)
@@ -217,7 +215,7 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
         }
     }
 
-    public void CancelScan()
+    public virtual void CancelScan()
     {
         // Capture to local variable to prevent TOCTOU race.
         // The CTS may be disposed between our read and Cancel() call
@@ -263,18 +261,31 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
                 _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot, diff.DepthDelta);
 
                 Metrics.UpdateFromCumulativeStats(updated);
-                if (_config.TrackDepthIncrementally)
+                // Skip the 149-setter publish when the depth distribution did not change.
+                // Gauges retain their last published value, which is correct — nothing changed.
+                if (_config.TrackDepthIncrementally && diff.DepthDelta?.IsEmpty() != true)
                     Metrics.UpdateFromDepthStats(_stateHolder.CurrentDepthStats);
                 Metrics.StateCompIncrementalBlock = head.Number;
                 Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
                 Metrics.StateCompDiffsApplied++;
 
                 if (_config.PersistSnapshots && head.Number % _config.SnapshotInterval == 0)
+                {
                     _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
                         updated, head.Number, head.Header.StateRoot,
                         _stateHolder.DiffsSinceBaseline,
                         _stateHolder.LastScanMetadata?.BlockNumber ?? 0,
                         _stateHolder.CurrentDepthStats.Clone()));
+
+                    // Prune stale snapshot entries beyond the configured retention window.
+                    int blocksToKeep = _config.SnapshotBlocksToKeep;
+                    if (blocksToKeep > 0)
+                    {
+                        long deleteAt = head.Number - blocksToKeep;
+                        if (deleteAt > 0)
+                            _snapshotStore.DeleteSnapshot(deleteAt);
+                    }
+                }
 
                 if (_logger.IsDebug)
                     _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +

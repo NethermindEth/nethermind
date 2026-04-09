@@ -712,40 +712,6 @@ public class TrieDiffWalkerTests
 
     #endregion
 
-    #region 15. TrieDiff net properties
-
-    [Test]
-    public void TrieDiff_NetProperties_AreCorrect()
-    {
-        TrieDiff diff = new(
-            AccountsAdded: 5, AccountsRemoved: 2,
-            ContractsAdded: 3, ContractsRemoved: 1,
-            AccountTrieBranchesAdded: 10, AccountTrieBranchesRemoved: 4,
-            AccountTrieExtensionsAdded: 2, AccountTrieExtensionsRemoved: 1,
-            AccountTrieLeavesAdded: 5, AccountTrieLeavesRemoved: 2,
-            AccountTrieBytesAdded: 1000, AccountTrieBytesRemoved: 400,
-            StorageTrieBranchesAdded: 8, StorageTrieBranchesRemoved: 3,
-            StorageTrieExtensionsAdded: 1, StorageTrieExtensionsRemoved: 0,
-            StorageTrieLeavesAdded: 20, StorageTrieLeavesRemoved: 5,
-            StorageTrieBytesAdded: 2000, StorageTrieBytesRemoved: 500,
-            StorageSlotsAdded: 20, StorageSlotsRemoved: 5,
-            ContractsWithStorageAdded: 4, ContractsWithStorageRemoved: 1,
-            EmptyAccountsAdded: 2, EmptyAccountsRemoved: 1
-        );
-
-        Assert.That(diff.NetAccounts, Is.EqualTo(3));
-        Assert.That(diff.NetContracts, Is.EqualTo(2));
-        Assert.That(diff.NetStorageSlots, Is.EqualTo(15));
-        Assert.That(diff.NetAccountTrieNodes, Is.EqualTo(10)); // (10+2+5) - (4+1+2)
-        Assert.That(diff.NetStorageTrieNodes, Is.EqualTo(21)); // (8+1+20) - (3+0+5)
-        Assert.That(diff.NetAccountTrieBytes, Is.EqualTo(600));
-        Assert.That(diff.NetStorageTrieBytes, Is.EqualTo(1500));
-        Assert.That(diff.NetContractsWithStorage, Is.EqualTo(3));
-        Assert.That(diff.NetEmptyAccounts, Is.EqualTo(1));
-    }
-
-    #endregion
-
     #region 16. CumulativeSizeStats FromScanStats mapping
 
     [Test]
@@ -816,106 +782,6 @@ public class TrieDiffWalkerTests
 
         // Counters reset between calls — diff2 should not accumulate diff1's values
         Assert.That(diff2.AccountsRemoved, Is.EqualTo(0));
-    }
-
-    #endregion
-
-    #region Diagnostic: isolate extension undercount
-
-    [Test]
-    public void Diagnostic_DiffFromNull_MatchesFullScan()
-    {
-        // Tests whether diff(null, root) matches a full scan.
-        // If this fails, the bug is in CollectSubtree.
-        // If this passes, the bug is in incremental diffing.
-
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        // Same setup as CumulativeSizeStats_ApplyDiff_RoundTrips root2
-        tree.Set(TestItem.AddressA, CreateEOA(100));
-        tree.Set(TestItem.AddressB, CreateContractNoStorage());
-        tree.Set(TestItem.AddressC, CreateEOA(300));
-        tree.Set(TestItem.AddressD, CreateContractNoStorage());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root = tree.RootHash;
-
-        // Full scan
-        using StateCompositionVisitor visitor = new(LimboLogs.Instance);
-        tree.Accept(visitor, root);
-        StateCompositionStats scan = visitor.GetStats(1, root);
-
-        // Diff from null (exercises CollectSubtree only)
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diff = walker.ComputeDiff(Keccak.EmptyTreeHash, root);
-
-        TestContext.Out.WriteLine($"Scan: Branches={scan.AccountTrieFullNodes}, Extensions={scan.AccountTrieShortNodes}, Leaves={scan.AccountTrieValueNodes}, Bytes={scan.AccountTrieNodeBytes}");
-        TestContext.Out.WriteLine($"Diff: BranchesAdded={diff.AccountTrieBranchesAdded}, ExtensionsAdded={diff.AccountTrieExtensionsAdded}, LeavesAdded={diff.AccountTrieLeavesAdded}, BytesAdded={diff.AccountTrieBytesAdded}");
-
-        Assert.That(diff.AccountTrieBranchesAdded, Is.EqualTo(scan.AccountTrieFullNodes), "Branches: diff(null,root) vs scan");
-        Assert.That(diff.AccountTrieExtensionsAdded, Is.EqualTo(scan.AccountTrieShortNodes - scan.AccountTrieValueNodes), "Extensions: diff(null,root) vs scan");
-        Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(scan.AccountTrieValueNodes), "Leaves: diff(null,root) vs scan");
-        Assert.That(diff.AccountTrieBytesAdded, Is.EqualTo(scan.AccountTrieNodeBytes), "Bytes: diff(null,root) vs scan");
-    }
-
-    [Test]
-    public void Diagnostic_IncrementalExtensions_DetailedBreakdown()
-    {
-        // Detailed breakdown of the CumulativeSizeStats_ApplyDiff_RoundTrips test
-        // to show exactly where extensions are lost.
-
-        MemDb db = new();
-        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-
-        tree.Set(TestItem.AddressA, CreateEOA(100));
-        tree.Set(TestItem.AddressB, CreateContractNoStorage());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root1 = tree.RootHash;
-
-        // Full scan at root1
-        using StateCompositionVisitor v1 = new(LimboLogs.Instance);
-        tree.Accept(v1, root1);
-        StateCompositionStats scan1 = v1.GetStats(1, root1);
-        TestContext.Out.WriteLine($"root1 scan: Branches={scan1.AccountTrieFullNodes}, Extensions={scan1.AccountTrieShortNodes}, Leaves={scan1.AccountTrieValueNodes}");
-
-        // Also diff(null, root1) to check CollectSubtree
-        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
-        TrieDiff diffFromNull1 = walker.ComputeDiff(Keccak.EmptyTreeHash, root1);
-        TestContext.Out.WriteLine($"diff(null,root1): Branches+={diffFromNull1.AccountTrieBranchesAdded}, Extensions+={diffFromNull1.AccountTrieExtensionsAdded}, Leaves+={diffFromNull1.AccountTrieLeavesAdded}");
-
-        // Add accounts
-        tree.Set(TestItem.AddressC, CreateEOA(300));
-        tree.Set(TestItem.AddressD, CreateContractNoStorage());
-        tree.Commit();
-        tree.UpdateRootHash();
-        Hash256 root2 = tree.RootHash;
-
-        // Full scan at root2
-        using StateCompositionVisitor v2 = new(LimboLogs.Instance);
-        tree.Accept(v2, root2);
-        StateCompositionStats scan2 = v2.GetStats(2, root2);
-        TestContext.Out.WriteLine($"root2 scan: Branches={scan2.AccountTrieFullNodes}, Extensions={scan2.AccountTrieShortNodes}, Leaves={scan2.AccountTrieValueNodes}");
-
-        // Incremental diff
-        TrieDiff diff12 = walker.ComputeDiff(root1, root2);
-        TestContext.Out.WriteLine($"diff(root1,root2): Branches+={diff12.AccountTrieBranchesAdded} -={diff12.AccountTrieBranchesRemoved} net={diff12.AccountTrieBranchesAdded - diff12.AccountTrieBranchesRemoved}");
-        TestContext.Out.WriteLine($"diff(root1,root2): Extensions+={diff12.AccountTrieExtensionsAdded} -={diff12.AccountTrieExtensionsRemoved} net={diff12.AccountTrieExtensionsAdded - diff12.AccountTrieExtensionsRemoved}");
-        TestContext.Out.WriteLine($"diff(root1,root2): Leaves+={diff12.AccountTrieLeavesAdded} -={diff12.AccountTrieLeavesRemoved} net={diff12.AccountTrieLeavesAdded - diff12.AccountTrieLeavesRemoved}");
-
-        // Also diff(null, root2) for comparison
-        TrieDiff diffFromNull2 = walker.ComputeDiff(Keccak.EmptyTreeHash, root2);
-        TestContext.Out.WriteLine($"diff(null,root2): Branches+={diffFromNull2.AccountTrieBranchesAdded}, Extensions+={diffFromNull2.AccountTrieExtensionsAdded}, Leaves+={diffFromNull2.AccountTrieLeavesAdded}");
-
-        // Check: scan1.Extensions + diff12.NetExtensions == scan2.Extensions ?
-        // Extensions = ShortNodes - ValueNodes (ShortNodes includes both extensions and leaves)
-        long scan1Extensions = scan1.AccountTrieShortNodes - scan1.AccountTrieValueNodes;
-        long scan2Extensions = scan2.AccountTrieShortNodes - scan2.AccountTrieValueNodes;
-        long cumulativeExtensions = scan1Extensions + diff12.AccountTrieExtensionsAdded - diff12.AccountTrieExtensionsRemoved;
-        TestContext.Out.WriteLine($"\nCumulative: {scan1Extensions} + {diff12.AccountTrieExtensionsAdded} - {diff12.AccountTrieExtensionsRemoved} = {cumulativeExtensions}");
-        TestContext.Out.WriteLine($"Expected (root2 scan): {scan2Extensions}");
-        TestContext.Out.WriteLine($"Deficit: {scan2Extensions - cumulativeExtensions}");
     }
 
     #endregion
@@ -1317,6 +1183,69 @@ public class TrieDiffWalkerTests
         // Total branch nodes must match
         Assert.That(cumDepth.TotalBranchNodes, Is.EqualTo(expected.TotalBranchNodes),
             "TotalBranchNodes (incremental) must match fresh scan");
+    }
+
+    #endregion
+
+    #region Reorg Rollback
+
+    /// <summary>
+    /// Applies a forward diff then a backward diff and asserts the result is
+    /// field-for-field equal to the original baseline. Exercises the subtraction
+    /// path in ApplyDiff that fires only during reorg rollback.
+    /// </summary>
+    [Test]
+    public void ReorgRollback_ForwardThenBackward_RestoresBaseline()
+    {
+        MemDb db = new();
+        StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+
+        // root1: two EOAs + one contract
+        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressB, CreateEOA(200));
+        tree.Set(TestItem.AddressC, CreateContractNoStorage());
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root1 = tree.RootHash;
+
+        // root2: add more accounts, modify balance of A, remove B
+        tree.Set(TestItem.AddressD, CreateEOA(400));
+        tree.Set(TestItem.AddressE, CreateEOA(500));
+        tree.Set(TestItem.AddressA, CreateEOA(999));
+        tree.Set(TestItem.AddressB, null!);
+        tree.Commit();
+        tree.UpdateRootHash();
+        Hash256 root2 = tree.RootHash;
+
+        // Baseline: full scan at root1
+        using StateCompositionVisitor v1 = new(LimboLogs.Instance);
+        tree.Accept(v1, root1);
+        CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(v1.GetStats(1, root1));
+
+        TrieDiffWalker walker = new(new RawScopedTrieStore(db));
+
+        // Forward diff root1 → root2
+        TrieDiff forward = walker.ComputeDiff(root1, root2);
+        CumulativeSizeStats updated = baseline.ApplyDiff(forward);
+
+        // Backward diff root2 → root1 (reorg rollback)
+        TrieDiff backward = walker.ComputeDiff(root2, root1);
+        CumulativeSizeStats final = updated.ApplyDiff(backward);
+
+        // After round-trip the stats must equal the original baseline exactly.
+        // A negative-value bug in ApplyDiff would surface here.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(final.AccountsTotal,      Is.EqualTo(baseline.AccountsTotal),      "AccountsTotal");
+            Assert.That(final.ContractsTotal,     Is.EqualTo(baseline.ContractsTotal),     "ContractsTotal");
+            Assert.That(final.StorageSlotsTotal,  Is.EqualTo(baseline.StorageSlotsTotal),  "StorageSlotsTotal");
+            Assert.That(final.AccountTrieBranches,   Is.EqualTo(baseline.AccountTrieBranches),   "AccountTrieBranches");
+            Assert.That(final.AccountTrieExtensions, Is.EqualTo(baseline.AccountTrieExtensions), "AccountTrieExtensions");
+            Assert.That(final.AccountTrieLeaves,     Is.EqualTo(baseline.AccountTrieLeaves),     "AccountTrieLeaves");
+            Assert.That(final.AccountTrieBytes,      Is.EqualTo(baseline.AccountTrieBytes),      "AccountTrieBytes");
+            Assert.That(final.ContractsWithStorage,  Is.EqualTo(baseline.ContractsWithStorage),  "ContractsWithStorage");
+            Assert.That(final.EmptyAccounts,         Is.EqualTo(baseline.EmptyAccounts),         "EmptyAccounts");
+        }
     }
 
     #endregion

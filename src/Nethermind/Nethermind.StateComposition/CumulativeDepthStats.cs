@@ -139,6 +139,12 @@ public sealed class CumulativeDepthStats
     }
 
     /// <summary>
+    /// Directly flip the IsSeeded flag. Used by the snapshot decoder after populating
+    /// all fields directly — avoids a throwaway round-trip through SeedFromSnapshot.
+    /// </summary>
+    internal void MarkSeeded() => IsSeeded = true;
+
+    /// <summary>
     /// Install a baseline previously persisted in a snapshot (Phase C). Copies the
     /// raw physical-depth arrays as-is — no Geth shift conversion (the snapshot is
     /// already in unshifted form).

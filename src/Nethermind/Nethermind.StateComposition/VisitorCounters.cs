@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Immutable;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.StateComposition;
@@ -13,7 +14,7 @@ namespace Nethermind.StateComposition;
 /// Aggregate via MergeFrom() after traversal completes.
 /// Short=Extension+Leaf (matches Geth shortNode), Full=Branch, Value=Leaf.
 /// </summary>
-internal sealed class VisitorCounters(int topN = 20)
+public sealed class VisitorCounters(int topN = 20)
 {
     /// <summary>
     /// Maximum trie depth tracked per-level. Depths beyond this are clamped.
@@ -59,6 +60,11 @@ internal sealed class VisitorCounters(int topN = 20)
 
     // Per-depth counters for current storage trie
     private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
+
+    // Scratch array for building TrieLevelStat[] without allocating a Builder each time.
+    // Allocated lazily on first contract-with-storage; reused across contracts.
+    // Only copied to a fresh array (and frozen to ImmutableArray) when the contract ranks in Top-N.
+    private TrieLevelStat[]? _levelScratch;
 
     // Top-N contract rankings (extracted to TopNTracker for SRP)
     internal TopNTracker TopN { get; } = new(topN);
@@ -128,8 +134,11 @@ internal sealed class VisitorCounters(int topN = 20)
         int depthBucket = Math.Min(gethMaxDepth, MaxTrackedDepth - 1);
         StorageMaxDepthHistogram[depthBucket]++;
 
-        // Build per-depth Levels[16] and Summary from current storage depth counters
-        ImmutableArray<TrieLevelStat>.Builder levelsBuilder = ImmutableArray.CreateBuilder<TrieLevelStat>(MaxTrackedDepth);
+        // Build per-depth Levels[16] summary into a reusable scratch array.
+        // The scratch array is allocated once per VisitorCounters instance (lazily)
+        // and reused across all contracts — no per-contract Builder/array allocation.
+        _levelScratch ??= new TrieLevelStat[MaxTrackedDepth];
+
         long summaryShort = 0, summaryFull = 0, summaryValue = 0, summarySize = 0;
 
         for (int i = 0; i < MaxTrackedDepth; i++)
@@ -137,21 +146,21 @@ internal sealed class VisitorCounters(int topN = 20)
             ref DepthCounter dc = ref _currentStorageDepths[i];
             // Geth counts valueNode at depth+1 from its leaf shortNode
             long shiftedValue = i > 0 ? _currentStorageDepths[i - 1].ValueNodes : 0;
-            levelsBuilder.Add(new TrieLevelStat
+            _levelScratch[i] = new TrieLevelStat
             {
                 Depth = i,
                 ShortNodeCount = dc.ShortNodes + dc.ValueNodes,
                 FullNodeCount = dc.FullNodes,
                 ValueNodeCount = shiftedValue,
                 TotalSize = dc.TotalSize,
-            });
+            };
             summaryShort += dc.ShortNodes + dc.ValueNodes;
             summaryFull += dc.FullNodes;
             summaryValue += dc.ValueNodes; // Real total (not shifted)
             summarySize += dc.TotalSize;
         }
 
-        TopContractEntry entry = new()
+        TopContractEntry candidate = new()
         {
             Owner = _currentOwner,
             StorageRoot = _currentStorageRoot,
@@ -159,7 +168,7 @@ internal sealed class VisitorCounters(int topN = 20)
             TotalNodes = _currentStorageNodes + _currentStorageValueNodes,
             ValueNodes = _currentStorageValueNodes,
             TotalSize = _currentStorageTotalSize,
-            Levels = levelsBuilder.MoveToImmutable(),
+            // Levels intentionally left as default — populated only if the entry ranks.
             Summary = new TrieLevelStat
             {
                 Depth = -1, // Summary has no specific depth
@@ -170,7 +179,17 @@ internal sealed class VisitorCounters(int topN = 20)
             },
         };
 
-        TopN.Insert(entry);
+        // Check Top-N eligibility BEFORE freezing Levels to ImmutableArray.
+        // Most contracts (~99.99%) won't rank, so most freezes are skipped entirely.
+        if (TopN.WouldInsert(candidate))
+        {
+            // Contract ranks: freeze a fresh copy of the scratch into ImmutableArray.
+            // The scratch itself stays mutable for the next contract.
+            TrieLevelStat[] frozenCopy = new TrieLevelStat[MaxTrackedDepth];
+            Array.Copy(_levelScratch, frozenCopy, MaxTrackedDepth);
+            candidate = candidate with { Levels = ImmutableCollectionsMarshal.AsImmutableArray(frozenCopy) };
+            TopN.Insert(candidate);
+        }
     }
 
     public void MergeFrom(VisitorCounters other)

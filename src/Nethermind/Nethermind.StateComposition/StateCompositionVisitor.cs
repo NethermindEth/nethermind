@@ -46,7 +46,7 @@ public sealed class StateCompositionVisitor(
         // of a branch node, with BranchChildIndex set to the child's position.
         // Only count account trie children to match TotalBranchNodes (account-only).
         if (ctx is { BranchChildIndex: not null, IsStorage: false })
-            _localCounters.Value!.TotalBranchChildren++;
+            (ctx.Counters ?? _localCounters.Value!).TotalBranchChildren++;
 
         return true;
     }
@@ -63,7 +63,7 @@ public sealed class StateCompositionVisitor(
 
     public void VisitBranch(in StateCompositionContext ctx, TrieNode node)
     {
-        VisitorCounters c = _localCounters.Value!;
+        VisitorCounters c = ctx.Counters ?? _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
         int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
@@ -82,30 +82,22 @@ public sealed class StateCompositionVisitor(
             c.TotalBranchNodes++;
 
             // Branch occupancy distribution — count non-null children.
-            // Guard with try-catch: IsChildNull requires fully decoded RLP which
-            // may not be available in unit tests with stub TrieNodes.
-            try
+            if (node is null) return;
+            int childCount = 0;
+            for (int i = 0; i < 16; i++)
             {
-                int childCount = 0;
-                for (int i = 0; i < 16; i++)
-                {
-                    if (!node.IsChildNull(i))
-                        childCount++;
-                }
+                if (!node.IsChildNull(i))
+                    childCount++;
+            }
 
-                if (childCount > 0)
-                    c.BranchOccupancyHistogram[childCount - 1]++;
-            }
-            catch (Exception)
-            {
-                // Node RLP not fully decoded — skip occupancy tracking for this node
-            }
+            if (childCount > 0)
+                c.BranchOccupancyHistogram[childCount - 1]++;
         }
     }
 
     public void VisitExtension(in StateCompositionContext ctx, TrieNode node)
     {
-        VisitorCounters c = _localCounters.Value!;
+        VisitorCounters c = ctx.Counters ?? _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
         int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
@@ -126,7 +118,7 @@ public sealed class StateCompositionVisitor(
 
     public void VisitLeaf(in StateCompositionContext ctx, TrieNode node)
     {
-        VisitorCounters c = _localCounters.Value!;
+        VisitorCounters c = ctx.Counters ?? _localCounters.Value!;
         int byteSize = node.FullRlp.Length;
         int depth = Math.Min(ctx.Level, MaxDepthIndex);
 
@@ -148,7 +140,7 @@ public sealed class StateCompositionVisitor(
 
     public void VisitAccount(in StateCompositionContext ctx, TrieNode node, in AccountStruct account)
     {
-        VisitorCounters c = _localCounters.Value!;
+        VisitorCounters c = ctx.Counters ?? _localCounters.Value!;
 
         if (excludeStorage)
         {
@@ -204,17 +196,20 @@ public sealed class StateCompositionVisitor(
 
     /// <summary>
     /// Take a mid-scan snapshot of counters for progress reporting.
-    /// Thread-safe: reads from ThreadLocal values with Volatile.Read.
+    /// Safe to call without fences: the progress timer runs concurrently with workers
+    /// but only reads — stale values produce imprecise but non-crashing output.
+    /// Final barrier (Task.WaitAll in the visitor driver) guarantees all writes are
+    /// visible before GetStats/GetTrieDistribution are called post-scan.
     /// </summary>
     public ScanSnapshot GetSnapshot()
     {
         long accounts = 0, contracts = 0, withStorage = 0, slots = 0, nodes = 0, bytes = 0;
         foreach (VisitorCounters c in _localCounters.Values)
         {
-            accounts += Volatile.Read(ref c.AccountsTotal);
-            contracts += Volatile.Read(ref c.ContractsTotal);
-            withStorage += Volatile.Read(ref c.ContractsWithStorage);
-            slots += Volatile.Read(ref c.StorageSlotsTotal);
+            accounts += c.AccountsTotal;
+            contracts += c.ContractsTotal;
+            withStorage += c.ContractsWithStorage;
+            slots += c.StorageSlotsTotal;
             nodes += c.AccountFullNodes + c.AccountShortNodes + c.AccountValueNodes
                    + c.StorageFullNodes + c.StorageShortNodes + c.StorageValueNodes;
             bytes += c.AccountNodeBytes + c.StorageNodeBytes;
@@ -246,6 +241,12 @@ public sealed class StateCompositionVisitor(
     /// <summary>
     /// Returns cached aggregation or computes it once. Flushes all per-thread
     /// storage trie accumulators before merging.
+    /// <para>
+    /// Caller must ensure all worker tasks have completed before calling.
+    /// Relies on the happens-before guarantee from <c>Task.WaitAll</c> /
+    /// <c>Parallel.ForEach</c> barrier — no internal memory fence is added here,
+    /// as that would regress performance with no safety benefit.
+    /// </para>
     /// </summary>
     private VisitorCounters GetAggregated()
     {
@@ -269,10 +270,21 @@ public sealed class StateCompositionVisitor(
         if (count == 0)
             return ImmutableArray<TopContractEntry>.Empty;
 
-        // Sort descending using the deterministic multi-field comparator
+        // Sort descending using a struct comparer — avoids delegate allocation per call.
         TopContractEntry[] sorted = entries.Take(count).ToArray();
-        Array.Sort(sorted, (a, b) => comparer(b, a)); // Reverse for descending
+        Array.Sort(sorted, new DescendingComparer(comparer));
         return ImmutableArray.Create(sorted);
+    }
+
+    /// <summary>
+    /// Struct-based descending wrapper for <see cref="TopNTracker.EntryComparer"/>.
+    /// Passed to <see cref="Array.Sort{T,TComparer}"/> so the JIT can inline the comparison
+    /// call and no delegate is allocated on each <see cref="BuildSortedTopN"/> invocation.
+    /// </summary>
+    private readonly struct DescendingComparer(TopNTracker.EntryComparer inner)
+        : System.Collections.Generic.IComparer<TopContractEntry>
+    {
+        public int Compare(TopContractEntry a, TopContractEntry b) => inner(b, a); // reversed for descending
     }
 
     private static ImmutableArray<TrieLevelStat> BuildLevelStats(DepthCounter[] depths)

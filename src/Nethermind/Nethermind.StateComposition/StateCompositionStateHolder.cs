@@ -8,10 +8,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.StateComposition;
 
 /// <summary>
-/// Thread-safe implementation of <see cref="IStateCompositionStateHolder"/>.
-/// Stores baseline scan results and scan lifecycle state.
+/// Thread-safe store of baseline scan results and scan lifecycle state.
 /// </summary>
-public sealed class StateCompositionStateHolder : IStateCompositionStateHolder
+public sealed class StateCompositionStateHolder
 {
     private readonly Lock _lock = new();
 

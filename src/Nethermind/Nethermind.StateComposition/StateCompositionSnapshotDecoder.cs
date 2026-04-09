@@ -56,15 +56,15 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depth is not null && depth.IsSeeded)
         {
             stream.Encode(1L);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountFullNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountShortNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountValueNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.AccountNodeBytes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageFullNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageShortNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageValueNodes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.StorageNodeBytes[i]);
-            for (int i = 0; i < 16; i++) stream.Encode(depth.BranchOccupancy[i]);
+            EncodeLongArray(stream, depth.AccountFullNodes);
+            EncodeLongArray(stream, depth.AccountShortNodes);
+            EncodeLongArray(stream, depth.AccountValueNodes);
+            EncodeLongArray(stream, depth.AccountNodeBytes);
+            EncodeLongArray(stream, depth.StorageFullNodes);
+            EncodeLongArray(stream, depth.StorageShortNodes);
+            EncodeLongArray(stream, depth.StorageValueNodes);
+            EncodeLongArray(stream, depth.StorageNodeBytes);
+            EncodeLongArray(stream, depth.BranchOccupancy);
             stream.Encode(depth.TotalBranchNodes);
             stream.Encode(depth.TotalBranchChildren);
         }
@@ -104,15 +104,15 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depth is not null && depth.IsSeeded)
         {
             contentLength += Rlp.LengthOf(1L);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountFullNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountShortNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountValueNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.AccountNodeBytes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageFullNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageShortNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageValueNodes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.StorageNodeBytes[i]);
-            for (int i = 0; i < 16; i++) contentLength += Rlp.LengthOf(depth.BranchOccupancy[i]);
+            contentLength += GetLongArrayContentLength(depth.AccountFullNodes);
+            contentLength += GetLongArrayContentLength(depth.AccountShortNodes);
+            contentLength += GetLongArrayContentLength(depth.AccountValueNodes);
+            contentLength += GetLongArrayContentLength(depth.AccountNodeBytes);
+            contentLength += GetLongArrayContentLength(depth.StorageFullNodes);
+            contentLength += GetLongArrayContentLength(depth.StorageShortNodes);
+            contentLength += GetLongArrayContentLength(depth.StorageValueNodes);
+            contentLength += GetLongArrayContentLength(depth.StorageNodeBytes);
+            contentLength += GetLongArrayContentLength(depth.BranchOccupancy);
             contentLength += Rlp.LengthOf(depth.TotalBranchNodes);
             contentLength += Rlp.LengthOf(depth.TotalBranchChildren);
         }
@@ -122,6 +122,23 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         }
 
         return contentLength;
+    }
+
+    private static int GetLongArrayContentLength(long[] arr)
+    {
+        int total = 0;
+        foreach (long v in arr) total += Rlp.LengthOf(v);
+        return total;
+    }
+
+    private static void EncodeLongArray(RlpStream stream, long[] arr)
+    {
+        foreach (long v in arr) stream.Encode(v);
+    }
+
+    private static void DecodeLongArray(ref Rlp.ValueDecoderContext ctx, long[] dest)
+    {
+        for (int i = 0; i < dest.Length; i++) dest[i] = ctx.DecodeLong();
     }
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -161,22 +178,18 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depthPresent == 1L)
         {
             depthStats = new CumulativeDepthStats();
-            for (int i = 0; i < 16; i++) depthStats.AccountFullNodes[i]  = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.AccountShortNodes[i] = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.AccountValueNodes[i] = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.AccountNodeBytes[i]  = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.StorageFullNodes[i]  = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.StorageShortNodes[i] = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.StorageValueNodes[i] = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.StorageNodeBytes[i]  = ctx.DecodeLong();
-            for (int i = 0; i < 16; i++) depthStats.BranchOccupancy[i]   = ctx.DecodeLong();
+            DecodeLongArray(ref ctx, depthStats.AccountFullNodes);
+            DecodeLongArray(ref ctx, depthStats.AccountShortNodes);
+            DecodeLongArray(ref ctx, depthStats.AccountValueNodes);
+            DecodeLongArray(ref ctx, depthStats.AccountNodeBytes);
+            DecodeLongArray(ref ctx, depthStats.StorageFullNodes);
+            DecodeLongArray(ref ctx, depthStats.StorageShortNodes);
+            DecodeLongArray(ref ctx, depthStats.StorageValueNodes);
+            DecodeLongArray(ref ctx, depthStats.StorageNodeBytes);
+            DecodeLongArray(ref ctx, depthStats.BranchOccupancy);
             depthStats.TotalBranchNodes    = ctx.DecodeLong();
             depthStats.TotalBranchChildren = ctx.DecodeLong();
-            // Round-trip through SeedFromSnapshot on a fresh instance to flip IsSeeded=true
-            // without duplicating the field-copy logic.
-            CumulativeDepthStats seeded = new();
-            seeded.SeedFromSnapshot(depthStats);
-            depthStats = seeded;
+            depthStats.MarkSeeded();
         }
 
         return new StateCompositionSnapshot(stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats);
