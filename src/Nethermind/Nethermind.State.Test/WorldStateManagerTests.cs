@@ -15,8 +15,10 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using System;
 using Nethermind.Evm.State;
 using Nethermind.State;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -122,5 +124,54 @@ public class WorldStateManagerTests
         }
 
         blockTree.Received().BestPersistedState = lastBlock - reorgDepth;
+    }
+
+    [Test]
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CreateReadOnlyTrieStore_can_resolve_state_root(bool useFlat)
+    {
+        IConfigProvider configProvider = new ConfigProvider();
+        if (useFlat)
+        {
+            configProvider.GetConfig<IFlatDbConfig>().Enabled = true;
+        }
+
+        using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .Build();
+
+        IWorldState worldState = ctx.Resolve<IMainProcessingContext>().WorldState;
+
+        Hash256 stateRoot;
+        using (worldState.BeginScope(IWorldState.PreGenesis))
+        {
+            worldState.CreateAccount(TestItem.AddressA, 1, 2);
+            worldState.Commit(Cancun.Instance);
+            worldState.CommitTree(0);
+            stateRoot = worldState.StateRoot;
+        }
+
+        BlockHeader parentHeader = Build.A.BlockHeader
+            .WithStateRoot(stateRoot)
+            .WithNumber(0)
+            .TestObject;
+
+        IWorldStateManager wsm = ctx.Resolve<IWorldStateManager>();
+        using ITrieStore readOnlyTrieStore = wsm.CreateReadOnlyTrieStore();
+        using IDisposable scope = readOnlyTrieStore.BeginScope(parentHeader);
+
+        IScopedTrieStore scopedStore = readOnlyTrieStore.GetTrieStore(null);
+        TrieNode rootNode = scopedStore.FindCachedOrUnknown(TreePath.Empty, stateRoot);
+
+        if (rootNode.NodeType == NodeType.Unknown)
+        {
+            byte[] rlp = scopedStore.TryLoadRlp(TreePath.Empty, stateRoot);
+            rlp.Should().NotBeNull("state root trie node should be resolvable from read-only trie store");
+        }
+        else
+        {
+            rootNode.NodeType.Should().NotBe(NodeType.Unknown, "state root should be resolvable");
+        }
     }
 }
