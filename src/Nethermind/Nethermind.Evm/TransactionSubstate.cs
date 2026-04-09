@@ -2,12 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Frozen;
-using System.Linq;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,12 +29,6 @@ public readonly ref struct TransactionSubstate
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
-    private static readonly SearchValues<char> _disallowedControlChars = SearchValues.Create(
-        Enumerable.Range(0, 32)
-            .Select(i => (char)i)
-            .Where(c => c != '\t' && c != '\n' && c != '\r')
-            .Append((char)127)
-            .ToArray());
 
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -114,14 +105,10 @@ public readonly ref struct TransactionSubstate
 
     public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
     {
-        if (!Utf8.IsValid(span))
+        if (span.IndexOfAnyExceptInRange((byte)32, (byte)126) >= 0)
             return span.ToHexString(true);
 
-        string decoded = Encoding.UTF8.GetString(span);
-        if (decoded.AsSpan().ContainsAny(_disallowedControlChars))
-            return span.ToHexString(true);
-
-        return decoded;
+        return Encoding.ASCII.GetString(span);
     }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
