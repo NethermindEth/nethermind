@@ -42,14 +42,14 @@ public partial class BlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    BlockAccessListManager balManager)
+    IBlockAccessListManager balManager)
     : IBlockProcessor
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockProcessor>();
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
-    protected readonly BlockAccessListManager _balManager = balManager;
+    protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
     private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, balManager);
@@ -355,7 +355,7 @@ public partial class BlockProcessor(
         IBlockhashStore blockHashStore,
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
-        BlockAccessListManager balManager) : SystemContractHandler(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor)
+        IBlockAccessListManager balManager) : SystemContractHandler(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor)
     {
         public override void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer)
             => balManager.StoreBeaconRoot(block, spec);

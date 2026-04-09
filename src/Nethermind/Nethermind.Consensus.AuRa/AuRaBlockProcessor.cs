@@ -47,7 +47,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockFinder blockTree,
             IWithdrawalProcessor withdrawalProcessor,
             IExecutionRequestsProcessor executionRequestsProcessor,
-            BlockAccessListManager blockAccessListManager,
+            IBlockAccessListManager blockAccessListManager,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,

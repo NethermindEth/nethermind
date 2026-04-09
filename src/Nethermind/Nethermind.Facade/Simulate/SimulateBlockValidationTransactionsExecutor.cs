@@ -57,7 +57,7 @@ public class SimulateBlockValidationTransactionsExecutor(
         return result;
     }
 
-    public void SetBlockAccessListManager(in BlockAccessListManager balManager)
+    public void SetBlockAccessListManager(in IBlockAccessListManager balManager)
     {
         throw new System.NotImplementedException();
     }

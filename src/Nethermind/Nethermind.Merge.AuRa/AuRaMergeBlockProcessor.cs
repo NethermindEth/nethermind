@@ -35,7 +35,7 @@ public class AuRaMergeBlockProcessor(
     IBlockFinder blockTree,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    BlockAccessListManager balManager,
+    IBlockAccessListManager balManager,
     IAuRaValidator? validator,
     ITxFilter? txFilter = null,
     AuRaContractGasLimitOverride? gasLimitOverride = null,

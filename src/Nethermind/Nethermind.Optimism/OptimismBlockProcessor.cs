@@ -41,7 +41,7 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
-        BlockAccessListManager balManager,
+        IBlockAccessListManager balManager,
         ICostHelper costHelper)
         : base(
             specProvider,

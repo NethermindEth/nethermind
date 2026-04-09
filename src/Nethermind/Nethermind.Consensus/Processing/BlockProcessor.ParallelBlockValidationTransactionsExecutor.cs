@@ -20,7 +20,7 @@ public partial class BlockProcessor
         IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
         ISpecProvider specProvider,
-        BlockAccessListManager balManager,
+        IBlockAccessListManager balManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
         : BlockValidationTransactionsExecutor(transactionProcessor, stateProvider, transactionProcessedEventHandler)
     {

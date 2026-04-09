@@ -28,7 +28,7 @@ namespace Nethermind.Consensus.Processing
             ILogManager logManager)
             : IBlockProductionTransactionsExecutor
         {
-            private BlockAccessListManager? _balManager;
+            private IBlockAccessListManager? _balManager;
             private readonly ILogger _logger = logManager.GetClassLogger<BlockProductionTransactionsExecutor>();
 
             protected EventHandler<TxProcessedEventArgs>? _transactionProcessed;
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Processing
                 _balManager?.SetBlockExecutionContext(blockExecutionContext);
             }
 
-            public void SetBlockAccessListManager(in BlockAccessListManager balManager)
+            public void SetBlockAccessListManager(in IBlockAccessListManager balManager)
                 => _balManager = balManager;
 
             public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions,

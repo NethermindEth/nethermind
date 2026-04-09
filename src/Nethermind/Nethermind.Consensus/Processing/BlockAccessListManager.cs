@@ -39,6 +39,7 @@ public class BlockAccessListManager(
     IBlockhashProvider blockHashProvider,
     ILogManager logManager,
     IBlocksConfig blocksConfig)
+    : IBlockAccessListManager
 {
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
