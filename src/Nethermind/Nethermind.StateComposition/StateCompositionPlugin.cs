@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -49,7 +50,21 @@ public class StateCompositionPlugin : INethermindPlugin
         IStateCompositionStateHolder stateHolder = _api.Context.Resolve<IStateCompositionStateHolder>();
         IBlockTree blockTree = _api.Context.Resolve<IBlockTree>();
 
-        StateCompositionSnapshot? snapshot = store.ReadLatestSnapshot();
+        StateCompositionSnapshot? snapshot;
+        try
+        {
+            snapshot = store.ReadLatestSnapshot();
+        }
+        catch (Exception ex)
+        {
+            // Legacy snapshot from before ContractsWithStorage/EmptyAccounts existed has 11 stat
+            // longs instead of 13; decoder will mis-align and throw. Treat as "no snapshot" so a
+            // fresh scan rebuilds the baseline with the new schema.
+            if (logger.IsWarn)
+                logger.Warn($"StateComposition: failed to decode persisted snapshot ({ex.GetType().Name}: {ex.Message}), discarding and triggering fresh scan");
+            return Task.CompletedTask;
+        }
+
         if (snapshot is null)
         {
             if (logger.IsInfo)

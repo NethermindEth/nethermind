@@ -20,7 +20,9 @@ public readonly record struct CumulativeSizeStats(
     long StorageTrieBranches,
     long StorageTrieExtensions,
     long StorageTrieLeaves,
-    long StorageTrieBytes
+    long StorageTrieBytes,
+    long ContractsWithStorage,
+    long EmptyAccounts
 )
 {
     /// <summary>
@@ -38,7 +40,9 @@ public readonly record struct CumulativeSizeStats(
         StorageTrieBranches + diff.StorageTrieBranchesAdded - diff.StorageTrieBranchesRemoved,
         StorageTrieExtensions + diff.StorageTrieExtensionsAdded - diff.StorageTrieExtensionsRemoved,
         StorageTrieLeaves + diff.StorageTrieLeavesAdded - diff.StorageTrieLeavesRemoved,
-        StorageTrieBytes + diff.NetStorageTrieBytes
+        StorageTrieBytes + diff.NetStorageTrieBytes,
+        ContractsWithStorage + diff.NetContractsWithStorage,
+        EmptyAccounts + diff.NetEmptyAccounts
     );
 
     /// <summary>
@@ -56,6 +60,8 @@ public readonly record struct CumulativeSizeStats(
         scan.StorageTrieFullNodes,
         scan.StorageTrieShortNodes - scan.StorageTrieValueNodes,
         scan.StorageTrieValueNodes,
-        scan.StorageTrieNodeBytes
+        scan.StorageTrieNodeBytes,
+        scan.ContractsWithStorage,
+        scan.EmptyAccounts
     );
 }

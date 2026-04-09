@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -32,6 +33,8 @@ public sealed class TrieDiffWalker
     private int _storageTrieLeavesAdded, _storageTrieLeavesRemoved;
     private long _storageTrieBytesAdded, _storageTrieBytesRemoved;
     private long _storageSlotsAdded, _storageSlotsRemoved;
+    private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
+    private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
     public TrieDiffWalker(ITrieNodeResolver resolver)
     {
@@ -65,7 +68,9 @@ public sealed class TrieDiffWalker
             _storageTrieExtensionsAdded, _storageTrieExtensionsRemoved,
             _storageTrieLeavesAdded, _storageTrieLeavesRemoved,
             _storageTrieBytesAdded, _storageTrieBytesRemoved,
-            _storageSlotsAdded, _storageSlotsRemoved
+            _storageSlotsAdded, _storageSlotsRemoved,
+            _contractsWithStorageAdded, _contractsWithStorageRemoved,
+            _emptyAccountsAdded, _emptyAccountsRemoved
         );
     }
 
@@ -334,30 +339,34 @@ public sealed class TrieDiffWalker
     /// </summary>
     private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path)
     {
-        var (oldCodeHash, oldStorageRoot) = DecodeAccountHashes(oldLeaf);
-        var (newCodeHash, newStorageRoot) = DecodeAccountHashes(newLeaf);
+        AccountStruct oldAccount = DecodeAccount(oldLeaf);
+        AccountStruct newAccount = DecodeAccount(newLeaf);
 
         // Account itself: same path, same account, just modified → net zero for account count
         // (not an add or remove of an account)
 
         // Contract status change
-        bool oldIsContract = oldCodeHash != Keccak.OfAnEmptyString;
-        bool newIsContract = newCodeHash != Keccak.OfAnEmptyString;
+        if (!oldAccount.HasCode && newAccount.HasCode) _contractsAdded++;
+        else if (oldAccount.HasCode && !newAccount.HasCode) _contractsRemoved++;
 
-        if (!oldIsContract && newIsContract) _contractsAdded++;
-        else if (oldIsContract && !newIsContract) _contractsRemoved++;
+        // Contract-with-storage transition (HasStorage = StorageRoot != EmptyTreeHash)
+        if (!oldAccount.HasStorage && newAccount.HasStorage) _contractsWithStorageAdded++;
+        else if (oldAccount.HasStorage && !newAccount.HasStorage) _contractsWithStorageRemoved++;
 
-        // Storage trie diff
-        Hash256? normalizedOldStorage = NormalizeHash(oldStorageRoot);
-        Hash256? normalizedNewStorage = NormalizeHash(newStorageRoot);
+        // Empty-account transition (matches StateCompositionVisitor: nonce=0, balance=0, no code, no storage)
+        if (!oldAccount.IsTotallyEmpty && newAccount.IsTotallyEmpty) _emptyAccountsAdded++;
+        else if (oldAccount.IsTotallyEmpty && !newAccount.IsTotallyEmpty) _emptyAccountsRemoved++;
 
-        if (normalizedOldStorage != normalizedNewStorage)
-        {
-            Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
-            ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
-            TreePath storagePath = TreePath.Empty;
-            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true);
-        }
+        // Storage trie diff — skip allocation when storage roots are identical
+        if (oldAccount.StorageRoot == newAccount.StorageRoot) return;
+
+        Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
+        Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
+
+        Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
+        ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
+        TreePath storagePath = TreePath.Empty;
+        DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true);
     }
 
     /// <summary>
@@ -450,22 +459,34 @@ public sealed class TrieDiffWalker
         if (added) _accountsAdded++;
         else _accountsRemoved++;
 
-        var (codeHash, storageRoot) = DecodeAccountHashes(leaf);
+        AccountStruct account = DecodeAccount(leaf);
 
-        if (codeHash != Keccak.OfAnEmptyString)
+        if (account.HasCode)
         {
             if (added) _contractsAdded++;
             else _contractsRemoved++;
         }
 
-        Hash256? normalizedStorage = NormalizeHash(storageRoot);
-        if (normalizedStorage is not null)
+        if (account.HasStorage)
+        {
+            if (added) _contractsWithStorageAdded++;
+            else _contractsWithStorageRemoved++;
+        }
+
+        if (account.IsTotallyEmpty)
+        {
+            if (added) _emptyAccountsAdded++;
+            else _emptyAccountsRemoved++;
+        }
+
+        if (account.HasStorage)
         {
             Hash256 addressHash = GetAddressHash(leaf, ref path);
             ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
             TreePath storagePath = TreePath.Empty;
+            Hash256 storageRoot = new(account.StorageRoot);
 
-            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, normalizedStorage);
+            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
             storageRootNode.ResolveNode(storageResolver, in storagePath);
             CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added);
         }
@@ -652,13 +673,15 @@ public sealed class TrieDiffWalker
     }
 
     /// <summary>
-    /// Decode account leaf value to extract CodeHash and StorageRoot without full deserialization.
+    /// Decode account leaf value to a full <see cref="AccountStruct"/>. Provides access to
+    /// nonce, balance, code hash, and storage root needed for HasCode/HasStorage/IsTotallyEmpty.
     /// </summary>
-    private static (Hash256 CodeHash, Hash256 StorageRoot) DecodeAccountHashes(TrieNode leaf)
+    private static AccountStruct DecodeAccount(TrieNode leaf)
     {
         var value = leaf.Value;
         var ctx = new Rlp.ValueDecoderContext(value.AsSpan());
-        return AccountDecoder.Instance.DecodeHashesOnly(ref ctx);
+        AccountDecoder.Instance.TryDecodeStruct(ref ctx, out AccountStruct account);
+        return account;
     }
 
     /// <summary>
@@ -702,5 +725,7 @@ public sealed class TrieDiffWalker
         _storageTrieLeavesAdded = 0; _storageTrieLeavesRemoved = 0;
         _storageTrieBytesAdded = 0; _storageTrieBytesRemoved = 0;
         _storageSlotsAdded = 0; _storageSlotsRemoved = 0;
+        _contractsWithStorageAdded = 0; _contractsWithStorageRemoved = 0;
+        _emptyAccountsAdded = 0; _emptyAccountsRemoved = 0;
     }
 }

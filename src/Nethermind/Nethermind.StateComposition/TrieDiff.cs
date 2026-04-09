@@ -40,12 +40,20 @@ public readonly record struct TrieDiff(
 
     // Storage slot changes
     long StorageSlotsAdded,
-    long StorageSlotsRemoved
+    long StorageSlotsRemoved,
+
+    // Semantic account state changes (HasStorage / IsTotallyEmpty transitions)
+    int ContractsWithStorageAdded,
+    int ContractsWithStorageRemoved,
+    int EmptyAccountsAdded,
+    int EmptyAccountsRemoved
 )
 {
     public int NetAccounts => AccountsAdded - AccountsRemoved;
     public int NetContracts => ContractsAdded - ContractsRemoved;
     public long NetStorageSlots => StorageSlotsAdded - StorageSlotsRemoved;
+    public int NetContractsWithStorage => ContractsWithStorageAdded - ContractsWithStorageRemoved;
+    public int NetEmptyAccounts => EmptyAccountsAdded - EmptyAccountsRemoved;
 
     public int NetAccountTrieNodes =>
         (AccountTrieBranchesAdded + AccountTrieExtensionsAdded + AccountTrieLeavesAdded) -

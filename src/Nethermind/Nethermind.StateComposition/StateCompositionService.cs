@@ -141,14 +141,14 @@ public sealed class StateCompositionService : IStateCompositionService, IDisposa
             CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
             _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!);
 
+            // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
+            // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
             Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
             Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
             Metrics.StateCompScanBlock = header.Number;
             Metrics.StateCompIncrementalBlock = header.Number;
             Metrics.StateCompDiffsSinceBaseline = 0;
             Metrics.StateCompScansCompleted++;
-            Metrics.StateCompContractsWithStorage = stats.ContractsWithStorage;
-            Metrics.StateCompEmptyAccounts = stats.EmptyAccounts;
 
             if (_config.PersistSnapshots)
                 _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
