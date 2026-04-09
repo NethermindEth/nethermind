@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
@@ -717,7 +718,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            [new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes }],
+            new() { Calls = new(1) { new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes } } },
             new(lastBlockHash)
         );
 
@@ -817,9 +818,7 @@ public class TraceRpcModuleTests
         tr2.Transaction = txForRpc2;
         tr2.TraceTypes = traceTypes2;
 
-        TransactionForRpcWithTraceTypes[] a = { tr1, tr2 };
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(a, numberOrTag);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(new() { Calls = new(2) { tr1, tr2 } }, numberOrTag);
         tr.Data.Should().HaveCount(2);
     }
 
@@ -1051,23 +1050,47 @@ public class TraceRpcModuleTests
         IJsonRpcConfig config = context.Blockchain.Container.Resolve<IJsonRpcConfig>();
         config.GasCap = gasCap;
 
-        TransactionForRpcWithTraceTypes[] calls =
-        [
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
             new()
             {
-                Transaction = new LegacyTransactionForRpc
+                Calls = new(1)
                 {
-                    From = TestItem.AddressA,
-                    To = TestItem.AddressC,
-                    Gas = 100_000
-                },
-                TraceTypes = ["trace"]
-            }
-        ];
-
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(calls);
+                    new()
+                    {
+                        Transaction = new LegacyTransactionForRpc
+                        {
+                            From = TestItem.AddressA,
+                            To = TestItem.AddressC,
+                            Gas = 100_000
+                        },
+                        TraceTypes = ["trace"]
+                    }
+                }
+            });
 
         traces.Data.Single().Action!.Gas.Should().BeLessThan(gasCap);
+    }
+
+    [TestCase(2, 2, false)]
+    [TestCase(3, 3, false)]
+    [TestCase(1024, 1024, false)]
+    [TestCase(1025, 0, true)]
+    public void TraceCallManyRequest_enforces_hard_limit(int callCount, int expectedCount, bool shouldThrow)
+    {
+        string call = """[{"from":"0x0000000000000000000000000000000000000001","to":"0x0000000000000000000000000000000000000002"},["trace"]]""";
+        string json = "[" + string.Join(",", Enumerable.Repeat(call, callCount)) + "]";
+
+        if (shouldThrow)
+        {
+            Action act = () => JsonSerializer.Deserialize<TraceCallManyRequest>(json, EthereumJsonSerializer.JsonOptions);
+            act.Should().Throw<JsonException>().WithMessage("*Too many calls*");
+        }
+        else
+        {
+            using TraceCallManyRequest? result = JsonSerializer.Deserialize<TraceCallManyRequest>(json, EthereumJsonSerializer.JsonOptions);
+            result.Should().NotBeNull();
+            result!.Calls.Should().HaveCount(expectedCount);
+        }
     }
 
     [Test]
