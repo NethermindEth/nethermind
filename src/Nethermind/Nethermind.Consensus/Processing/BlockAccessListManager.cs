@@ -99,12 +99,20 @@ public class BlockAccessListManager(
 
     public void NextTransaction()
     {
-        _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
-        _txProcessorWithWorldStateManager.NextTransaction();
+        if (Enabled)
+        {
+            _txProcessorWithWorldStateManager.Get().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
+            _txProcessorWithWorldStateManager.NextTransaction();
+        }
     }
 
     public void Rollback()
-        => _txProcessorWithWorldStateManager.Rollback();
+    {
+        if (Enabled)
+        {
+            _txProcessorWithWorldStateManager.Rollback();
+        }
+    }
 
     public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
     {
