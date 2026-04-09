@@ -30,6 +30,8 @@ public readonly ref struct TransactionSubstate
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
+
+
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
         { 0x00, "generic panic" },
@@ -109,11 +111,15 @@ public readonly ref struct TransactionSubstate
             return span.ToHexString(true);
 
         string decoded = Encoding.UTF8.GetString(span);
-        foreach (char c in decoded)
-        {
-            if (char.IsControl(c) && c != '\t' && c != '\n' && c != '\r')
-                return span.ToHexString(true);
-        }
+        ReadOnlySpan<char> chars = decoded.AsSpan();
+
+        // Reject char.IsControl chars except the safe whitespace \t, \n, \r.
+        // C0: 0x00–0x08, 0x0B–0x0C, 0x0E–0x1F | DEL: 0x7F | C1: 0x80–0x9F
+        if (chars.IndexOfAnyInRange('\x00', '\x08') >= 0 ||
+            chars.IndexOfAnyInRange('\x0B', '\x0C') >= 0 ||
+            chars.IndexOfAnyInRange('\x0E', '\x1F') >= 0 ||
+            chars.IndexOfAnyInRange('\x7F', '\x9F') >= 0)
+            return span.ToHexString(true);
 
         return decoded;
     }
