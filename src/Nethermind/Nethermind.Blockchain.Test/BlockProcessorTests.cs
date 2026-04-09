@@ -62,7 +62,7 @@ public class BlockProcessorTests
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
             balManager);
-            
+
         BranchProcessor branchProcessor = new(
             processor,
             HoodiSpecProvider.Instance,
