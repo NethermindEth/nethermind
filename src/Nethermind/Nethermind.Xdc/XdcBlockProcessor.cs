@@ -33,7 +33,7 @@ internal class XdcBlockProcessor : BlockProcessor
             header.Number != 0 ? header.Number.ToBigEndianSpanWithoutLeadingZeros(out _) : default);
 
         // XDC enables the BLOBBASEFEE opcode without blob transactions — ExcessBlobGas is never set. Check InstructionBlobBaseFee
-        if (spec.BlobBaseFeeEnabled && header.ExcessBlobGas is null)
+        if (spec.BlobBaseFeeEnabled)
         {
             BlockHeader clone = header.Clone();
             clone.ExcessBlobGas = 0;
