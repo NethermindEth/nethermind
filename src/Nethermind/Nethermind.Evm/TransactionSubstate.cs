@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
+using System.Linq;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Unicode;
@@ -30,7 +32,12 @@ public readonly ref struct TransactionSubstate
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
-
+    private static readonly SearchValues<char> _disallowedControlChars = SearchValues.Create(
+        Enumerable.Range(0, 32)
+            .Select(i => (char)i)
+            .Where(c => c != '\t' && c != '\n' && c != '\r')
+            .Append((char)127)
+            .ToArray());
 
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -110,18 +117,8 @@ public readonly ref struct TransactionSubstate
         if (!Utf8.IsValid(span))
             return span.ToHexString(true);
 
-        // C0 control chars (except \t \n \r) and DEL are single bytes in UTF-8 — check on span before allocating string.
-        // C0: 0x00–0x08, 0x0B–0x0C, 0x0E–0x1F | DEL: 0x7F
-        if (span.IndexOfAnyInRange((byte)0x00, (byte)0x08) >= 0 ||
-            span.IndexOfAnyInRange((byte)0x0B, (byte)0x0C) >= 0 ||
-            span.IndexOfAnyInRange((byte)0x0E, (byte)0x1F) >= 0 ||
-            span.IndexOfAnyInRange((byte)0x7F, (byte)0x7F) >= 0)
-            return span.ToHexString(true);
-
         string decoded = Encoding.UTF8.GetString(span);
-
-        // C1 control chars (U+0080–U+009F) are 2-byte UTF-8 sequences — must check on decoded chars.
-        if (decoded.AsSpan().IndexOfAnyInRange('\x80', '\x9F') >= 0)
+        if (decoded.AsSpan().ContainsAny(_disallowedControlChars))
             return span.ToHexString(true);
 
         return decoded;
