@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using NUnit.Framework;
 using System;
@@ -15,10 +16,21 @@ namespace Nethermind.TxPool.Test;
 [FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class RetryCacheTests
 {
-    public readonly struct ResourceRequestMessage : INew<int, ResourceRequestMessage>
+    public readonly struct ResourceId(int value) : IEquatable<ResourceId>, IHash64bit<ResourceId>
     {
-        public int Resource { get; init; }
-        public static ResourceRequestMessage New(int resourceId) => new() { Resource = resourceId };
+        public readonly int Value = value;
+        public bool Equals(ResourceId other) => Value == other.Value;
+        public bool Equals(in ResourceId other) => Value == other.Value;
+        public override bool Equals(object obj) => obj is ResourceId other && Equals(other);
+        public override int GetHashCode() => Value;
+        public long GetHashCode64() => Value * unchecked((long)0x9E3779B97F4A7C15UL);
+        public static implicit operator ResourceId(int value) => new(value);
+    }
+
+    public readonly struct ResourceRequestMessage : INew<ResourceId, ResourceRequestMessage>
+    {
+        public ResourceId Resource { get; init; }
+        public static ResourceRequestMessage New(ResourceId resourceId) => new() { Resource = resourceId };
     }
 
     public interface ITestHandler : IMessageHandler<ResourceRequestMessage>;
@@ -41,7 +53,7 @@ public class RetryCacheTests
     }
 
     private CancellationTokenSource _cancellationTokenSource;
-    private RetryCache<ResourceRequestMessage, int> _cache;
+    private RetryCache<ResourceRequestMessage, ResourceId> _cache;
 
     // Short cache timeout so retries fire quickly (~600ms); generous assertion timeout for slow CI
     private const int CacheTimeoutMs = 500;
@@ -263,7 +275,7 @@ public class RetryCacheTests
     public void Announced_RetryHandlerReceivesCorrectResourceId()
     {
         int receivedResourceId = -1;
-        TestHandler retryHandler = new() { OnHandleMessage = msg => receivedResourceId = msg.Resource };
+        TestHandler retryHandler = new() { OnHandleMessage = msg => receivedResourceId = msg.Resource.Value };
 
         _cache.Announced(42, new TestHandler());
         _cache.Announced(42, retryHandler);
