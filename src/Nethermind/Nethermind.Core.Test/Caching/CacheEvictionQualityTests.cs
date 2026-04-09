@@ -49,11 +49,11 @@ public class CacheEvictionQualityTests
         double clockHitRate = MeasureHitRate_Clock(capacity, accessPattern);
         double assocHitRate = MeasureHitRate_Associative(capacity, accessPattern);
 
-        Console.WriteLine($"=== Uniform Random (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
-        Console.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
-        Console.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
-        Console.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
-        Console.WriteLine();
+        TestContext.Out.WriteLine($"=== Uniform Random (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
+        TestContext.Out.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
+        TestContext.Out.WriteLine();
     }
 
     [Test]
@@ -74,11 +74,11 @@ public class CacheEvictionQualityTests
         double clockHitRate = MeasureHitRate_Clock(capacity, accessPattern);
         double assocHitRate = MeasureHitRate_Associative(capacity, accessPattern);
 
-        Console.WriteLine($"=== Zipf s=1.0 (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
-        Console.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
-        Console.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
-        Console.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
-        Console.WriteLine();
+        TestContext.Out.WriteLine($"=== Zipf s=1.0 (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
+        TestContext.Out.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
+        TestContext.Out.WriteLine();
     }
 
     [Test]
@@ -115,11 +115,11 @@ public class CacheEvictionQualityTests
         double clockHitRate = MeasureHitRate_Clock(capacity, accessPattern);
         double assocHitRate = MeasureHitRate_Associative(capacity, accessPattern);
 
-        Console.WriteLine($"=== Working Set + Scan (capacity={capacity}, hotSet={hotSetSize}, coldKeys={coldKeyCount}) ===");
-        Console.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
-        Console.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
-        Console.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
-        Console.WriteLine();
+        TestContext.Out.WriteLine($"=== Working Set + Scan (capacity={capacity}, hotSet={hotSetSize}, coldKeys={coldKeyCount}) ===");
+        TestContext.Out.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
+        TestContext.Out.WriteLine();
     }
 
     [Test]
@@ -145,11 +145,11 @@ public class CacheEvictionQualityTests
         double clockHitRate = MeasureHitRate_Clock(capacity, accessPattern);
         double assocHitRate = MeasureHitRate_Associative(capacity, accessPattern);
 
-        Console.WriteLine($"=== Sequential Scan (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
-        Console.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
-        Console.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
-        Console.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
-        Console.WriteLine();
+        TestContext.Out.WriteLine($"=== Sequential Scan (capacity={capacity}, keyRange={keyRange}, ops={totalOps}) ===");
+        TestContext.Out.WriteLine($"  LruCache:         {lruHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  ClockCache:       {clockHitRate,6:F2}%");
+        TestContext.Out.WriteLine($"  AssociativeCache: {assocHitRate,6:F2}%");
+        TestContext.Out.WriteLine();
     }
 
     private double MeasureHitRate_Lru(int capacity, int[] accessPattern)
