@@ -1,10 +1,10 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,23 +23,23 @@ using NUnit.Framework;
 
 namespace Nethermind.Flashbots.Test;
 
+[Parallelizable(ParallelScope.All)]
 public partial class FlashbotsModuleTests
 {
-    [Test]
-    public virtual async Task TestValidateBuilderSubmissionV3()
+    [TestCaseSource(nameof(InvalidSubmissions))]
+    public virtual async Task ValidateBuilderSubmissionV3_Invalid(Func<Block, BlobsBundleV1> bundleFactory, string expectedError)
     {
-        using EngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance);
         IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
 
         Block block = CreateBlock(chain);
+        BlobsBundleV1 bundle = bundleFactory(block);
 
-        GetPayloadV3Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block), false);
-
-        BuilderBlockValidationRequest BlockRequest = new(
+        BuilderBlockValidationRequest request = new(
             new BidTrace(
-                0, block.Header.ParentHash,
-                block.Header.Hash,
-                TestKeysAndAddress.TestBuilderKey.PublicKey,
+                0, block.Header.ParentHash!,
+                block.Header.Hash!,
+                TestKeysAndAddress!.TestBuilderKey.PublicKey,
                 TestKeysAndAddress.TestValidatorKey.PublicKey,
                 TestKeysAndAddress.TestBuilderAddr,
                 block.Header.GasLimit,
@@ -47,21 +47,37 @@ public partial class FlashbotsModuleTests
                 new UInt256(132912184722469)
             ),
             new RExecutionPayloadV3(ExecutionPayloadV3.Create(block)),
-            expectedPayload.BlobsBundle,
+            bundle,
             [],
             block.Header.GasLimit,
             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000042")
         );
 
-        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(BlockRequest);
-        result.Should().NotBeNull();
-
-        Assert.That(result.Result.Error, Is.EqualTo("Invalid blob proofs"));
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(request);
+        Assert.That(result, Is.Not.Null);
+        Assert.That(result.Result.Error, Is.EqualTo(expectedError));
         Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
 
-        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", BlockRequest);
+        string response = await RpcTest.TestSerializedRequest(rpc, "flashbots_validateBuilderSubmissionV3", request);
         JsonRpcSuccessResponse? jsonResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-        jsonResponse.Should().NotBeNull();
+        Assert.That(jsonResponse, Is.Not.Null);
+    }
+
+    private static IEnumerable<TestCaseData> InvalidSubmissions()
+    {
+        yield return new TestCaseData(
+            (Func<Block, BlobsBundleV1>)(block => new(block)),
+            "Invalid blob proofs"
+        ).SetName("Invalid proofs");
+
+        yield return new TestCaseData(
+            (Func<Block, BlobsBundleV1>)(block =>
+            {
+                BlobsBundleV1 valid = new(block);
+                return new(valid.Commitments[..^1], valid.Blobs, valid.Proofs);
+            }),
+            "Invalid blob lengths"
+        ).SetName("Invalid lengths");
     }
 
     private Block CreateBlock(EngineModuleTests.MergeTestBlockchain chain)

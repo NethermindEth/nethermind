@@ -166,15 +166,15 @@ public class ValidateSubmissionHandler
             }
         }
 
-        if (!verifier.ValidateHashes(blobs, hashes.AsSpan()))
-        {
-            error = "Invalid blob hashes";
-            return false;
-        }
-
         if (!verifier.ValidateLengths(blobs))
         {
             error = "Invalid blob lengths";
+            return false;
+        }
+
+        if (!verifier.ValidateHashes(blobs, hashes.AsSpan()))
+        {
+            error = "Invalid blob hashes";
             return false;
         }
 
