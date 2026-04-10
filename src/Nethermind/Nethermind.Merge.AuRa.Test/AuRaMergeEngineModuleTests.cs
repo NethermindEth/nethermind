@@ -182,6 +182,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 .AddScoped<WithdrawalContractFactory>()
                 .AddScoped<IWithdrawalContract, WithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
                 .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
+                .AddScoped<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
 
                 .AddSingleton<IBlockImprovementContextFactory, IBlockProducer, IMergeConfig>((blockProducer,
                     mergeConfig) => new BlockImprovementContextFactory(blockProducer, TimeSpan.FromSeconds(mergeConfig.SecondsPerSlot)))
