@@ -131,7 +131,7 @@ public class DebugSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<G
         IBlockchainBridge mockBridge = Substitute.For<IBlockchainBridge>();
         mockBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
 
-        SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
+        SimulateTxExecutor<GethLikeTxTrace> executor = new(mockBridge, chain.BlockFinder, new JsonRpcConfig(), chain.SpecProvider, new GethStyleSimulateBlockTracerFactory(GethTraceOptions.Default));
 
         // Execute and verify the error message includes block number
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> result = executor.Execute(payload, BlockParameter.Latest);

@@ -13,7 +13,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 
 namespace Nethermind.Evm;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface defining the properties for a call-like opcode.
@@ -197,7 +197,7 @@ internal static partial class EvmInstructions
         if (spec.IsEip7907Enabled)
         {
             uint excessContractSize = (uint)Math.Max(0, codeInfo.CodeSpan.Length - CodeSizeConstants.MaxCodeSizeEip170);
-            if (excessContractSize > 0 && !ChargeForLargeContractAccess(excessContractSize, codeSource, in vm.VmState.AccessTracker, ref gas))
+            if (excessContractSize > 0 && !TGasPolicy.ConsumeLargeContractAccessGas(ref gas, excessContractSize, codeSource, in vm.VmState.AccessTracker))
                 goto OutOfGas;
         }
 
@@ -322,18 +322,6 @@ internal static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     OutOfGas:
         return EvmExceptionType.OutOfGas;
-    }
-
-    private static bool ChargeForLargeContractAccess<TGasPolicy>(uint excessContractSize, Address codeAddress, in StackAccessTracker accessTracer, ref TGasPolicy gas)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        if (accessTracer.WarmUpLargeContract(codeAddress))
-        {
-            long largeContractCost = GasCostOf.InitCodeWord * EvmCalculations.Div32Ceiling(excessContractSize, out bool outOfGas);
-            if (outOfGas || !TGasPolicy.UpdateGas(ref gas, largeContractCost)) return false;
-        }
-
-        return true;
     }
 
     /// <summary>
