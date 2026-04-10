@@ -279,15 +279,16 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
         }
 
+        Hash256 resolvedFinalizedHash = ResolveZeroHash(finalizedBlockHash, _blockTree.FinalizedHash);
+        Hash256 resolvedSafeHash = ResolveZeroHash(safeBlockHash, _blockTree.SafeHash);
+
         if (shouldUpdateHead)
         {
-            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, ResolveZeroHash(finalizedBlockHash, _blockTree.FinalizedHash));
+            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, resolvedFinalizedHash);
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
-        _blockTree.ForkChoiceUpdated(
-            ResolveZeroHash(forkchoiceState.FinalizedBlockHash, _blockTree.FinalizedHash),
-            ResolveZeroHash(forkchoiceState.SafeBlockHash, _blockTree.SafeHash));
+        _blockTree.ForkChoiceUpdated(resolvedFinalizedHash, resolvedSafeHash);
         return null;
     }
 
