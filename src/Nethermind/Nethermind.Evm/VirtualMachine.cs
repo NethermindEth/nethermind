@@ -1373,7 +1373,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
+    public void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
         where TEip7708 : struct, IFlag
     {
         if (TEip7708.IsActive && !value.IsZero && from != to)
