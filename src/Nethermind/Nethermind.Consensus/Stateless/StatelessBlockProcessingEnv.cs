@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -45,10 +46,13 @@ public class StatelessBlockProcessingEnv(
         using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
         StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
         ITransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, statelessBlockTree);
+        BlockAccessListManager balManager = new(WorldState, specProvider, new BlockhashProvider(statelessBlockTree, WorldState, logManager), logManager, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
         IBlockProcessor.IBlockTransactionsExecutor txExecutor =
-            new BlockProcessor.BlockValidationTransactionsExecutor(
+            new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
                 new ExecuteTransactionProcessorAdapter(txProcessor),
-                WorldState);
+                WorldState,
+                specProvider,
+                balManager);
 
         IHeaderValidator headerValidator = new HeaderValidator(statelessBlockTree, sealValidator, specProvider, logManager);
         IBlockValidator blockValidator = new BlockValidator(new TxValidator(specProvider.ChainId), headerValidator,
@@ -66,7 +70,7 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            NullBlockAccessListManager.Instance
+            balManager
         );
     }
 
