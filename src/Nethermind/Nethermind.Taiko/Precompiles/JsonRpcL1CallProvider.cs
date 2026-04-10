@@ -42,10 +42,13 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
                 return L1CallResult.Failure();
             }
 
+            // Clamp to gasLimit — the L1 node must not cause us to charge more than we budgeted.
+            long gasUsed = Math.Min(response.Gas, gasLimit);
+
             if (response.Failed)
             {
-                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: L1 call failed — contract={contractAddress}, block={blockHex}, gasUsed={response.Gas}");
-                return new L1CallResult(null, response.Gas, true);
+                if (_logger.IsWarn) _logger.Warn($"L1STATICCALL: L1 call failed — contract={contractAddress}, block={blockHex}, gasUsed={gasUsed}");
+                return new L1CallResult(null, gasUsed, true);
             }
 
             byte[] returnData = Convert.FromHexString(
@@ -53,8 +56,8 @@ public class JsonRpcL1CallProvider(IJsonRpcClient rpcClient, ILogManager logMana
                     ? response.ReturnValue[2..]
                     : response.ReturnValue);
 
-            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: debug_traceCall success — contract={contractAddress}, block={blockHex}, gasUsed={response.Gas}, return_len={returnData.Length}");
-            return new L1CallResult(returnData, response.Gas, false);
+            if (_logger.IsDebug) _logger.Debug($"L1STATICCALL: debug_traceCall success — contract={contractAddress}, block={blockHex}, gasUsed={gasUsed}, return_len={returnData.Length}");
+            return new L1CallResult(returnData, gasUsed, false);
         }
         catch (Exception ex)
         {
