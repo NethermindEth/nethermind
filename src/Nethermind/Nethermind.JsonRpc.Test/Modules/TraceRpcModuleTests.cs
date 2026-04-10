@@ -1081,16 +1081,19 @@ public class TraceRpcModuleTests
         string call = """[{"from":"0x0000000000000000000000000000000000000001","to":"0x0000000000000000000000000000000000000002"},["trace"]]""";
         string json = "[" + string.Join(",", Enumerable.Repeat(call, callCount)) + "]";
 
+        using JsonDocument doc = JsonDocument.Parse(json);
+        TraceCallManyRequest request = new();
+
         if (shouldThrow)
         {
-            Action act = () => JsonSerializer.Deserialize<TraceCallManyRequest>(json, EthereumJsonSerializer.JsonOptions);
+            Action act = () => request.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
             act.Should().Throw<JsonException>().WithMessage("*Too many calls*");
         }
         else
         {
-            using TraceCallManyRequest? result = JsonSerializer.Deserialize<TraceCallManyRequest>(json, EthereumJsonSerializer.JsonOptions);
-            result.Should().NotBeNull();
-            result!.Calls.Should().HaveCount(expectedCount);
+            request.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+            using TraceCallManyRequest _ = request;
+            request.Calls.Should().HaveCount(expectedCount);
         }
     }
 
