@@ -42,7 +42,7 @@ public class TraceStoreRpcModuleTests
         TestContext test = new();
 
         test.Module.trace_callMany(
-                new(new(1) { new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) } }),
+                new() { Calls = new(1) { new() { TraceTypes = [ParityTraceTypes.Trace.ToString()], Transaction = TransactionForRpc.FromTransaction(Build.A.Transaction.TestObject) } } },
                 BlockParameter.Latest)
             .Should().BeEquivalentTo(ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(test.NonDbTraces.Select(static t => new ParityTxTraceFromReplay(t))));
     }
