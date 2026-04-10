@@ -97,6 +97,18 @@ public class L1StaticCallPrecompileTests
         Assert.That(mock.LastGasLimit, Is.EqualTo(L1PrecompileConstants.L1CallMaxGasCap));
     }
 
+    [Test]
+    public void Run_Should_Clamp_GasLimit_To_Zero_When_RemainingGas_Is_Zero()
+    {
+        MockL1CallProvider mock = MockL1CallProvider.Returning(new byte[32], MockGasUsed);
+        L1StaticCallPrecompile.L1CallProvider = mock;
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1);
+
+        _precompile.Run(input, _spec, 0);
+
+        Assert.That(mock.LastGasLimit, Is.EqualTo(0));
+    }
+
     // --- Run (gas-aware) ---
 
     [Test]

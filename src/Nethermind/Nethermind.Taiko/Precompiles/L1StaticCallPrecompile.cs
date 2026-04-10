@@ -39,6 +39,10 @@ public class L1StaticCallPrecompile : IPrecompile<L1StaticCallPrecompile>, IPrec
 
     public static Address Address { get; } = Address.FromNumber(0x10002);
     public static string Name => "L1STATICCALL";
+
+    // L1STATICCALL calls L1 via RPC — results depend on L1 state and must not be cached.
+    // Caching also wraps the precompile in CachedPrecompile which strips IPrecompileGasAware.
+    public bool SupportsCaching => false;
     public static IL1CallProvider? L1CallProvider { get; set; }
     public static ILogger Logger { get; set; }
     public static long GasCap => L1PrecompileConstants.L1CallMaxGasCap;

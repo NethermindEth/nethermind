@@ -32,6 +32,9 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
 
     public static Address Address { get; } = Address.FromNumber(0x10001);
     public static string Name => "L1SLOAD";
+
+    // L1SLOAD calls L1 via RPC — results depend on L1 state and must not be cached.
+    public bool SupportsCaching => false;
     public static IL1StorageProvider? L1StorageProvider { get; set; }
     public static ILogger Logger { get; set; }
 
