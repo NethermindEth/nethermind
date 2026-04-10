@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         {
             if (signature.Length != Signature.Size)
             {
-                return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.");
+                return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
             }
 
             message = ToEthSignedMessage(message);
