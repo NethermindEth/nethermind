@@ -17,7 +17,6 @@ namespace Nethermind.Wallet
     public class DevWallet : IWallet
     {
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
-        private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
         private readonly Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
         private readonly Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
@@ -29,14 +28,15 @@ namespace Nethermind.Wallet
         {
             _logger = logManager?.GetClassLogger<DevWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _keySeed[31] = 1;
+            byte[] keySeed = new byte[32];
+            keySeed[31] = 1;
             for (int i = 0; i < walletConfig?.DevAccounts; i++)
             {
-                PrivateKey key = new PrivateKey(_keySeed);
+                PrivateKey key = new PrivateKey(keySeed);
                 _keys.Add(key.Address, key);
                 _passwords.Add(key.Address, AnyPassword);
                 _isUnlocked.Add(key.Address, true);
-                _keySeed[31]++;
+                keySeed[31]++;
             }
         }
 
