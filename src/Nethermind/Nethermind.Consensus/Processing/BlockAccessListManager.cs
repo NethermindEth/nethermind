@@ -52,6 +52,7 @@ public class BlockAccessListManager(
     private const int GasValidationChunkSize = 8;
     private long? _gasRemaining;
     private bool _isBuilding;
+    private bool _blockAccessListsEnabled;
 
     private void Reset()
     {
@@ -63,7 +64,8 @@ public class BlockAccessListManager(
 
     public void PrepareForProcessing(Block suggestedBlock, IReleaseSpec spec, ProcessingOptions options)
     {
-        Enabled = spec.BlockLevelAccessListsEnabled && !suggestedBlock.IsGenesis;
+        _blockAccessListsEnabled = spec.BlockLevelAccessListsEnabled;
+        Enabled = _blockAccessListsEnabled && !suggestedBlock.IsGenesis;
         if (Enabled)
         {
             _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
@@ -205,7 +207,7 @@ public class BlockAccessListManager(
 
     public void SetBlockAccessList(Block block)
     {
-        if (!Enabled)
+        if (!_blockAccessListsEnabled)
         {
             return;
         }
