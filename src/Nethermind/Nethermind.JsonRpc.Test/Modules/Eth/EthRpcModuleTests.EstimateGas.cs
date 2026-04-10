@@ -229,6 +229,28 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Estimate_gas_with_custom_error_returns_hex_selector()
+    {
+        // A no-parameter custom error (e.g. ActionFailed()) produces exactly 4 revert bytes.
+        // Those bytes must be returned as hex, not decoded as UTF-8.
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        // keccak4("ActionFailed()") = 0x080a1c27
+        byte[] selector = [0x08, 0x0a, 0x1c, 0x27];
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithCustomError(selector)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: 0x080a1c27","data":"0x080a1c27"},"id":67}"""));
+    }
+
+    [Test]
     public async Task Estimate_gas_with_abi_encoded_revert()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();

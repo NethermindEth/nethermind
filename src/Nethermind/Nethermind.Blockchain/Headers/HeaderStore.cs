@@ -25,7 +25,7 @@ public class HeaderStore(
     public const int CacheSize = 256 + 16;
 
     private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
-    private readonly ClockCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
 
     public void Insert(BlockHeader header)
     {
@@ -64,7 +64,7 @@ public class HeaderStore(
 
     public void Cache(BlockHeader header)
     {
-        _headerCache.Set(header.Hash, header);
+        _headerCache.Set(in header.Hash.ValueHash256, header);
     }
 
     public void Delete(Hash256 blockHash)
@@ -73,7 +73,7 @@ public class HeaderStore(
         if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
         blockNumberDb.Delete(blockHash);
         headerDb.Delete(blockHash);
-        _headerCache.Delete(blockHash);
+        _headerCache.Delete(in blockHash.ValueHash256);
     }
 
     public void InsertBlockNumber(Hash256 blockHash, long blockNumber)

@@ -32,8 +32,6 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         _trieStore = trieStore;
         _logManager = logManager;
         _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
-
-        _backingStateTree = CreateStateTree();
     }
 
     protected virtual StateTree CreateStateTree()
@@ -49,6 +47,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
         var trieStoreCloser = _trieStore.BeginScope(baseBlock);
+        _backingStateTree ??= CreateStateTree();
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
         return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);

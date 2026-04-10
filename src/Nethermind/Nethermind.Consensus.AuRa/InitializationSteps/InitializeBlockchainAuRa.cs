@@ -9,7 +9,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -32,7 +31,6 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
             api.BlockTree!,
             api.ChainLevelInfoRepository!,
             api.ValidatorStore!,
-            new ValidSealerStrategy(),
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
 

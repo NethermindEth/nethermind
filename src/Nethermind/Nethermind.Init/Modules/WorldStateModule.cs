@@ -7,6 +7,7 @@ using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -75,6 +76,8 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             .AddSingleton<MainPruningTrieStoreFactory>() // This part is done separately so that triestore can be obtained in test.
             .AddSingleton<IReadOnlyTrieStore>(ctx =>
                 ctx.Resolve<MainPruningTrieStoreFactory>().PruningTrieStore.AsReadOnly())
+            .AddSingleton<CompositePruningTrigger>()
+            .AddSingleton<IFullPrunerFactory, FullPrunerFactory>()
             .AddSingleton<PruningTrieStateFactory>()
             .AddSingleton<PruningTrieStateFactoryOutput>()
 
