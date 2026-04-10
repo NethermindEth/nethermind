@@ -9,9 +9,9 @@ namespace Nethermind.Optimism.Rpc;
 
 public class OptimismGetPayloadV3Result
 {
-    public OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
+    public OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result, Hash256? withdrawalsRoot)
     {
-        ExecutionPayload = result.ExecutionPayload;
+        ExecutionPayload = OptimismExecutionPayloadV3.CreateFrom(result.ExecutionPayload, withdrawalsRoot);
         BlockValue = result.BlockValue;
 
         BlobsBundle = result.BlobsBundle;
@@ -20,7 +20,7 @@ public class OptimismGetPayloadV3Result
     }
 
     public UInt256 BlockValue { get; }
-    public ExecutionPayloadV3 ExecutionPayload { get; }
+    public OptimismExecutionPayloadV3 ExecutionPayload { get; }
 
     public BlobsBundleV1 BlobsBundle { get; }
 

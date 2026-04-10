@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers.Binary;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Data;
@@ -93,6 +95,14 @@ public class PayloadAttributesDeriver(
 
     private OptimismPayloadAttributes BuildOneBlock(L1Block l1Origin, ulong timestamp, SystemConfig systemConfig, byte[][] txs)
     {
+        byte[]? eip1559Params = systemConfig.EIP1559Params;
+        ulong? minBaseFee = null;
+        if (eip1559Params is { Length: >= 16 })
+        {
+            minBaseFee = BinaryPrimitives.ReadUInt64BigEndian(new ReadOnlySpan<byte>(eip1559Params, 8, 8));
+            eip1559Params = eip1559Params[..8];
+        }
+
         OptimismPayloadAttributes payload = new()
         {
             GasLimit = (long)systemConfig.GasLimit,
@@ -101,7 +111,8 @@ public class PayloadAttributesDeriver(
             Timestamp = timestamp,
             Withdrawals = [],
             PrevRandao = l1Origin.MixHash,
-            EIP1559Params = systemConfig.EIP1559Params,
+            EIP1559Params = eip1559Params,
+            MinBaseFee = minBaseFee,
             SuggestedFeeRecipient = SequencerFeeVault,
             Transactions = txs
         };

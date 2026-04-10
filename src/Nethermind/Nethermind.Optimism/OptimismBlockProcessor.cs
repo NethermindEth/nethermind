@@ -12,6 +12,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
@@ -68,6 +69,23 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, spec, token);
+
+        // During block production, BlockProductionWithdrawalProcessor (decorator) overwrites
+        // WithdrawalsRoot with EmptyTreeHash after OptimismWithdrawalProcessor correctly sets it
+        // to the L2ToL1MessagePasser storage root. Re-read the correct value from committed state.
+        // https://specs.optimism.io/protocol/isthmus/exec-engine.html#l2tol1messagepasser-storage-root-in-header
+        if (_opSpecHelper.IsIsthmus(block.Header))
+        {
+            Hash256 withdrawalsRoot = _stateProvider.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out AccountStruct account)
+                ? new Hash256(account.StorageRoot)
+                : Keccak.EmptyTreeHash;
+
+            if (block.Header.WithdrawalsRoot != withdrawalsRoot)
+            {
+                block.Header.WithdrawalsRoot = withdrawalsRoot;
+                block.Header.Hash = block.Header.CalculateHash();
+            }
+        }
 
         if (_opSpecHelper.IsJovian(block.Header))
         {
