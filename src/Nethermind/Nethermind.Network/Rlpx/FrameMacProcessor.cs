@@ -210,6 +210,7 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         macCopy.UpdateFinalTo(output);
     }
 
+    // not a real Dispose - copies are returned to the pool, but lazily restored if needed
     public void Dispose()
     {
         _egressMacCopy.Reset();
