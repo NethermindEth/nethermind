@@ -291,7 +291,7 @@ namespace Nethermind.Core
             return _key?.ToString() ?? "<null>";
         }
 
-        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+        public long GetHashCode64() => _key?.GetHashCode64() ?? 0;
 
         public bool Equals(in AddressAsKey other) => _key == other._key;
     }
