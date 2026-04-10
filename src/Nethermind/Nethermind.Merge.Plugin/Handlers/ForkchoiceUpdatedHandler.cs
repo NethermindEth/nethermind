@@ -91,10 +91,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected virtual bool IsAncestorOnMainChainBeyondReorgDepthLimit(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
-        if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
+        if (_blockTree.IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadBlock))
         {
             if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain.");
             errorResult = ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
@@ -247,7 +247,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsOnMainChainBehindHead(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (!IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }

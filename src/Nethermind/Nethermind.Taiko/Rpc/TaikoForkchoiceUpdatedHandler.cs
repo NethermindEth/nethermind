@@ -52,7 +52,7 @@ internal class TaikoForkchoiceUpdatedHandler(
     mergeConfig,
     logManager)
 {
-    protected override bool IsOnMainChainBehindHead(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected override bool IsAncestorOnMainChainBeyondReorgDepthLimit(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
         [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         errorResult = null;

@@ -563,26 +563,25 @@ public partial class EngineModuleTests
     }
 
 
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorWithinDepthLimit_ReorgsToAncestor()
+    [TestCase(3, TestName = "2 blocks behind head — within limit")]
+    [TestCase(33, TestName = "exactly 32 blocks behind head — boundary")]
+    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorWithinOrAtDepthLimit_ReorgsToAncestor(int chainLength)
     {
-        // FCU to an ancestor within 32 blocks must execute the reorg, not skip it.
-        // Builds a chain: genesis → b1 → b2 → b3 (head at H=3), then sends FCU(b1).
-        // b1 is 2 blocks behind head — within the 32-block limit — so head must move back to b1.
+        // Spec: MUST support a reorg to a canonical ancestor no more than 32 blocks behind head.
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 3, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, chainLength, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
         Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b3Hash = branch[2].BlockHash;
+        Hash256 headHash = branch[chainLength - 1].BlockHash;
 
-        chain.BlockTree.HeadHash.Should().Be(b3Hash, "precondition: head is at H=3");
+        chain.BlockTree.HeadHash.Should().Be(headHash, $"precondition: head is at H={chainLength}");
 
         ForkchoiceStateV1 fcuToAncestor = new(b1Hash, Keccak.Zero, Keccak.Zero);
         ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestor);
 
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b1Hash, "head must reorg back to b1 — within 32-block ancestor depth limit");
+        chain.BlockTree.HeadHash.Should().Be(b1Hash, $"head must reorg to b1 — depth is {chainLength - 1} blocks, within the 32-block limit");
     }
 
     [Test]
@@ -606,27 +605,6 @@ public partial class EngineModuleTests
         result.Data.PayloadStatus.LatestValidHash.Should().Be(b1Hash, "spec mandates latestValidHash == forkchoiceState.headBlockHash when skipping");
         result.Data.PayloadId.Should().BeNull("spec mandates payloadId: null when skipping");
         chain.BlockTree.HeadHash.Should().Be(b34Hash, "Nethermind skips the update — ancestor is beyond the 32-block depth limit, skip is permitted by spec");
-    }
-
-    [Test]
-    public async Task forkchoiceUpdatedV1_WhenHeadIsAncestorAtExactDepthLimit_ReorgsToAncestor()
-    {
-        // FCU to an ancestor exactly 32 blocks behind head must execute the reorg (boundary condition).
-        // Builds 33 blocks. b1 is exactly 32 blocks behind H=33 — must reorg.
-        using MergeTestBlockchain chain = await CreateBlockchain();
-        IEngineRpcModule rpc = chain.EngineRpcModule;
-
-        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 33, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
-        Hash256 b1Hash = branch[0].BlockHash;
-        Hash256 b33Hash = branch[32].BlockHash;
-
-        chain.BlockTree.HeadHash.Should().Be(b33Hash, "precondition: head is at H=33");
-
-        ForkchoiceStateV1 fcuToAncestorAtLimit = new(b1Hash, Keccak.Zero, Keccak.Zero);
-        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuToAncestorAtLimit);
-
-        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
-        chain.BlockTree.HeadHash.Should().Be(b1Hash, "head must reorg to b1 — exactly at the 32-block depth limit");
     }
 
     [Test]
@@ -711,6 +689,38 @@ public partial class EngineModuleTests
         result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
         chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "zero finalizedBlockHash must preserve the previously known finalized hash");
         chain.BlockTree.SafeHash.Should().Be(b1Hash, "zero safeBlockHash must preserve the previously known safe hash");
+    }
+
+    [Test]
+    public async Task forkchoiceUpdatedV1_WhenZeroFinalizedHash_PreservesKnownFinalizedHash_WithPayloadAttributes()
+    {
+        // Spec PR #760: ResolveZeroHash is called in StartBuildingPayload too — verify preservation on that path.
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+
+        IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 2, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        Hash256 b1Hash = branch[0].BlockHash;
+        Hash256 b2Hash = branch[1].BlockHash;
+
+        // First FCU: finalize b1
+        ForkchoiceStateV1 fcuWithFinalized = new(b2Hash, b1Hash, b1Hash);
+        await rpc.engine_forkchoiceUpdatedV1(fcuWithFinalized);
+        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "precondition: b1 is finalized after first FCU");
+
+        // Second FCU with payload attributes — exercises the StartBuildingPayload call site of ResolveZeroHash
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = branch[1].Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero
+        };
+        ForkchoiceStateV1 fcuWithZeroFinalized = new(b2Hash, Keccak.Zero, Keccak.Zero);
+        ResultWrapper<ForkchoiceUpdatedV1Result> result = await rpc.engine_forkchoiceUpdatedV1(fcuWithZeroFinalized, payloadAttributes);
+
+        result.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+        result.Data.PayloadId.Should().NotBeNull("payload build must be started when attributes are provided");
+        chain.BlockTree.FinalizedHash.Should().Be(b1Hash, "zero finalizedBlockHash must preserve the previously known finalized hash via StartBuildingPayload");
+        chain.BlockTree.SafeHash.Should().Be(b1Hash, "zero safeBlockHash must preserve the previously known safe hash via StartBuildingPayload");
     }
 
     [Test]
