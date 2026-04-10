@@ -19,7 +19,7 @@ public class XdcPool<T> where T : IXdcPoolItem
     public long Add(T item)
     {
         if (item.Signer is null)
-            throw new ArgumentException("Cannot add an unsigned item to the pool.", nameof(item));
+            throw new ArgumentException($"Signature must be recovered before adding {typeof(T).Name}.");
 
         using var lockRelease = _lock.Acquire();
         {
