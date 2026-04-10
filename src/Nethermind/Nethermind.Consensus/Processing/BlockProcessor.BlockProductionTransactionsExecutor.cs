@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    ITransactionProcessorAdapter processor = balManager.Enabled ? transactionProcessor : balManager.GetTxProcessor();
+                    ITransactionProcessorAdapter processor = balManager.Enabled ? balManager.GetTxProcessor() : transactionProcessor;
                     TransactionResult result = processor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, stateProvider);
 
                     if (result)
