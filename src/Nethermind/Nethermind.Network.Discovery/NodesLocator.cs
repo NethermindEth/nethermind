@@ -26,7 +26,7 @@ public class NodesLocator : INodesLocator
 
     public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodesLocator>() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));

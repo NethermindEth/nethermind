@@ -99,10 +99,7 @@ namespace Nethermind.Serialization.Rlp
             _decodersSnapshot = null;
         }
 
-        public static partial void RegisterDecoders(
-            [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.Interfaces)]
-            Assembly assembly,
-            bool canOverrideExistingDecoders = false);
+        public static partial void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false);
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             => Decode<T>(oldRlp.Bytes.AsSpan(), rlpBehaviors);
@@ -1769,7 +1766,7 @@ namespace Nethermind.Serialization.Rlp
             public string Key { get; } = key;
         }
 
-        private static ILogger _logger = Static.LogManager.GetClassLogger();
+        private static ILogger _logger = Static.LogManager.GetClassLogger<Rlp>();
 
         [StackTraceHidden]
         public static void GuardLimit(int count, int bytesLeft, RlpLimit? limit = null)

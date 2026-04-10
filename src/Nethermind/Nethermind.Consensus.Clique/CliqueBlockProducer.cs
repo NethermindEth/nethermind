@@ -54,7 +54,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         ICliqueConfig config,
         ILogManager logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CliqueBlockProducerRunner>() ?? throw new ArgumentNullException(nameof(logManager));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
         _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
@@ -313,7 +313,7 @@ public class CliqueBlockProducer : IBlockProducer
         ILogManager logManager
     )
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<CliqueBlockProducer>() ?? throw new ArgumentNullException(nameof(logManager));
         _txSource = txSource ?? throw new ArgumentNullException(nameof(txSource));
         _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -324,7 +324,7 @@ public class CliqueBlockProducer : IBlockProducer
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         _config = config ?? throw new ArgumentNullException(nameof(config));
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<CliqueBlockProducer>();
     }
 
     public ConcurrentDictionary<Address, bool> Proposals => _proposals;

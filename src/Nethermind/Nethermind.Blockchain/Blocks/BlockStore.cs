@@ -17,7 +17,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
     private readonly BlockDecoder _blockDecoder = new(headerDecoder ?? new HeaderDecoder());
     public const int CacheSize = 128 + 32;
 
-    private readonly ClockCache<ValueHash256, Block>
+    private readonly AssociativeCache<ValueHash256, Block>
         _blockCache = new(CacheSize);
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -53,7 +53,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public void Delete(long blockNumber, Hash256 blockHash)
     {
-        _blockCache.Delete(blockHash);
+        _blockCache.Delete(in blockHash.ValueHash256);
         blockDb.Delete(blockNumber, blockHash);
         blockDb.Remove(blockHash.Bytes);
     }
@@ -88,7 +88,11 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
 
     public void Cache(Block block)
     {
-        _blockCache.Set(block.Hash, block);
+        // Cache a sanitized copy to avoid retaining large BAL/account-change
+        // structures, without mutating the original block instance which may
+        // still be used by downstream consumers (e.g., TxPool reads and
+        // disposes AccountChanges after this call).
+        _blockCache.Set(in block.Hash.ValueHash256, new(block.Header, block.Body));
     }
 
     void IClearableCache.ClearCache()

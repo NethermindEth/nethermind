@@ -26,7 +26,7 @@ public class PersistenceManager(
     ISnapshotRepository snapshotRepository,
     ILogManager logManager) : IPersistenceManager
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<PersistenceManager>();
     private readonly int _minReorgDepth = configuration.MinReorgDepth;
     private readonly int _maxReorgDepth = configuration.MaxReorgDepth;
     private readonly int _compactSize = configuration.CompactSize;

@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Processing
             _executeFromThreadPool = ExecuteFromThreadPool;
 
             _stateReader = stateReader;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<ProcessingStats>();
 
             // the line below just to avoid compilation errors
             if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");

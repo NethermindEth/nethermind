@@ -13,7 +13,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 
@@ -28,7 +27,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ISnapTrieFactory _trieFactory;
 
         // This is actually close to 97% effective.
-        private readonly ClockKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
+        private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
 
         public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager)
         {

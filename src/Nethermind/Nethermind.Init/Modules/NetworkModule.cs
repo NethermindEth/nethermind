@@ -40,7 +40,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
         base.Load(builder);
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
-            .AddLast<ITxGossipPolicy, SyncedTxGossipPolicy>()
+            .AddSingleton<SyncedTxGossipPolicy>()
+            .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
             .AddCompositeOrderedComponents<ITxGossipPolicy, CompositeTxGossipPolicy>()
             .AddSingleton<IIPResolver, IPResolver>()
             .AddSingleton<IForkInfo, ForkInfo>()
@@ -138,6 +139,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
+
+            .AddSingleton<State.SnapServer.ISnapServer, State.IWorldStateManager>(wsm => wsm.SnapServer!)
 
             // Protocol handler factories (using clean DSL with Autofac Func auto-generation)
             .AddProtocolHandler<Subprotocols.Snap.SnapProtocolHandler>()

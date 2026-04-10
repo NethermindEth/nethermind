@@ -919,8 +919,10 @@ public class BlockTreeTests
         blockTree.UpdateMainChain(block0);
         blockTree.BestSuggestedHeader.Should().Be(block1.Header);
         blockTree.PendingHash.Should().Be(block0.Hash!);
+        Block? pending = ((IBlockFinder)blockTree).FindPendingBlock();
+        pending!.Header.Should().BeSameAs(block0.Header);
+        pending.Body.Should().Be(block0.Body);
         ((IBlockFinder)blockTree).FindPendingHeader().Should().BeSameAs(block0.Header);
-        ((IBlockFinder)blockTree).FindPendingBlock().Should().BeSameAs(block0);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

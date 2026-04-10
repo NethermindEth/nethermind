@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters
         {
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<FilterManager>() ?? throw new ArgumentNullException(nameof(logManager));
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             mainProcessingContext.TransactionProcessed += OnTransactionProcessed;
             _filterStore.FilterRemoved += OnFilterRemoved;

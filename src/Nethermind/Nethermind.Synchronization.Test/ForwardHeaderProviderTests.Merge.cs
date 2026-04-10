@@ -87,7 +87,6 @@ public partial class ForwardHeaderProviderTests
             ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(16, BlockTreeLookupOptions.None));
 
         SyncPeerMock syncPeer = new(syncedTree, false, Response.AllCorrect, 16000000);
-        PeerInfo peerInfo = new(syncPeer);
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         ctx.ConfigureBestPeer(syncPeer);

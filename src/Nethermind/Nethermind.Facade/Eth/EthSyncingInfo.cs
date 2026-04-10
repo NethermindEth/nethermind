@@ -33,7 +33,7 @@ namespace Nethermind.Facade.Eth
             _syncConfig = syncConfig;
             _syncModeSelector = syncModeSelector;
             _syncProgressResolver = syncProgressResolver;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<EthSyncingInfo>();
         }
 
         public SyncingResult GetFullInfo()

@@ -38,10 +38,8 @@ public static class XdcSort
     /// </summary>
     public static void Slice<T>(IList<T> x, Func<T, T, bool> less)
     {
-        if (x == null)
-            throw new ArgumentNullException(nameof(x));
-        if (less == null)
-            throw new ArgumentNullException(nameof(less));
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(less);
 
         int length = x.Count;
         var data = new LessSwap<T>(x, less);

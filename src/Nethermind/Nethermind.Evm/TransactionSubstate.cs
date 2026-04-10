@@ -5,12 +5,10 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Text;
-using System.Text.Unicode;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Collections;
-using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -30,6 +28,7 @@ public readonly ref struct TransactionSubstate
 
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
+
 
     private static readonly FrozenDictionary<UInt256, string> PanicReasons = new Dictionary<UInt256, string>
     {
@@ -104,8 +103,13 @@ public readonly ref struct TransactionSubstate
         Error = TryGetErrorMessage(span) ?? EncodeErrorMessage(span);
     }
 
-    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
-        Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.IndexOfAnyExceptInRange((byte)32, (byte)126) >= 0)
+            return span.ToHexString(true);
+
+        return Encoding.ASCII.GetString(span);
+    }
 
     public static string? GetErrorMessage(ReadOnlySpan<byte> span)
     {

@@ -130,7 +130,7 @@ public class Startup : IStartup
         }
 
         ILogManager? logManager = app.ApplicationServices.GetService<ILogManager>() ?? NullLogManager.Instance;
-        ILogger logger = logManager.GetClassLogger();
+        ILogger logger = logManager.GetClassLogger<Startup>();
         IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
         IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
         IJsonRpcUrlCollection jsonRpcUrlCollection = app.ApplicationServices.GetRequiredService<IJsonRpcUrlCollection>();

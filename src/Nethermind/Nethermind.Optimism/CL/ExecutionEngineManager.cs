@@ -15,7 +15,7 @@ public class ExecutionEngineManager(
     ILogManager logManager) : IExecutionEngineManager
 {
     private readonly DerivedBlocksVerifier _derivedBlocksVerifier = new(logManager);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ExecutionEngineManager>();
 
     private BlockId _currentHead;
     private BlockId _currentFinalizedHead;
