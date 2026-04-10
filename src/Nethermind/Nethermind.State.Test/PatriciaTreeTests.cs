@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -127,6 +128,26 @@ namespace Nethermind.Store.Test
             tree.UpdateRootHash();
 
             tree.RootHash.Should().NotBe(rootHash);
+        }
+
+        [Test]
+        public void Accept_with_nonexistent_storage([Values] bool isFullDbScan)
+        {
+            using ITrieStore trieStore = CreateTrieStore();
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
+            {
+                using var _ = trieStore.BeginBlockCommit(0);
+                stateTree.Set(TestItem.AddressA, new Account(1));
+                stateTree.Commit();
+            }
+
+            ITreeVisitor<EmptyContext> visitor = Substitute.For<ITreeVisitor<EmptyContext>>();
+            {
+                visitor.IsFullDbScan.Returns(isFullDbScan);
+            }
+
+            stateTree.Accept(visitor, stateTree.RootHash, storageAddr: TestItem.KeccakA);
+            visitor.Received(1).VisitTree(Arg.Any<EmptyContext>(), Keccak.EmptyTreeHash);
         }
 
         private ITrieStore CreateTrieStore(IDb db = null)
