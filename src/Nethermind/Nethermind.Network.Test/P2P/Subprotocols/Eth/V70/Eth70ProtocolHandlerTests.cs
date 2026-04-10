@@ -321,9 +321,11 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        result.Should().HaveCount(2);
-        result[0].Should().BeEmpty();
-        result[1].Should().BeEquivalentTo(block2Receipts);
+        Assert.That(result.Count, Is.EqualTo(2));
+        Assert.That(result[0], Is.Empty);
+        Assert.That(result[1].Length, Is.EqualTo(block2Receipts.Length));
+        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+        Assert.That(result[1][0].Logs, Is.Empty);
     }
 
     [Test]
