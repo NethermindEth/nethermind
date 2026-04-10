@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Config;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -67,7 +66,7 @@ public class StatelessBlockProcessingEnv(
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
             new ExecutionRequestsProcessor(txProcessor),
-            new BlockAccessListManager(WorldState, specProvider, new BlockhashProvider(statelessBlockTree, WorldState, logManager), logManager, new BlocksConfig())
+            NullBlockAccessListManager.Instance
         );
     }
 
