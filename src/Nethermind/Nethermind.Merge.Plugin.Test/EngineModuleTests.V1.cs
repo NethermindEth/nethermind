@@ -617,23 +617,15 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
+        // Capture genesis as parent before building canonical chain
+        ExecutionPayload genesisAsParent = CreateParentBlockRequestOnHead(chain.BlockTree);
+
         // Build canonical chain: genesis → b1 → b2 → ... → b34 (head at H=34)
-        IReadOnlyList<ExecutionPayload> canonical = await ProduceBranchV1(rpc, chain, 34, CreateParentBlockRequestOnHead(chain.BlockTree), setHead: true);
+        IReadOnlyList<ExecutionPayload> canonical = await ProduceBranchV1(rpc, chain, 34, genesisAsParent, setHead: true);
         Hash256 b34Hash = canonical[33].BlockHash;
         chain.BlockTree.HeadHash.Should().Be(b34Hash, "precondition: canonical head is at H=34");
 
         // Build a side block off genesis (H=1, different branch)
-        BlockHeader genesis = chain.BlockTree.Genesis!;
-        ExecutionPayload genesisAsParent = new ExecutionPayload
-        {
-            BlockNumber = genesis.Number,
-            BlockHash = genesis.Hash!,
-            StateRoot = genesis.StateRoot!,
-            ReceiptsRoot = genesis.ReceiptsRoot!,
-            GasLimit = genesis.GasLimit,
-            Timestamp = genesis.Timestamp,
-            BaseFeePerGas = genesis.BaseFeePerGas,
-        };
         ExecutionPayload sideBlock = CreateBlockRequest(chain, genesisAsParent, TestItem.AddressA);
         await rpc.engine_newPayloadV1(sideBlock);
         Hash256 sideHash = sideBlock.BlockHash;

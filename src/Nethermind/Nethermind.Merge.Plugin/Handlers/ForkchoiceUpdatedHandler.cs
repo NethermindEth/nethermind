@@ -91,7 +91,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
-    protected virtual bool IsAncestorOnMainChainBeyondReorgDepthLimit(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
+    protected virtual bool ShouldProceedWithReorg(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState,
        [NotNullWhen(false)] out ResultWrapper<ForkchoiceUpdatedV1Result>? errorResult)
     {
         if (_blockTree.IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadBlock))
@@ -247,7 +247,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
-        if (!IsAncestorOnMainChainBeyondReorgDepthLimit(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
+        if (!ShouldProceedWithReorg(newHeadBlock, forkchoiceState, out ResultWrapper<ForkchoiceUpdatedV1Result>? result))
         {
             return result;
         }
@@ -281,7 +281,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (shouldUpdateHead)
         {
-            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, finalizedBlockHash);
+            _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, ResolveZeroHash(finalizedBlockHash, _blockTree.FinalizedHash));
             if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 

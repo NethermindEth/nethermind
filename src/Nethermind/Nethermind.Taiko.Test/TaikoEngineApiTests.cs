@@ -125,9 +125,9 @@ public class TaikoEngineApiTests
     }
 
     [Test]
-    public async Task IsAncestorOnMainChainBeyondReorgDepthLimit_Override_PreventsAncestorReorgSkip()
+    public async Task ShouldProceedWithReorg_Override_PreventsAncestorReorgSkip()
     {
-        // Taiko overrides IsAncestorOnMainChainBeyondReorgDepthLimit to always proceed (return true).
+        // Taiko overrides ShouldProceedWithReorg to always proceed (return true).
         // Without the override, FCU to a canonical ancestor >32 blocks behind head would be skipped
         // and UpdateMainChain would NOT be called. With the override, it must be called.
         IBlockTree blockTree = Substitute.For<IBlockTree>();
