@@ -11,17 +11,17 @@ on:
   workflow_dispatch:
 
 env:
-  TEST_USE_FLAT: "1"
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   TERM: xterm
+  TEST_USE_FLAT: 1
 
 jobs:
   tests:
     name: Run ${{ matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         project:
           - Ethereum.Abi.Test
@@ -86,7 +86,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -101,28 +101,12 @@ jobs:
         run: |
           dotnet test --project ${{ matrix.project }}.csproj -c release
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}${{ matrix.chunk && format('-{0}', matrix.chunk) || '' }}-flat-outcome
-          path: test.outcome
-          retention-days: 1
-
   tests-summary:
     name: Tests summary
     needs: tests
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Download test outcomes
-        uses: actions/download-artifact@v8
-
-      - name: Ensure all tests passed
+      - name: Check result
         run: |
-          data=$(cat **/test.outcome) && data=${data%?}
-          passed=$(echo "[$data]" | jq -r 'all')
-          [[ "$passed" == "true" ]] && exit 0 || exit 1
+          [[ "${{ needs.tests.result }}" == "success" ]]

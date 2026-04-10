@@ -4,6 +4,7 @@
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using System;
 using System.Collections.Concurrent;
@@ -15,7 +16,7 @@ namespace Nethermind.TxPool;
 
 public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     where TMessage : INew<TResourceId, TMessage>
-    where TResourceId : struct, IEquatable<TResourceId>
+    where TResourceId : struct, IEquatable<TResourceId>, IHash64bit<TResourceId>
 {
     private readonly int _timeoutMs;
     private readonly CancellationToken _token;
@@ -27,7 +28,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
     private readonly ConcurrentDictionary<TResourceId, HandlerBag<TMessage>> _retryRequests = new();
     private readonly ConcurrentQueue<(TResourceId ResourceId, DateTimeOffset ExpiresAfter)> _expiringQueue = new();
     private int _expiringQueueCounter = 0;
-    private readonly ClockKeyCache<TResourceId> _requestingResources;
+    private readonly AssociativeKeyCache<TResourceId> _requestingResources;
     private readonly ILogger _logger;
 
     internal int ResourcesInRetryQueue => _expiringQueueCounter;

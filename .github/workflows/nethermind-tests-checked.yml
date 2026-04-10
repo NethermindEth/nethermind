@@ -20,20 +20,19 @@ defaults:
 
 jobs:
   tests:
-    name: Run ${{ matrix.project }} [${{ matrix.variant.label }}]
+    name: Run ${{ matrix.project }} (${{ matrix.variant.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         variant:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
-            hw-intrinsic: ""
+            hw-intrinsic: ''
           - label: no-intrinsics
-            dotnet-args: ""
-            hw-intrinsic: "0"
+            dotnet-args: ''
+            hw-intrinsic: 0
         project:
           - Ethereum.Abi.Test
           - Ethereum.Basic.Test
@@ -103,7 +102,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -118,33 +117,20 @@ jobs:
           dotnet test --project ${{ matrix.project }}.csproj -c release \
             ${{ matrix.variant.dotnet-args }}
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.project }}-${{ matrix.variant.label }}-outcome
-          path: test.outcome
-          retention-days: 1
-
   tests-chunked:
-    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}) [${{ matrix.variant.label }}]
+    name: Run ${{ matrix.test.project }} (${{ matrix.test.chunk }}, ${{ matrix.variant.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         variant:
           - label: checked
             dotnet-args: -p:DefineConstants=TRACE%3BDEBUG
-            hw-intrinsic: ""
+            hw-intrinsic: ''
           - label: no-intrinsics
-            dotnet-args: ""
-            hw-intrinsic: "0"
+            dotnet-args: ''
+            hw-intrinsic: 0
         test:
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 1of8 }
           - { project: Ethereum.Legacy.Blockchain.Test, chunk: 2of8 }
@@ -175,7 +161,7 @@ jobs:
         uses: actions/setup-dotnet@v5
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', 'global.json') }}
@@ -185,38 +171,22 @@ jobs:
         id: test
         working-directory: src/Nethermind/${{ matrix.test.project }}
         env:
-          TEST_CHUNK: ${{ matrix.test.chunk }}
           DOTNET_EnableHWIntrinsic: ${{ matrix.variant.hw-intrinsic }}
+          TEST_CHUNK: ${{ matrix.test.chunk }}
           TEST_SKIP_HEAVY: 1
         run: |
           dotnet test --project ${{ matrix.test.project }}.csproj -c release \
             ${{ matrix.variant.dotnet-args }}
 
-      - name: Save test outcome
-        if: success() || failure()
-        run: echo "${{ steps.test.outcome == 'success' }}," >> test.outcome
-
-      - name: Upload test outcome
-        if: success() || failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.test.project }}-${{ matrix.test.chunk }}-${{ matrix.variant.label }}-outcome
-          path: test.outcome
-          retention-days: 1
-
   tests-summary:
     name: Tests summary
     needs: [tests, tests-chunked]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: Download test outcomes
-        uses: actions/download-artifact@v8
-        with:
-          path: .outcomes
-          pattern: '*-outcome'
-
-      - name: Ensure all tests passed
+      - name: Check result
         run: |
-          data=$(cat .outcomes/*/test.outcome) && data=${data%?}
-          passed=$(echo "[$data]" | jq -r 'all')
-          [[ "$passed" == "true" ]] && exit 0 || exit 1
+          [[ \
+            "${{ needs.tests.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "success" \
+          ]]
