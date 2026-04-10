@@ -52,6 +52,8 @@ public partial class BlockProcessor
         {
             balManager.ValidateBlockAccessList(block, 0);
 
+            balManager.NextTransaction();
+
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
@@ -59,6 +61,7 @@ public partial class BlockProcessor
 
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
+                balManager.NextTransaction();
             }
 
             return [.. receiptsTracer.TxReceipts];
