@@ -102,7 +102,7 @@ namespace Nethermind.Core.Crypto
         private bool IsZero => _bytes == default;
     }
 
-    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>, IComparable<Hash256AsKey>, IHash64bit<Hash256AsKey>
     {
         private readonly Hash256 _key = key;
         public Hash256 Value => _key;
@@ -112,6 +112,8 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Hash256AsKey other) => Equals(_key, other._key);
         public override int GetHashCode() => _key?.GetHashCode() ?? 0;
+        public long GetHashCode64() => _key is not null ? _key.GetHashCode64() : 0;
+        public bool Equals(in Hash256AsKey other) => Equals(_key, other._key);
 
         public int CompareTo(Hash256AsKey other) => _key.CompareTo(other._key);
     }
@@ -192,6 +194,7 @@ namespace Nethermind.Core.Crypto
         public override bool Equals(object? obj) => obj?.GetType() == typeof(Hash256) && Equals((Hash256)obj);
 
         public override int GetHashCode() => _hash256.GetHashCode();
+        internal long GetHashCode64() => SpanExtensions.FastHash64For32Bytes(ref Unsafe.As<ValueHash256, byte>(ref Unsafe.AsRef(in _hash256)));
 
         public static bool operator ==(Hash256? a, Hash256? b) => a is null ? b is null : b is not null && a._hash256 == b._hash256;
 
