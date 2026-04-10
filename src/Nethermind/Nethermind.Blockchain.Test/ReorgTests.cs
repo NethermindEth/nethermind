@@ -103,7 +103,7 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            new BlockAccessListManager(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig()));
+            new BlockAccessListManager(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance)));
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,

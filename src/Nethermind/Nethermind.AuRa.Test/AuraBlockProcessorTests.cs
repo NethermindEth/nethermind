@@ -195,7 +195,7 @@ namespace Nethermind.AuRa.Test
             IBlockTree blockTree = Build.A.BlockTree(GnosisSpecProvider.Instance).TestObject;
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
-            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig());
+            BlockAccessListManager balManager = new(stateProvider, GnosisSpecProvider.Instance, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(stateProvider, new ExecuteTransactionProcessorAdapter(transactionProcessor), HoodiSpecProvider.Instance, balManager);
             AuRaBlockProcessor processor = new(
                 GnosisSpecProvider.Instance,

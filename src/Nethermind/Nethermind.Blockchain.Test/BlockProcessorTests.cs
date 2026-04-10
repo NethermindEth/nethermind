@@ -48,7 +48,7 @@ public class BlockProcessorTests
     {
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig());
+        BlockAccessListManager balManager = new(stateProvider, HoodiSpecProvider.Instance, Substitute.For<IBlockhashProvider>(), LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance));
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(stateProvider, new ExecuteTransactionProcessorAdapter(transactionProcessor), HoodiSpecProvider.Instance, balManager);
         BlockProcessor processor = new(HoodiSpecProvider.Instance,
             TestBlockValidator.AlwaysValid,

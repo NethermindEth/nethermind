@@ -62,6 +62,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBranchProcessor, BranchProcessor>()
             .AddScoped<IBlockProcessor, BlockProcessor>()
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
+            .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
             .AddScoped<IProcessingStats, ProcessingStats>()

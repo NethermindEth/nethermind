@@ -39,7 +39,8 @@ public class BlockAccessListManager(
     ISpecProvider specProvider,
     IBlockhashProvider blockHashProvider,
     ILogManager logManager,
-    IBlocksConfig blocksConfig)
+    IBlocksConfig blocksConfig,
+    IWithdrawalProcessorFactory withdrawalProcessorFactory)
     : IBlockAccessListManager, IDisposable
 {
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
@@ -331,7 +332,8 @@ public class BlockAccessListManager(
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        IWithdrawalProcessor withdrawalProcessor = new WithdrawalProcessor(_txProcessorWithWorldStateManager.GetPostExecution().WorldState, logManager);
+        TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
+        IWithdrawalProcessor withdrawalProcessor = withdrawalProcessorFactory.Create(postExecution.WorldState, postExecution.TxProcessor);
         if (_isBuilding)
         {
             withdrawalProcessor = new BlockProductionWithdrawalProcessor(withdrawalProcessor);
