@@ -58,6 +58,11 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
+            if (signature.Length != Signature.Size)
+            {
+                return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
+            }
+
             message = ToEthSignedMessage(message);
             Hash256 msgHash = Keccak.Compute(message);
             PublicKey publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
