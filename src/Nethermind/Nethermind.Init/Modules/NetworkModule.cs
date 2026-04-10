@@ -27,6 +27,7 @@ using V66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using V68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using V69 = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using V70 = Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using V72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using NodeData = Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Snap = Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Subprotocols = Nethermind.Network.P2P.Subprotocols;
@@ -136,6 +137,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V70.GetReceiptsMessage70, V70.GetReceiptsMessageSerializer70>()
             .AddMessageSerializer<V70.ReceiptsMessage70, V70.ReceiptsMessageSerializer70>()
 
+            // V72
+            .AddMessageSerializer<V72.NewPooledTransactionHashesMessage72, V72.NewPooledTransactionHashesMessageSerializer72>()
+            .AddMessageSerializer<V72.GetCellsMessage72, V72.GetCellsMessageSerializer72>()
+            .AddMessageSerializer<V72.CellsMessage72, V72.CellsMessageSerializer72>()
+
             // P2P protocol handler factory (accepts any version; validation happens after Hello)
             .Map<PublicKey, IRlpxHost>(rlpx => rlpx.LocalNodeId)
             .AddProtocolHandler<P2PProtocolHandler>(Protocol.P2P)
@@ -150,6 +156,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddProtocolHandler<Subprotocols.Eth.V68.Eth68ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V69.Eth69ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V70.Eth70ProtocolHandler>()
+            .AddProtocolHandler<Subprotocols.Eth.V72.Eth72ProtocolHandler>()
 
             ;
     }

@@ -577,7 +577,15 @@ public class AdminModuleTests
         return peerPool;
     }
 
-    private static Peer CreateTestPeer(string clientId, Capability[] capabilities, bool isStatic = false, bool isInbound = false)
+    private static int GetProtocolVersion(object protocolInfo)
+        => (int)protocolInfo.GetType().GetProperty("Version")!.GetValue(protocolInfo)!;
+
+    private static Peer CreateTestPeer(
+        string clientId,
+        Capability[] capabilities,
+        bool isStatic = false,
+        bool isInbound = false,
+        byte? ethProtocolVersion = null)
     {
         // Create node
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic);
@@ -604,6 +612,14 @@ public class AdminModuleTests
         else
         {
             session.TryGetProtocolHandler("p2p", out Arg.Any<IProtocolHandler>()).Returns(false);
+        }
+
+        if (ethProtocolVersion.HasValue)
+        {
+            var ethHandler = Substitute.For<IProtocolHandler>();
+            ethHandler.ProtocolVersion.Returns(ethProtocolVersion.Value);
+            session.TryGetProtocolHandler("eth", out Arg.Any<IProtocolHandler>())
+                .Returns(x => { x[1] = ethHandler; return true; });
         }
 
         // Attach session
@@ -703,7 +719,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public void Admin_peers_uses_first_eth_version_for_protocol_info()
+    public void Admin_peers_uses_highest_eth_capability_for_protocol_info_without_handler()
     {
         // Arrange
         Capability[] capabilities = new[] {
@@ -718,6 +734,25 @@ public class AdminModuleTests
         PeerInfo peerInfo = result.Data[0];
         peerInfo.Caps.Should().BeEquivalentTo(capabilities);
         peerInfo.Protocols.Should().ContainKeys("eth", "snap");
+        GetProtocolVersion(peerInfo.Protocols["eth"]).Should().Be(68);
+    }
+
+    [Test]
+    public void Admin_peers_uses_negotiated_eth_version_for_protocol_info()
+    {
+        // Arrange
+        var capabilities = new[] {
+            new Capability("eth", 68), new Capability("eth", 72), new Capability("snap", 1) };
+        var peer = CreateTestPeer("Nethermind/v1.37.0", capabilities, ethProtocolVersion: 72);
+        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+
+        // Act
+        var result = module.admin_peers();
+
+        // Assert
+        var peerInfo = result.Data[0];
+        peerInfo.Protocols.Should().ContainKeys("eth", "snap");
+        GetProtocolVersion(peerInfo.Protocols["eth"]).Should().Be(72);
     }
 
     [Test]

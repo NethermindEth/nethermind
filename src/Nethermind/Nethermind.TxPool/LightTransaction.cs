@@ -29,6 +29,7 @@ public class LightTransaction : Transaction
         Timestamp = fullTx.Timestamp;
         PoolIndex = fullTx.PoolIndex;
         ProofVersion = fullTx.GetProofVersion();
+        BlobCellMask = (fullTx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask() ?? default;
         _size = fullTx.GetLength();
     }
 
@@ -45,7 +46,8 @@ public class LightTransaction : Transaction
         byte[][] blobVersionHashes,
         ulong poolIndex,
         int size,
-        ProofVersion proofVersion)
+        ProofVersion proofVersion,
+        BlobCellMask blobCellMask = default)
     {
         Type = TxType.Blob;
         Hash = hash;
@@ -60,10 +62,12 @@ public class LightTransaction : Transaction
         Timestamp = timestamp;
         PoolIndex = poolIndex;
         ProofVersion = proofVersion;
+        BlobCellMask = blobCellMask;
         _size = size;
     }
 
     public ProofVersion? ProofVersion { get; set; }
+    public BlobCellMask BlobCellMask { get; set; }
 
     public override ProofVersion? GetProofVersion() => ProofVersion;
 }

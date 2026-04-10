@@ -307,7 +307,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_add_nonce_gap_blob_tx_even_to_not_full_TxPool([Values(true, false)] bool isBlob)
+        public void should_allow_nonce_gap_blob_tx_when_blob_pool_has_capacity([Values(true, false)] bool isBlob)
         {
             _txPool = CreatePool(new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 128 }, GetCancunSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
@@ -329,7 +329,7 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
             _txPool.SubmitTx(firstTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None).Should().Be(isBlob ? AcceptTxResult.NonceGap : AcceptTxResult.Accepted);
+            _txPool.SubmitTx(nonceGapTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
         }
 
         [Test]
@@ -1041,7 +1041,7 @@ namespace Nethermind.TxPool.Test
                 {
                     yield return MakeTestCase("V0 should be evicted in Osaka", 0, mode, TestAction.AddV0, TestAction.Fork);
                     yield return MakeTestCase("Take only V0 ones before Osaka", 2, mode, TestAction.AddV0, TestAction.AddV0, TestAction.AddV1);
-                    yield return MakeTestCase("Evict old proof and all the next txs", 0, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
+                    yield return MakeTestCase("Evict old proof but keep later sparse txs", 1, mode, TestAction.AddV0, TestAction.AddV0, TestAction.Fork, TestAction.AddV1);
                     yield return MakeTestCase("Replace with new proof", 1, mode, TestAction.AddV0, TestAction.Fork, TestAction.ResetNonce, TestAction.AddV1);
                     yield return MakeTestCase("Ignore V1 before Osaka, no gaps", 0, mode, TestAction.AddV1);
                 }
@@ -1280,6 +1280,64 @@ namespace Nethermind.TxPool.Test
             blobs[1].Should().NotBeNull();
             proofs[0].Length.Should().Be(Ckzg.CellsPerExtBlob);
             proofs[1].Length.Should().Be(Ckzg.CellsPerExtBlob);
+        }
+
+        [Test]
+        public void should_accept_sparse_osaka_blob_tx_and_merge_sampled_cells()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory, Size = 10 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            Transaction fullBlobTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .WithNonce(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            ShardBlobNetworkWrapper fullWrapper = (ShardBlobNetworkWrapper)fullBlobTx.NetworkWrapper!;
+            BlobCellMask initialMask = BlobCellMask.FromIndices([1]);
+            BlobCellMask additionalMask = BlobCellMask.FromIndices([7]);
+            BlobCellMask requestedMask = initialMask | additionalMask;
+            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, initialMask, out byte[][] initialCells).Should().BeTrue();
+            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, additionalMask, out byte[][] additionalCells).Should().BeTrue();
+            BlobCellsHelper.TryGetFlattenedCells(fullWrapper, requestedMask, out byte[][] mergedCellsExpected).Should().BeTrue();
+
+            byte[][] emptyBlobs = new byte[fullWrapper.Blobs.Length][];
+            for (int i = 0; i < emptyBlobs.Length; i++)
+            {
+                emptyBlobs[i] = [];
+            }
+
+            Transaction sparseBlobTx = new();
+            fullBlobTx.CopyTo(sparseBlobTx);
+            sparseBlobTx.NetworkWrapper = fullWrapper with
+            {
+                Blobs = emptyBlobs,
+                CellMask = initialMask,
+                Cells = initialCells,
+            };
+
+            AcceptTxResult result = _txPool.SubmitTx(sparseBlobTx, TxHandlingOptions.None);
+            result.Should().Be(AcceptTxResult.Accepted, result.ToString());
+            _txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction storedSparseBlobTx).Should().BeTrue();
+            ShardBlobNetworkWrapper storedWrapper = (ShardBlobNetworkWrapper)storedSparseBlobTx!.NetworkWrapper!;
+            storedWrapper.HasFullBlobs().Should().BeFalse();
+            storedWrapper.CellMask.Should().Be(initialMask);
+            storedWrapper.Cells.Should().BeEquivalentTo(initialCells);
+
+            _txPool.TryMergeBlobCells(sparseBlobTx.Hash!, additionalMask, additionalCells).Should().BeTrue();
+            _txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction mergedSparseBlobTx).Should().BeTrue();
+
+            ShardBlobNetworkWrapper mergedWrapper = (ShardBlobNetworkWrapper)mergedSparseBlobTx!.NetworkWrapper!;
+            mergedWrapper.CellMask.Should().Be(requestedMask);
+            mergedWrapper.Cells.Should().BeEquivalentTo(mergedCellsExpected);
+
+            _txPool.TryGetBlobCells(sparseBlobTx.Hash!, requestedMask, out BlobCellMask availableMask, out byte[][] mergedCells).Should().BeTrue();
+            availableMask.Should().Be(requestedMask);
+            mergedCells.Should().BeEquivalentTo(mergedCellsExpected);
         }
     }
 }

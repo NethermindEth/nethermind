@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Api;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc;
@@ -11,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.Plugin;
 
@@ -29,15 +31,18 @@ public partial class EngineRpcModule(
     IHandler<IEnumerable<string>, IEnumerable<string>> capabilitiesHandler,
     IAsyncHandler<byte[][], IEnumerable<BlobAndProofV1?>> getBlobsHandler,
     IAsyncHandler<GetBlobsHandlerV2Request, IEnumerable<BlobAndProofV2?>?> getBlobsHandlerV2,
+    IAsyncHandler<GetBlobsHandlerV4Request, IEnumerable<BlobCellsAndProofsV1>> getBlobsHandlerV4,
     IHandler<IReadOnlyList<Hash256>, IEnumerable<ExecutionPayloadBodyV2Result?>> getPayloadBodiesByHashV2Handler,
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IEngineRequestsTracker engineRequestsTracker,
+    IBlobCustodyTracker blobCustodyTracker,
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     ILogManager logManager) : IEngineRpcModule
 {
 
     private readonly IHandler<IEnumerable<string>, IEnumerable<string>> _capabilitiesHandler = capabilitiesHandler ?? throw new ArgumentNullException(nameof(capabilitiesHandler));
+    private readonly IBlobCustodyTracker _blobCustodyTracker = blobCustodyTracker ?? throw new ArgumentNullException(nameof(blobCustodyTracker));
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager.GetClassLogger<EngineRpcModule>();
 

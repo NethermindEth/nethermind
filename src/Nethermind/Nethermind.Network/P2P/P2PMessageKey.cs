@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 
@@ -33,6 +34,7 @@ public readonly record struct P2PMessageKey(VersionedProtocol Protocol, int Pack
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth68MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth69MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth70MessageCode)))
+            .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth72MessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.NodeData, typeof(NodeDataMessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Snap, typeof(SnapMessageCode)))
             .ToFrozenDictionary();

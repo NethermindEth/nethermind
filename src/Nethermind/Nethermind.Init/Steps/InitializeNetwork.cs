@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -21,6 +22,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
 
@@ -56,6 +58,7 @@ public class InitializeNetwork : IStep
     private readonly NodeSourceToDiscV4Feeder _enrDiscoveryAppFeeder;
     private readonly ISyncConfig _syncConfig;
     private readonly IInitConfig _initConfig;
+    private readonly IChainHeadSpecProvider _chainHeadSpecProvider;
     protected readonly IProtocolHandlerFactory[] _protocolHandlerFactories;
 
     private readonly ILogger _logger;
@@ -74,6 +77,7 @@ public class InitializeNetwork : IStep
         INetworkConfig networkConfig,
         ISyncConfig syncConfig,
         IInitConfig initConfig,
+        IChainHeadSpecProvider chainHeadSpecProvider,
         ILogManager logManager
     )
     {
@@ -89,6 +93,7 @@ public class InitializeNetwork : IStep
         _networkConfig = networkConfig;
         _syncConfig = syncConfig;
         _initConfig = initConfig;
+        _chainHeadSpecProvider = chainHeadSpecProvider;
 
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
@@ -257,6 +262,13 @@ public class InitializeNetwork : IStep
         await _api.TrustedNodesManager.InitAsync();
 
         _api.ProtocolsManager = CreateProtocolManager();
+
+        if (_api.Config<ITxPoolConfig>().BlobsSupport.IsEnabled()
+            && _chainHeadSpecProvider.GetCurrentHeadSpec().IsEip7594Enabled)
+        {
+            if (_logger.IsInfo) _logger.Info("Adding eth/72 capability");
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 72));
+        }
 
         if (_syncConfig.SnapServingEnabled == true)
         {

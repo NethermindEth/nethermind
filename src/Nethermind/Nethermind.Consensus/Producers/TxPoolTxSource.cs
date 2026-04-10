@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.Producers
                     return false;
                 }
 
-                if (wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
+                if (!wrapper.HasFullBlobs() || wrapper.Blobs.Length != blobTx.BlobVersionedHashes.Length)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, incorrect blob count.");
                     return false;

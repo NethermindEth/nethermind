@@ -4,9 +4,11 @@
 using CkzgLib;
 using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using System;
 using System.Collections.Generic;
@@ -57,7 +59,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                             && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
                         {
-                            if (wrapper is null || wrapper.Version != requiredVersion)
+                            if (wrapper is null || wrapper.Version != requiredVersion || !wrapper.HasFullBlobs())
                             {
                                 break;
                             }
@@ -101,6 +103,11 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                     if (Bytes.AreEqual(blobTx.BlobVersionedHashes[indexOfBlob], requestedBlobVersionedHash)
                         && blobTx.NetworkWrapper is ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
                     {
+                        if (!wrapper.HasFullBlobs())
+                        {
+                            break;
+                        }
+
                         blobs[i] = wrapper.Blobs[indexOfBlob];
                         proofs[i] = new ReadOnlyMemory<byte[]>(
                             wrapper.Proofs,
@@ -158,6 +165,100 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         return false;
     }
 
+    public bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (TryGetValueNonLocked(hash, out Transaction? blobTx)
+            && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
+            && BlobCellsHelper.TryGetFlattenedCells(wrapper, requestedMask, out byte[][] flattenedCells))
+        {
+            availableMask = wrapper.GetAvailableCellMask() & requestedMask;
+            cells = flattenedCells;
+            return true;
+        }
+
+        availableMask = default;
+        cells = default;
+        return false;
+    }
+
+    public bool TryGetBlobCellsAndProofsV1(
+        byte[] requestedBlobVersionedHash,
+        BlobCellMask requestedMask,
+        out BlobCellMask availableMask,
+        out byte[][]? cells,
+        out byte[][]? proofs)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+
+        if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
+        {
+            foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
+            {
+                if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+                    || blobTx.BlobVersionedHashes is not { Length: > 0 }
+                    || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper)
+                {
+                    continue;
+                }
+
+                for (int blobIndex = 0; blobIndex < blobTx.BlobVersionedHashes.Length; blobIndex++)
+                {
+                    if (!Bytes.AreEqual(blobTx.BlobVersionedHashes[blobIndex], requestedBlobVersionedHash))
+                    {
+                        continue;
+                    }
+
+                    availableMask = wrapper.GetAvailableCellMask() & requestedMask;
+                    if (availableMask.IsEmpty)
+                    {
+                        break;
+                    }
+
+                    if (!TryGetFlattenedCellsForBlob(wrapper, blobIndex, requestedMask, out cells))
+                    {
+                        break;
+                    }
+
+                    proofs = BlobCellsHelper.SelectProofs(wrapper, blobIndex, requestedMask);
+                    return true;
+                }
+            }
+        }
+
+        availableMask = default;
+        cells = default;
+        proofs = default;
+        return false;
+    }
+
+    public bool TryMergeCells(ValueHash256 hash, BlobCellMask cellMask, byte[][] cells)
+    {
+        using McsLock.Disposable lockRelease = Lock.Acquire();
+        if (!TryGetValueNonLocked(hash, out Transaction? blobTx)
+            || blobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper
+            || wrapper.Version is not ProofVersion.V1
+            || cellMask.IsEmpty)
+        {
+            return false;
+        }
+
+        if (wrapper.HasFullBlobs())
+        {
+            return true;
+        }
+
+        BlobCellMask mergedMask = wrapper.CellMask | cellMask;
+        byte[][] mergedCells = BlobCellsHelper.MergeFlattenedCells(wrapper.Cells, wrapper.CellMask, cells, cellMask, wrapper.Commitments.Length);
+        blobTx.NetworkWrapper = wrapper with { CellMask = mergedMask, Cells = mergedCells };
+        OnBlobTransactionUpdatedNonLocked(blobTx);
+        return true;
+    }
+
+    protected virtual void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
+    {
+    }
+
     private void RemoveFromBlobIndex(Transaction blobTx)
     {
         if (blobTx.BlobVersionedHashes?.Length > 0)
@@ -184,4 +285,52 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     /// </summary>
     internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? lightBlobTx)
         => base.TryGetValueNonLocked(hash, out lightBlobTx);
+
+    private static bool TryGetFlattenedCellsForBlob(ShardBlobNetworkWrapper wrapper, int blobIndex, BlobCellMask requestedMask, out byte[][]? cells)
+    {
+        BlobCellMask availableMask = wrapper.GetAvailableCellMask() & requestedMask;
+        if (availableMask.IsEmpty)
+        {
+            cells = default;
+            return false;
+        }
+
+        int cellsPerBlob = availableMask.Count;
+        cells = new byte[cellsPerBlob][];
+
+        if (wrapper.HasFullBlobs())
+        {
+            using ArrayPoolSpan<byte> allCells = new(Ckzg.BytesPerCell * Ckzg.CellsPerExtBlob);
+            KzgPolynomialCommitments.ComputeCells(allCells, wrapper.Blobs[blobIndex]);
+            int i = 0;
+            foreach (int cellIndex in availableMask.EnumerateSetBits())
+            {
+                cells[i++] = allCells.Slice(cellIndex * Ckzg.BytesPerCell, Ckzg.BytesPerCell).ToArray();
+            }
+
+            return true;
+        }
+
+        if (wrapper.Cells is null)
+        {
+            cells = default;
+            return false;
+        }
+
+        int sourceCellsPerBlob = wrapper.CellMask.Count;
+        int sourceOffset = blobIndex * sourceCellsPerBlob;
+        int sourcePosition = 0;
+        int targetPosition = 0;
+        foreach (int cellIndex in wrapper.CellMask.EnumerateSetBits())
+        {
+            if (availableMask.Contains(cellIndex))
+            {
+                cells[targetPosition++] = wrapper.Cells[sourceOffset + sourcePosition];
+            }
+
+            sourcePosition++;
+        }
+
+        return true;
+    }
 }

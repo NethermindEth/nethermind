@@ -50,17 +50,18 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
     public bool ValidateLengths(ShardBlobNetworkWrapper wrapper)
     {
-        int blobCount = wrapper.Blobs.Length;
+        int blobCount = wrapper.Commitments.Length;
         int proofCount = blobCount * Ckzg.CellsPerExtBlob;
 
-        if (blobCount != wrapper.Commitments.Length || proofCount != wrapper.Proofs.Length)
+        if (blobCount != wrapper.Blobs.Length || proofCount != wrapper.Proofs.Length)
         {
             return false;
         }
 
         for (int i = 0; i < blobCount; i++)
         {
-            if (wrapper.Blobs[i].Length != Ckzg.BytesPerBlob || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
+            int blobLength = wrapper.Blobs[i].Length;
+            if ((blobLength != 0 && blobLength != Ckzg.BytesPerBlob) || wrapper.Commitments[i].Length != Ckzg.BytesPerCommitment)
             {
                 return false;
             }
@@ -75,6 +76,24 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
 
         }
 
+        if (wrapper.Cells is null)
+        {
+            return wrapper.CellMask.IsEmpty;
+        }
+
+        if (wrapper.CellMask.IsEmpty || wrapper.Cells.Length != blobCount * wrapper.CellMask.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < wrapper.Cells.Length; i++)
+        {
+            if (wrapper.Cells[i].Length != Ckzg.BytesPerCell)
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -83,6 +102,11 @@ internal class BlobProofsManagerV1 : IBlobProofsManager
         if (wrapper.Version is not ProofVersion.V1)
         {
             return false;
+        }
+
+        if (!wrapper.HasFullBlobs())
+        {
+            return BlobCellsHelper.ValidateCells(wrapper);
         }
 
         int blobCount = wrapper.Blobs.Length;

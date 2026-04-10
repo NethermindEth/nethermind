@@ -317,6 +317,7 @@ namespace Nethermind.Core
 
         public void CopyTo(Transaction tx)
         {
+            tx.Hash = Hash;
             tx.ChainId = ChainId;
             tx.Type = Type;
             tx.IsAnchorTx = IsAnchorTx;
@@ -378,9 +379,31 @@ namespace Nethermind.Core
     }
 
     /// <summary>
-    /// Holds network form fields for <see cref="TxType.Blob" /> transactions
+    /// Holds network form fields for <see cref="TxType.Blob" /> transactions.
     /// </summary>
-    public record ShardBlobNetworkWrapper(byte[][] Blobs, byte[][] Commitments, byte[][] Proofs, ProofVersion Version);
+    public record ShardBlobNetworkWrapper(
+        byte[][] Blobs,
+        byte[][] Commitments,
+        byte[][] Proofs,
+        ProofVersion Version,
+        BlobCellMask CellMask = default,
+        byte[][]? Cells = null)
+    {
+        public bool HasFullBlobs()
+        {
+            for (int i = 0; i < Blobs.Length; i++)
+            {
+                if (Blobs[i].Length == 0)
+                {
+                    return false;
+                }
+            }
+
+            return Blobs.Length != 0;
+        }
+
+        public BlobCellMask GetAvailableCellMask() => HasFullBlobs() ? BlobCellMask.Full : CellMask;
+    }
 
     public enum ProofVersion : byte
     {

@@ -20,7 +20,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(tx.GetLength())
-               + Rlp.LengthOf(sizeof(byte));
+               + Rlp.LengthOf(sizeof(byte))
+               + Rlp.LengthOf((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask().ToBytes() ?? BlobCellMask.Empty.ToBytes());
 
     public static byte[] Encode(Transaction tx)
     {
@@ -39,6 +40,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
         rlpStream.Encode((byte)((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.Version ?? default));
+        rlpStream.Encode((tx.NetworkWrapper as ShardBlobNetworkWrapper)?.GetAvailableCellMask().ToBytes() ?? BlobCellMask.Empty.ToBytes());
 
         return rlpStream.Data.ToArray()!;
     }
@@ -59,6 +61,9 @@ public class LightTxDecoder : TxDecoder<Transaction>
             ctx.DecodeByteArrays(),
             ctx.DecodeULong(),
             ctx.DecodeInt(),
-            ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1 ? (ProofVersion)ctx.ReadByte() : default);
+            ctx.PeekNumberOfItemsRemaining(maxSearch: 2) >= 1 ? (ProofVersion)ctx.ReadByte() : default,
+            ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1
+                ? BlobCellMask.FromBytes(ctx.DecodeByteArraySpan().ToArray())
+                : default);
     }
 }

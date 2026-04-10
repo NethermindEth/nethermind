@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
 
@@ -78,6 +79,11 @@ namespace Nethermind.Network.Test.Builders
         public SerializationBuilder WithEth70(ISpecProvider specProvider) => WithEth69(specProvider)
                 .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70(new GetReceiptsMessageSerializer()))
                 .With<ReceiptsMessage70>(new ReceiptsMessageSerializer70(specProvider));
+
+        public SerializationBuilder WithEth72(ISpecProvider specProvider) => WithEth70(specProvider)
+                .With(new NewPooledTransactionHashesMessageSerializer72())
+                .With(new GetCellsMessageSerializer72())
+                .With(new CellsMessageSerializer72());
 
         public SerializationBuilder WithNodeData() => With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
                 .With(new Network.P2P.Subprotocols.NodeData.Messages.NodeDataMessageSerializer());

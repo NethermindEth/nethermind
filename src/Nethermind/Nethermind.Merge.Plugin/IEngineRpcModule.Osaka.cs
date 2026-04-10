@@ -28,4 +28,16 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<IEnumerable<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes);
+
+    [JsonRpcMethod(
+        Description = "Returns requested blob cells and proofs.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<IEnumerable<BlobCellsAndProofsV1>>> engine_getBlobsV4(byte[][] blobVersionedHashes, byte[] indicesBitarray);
+
+    [JsonRpcMethod(
+        Description = "Updates the current blob custody set.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<object>> engine_blobCustodyUpdatedV1(byte[] indicesBitarray);
 }

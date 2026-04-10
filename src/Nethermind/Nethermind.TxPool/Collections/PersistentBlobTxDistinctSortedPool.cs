@@ -231,4 +231,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 
         return false;
     }
+
+    protected override void OnBlobTransactionUpdatedNonLocked(Transaction blobTx)
+    {
+        _blobTxCache.Set(blobTx.Hash, blobTx);
+        _blobTxStorage.Add(blobTx);
+    }
 }

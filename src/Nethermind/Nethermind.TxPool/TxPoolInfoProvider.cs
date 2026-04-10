@@ -15,9 +15,20 @@ namespace Nethermind.TxPool
 
         public TxPoolInfo GetInfo()
         {
-            // only std txs are picked here. Should we add blobs?
             // BTW this class should be rewritten or removed - a lot of unnecessary allocations
-            IDictionary<AddressAsKey, Transaction[]> groupedTransactions = txPool.GetPendingTransactionsBySender();
+            Dictionary<AddressAsKey, Transaction[]> groupedTransactions = new(txPool.GetPendingTransactionsBySender());
+            foreach ((AddressAsKey sender, Transaction[] blobTransactions) in txPool.GetPendingLightBlobTransactionsBySender())
+            {
+                if (groupedTransactions.TryGetValue(sender, out Transaction[]? existing))
+                {
+                    groupedTransactions[sender] = existing.Concat(blobTransactions).ToArray();
+                }
+                else
+                {
+                    groupedTransactions[sender] = blobTransactions;
+                }
+            }
+
             Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new();
             Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new();
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)

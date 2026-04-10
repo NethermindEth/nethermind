@@ -128,7 +128,7 @@ public class BlobTxStorage : IBlobTxStorage
         if (bytes is not null)
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
-            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm);
+            blockBlobTransactions = _txDecoder.DecodeArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
             return true;
         }
 
@@ -143,7 +143,7 @@ public class BlobTxStorage : IBlobTxStorage
     {
         if (txBytes is not null)
         {
-            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm);
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
             transaction.SenderAddress = sender;
             return true;
         }
@@ -180,13 +180,13 @@ public class BlobTxStorage : IBlobTxStorage
 
     private void EncodeAndSaveTx(Transaction transaction, IDb db, Span<byte> txHashPrefixed)
     {
-        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.InMempoolForm);
+        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(transaction, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
         db.PutSpan(txHashPrefixed, rlpStream.AsSpan());
     }
 
     private void EncodeAndSaveTxs(in ArrayPoolListRef<Transaction> blockBlobTransactions, IDb db, long blockNumber)
     {
-        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm);
+        using NettyRlpStream rlpStream = _txDecoder.EncodeToNewNettyStream(blockBlobTransactions!, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
         db.PutSpan(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), rlpStream.AsSpan());
     }
 }

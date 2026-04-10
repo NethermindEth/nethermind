@@ -61,6 +61,27 @@ namespace Nethermind.TxPool.Test
             VerifyNonceAndTransactions(queued.Value, 9);
         }
 
+        [Test]
+        public void should_include_blob_transactions_in_pending_and_queued_results()
+        {
+            _stateReader.GetNonce(_address).Returns(1u);
+
+            _txPool.GetPendingTransactionsBySender()
+                .Returns(new Dictionary<AddressAsKey, Transaction[]>());
+            _txPool.GetPendingLightBlobTransactionsBySender()
+                .Returns(new Dictionary<AddressAsKey, Transaction[]>
+                {
+                    { _address, new[] { GetBlobTransaction(1), GetBlobTransaction(3) } }
+                });
+
+            TxPoolInfo info = _infoProvider.GetInfo();
+
+            info.Pending.Should().ContainKey(_address);
+            info.Pending[_address].Keys.Should().BeEquivalentTo(new[] { 1UL });
+            info.Queued.Should().ContainKey(_address);
+            info.Queued[_address].Keys.Should().BeEquivalentTo(new[] { 3UL });
+        }
+
         private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) => transactionNonce[nonce].Nonce.Should().Be(nonce);
 
         private Transaction[] GetTransactions()
@@ -72,6 +93,13 @@ namespace Nethermind.TxPool.Test
 
         private Transaction GetTransaction(UInt256 nonce)
             => Build.A.Transaction
+                .WithNonce(nonce)
+                .WithSenderAddress(_address)
+                .TestObject;
+
+        private Transaction GetBlobTransaction(UInt256 nonce)
+            => Build.A.Transaction
+                .WithType(TxType.Blob)
                 .WithNonce(nonce)
                 .WithSenderAddress(_address)
                 .TestObject;

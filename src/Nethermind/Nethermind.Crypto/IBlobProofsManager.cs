@@ -42,7 +42,7 @@ public interface IBlobProofsVerifier
     bool ValidateLengths(ShardBlobNetworkWrapper blobs);
     public bool ValidateHashes(ShardBlobNetworkWrapper blobs, ReadOnlySpan<byte[]> blobVersionedHashes)
     {
-        if (blobs.Blobs.Length != blobVersionedHashes.Length)
+        if (blobs.Commitments.Length != blobVersionedHashes.Length)
         {
             return false;
         }
@@ -57,7 +57,7 @@ public interface IBlobProofsVerifier
             }
         }
 
-        for (int i = 0; i < blobs.Blobs.Length; i++)
+        for (int i = 0; i < blobs.Commitments.Length; i++)
         {
             if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(blobs.Commitments[i], hash) || !hash.SequenceEqual(blobVersionedHashes[i].AsSpan()))
             {
