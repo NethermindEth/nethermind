@@ -13,9 +13,9 @@ public class TraceCallManyRequest : IJsonRpcParam, IDisposable
 {
     private const int MaxCallCount = 1024;
 
-    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; set; } = new(0);
+    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; set; } = null!;
 
-    public void Dispose() => Calls.Dispose();
+    public void Dispose() => Calls?.Dispose();
 
     /// <summary>
     /// Used by the JSON-RPC framework to deserialize from a JsonElement.
@@ -34,26 +34,34 @@ public class TraceCallManyRequest : IJsonRpcParam, IDisposable
 
             if (jsonValue.ValueKind != JsonValueKind.Array)
             {
-                throw new ArgumentException("Expected an array of calls");
+                throw new JsonException("Expected an array of calls");
             }
 
             int count = jsonValue.GetArrayLength();
             if (count > MaxCallCount)
             {
-                throw new ArgumentException($"Too many calls ({count}). Max is {MaxCallCount}.");
+                throw new JsonException($"Too many calls ({count}). Max is {MaxCallCount}.");
             }
 
             ArrayPoolList<TransactionForRpcWithTraceTypes> calls = new(count);
-            foreach (JsonElement element in jsonValue.EnumerateArray())
+            try
             {
-                TransactionForRpcWithTraceTypes? call = element.Deserialize<TransactionForRpcWithTraceTypes>(options);
-                if (call is not null)
+                foreach (JsonElement element in jsonValue.EnumerateArray())
                 {
-                    calls.Add(call);
+                    TransactionForRpcWithTraceTypes? call = element.Deserialize<TransactionForRpcWithTraceTypes>(options);
+                    if (call is not null)
+                    {
+                        calls.Add(call);
+                    }
                 }
-            }
 
-            Calls = calls;
+                Calls = calls;
+            }
+            catch
+            {
+                calls.Dispose();
+                throw;
+            }
         }
         finally
         {
@@ -75,28 +83,34 @@ public class TraceCallManyRequest : IJsonRpcParam, IDisposable
             }
 
             ArrayPoolList<TransactionForRpcWithTraceTypes> calls = new(4);
-
-            while (reader.Read())
+            try
             {
-                if (reader.TokenType == JsonTokenType.EndArray)
+                while (reader.Read())
                 {
-                    break;
+                    if (reader.TokenType == JsonTokenType.EndArray)
+                    {
+                        break;
+                    }
+
+                    if (calls.Count >= MaxCallCount)
+                    {
+                        throw new JsonException($"Too many calls. Max is {MaxCallCount}.");
+                    }
+
+                    TransactionForRpcWithTraceTypes? call = JsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(ref reader, options);
+                    if (call is not null)
+                    {
+                        calls.Add(call);
+                    }
                 }
 
-                if (calls.Count >= MaxCallCount)
-                {
-                    calls.Dispose();
-                    throw new JsonException($"Too many calls. Max is {MaxCallCount}.");
-                }
-
-                TransactionForRpcWithTraceTypes? call = JsonSerializer.Deserialize<TransactionForRpcWithTraceTypes>(ref reader, options);
-                if (call is not null)
-                {
-                    calls.Add(call);
-                }
+                return new TraceCallManyRequest { Calls = calls };
             }
-
-            return new TraceCallManyRequest { Calls = calls };
+            catch
+            {
+                calls.Dispose();
+                throw;
+            }
         }
 
         public override void Write(Utf8JsonWriter writer, TraceCallManyRequest value, JsonSerializerOptions options)

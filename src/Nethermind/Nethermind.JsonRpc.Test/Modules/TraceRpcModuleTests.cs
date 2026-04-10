@@ -1071,6 +1071,7 @@ public class TraceRpcModuleTests
         traces.Data.Single().Action!.Gas.Should().BeLessThan(gasCap);
     }
 
+    [TestCase(0, 0, false)]
     [TestCase(2, 2, false)]
     [TestCase(3, 3, false)]
     [TestCase(1024, 1024, false)]
