@@ -91,11 +91,12 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
+        BlockAccessListManager balManager = new(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance));
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,
             new RewardCalculator(specProvider),
-            new BlockProcessor.BlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider),
+            new BlockProcessor.ParallelBlockValidationTransactionsExecutor(new ExecuteTransactionProcessorAdapter(transactionProcessor), stateProvider, specProvider, balManager),
             stateProvider,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(transactionProcessor, stateProvider),
@@ -103,7 +104,7 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            new BlockAccessListManager(stateProvider, specProvider, blockhashProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance)));
+            balManager);
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,

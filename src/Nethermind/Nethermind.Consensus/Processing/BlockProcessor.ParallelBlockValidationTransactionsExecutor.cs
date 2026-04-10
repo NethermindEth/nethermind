@@ -17,8 +17,8 @@ namespace Nethermind.Consensus.Processing;
 public partial class BlockProcessor
 {
     public class ParallelBlockValidationTransactionsExecutor(
-        IWorldState stateProvider,
         ITransactionProcessorAdapter transactionProcessor,
+        IWorldState stateProvider,
         ISpecProvider specProvider,
         IBlockAccessListManager balManager,
         BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler = null)
