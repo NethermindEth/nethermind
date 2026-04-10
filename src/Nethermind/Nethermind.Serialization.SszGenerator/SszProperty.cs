@@ -1,4 +1,7 @@
+using System.Collections;
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
+using Nethermind.Serialization.Ssz;
 
 class SszProperty
 {
@@ -10,32 +13,34 @@ class SszProperty
     public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop)
     {
         ITypeSymbol? itemType = GetCollectionType(prop.Type, semanticModel.Compilation);
+        ImmutableArray<AttributeData> attributes = prop.GetAttributes();
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
         SszProperty result = new SszProperty { Name = prop.Name, Type = type };
 
-        AttributeData? fieldAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszFieldAttribute");
+        AttributeData? fieldAttr = GetAttribute(attributes, nameof(SszFieldAttribute));
         if (fieldAttr is not null)
         {
             result.FieldIndex = fieldAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
         }
 
-        if (itemType is not null || prop.Type.Name == "BitArray")
+        if (itemType is not null || prop.Type.Name == nameof(BitArray))
         {
-            AttributeData? vectorAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszVectorAttribute");
+            AttributeData? vectorAttr = GetAttribute(attributes, nameof(SszVectorAttribute));
             if (vectorAttr is not null)
             {
                 result.Length = vectorAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
             }
-            AttributeData? listAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszListAttribute");
+
+            AttributeData? listAttr = GetAttribute(attributes, nameof(SszListAttribute));
             if (listAttr is not null)
             {
                 result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
             }
 
-            result.IsProgressiveList = prop.GetAttributes().Any(a => a.AttributeClass?.Name == "SszProgressiveListAttribute");
-            result.IsProgressiveBitList = prop.GetAttributes().Any(a => a.AttributeClass?.Name == "SszProgressiveBitlistAttribute");
+            result.IsProgressiveList = HasAttribute(attributes, nameof(SszProgressiveListAttribute));
+            result.IsProgressiveBitList = HasAttribute(attributes, nameof(SszProgressiveBitlistAttribute));
         }
 
         return result;
@@ -58,6 +63,12 @@ class SszProperty
         return null;
     }
 
+    private static AttributeData? GetAttribute(ImmutableArray<AttributeData> attributes, string attributeName) =>
+        attributes.FirstOrDefault(attribute => attribute.AttributeClass?.Name == attributeName);
+
+    private static bool HasAttribute(ImmutableArray<AttributeData> attributes, string attributeName) =>
+        attributes.Any(attribute => attribute.AttributeClass?.Name == attributeName);
+
 
     public required string Name { get; init; }
     public required SszType Type { get; init; }
@@ -76,12 +87,12 @@ class SszProperty
 
             if (Limit is not null)
             {
-                return Type.Name == "BitArray" ? Kind.BitList : Kind.List;
+                return Type.Name == nameof(BitArray) ? Kind.BitList : Kind.List;
             }
 
             if (Length is not null)
             {
-                return Type.Name == "BitArray" ? Kind.BitVector : Kind.Vector;
+                return Type.Name == nameof(BitArray) ? Kind.BitVector : Kind.Vector;
             }
 
             if (IsProgressiveList)

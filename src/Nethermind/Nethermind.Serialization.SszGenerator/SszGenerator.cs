@@ -1,18 +1,27 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using Nethermind.Serialization.Ssz;
 using System.Text;
 using System.Text.RegularExpressions;
 
 [Generator]
-public partial class SszGenerator : IIncrementalGenerator
+public class SszGenerator : IIncrementalGenerator
 {
+    private static readonly DiagnosticDescriptor GenerationFailureRule = new(
+        "SSZ003",
+        "SSZ source generation failed",
+        "Failed to generate SSZ code for '{0}': {1}",
+        "SourceGeneration",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         context.RegisterPostInitializationOutput(static spc =>
             spc.AddSource("Serialization.SszEncoding.Helpers.cs", SourceText.From(GenerateHelpersCode(), Encoding.UTF8)));
 
-        IncrementalValuesProvider<(SszType, List<SszType>)?> classDeclarations = context.SyntaxProvider
+        IncrementalValuesProvider<(SszType Type, List<SszType> FoundTypes, Location? Location)?> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsClassWithAttribute(syntaxNode),
                 transform: (context, _) => GetClassWithAttribute(context))
@@ -24,8 +33,12 @@ public partial class SszGenerator : IIncrementalGenerator
             {
                 return;
             }
-            string generatedCode = GenerateClassCode(decl.Value.Item1, decl.Value.Item2);
-            spc.AddSource($"Serialization.SszEncoding.{decl.Value.Item1.Name}.cs", SourceText.From(generatedCode, Encoding.UTF8));
+
+            string? generatedCode = GenerateClassCode(spc, decl.Value.Type, decl.Value.FoundTypes, decl.Value.Location);
+            if (generatedCode is not null)
+            {
+                spc.AddSource($"Serialization.SszEncoding.{decl.Value.Type.Name}.cs", SourceText.From(generatedCode, Encoding.UTF8));
+            }
         });
     }
 
@@ -35,7 +48,7 @@ public partial class SszGenerator : IIncrementalGenerator
                classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
     }
 
-    private static (SszType, List<SszType>)? GetClassWithAttribute(GeneratorSyntaxContext context)
+    private static (SszType Type, List<SszType> FoundTypes, Location? Location)? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
         TypeDeclarationSyntax classDeclaration = (TypeDeclarationSyntax)context.Node;
         foreach (AttributeListSyntax attributeList in classDeclaration.AttributeLists)
@@ -46,7 +59,10 @@ public partial class SszGenerator : IIncrementalGenerator
                 if (methodSymbol is not null && IsSszRootAttribute(methodSymbol.ContainingType))
                 {
                     List<SszType> foundTypes = new(SszType.BasicTypes);
-                    return (SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
+                    return (
+                        SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!),
+                        foundTypes,
+                        classDeclaration.Identifier.GetLocation());
                 }
             }
         }
@@ -54,9 +70,7 @@ public partial class SszGenerator : IIncrementalGenerator
     }
 
     private static bool IsSszRootAttribute(INamedTypeSymbol attributeType) =>
-        attributeType.ToString() is
-            "Nethermind.Serialization.Ssz.SszContainerAttribute"
-            or "Nethermind.Serialization.Ssz.SszCompatibleUnionAttribute";
+        attributeType.Name is nameof(SszContainerAttribute) or nameof(SszCompatibleUnionAttribute);
 
     const string Whitespace = "/**/";
     private const int UnboundedBitlistLimit = 0;
@@ -434,7 +448,7 @@ public partial class SszEncoding
 
     private static bool RequiresNullGuard(SszProperty property) => !(property.Type.IsStruct || property.Kind is Kind.BitList or Kind.ProgressiveBitList);
 
-    private static string GenerateClassCode(SszType decl, List<SszType> foundTypes)
+    private static string? GenerateClassCode(SourceProductionContext context, SszType decl, List<SszType> foundTypes, Location? location)
     {
         try
         {
@@ -1065,7 +1079,8 @@ public partial class SszEncoding
         }
         catch (Exception e)
         {
-            return $"/* Failed due to error: {e.Message}*/";
+            context.ReportDiagnostic(Diagnostic.Create(GenerationFailureRule, location ?? Location.None, decl.Name, e.Message));
+            return null;
         }
     }
 

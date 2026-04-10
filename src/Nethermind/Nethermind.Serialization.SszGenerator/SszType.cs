@@ -1,7 +1,10 @@
 using Microsoft.CodeAnalysis;
+using Nethermind.Serialization.Ssz;
 
 class SszType
 {
+    private const string SelectorPropertyName = "Selector";
+
     static SszType()
     {
         BasicTypes.Add(new SszType
@@ -89,8 +92,8 @@ class SszType
     public bool IsStruct { get; set; }
     public SszType? EnumType { get; set; }
 
-    public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != "Selector") : null;
-    public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == "Selector");
+    public IEnumerable<SszProperty>? CompatibleUnionMembers => Kind == Kind.CompatibleUnion ? Members?.Where(x => x.Name != SelectorPropertyName) : null;
+    public SszProperty? Selector => Members?.FirstOrDefault(x => x.Name == SelectorPropertyName);
 
     private int? _length;
 
@@ -289,7 +292,7 @@ class SszType
         }
 
         bool isProgressiveContainer = HasAnyFieldIndex(type);
-        bool isCompatibleUnion = HasAttribute(type, "SszCompatibleUnionAttribute");
+        bool isCompatibleUnion = HasAttribute(type, nameof(SszCompatibleUnionAttribute));
         if (isProgressiveContainer && isCompatibleUnion)
         {
             throw new InvalidOperationException($"Type {GetTypeName(type)} cannot be both a progressive container and a compatible union.");
@@ -350,11 +353,11 @@ class SszType
 
     private static void InitializeCompatibleUnion(ITypeSymbol type, SszType result)
     {
-        SszProperty selector = result.Selector ?? throw new InvalidOperationException($"Compatible union {result.Name} must declare a public Selector property.");
+        SszProperty selector = result.Selector ?? throw new InvalidOperationException($"Compatible union {result.Name} must declare a public {SelectorPropertyName} property.");
         ITypeSymbol selectorSymbol = GetPublicProperties(type).First(x => x.Name == selector.Name).Type;
-        if (selectorSymbol is not INamedTypeSymbol selectorType || selectorType.TypeKind != TypeKind.Enum || selectorType.EnumUnderlyingType?.Name != "Byte")
+        if (selectorSymbol is not INamedTypeSymbol selectorType || selectorType.TypeKind != TypeKind.Enum || selectorType.EnumUnderlyingType?.Name != nameof(Byte))
         {
-            throw new InvalidOperationException($"Compatible union {result.Name}.Selector must use a byte-backed enum.");
+            throw new InvalidOperationException($"Compatible union {result.Name}.{SelectorPropertyName} must use a byte-backed enum.");
         }
 
         SszProperty[] members = result.CompatibleUnionMembers?.ToArray() ?? [];
@@ -418,7 +421,7 @@ class SszType
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
     private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
-        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
+        GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == nameof(SszFieldAttribute)));
 
     private static string? GetNamespace(ITypeSymbol syntaxNode) => syntaxNode.ContainingNamespace?.ToString();
 
@@ -430,7 +433,7 @@ class SszType
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
         object? attrValue = typeSymbol
-            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszContainerAttribute")?
+            .GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == nameof(SszContainerAttribute))?
             .ConstructorArguments.FirstOrDefault().Value;
 
         return attrValue is not null && (bool)attrValue;

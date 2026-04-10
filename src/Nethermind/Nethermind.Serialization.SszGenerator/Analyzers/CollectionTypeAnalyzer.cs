@@ -42,36 +42,13 @@ public class CollectionTypeAnalyzer : SszDiagnosticAnalyzer
 
     private static void CheckProperty(SyntaxNodeAnalysisContext context, PropertyDeclarationSyntax propertyDeclaration)
     {
-        static bool IsCollectionType(ITypeSymbol typeSymbol)
-        {
-            if (typeSymbol is INamedTypeSymbol namedTypeSymbol)
-            {
-                ImmutableArray<INamedTypeSymbol> interfaces = namedTypeSymbol.AllInterfaces;
-                return interfaces.Any(i => i.Name == "IEnumerable");
-            }
-
-            return false;
-        }
-
         ITypeSymbol? typeSymbol = context.SemanticModel.GetTypeInfo(propertyDeclaration.Type).Type;
 
-        if (typeSymbol is not null && (typeSymbol is IArrayTypeSymbol || IsCollectionType(typeSymbol)))
+        if (typeSymbol is not null && IsCollectionType(typeSymbol))
         {
             bool hasRequiredAttribute = propertyDeclaration.AttributeLists
                 .SelectMany(attrList => attrList.Attributes)
-                .Any(attr =>
-                {
-                    string name = attr.Name.ToString();
-                    return name == "SszList"
-                        || name == "SszVector"
-                        || name == "SszListAttribute"
-                        || name == "SszVectorAttribute"
-                        || name == "SszProgressiveList"
-                        || name == "SszProgressiveListAttribute"
-                        || name == "SszProgressiveBitlist"
-                        || name == "SszProgressiveBitlistAttribute"
-                        || name == "BitArray";
-                });
+                .Any(attr => MatchesAttributeName(attr, SszCollectionAttributeNames));
 
             if (!hasRequiredAttribute)
             {
