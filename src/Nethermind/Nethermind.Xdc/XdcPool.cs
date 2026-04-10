@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using System.Collections.Generic;
@@ -13,7 +12,7 @@ namespace Nethermind.Xdc;
 
 public class XdcPool<T> where T : IXdcPoolItem
 {
-    private readonly Dictionary<(ulong Round, Hash256 Hash), ArrayPoolList<T>> _items = new();
+    private readonly Dictionary<(ulong Round, Hash256 Hash), Dictionary<Address, T>> _items = new();
     private readonly McsLock _lock = new();
 
     public long Add(T item)
@@ -27,11 +26,10 @@ public class XdcPool<T> where T : IXdcPoolItem
             if (!_items.TryGetValue(key, out var list))
             {
                 //128 should be enough to cover all master nodes and some extras
-                list = new ArrayPoolList<T>(128);
+                list = new Dictionary<Address, T>(128);
                 _items[key] = list;
             }
-            if (list.All(x => x.Signer != item.Signer))
-                list.Add(item);
+            list.TryAdd(item.Signer, item);
             return list.Count;
         }
     }
@@ -42,9 +40,9 @@ public class XdcPool<T> where T : IXdcPoolItem
         {
             foreach (var key in _items.Keys)
             {
-                if (key.Round <= round && _items.Remove(key, out ArrayPoolList<T> list))
+                if (key.Round <= round)
                 {
-                    list?.Dispose();
+                    _items.Remove(key, out Dictionary<Address, T> _);
                 }
             }
         }
@@ -55,10 +53,10 @@ public class XdcPool<T> where T : IXdcPoolItem
         using var lockRelease = _lock.Acquire();
         {
             var key = item.PoolKey();
-            if (_items.TryGetValue(key, out ArrayPoolList<T> list))
+            if (_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
                 //Allocating a new array since it goes outside the lock
-                return list.ToArray();
+                return list.Values.ToArray();
             }
             return [];
         }
@@ -69,9 +67,9 @@ public class XdcPool<T> where T : IXdcPoolItem
         using var lockRelease = _lock.Acquire();
         {
             var key = item.PoolKey();
-            if (_items.TryGetValue(key, out ArrayPoolList<T> list))
+            if (_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
-                return list.Count;
+                return list.Values.Count;
             }
             return 0;
         }
