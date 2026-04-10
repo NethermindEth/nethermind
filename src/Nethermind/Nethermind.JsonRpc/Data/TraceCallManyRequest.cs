@@ -11,7 +11,14 @@ public class TraceCallManyRequest : IJsonRpcParam, IDisposable
 {
     private const int MaxCallCount = 1024;
 
-    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; set; } = null!;
+    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls { get; private set; } = null!;
+
+    public TraceCallManyRequest() { }
+
+    public TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes> calls)
+    {
+        Calls = calls;
+    }
 
     public void Dispose() => Calls?.Dispose();
 
@@ -20,9 +27,12 @@ public class TraceCallManyRequest : IJsonRpcParam, IDisposable
         JsonDocument? doc = null;
         try
         {
+            // IJsonRpcParam receives string-encoded JSON when parameters are passed
+            // as strings through the RPC framework — same pattern as Filter.ReadJson
             if (jsonValue.ValueKind == JsonValueKind.String)
             {
-                doc = JsonDocument.Parse(jsonValue.GetString()!);
+                string raw = jsonValue.GetString() ?? throw new JsonException("Expected a non-null string value");
+                doc = JsonDocument.Parse(raw);
                 jsonValue = doc.RootElement;
             }
 
