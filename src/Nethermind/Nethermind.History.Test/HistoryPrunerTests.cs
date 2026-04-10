@@ -20,6 +20,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
@@ -261,6 +262,141 @@ public class HistoryPrunerTests
     }
 
     [Test]
+    public async Task SetMinDeletableBlockNumber_preserves_blocks_below_minimum()
+    {
+        const int blocks = 100;
+        const int cutoff = 36;
+        const long minDeletable = 20;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+
+        List<Hash256> blockHashes = [];
+        blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        for (int i = 0; i < blocks; i++)
+        {
+            await testBlockchain.AddBlock();
+            blockHashes.Add(testBlockchain.BlockTree.Head!.Hash!);
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SetMinDeletableBlockNumber(minDeletable);
+
+        CheckOldestAndCutoff(minDeletable, cutoff, historyPruner);
+
+        historyPruner.TryPruneHistory(CancellationToken.None);
+
+        CheckGenesisPreserved(testBlockchain, blockHashes[0]);
+
+        for (int i = 1; i < minDeletable; i++)
+        {
+            CheckBlockPreserved(testBlockchain, blockHashes, i);
+        }
+
+        for (int i = (int)minDeletable; i <= blocks; i++)
+        {
+            if (i < cutoff)
+            {
+                CheckBlockPruned(testBlockchain, blockHashes, i);
+            }
+            else
+            {
+                CheckBlockPreserved(testBlockchain, blockHashes, i);
+            }
+        }
+
+        CheckHeadPreserved(testBlockchain, blocks);
+        CheckOldestAndCutoff(cutoff, cutoff, historyPruner);
+    }
+
+    [Test]
+    public async Task SetMinDeletableBlockNumber_clamps_stale_db_pointer()
+    {
+        const int blocks = 100;
+        const long stalePointer = 5;
+        const long minDeletable = 20;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 2,
+            PruningInterval = 0
+        };
+
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig));
+
+        for (int i = 0; i < blocks; i++)
+        {
+            await testBlockchain.AddBlock();
+        }
+
+        testBlockchain.BlockTree.SyncPivot = (blocks, Hash256.Zero);
+
+        // Simulate a stale delete pointer in the DB (below the configured minimum)
+        IDb metadataDb = testBlockchain.Container.Resolve<IDbProvider>().MetadataDb;
+        metadataDb.Set(MetadataDbKeys.HistoryPruningDeletePointer, Rlp.Encode(stalePointer).Bytes);
+
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SetMinDeletableBlockNumber(minDeletable);
+
+        // Trigger pointer load — stale DB value must be clamped to minDeletable
+        Assert.That(historyPruner.OldestBlockHeader?.Number, Is.EqualTo(minDeletable),
+            "Delete pointer loaded from DB must be clamped to the configured minimum deletable block number");
+    }
+
+    [Test]
+    public async Task SchedulePruneHistory_passes_configured_timeout_to_scheduler()
+    {
+        const uint expectedTimeoutSeconds = 5;
+
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 100000,
+            PruningTimeoutSeconds = expectedTimeoutSeconds,
+            PruningInterval = 0
+        };
+
+        var scheduler = new CapturingScheduler();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SchedulePruneHistory(CancellationToken.None);
+
+        await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(scheduler.CapturedTimeout, Is.EqualTo(TimeSpan.FromSeconds(expectedTimeoutSeconds)));
+    }
+
+    [Test]
+    public async Task SchedulePruneHistory_passes_null_timeout_when_PruningTimeoutSeconds_is_zero()
+    {
+        IHistoryConfig historyConfig = new HistoryConfig
+        {
+            Pruning = PruningModes.Rolling,
+            RetentionEpochs = 100000,
+            PruningTimeoutSeconds = 0,
+            PruningInterval = 0
+        };
+
+        var scheduler = new CapturingScheduler();
+        using BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create(BuildContainer(historyConfig, scheduler));
+
+        var historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        historyPruner.SchedulePruneHistory(CancellationToken.None);
+
+        await scheduler.Invoked.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(scheduler.CapturedTimeout, Is.Null);
+    }
+
+    [Test]
     public void Can_accept_valid_config()
     {
         IHistoryConfig validHistoryConfig = new HistoryConfig
@@ -368,7 +504,20 @@ public class HistoryPrunerTests
         }
     }
 
-    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig)
+    private sealed class CapturingScheduler : IBackgroundTaskScheduler
+    {
+        public TimeSpan? CapturedTimeout { get; private set; }
+        public TaskCompletionSource Invoked { get; } = new();
+
+        public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null, string source = null)
+        {
+            CapturedTimeout = timeout;
+            Invoked.TrySetResult();
+            return true;
+        }
+    }
+
+    private static Action<ContainerBuilder> BuildContainer(IHistoryConfig historyConfig, IBackgroundTaskScheduler scheduler = null)
     {
         // n.b. in prod MinHistoryRetentionEpochs should be 82125, however not feasible to test this
         ISpecProvider specProvider = new TestSpecProvider(new ReleaseSpec() { MinHistoryRetentionEpochs = 0 });
@@ -376,11 +525,17 @@ public class HistoryPrunerTests
         // prevent pruner being triggered by empty queue
         IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
 
-        return containerBuilder => containerBuilder
+        return containerBuilder =>
+        {
+            containerBuilder
             .AddSingleton(specProvider)
             .AddSingleton(blockProcessingQueue)
             .AddSingleton(historyConfig)
             .AddSingleton(BlocksConfig)
             .AddSingleton(SyncConfig);
+
+            if (scheduler is not null)
+                containerBuilder.AddSingleton(scheduler);
+        };
     }
 }
