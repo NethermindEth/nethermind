@@ -510,6 +510,50 @@ namespace Nethermind.Core.Test
             AssertItemCount(rlp, 3);
         }
 
+        [TestCase(2, 56)]
+        [TestCase(2, 198)]
+        [TestCase(3, 256)]
+        [TestCase(3, 65535)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_List(int prefixLength, int contentLength)
+        {
+            byte[] data = Rlp.Encode(Rlp.Encode(new byte[contentLength])).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+        }
+
+        [TestCase(2, 56)]
+        [TestCase(2, 255)]
+        [TestCase(3, 256)]
+        [TestCase(4, 65536)]
+        public void ReadPrefixAndContentLength_String(int prefixLength, int contentLength)
+        {
+            var data = Rlp.Encode(new byte[contentLength]).Bytes;
+
+            Rlp.ValueDecoderContext ctx = new(data.AsSpan());
+            Assert.That(ctx.ReadPrefixAndContentLength(), Is.EqualTo((prefixLength, contentLength)));
+        }
+
+        [TestCase(new byte[] { 0xB8 }, TestName = "Long-string, only prefix byte")]
+        [TestCase(new byte[] { 0xF8 }, TestName = "Long-list, only prefix byte")]
+        [TestCase(new byte[] { 0xB9, 0x01 }, TestName = "Long-string, only one length byte of two")]
+        [TestCase(new byte[] { 0xF9, 0x01 }, TestName = "Long-list, only one length byte of two")]
+        [TestCase(new byte[] { 0xB8, 0xFF }, TestName = "Long-string, content length exceeds buffer")]
+        [TestCase(new byte[] { 0xF8, 0xFF }, TestName = "Long-list, content length exceeds buffer")]
+        [TestCase(new byte[] { 0xBB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "Long-string, int overflow in content-length check")]
+        [TestCase(new byte[] { 0xFB, 0x7F, 0xFF, 0xFF, 0xFF }, TestName = "Long-list, int overflow in content-length check")]
+        public void ReadPrefixAndContentLength_OutOfBounds(byte[] data)
+        {
+            void Decode()
+            {
+                Rlp.ValueDecoderContext ctx = new(data);
+                ctx.ReadPrefixAndContentLength();
+            }
+
+            Assert.That(Decode, Throws.InstanceOf<RlpException>().With.Message.Contain("bounds"));
+        }
+
         private static void AssertItemCount(byte[] rlp, int expected)
         {
             Rlp.ValueDecoderContext ctx = new(rlp);
