@@ -76,7 +76,8 @@ public class BlockAccessListManager(
 
             if (ParallelExecutionEnabled)
             {
-                LoadPreStateToSuggestedBlockAccessList(spec, suggestedBlock);
+                ArgumentNullException.ThrowIfNull(suggestedBlock.BlockAccessList);
+                LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
             }
         }
     }
@@ -347,9 +348,9 @@ public class BlockAccessListManager(
         new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 
-    public void LoadPreStateToSuggestedBlockAccessList(IReleaseSpec spec, Block suggested)
+    private void LoadPreStateToSuggestedBlockAccessList(BlockAccessList bal)
     {
-        foreach (AccountChanges accountChanges in suggested.BlockAccessList.AccountChanges)
+        foreach (AccountChanges accountChanges in bal.AccountChanges)
         {
             // check if changed before loading prestate
             accountChanges.CheckWasChanged();
