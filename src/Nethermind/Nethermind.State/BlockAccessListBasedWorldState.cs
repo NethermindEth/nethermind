@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
@@ -23,8 +24,9 @@ public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
     int blockAccessIndex,
     Block suggestedBlock,
-    ILogManager logManager) : WrappedWorldState(innerWorldState), IPreBlockCaches
+    ILogManager logManager) : IWorldState, IPreBlockCaches
 {
+    protected IWorldState _innerWorldState = innerWorldState;
     private readonly BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
     private readonly BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
@@ -32,107 +34,127 @@ public class BlockAccessListBasedWorldState(
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
 
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
+
+    public bool IsInScope => _innerWorldState.IsInScope;
+    public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
+    public Hash256 StateRoot => _innerWorldState.StateRoot;
+
+    public bool HasStateForBlock(BlockHeader? baseBlock)
+        => _innerWorldState.HasStateForBlock(baseBlock);
+
+    public void WarmUp(AccessList? accessList)
+        => _innerWorldState.WarmUp(accessList);
+
+    public void WarmUp(Address address)
+        => _innerWorldState.WarmUp(address);
+
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
-    public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalanceInternal(address);
     }
 
-    public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalanceInternal(address);
         return !AccountExistsInternal(address);
     }
 
-    public override IDisposable BeginScope(BlockHeader? baseBlock)
+    public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
-    public override ReadOnlySpan<byte> Get(in StorageCell storageCell)
+    public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         => GetInternal(storageCell);
 
-    public override byte[] GetOriginal(in StorageCell storageCell)
+    public byte[] GetOriginal(in StorageCell storageCell)
         => GetOriginalInternal(storageCell);
 
-    public override void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
+    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
         oldNonce = GetNonceInternal(address);
     }
 
-    public override void SetNonce(Address address, in UInt256 nonce) { }
+    public void SetNonce(Address address, in UInt256 nonce) { }
 
-    public override bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+    public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         => true;
 
-    public override void Set(in StorageCell storageCell, byte[] newValue) { }
+    public void Set(in StorageCell storageCell, byte[] newValue) { }
 
-    public override UInt256 GetBalance(Address address)
+    public UInt256 GetBalance(Address address)
         => GetBalanceInternal(address);
 
-    public override UInt256 GetNonce(Address address)
+    public UInt256 GetNonce(Address address)
         => GetNonceInternal(address);
 
-    public override ValueHash256 GetCodeHash(Address address)
+    public ValueHash256 GetCodeHash(Address address)
         => GetCodeHashInternal(address);
 
-    public override byte[]? GetCode(Address address)
+    public byte[]? GetCode(Address address)
         => GetCodeInternal(address);
 
-    public override byte[]? GetCode(in ValueHash256 _)
+    public byte[]? GetCode(in ValueHash256 _)
         => null;
 
-    public override void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
         oldBalance = GetBalanceInternal(address);
     }
 
-    public override void DeleteAccount(Address address) { }
+    public void DeleteAccount(Address address) { }
 
-    public override void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default) { }
 
-    public override void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) { }
+    public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default) { }
 
-    public override bool TryGetAccount(Address address, out AccountStruct account)
+    public bool TryGetAccount(Address address, out AccountStruct account)
     {
         account = GetAccountInternal(address) ?? AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
-    public override void Restore(Snapshot snapshot) { }
+    public void Restore(Snapshot snapshot) { }
 
-    public override Snapshot TakeSnapshot(bool newTransactionStart = false)
+    public Snapshot TakeSnapshot(bool newTransactionStart = false)
         => Snapshot.Empty;
 
-    public override bool AccountExists(Address address)
+    public bool AccountExists(Address address)
         => AccountExistsInternal(address);
 
-    public override bool IsContract(Address address)
+    public bool IsContract(Address address)
         => IsContractInternal(address);
 
-    public override bool IsStorageEmpty(Address address)
+    public bool IsStorageEmpty(Address address)
         => IsStorageEmptyInternal(address);
 
-    public override bool IsDeadAccount(Address address)
+    public bool IsDeadAccount(Address address)
         => IsDeadAccountInternal(address);
 
-    public override void ClearStorage(Address address) { }
+    public void ClearStorage(Address address) { }
 
-    public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
+    public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
 
-    public override void RecalculateStateRoot() { }
+    public void CommitTree(long blockNumber)
+        => _innerWorldState.CommitTree(blockNumber);
 
-    public override void Reset(bool resetBlockChanges = true) { }
+    public void DecrementNonce(Address address, UInt256 delta)
+        => _innerWorldState.DecrementNonce(address, delta);
 
-    public override ArrayPoolList<AddressAsKey> GetAccountChanges() =>
+    public void RecalculateStateRoot() { }
+
+    public void Reset(bool resetBlockChanges = true) { }
+
+    public ArrayPoolList<AddressAsKey> GetAccountChanges() =>
         _suggestedBlockAccessList.AccountChanges.Where(a => a.AccountChanged).Select(a => new AddressAsKey(a.Address)).ToPooledList(_suggestedBlockAccessList.AccountChanges.Count());
 
-    public override ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+    public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         => _transientStorageProvider.Get(in storageCell);
 
-    public override void SetTransientState(in StorageCell storageCell, byte[] newValue)
+    public void SetTransientState(in StorageCell storageCell, byte[] newValue)
         => _transientStorageProvider.Set(in storageCell, newValue);
 
-    public override void ResetTransient()
+    public void ResetTransient()
         => _transientStorageProvider.Reset();
 
     private UInt256 GetBalanceInternal(Address address)
