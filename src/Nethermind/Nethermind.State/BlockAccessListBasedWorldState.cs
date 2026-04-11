@@ -23,12 +23,11 @@ namespace Nethermind.State;
 public class BlockAccessListBasedWorldState(
     IWorldState innerWorldState,
     int blockAccessIndex,
-    Block suggestedBlock,
     ILogManager logManager) : IWorldState, IPreBlockCaches
 {
     protected IWorldState _innerWorldState = innerWorldState;
-    private readonly BlockAccessList? _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
-    private readonly BlockHeader? _suggestedBlockHeader = suggestedBlock.Header;
+    private BlockAccessList? _suggestedBlockAccessList;
+    private BlockHeader? _suggestedBlockHeader;
     private readonly TransientStorageProvider _transientStorageProvider = new(logManager);
 
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
@@ -38,6 +37,13 @@ public class BlockAccessListBasedWorldState(
     public bool IsInScope => _innerWorldState.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => _innerWorldState.ScopeProvider;
     public Hash256 StateRoot => _innerWorldState.StateRoot;
+
+    public void Setup(Block suggestedBlock)
+    {
+        _suggestedBlockAccessList = suggestedBlock.BlockAccessList;
+        _suggestedBlockHeader = suggestedBlock.Header;
+        _transientStorageProvider.Reset();
+    }
 
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => _innerWorldState.HasStateForBlock(baseBlock);

@@ -17,7 +17,6 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
@@ -41,7 +40,7 @@ public class BlockAccessListManager(
     ILogManager logManager,
     IBlocksConfig blocksConfig,
     IWithdrawalProcessorFactory withdrawalProcessorFactory)
-    : IBlockAccessListManager, IDisposable
+    : IBlockAccessListManager
 {
     public BlockAccessList GeneratedBlockAccessList { get; set; } = new();
     public bool Enabled { get; private set; }
@@ -384,11 +383,6 @@ public class BlockAccessListManager(
             c.CodeChange is null &&
             !c.SlotChanges.GetEnumerator().MoveNext();
 
-    public void Dispose()
-    {
-        _parallelTxProcessorWithWorldStateManager.Dispose();
-    }
-
     private interface ITxProcessorWithWorldStateManager
     {
         void Setup(Block block, BlockExecutionContext blockExecutionContext);
@@ -399,40 +393,48 @@ public class BlockAccessListManager(
         void Rollback();
     }
 
-    private class ParallelTxProcessorWithWorldStateManager(
-        IBlockhashProvider blockHashProvider,
-        ISpecProvider specProvider,
-        IWorldState stateProvider,
-        ILogManager logManager) : ITxProcessorWithWorldStateManager, IDisposable
+    private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
     {
-        private ArrayPoolList<TxProcessorWithWorldState>? _txProcessorsWithWorldStates;
-        private readonly IBlockhashProvider _blockhashProvider = blockHashProvider;
-        private readonly ISpecProvider _specProvider = specProvider;
-        private readonly IWorldState _stateProvider = stateProvider;
-        private readonly ILogManager _logManager = logManager;
+        private TxProcessorWithWorldState[] _txProcessorsWithWorldStates;
+        private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ISpecProvider _specProvider;
+        private readonly IWorldState _stateProvider;
+        private readonly ILogManager _logManager;
+        private int _len;
+
+        public ParallelTxProcessorWithWorldStateManager(
+            IBlockhashProvider blockHashProvider,
+            ISpecProvider specProvider,
+            IWorldState stateProvider,
+            ILogManager logManager)
+        {
+            _blockhashProvider = blockHashProvider;
+            _specProvider = specProvider;
+            _stateProvider = stateProvider;
+            _logManager = logManager;
+            // pre-allocate and reuse worldstates
+            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[Eip7928Constants.MaxTxs];
+            for (int i = 0; i < Eip7928Constants.MaxTxs; i++)
+            {
+                _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
+            }
+        }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
         {
-            _txProcessorsWithWorldStates?.Dispose();
-            int len = block.Transactions.Length;
-            _txProcessorsWithWorldStates = new ArrayPoolList<TxProcessorWithWorldState>(len + 2, len + 2);
-            for (int i = 0; i < len + 2; i++)
+            _len = block.Transactions.Length + 2;
+            for (int i = 0; i < _len; i++)
             {
-                _txProcessorsWithWorldStates[i] = new(block, blockExecutionContext, i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
+                _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
 
         public TxProcessorWithWorldState Get(int? balIndex)
-            => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _txProcessorsWithWorldStates.Count - 1)];
+            => _txProcessorsWithWorldStates[int.Min(balIndex ?? 0, _len - 1)];
 
         public void NextTransaction() { }
 
         public void Rollback() { }
-
-        public void Dispose()
-        {
-            _txProcessorsWithWorldStates?.Dispose();
-        }
     }
 
     private class SequentialTxProcessorWithWorldStateManager(
@@ -441,12 +443,10 @@ public class BlockAccessListManager(
         IWorldState stateProvider,
         ILogManager logManager) : ITxProcessorWithWorldStateManager
     {
-        private TxProcessorWithWorldState _txProcessorWithWorldState;
+        private readonly TxProcessorWithWorldState _txProcessorWithWorldState = new(0, false, blockHashProvider, specProvider, stateProvider, logManager);
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
-        {
-            _txProcessorWithWorldState = new(block, blockExecutionContext, 0, false, blockHashProvider, specProvider, stateProvider, logManager);
-        }
+            => _txProcessorWithWorldState.Setup(block, blockExecutionContext);
 
         public TxProcessorWithWorldState Get(int? _)
             => _txProcessorWithWorldState;
@@ -465,13 +465,13 @@ public class BlockAccessListManager(
 
     private class TxProcessorWithWorldState
     {
-        public TracedAccessWorldState WorldState;
-        public TransactionProcessor<EthereumGasPolicy> TxProcessor;
-        public ExecuteTransactionProcessorAdapter TxProcessorAdapter;
+        public readonly TracedAccessWorldState WorldState;
+        public readonly TransactionProcessor<EthereumGasPolicy> TxProcessor;
+        public readonly ExecuteTransactionProcessorAdapter TxProcessorAdapter;
+        private readonly BlockAccessListBasedWorldState? _balWorldState;
+        private readonly int _balIndex;
 
         public TxProcessorWithWorldState(
-            Block block,
-            BlockExecutionContext blockExecutionContext,
             int balIndex,
             bool parallel,
             IBlockhashProvider blockHashProvider,
@@ -484,14 +484,23 @@ public class BlockAccessListManager(
             IWorldState worldState = stateProvider;
             if (parallel)
             {
-                worldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, block, logManager);
+                _balWorldState = new BlockAccessListBasedWorldState(stateProvider, balIndex, logManager);
+                worldState = _balWorldState;
             }
             WorldState = new TracedAccessWorldState(worldState, parallel);
             WorldState.SetIndex(balIndex);
             EthereumCodeInfoRepository codeInfoRepository = new(WorldState);
             TxProcessor = new(BlobBaseFeeCalculator.Instance, specProvider, WorldState, virtualMachine, codeInfoRepository, logManager, parallel);
             TxProcessorAdapter = new(TxProcessor);
+            _balIndex = balIndex;
+        }
+
+        public void Setup(Block block, BlockExecutionContext blockExecutionContext)
+        {
+            WorldState.Clear();
+            WorldState.SetIndex(_balIndex);
             TxProcessorAdapter.SetBlockExecutionContext(blockExecutionContext);
+            _balWorldState?.Setup(block);
         }
     }
 }
