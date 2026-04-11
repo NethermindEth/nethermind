@@ -233,7 +233,7 @@ public class DebugModuleTests
             Depth = 1
         };
 
-        GethLikeTxTrace trace = new GethLikeTxTrace();
+        GethLikeTxTrace trace = new();
         trace.ReturnValue = Bytes.FromHexString("a2");
         trace.Entries.Add(entry);
 

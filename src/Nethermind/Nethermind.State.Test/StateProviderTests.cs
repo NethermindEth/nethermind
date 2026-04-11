@@ -88,7 +88,7 @@ public class StateProviderTests(bool useFlat)
         provider.CreateAccount(systemUser, 0);
         provider.Commit(Homestead.Instance);
 
-        ReleaseSpec releaseSpec = new ReleaseSpec() { IsEip158Enabled = true, Eip158IgnoredAccount = systemUser };
+        ReleaseSpec releaseSpec = new() { IsEip158Enabled = true, Eip158IgnoredAccount = systemUser };
         provider.InsertCode(systemUser, System.Text.Encoding.UTF8.GetBytes(""), releaseSpec);
         provider.Commit(releaseSpec);
 

@@ -308,8 +308,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        AbiEncoder abiEncoder = new AbiEncoder();
-        AbiSignature errorSignature = new AbiSignature(
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new(
             "Error",
             AbiType.String
         );

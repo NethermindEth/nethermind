@@ -50,7 +50,7 @@ public class ChainSpecFileLoader
 
     private static string FileNameToResource(string fileName)
     {
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         sb.Append("Nethermind.Config.");
         if (!fileName.Contains('/'))
         {

@@ -241,7 +241,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 ? new(estimatedEntries)
                 : null;
 
-        private ValueHash256 _keyBuff = new ValueHash256();
+        private ValueHash256 _keyBuff = new();
 
         public void Set(in UInt256 index, byte[] value)
         {
@@ -279,7 +279,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
 
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                    new(_bulkWrite.AsSpan());
                 storageTree.BulkSet(asRef);
 
                 _bulkWrite?.Dispose();

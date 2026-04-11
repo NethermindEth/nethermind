@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test
 
             try
             {
-                using (MemoryStream ms = new MemoryStream())
+                using (MemoryStream ms = new())
                 {
                     sw = new StreamWriter(ms);
                     sr = new StreamReader(ms);

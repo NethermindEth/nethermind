@@ -238,12 +238,12 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            Enode enode1 = new Enode(enode1String);
+            Enode enode1 = new(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
             Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
-            Enode enode2 = new Enode(enode2String);
+            Enode enode2 = new(enode2String);
             Node node2 = new(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
             Session session2 = new(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
@@ -266,7 +266,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            PacketSender packetSender = new PacketSender(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             session1.RemoteHost = "1.2.3.4";
@@ -450,7 +450,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            NetworkNode networkNode = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode networkNode = new(ctx.GenerateEnode());
             ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
@@ -624,7 +624,7 @@ namespace Nethermind.Network.Test
             int disconnections = 0;
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            NetworkNode node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_delayLong);
 
@@ -644,7 +644,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            NetworkNode node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
@@ -658,7 +658,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            NetworkNode node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_delay, 10));
         }
 
@@ -745,10 +745,10 @@ namespace Nethermind.Network.Test
 
             public List<NetworkNode> CreateNodes(int count)
             {
-                List<NetworkNode> nodes = new List<NetworkNode>();
+                List<NetworkNode> nodes = new();
                 for (int i = 0; i < count; i++)
                 {
-                    PrivateKeyGenerator generator = new PrivateKeyGenerator();
+                    PrivateKeyGenerator generator = new();
                     string enode = GenerateEnode(generator);
                     NetworkNode node = new(enode);
                     nodes.Add(node);
@@ -820,7 +820,7 @@ namespace Nethermind.Network.Test
                     return Task.FromResult(false);
                 }
 
-                Session session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
                 lock (_sessions)
                 {

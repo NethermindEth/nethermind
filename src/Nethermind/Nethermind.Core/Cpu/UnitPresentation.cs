@@ -8,9 +8,9 @@ namespace Nethermind.Core.Cpu;
 
 public class UnitPresentation
 {
-    public static readonly UnitPresentation Default = new UnitPresentation(isVisible: true, 0);
+    public static readonly UnitPresentation Default = new(isVisible: true, 0);
 
-    public static readonly UnitPresentation Invisible = new UnitPresentation(isVisible: false, 0);
+    public static readonly UnitPresentation Invisible = new(isVisible: false, 0);
 
     public bool IsVisible { get; private set; }
 

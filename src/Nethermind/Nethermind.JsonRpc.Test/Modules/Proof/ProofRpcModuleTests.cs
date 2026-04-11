@@ -182,7 +182,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
         IReceiptFinder _receiptFinder = Substitute.For<IReceiptFinder>();
         LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
-        TxReceipt receipt1 = new TxReceipt()
+        TxReceipt receipt1 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 0,
@@ -198,7 +198,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
             Logs = logEntries
         };
 
-        TxReceipt receipt2 = new TxReceipt()
+        TxReceipt receipt2 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 1,

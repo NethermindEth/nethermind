@@ -14,7 +14,7 @@ public class SyncPointersTests
     [Test]
     public void WhenReceiptNotStore_SetLowestInsertedReceiptTo0()
     {
-        SyncPointers pointers = new SyncPointers(new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), new ReceiptConfig()
+        SyncPointers pointers = new(new TestMemDb(), new TestMemColumnsDb<ReceiptsColumns>(), new ReceiptConfig()
         {
             StoreReceipts = false
         });

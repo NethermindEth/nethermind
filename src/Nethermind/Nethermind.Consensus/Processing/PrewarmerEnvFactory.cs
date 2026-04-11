@@ -13,7 +13,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILifetime
 {
     public IReadOnlyTxProcessorSource Create(PreBlockCaches preBlockCaches)
     {
-        PrewarmerScopeProvider worldState = new PrewarmerScopeProvider(
+        PrewarmerScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
             preBlockCaches,
             populatePreBlockCache: true

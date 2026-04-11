@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Clique
                 return snapshot;
             }
 
-            List<BlockHeader> headers = new List<BlockHeader>();
+            List<BlockHeader> headers = new();
             lock (_snapshotCreationLock)
             {
                 BlockHeader? header = null;
@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Clique
 
                         if (_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
-                        SortedList<Address, long> signers = new SortedList<Address, long>(signersCount, AddressComparer.Instance);
+                        SortedList<Address, long> signers = new(signersCount, AddressComparer.Instance);
                         Address epochSigner = GetBlockSealer(header);
                         for (int i = 0; i < signersCount; i++)
                         {

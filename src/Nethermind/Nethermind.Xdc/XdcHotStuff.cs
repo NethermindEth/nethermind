@@ -287,7 +287,7 @@ namespace Nethermind.Xdc
 
                 _logger.Debug($"Round {currentRound}: Building proposal block");
 
-                XdcPayloadAttributes payloadAttributes = new XdcPayloadAttributes();
+                XdcPayloadAttributes payloadAttributes = new();
                 payloadAttributes.Round = currentRound;
                 payloadAttributes.QuorumCertificate = highestQC;
 
@@ -367,7 +367,7 @@ namespace Nethermind.Xdc
 
             try
             {
-                BlockRoundInfo voteInfo = new BlockRoundInfo(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
+                BlockRoundInfo voteInfo = new(head.Hash!, head.ExtraConsensusData.BlockRound, head.Number);
                 SetHighestVotedRound(votingRound);
                 await _votesManager.CastVote(voteInfo);
                 _lastActivityTime = DateTime.UtcNow;

@@ -359,8 +359,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,

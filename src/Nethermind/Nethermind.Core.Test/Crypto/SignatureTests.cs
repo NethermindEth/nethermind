@@ -38,7 +38,7 @@ public class SignatureTests
         byte[] data = messageBytes[98..];
         byte[] signatureSlice = signature[..64];
         byte recoveryId = signature[64];
-        Signature signatureObject = new Signature(signatureSlice, recoveryId);
+        Signature signatureObject = new(signatureSlice, recoveryId);
         Hash256 keccak = Keccak.Compute(Bytes.Concat(messageType, data));
         Span<byte> publicKey = stackalloc byte[65];
         bool result = SecP256k1.RecoverKeyFromCompact(publicKey, keccak.Bytes, signatureObject.Bytes, signatureObject.RecoveryId, false);

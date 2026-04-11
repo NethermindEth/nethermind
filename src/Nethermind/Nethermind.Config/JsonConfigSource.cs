@@ -72,7 +72,7 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        Dictionary<string, string> itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
 
         foreach (JsonProperty configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
         {

@@ -19,7 +19,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            BitArray input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
             byte[] encoded = new byte[(input.Length + 7) / 8];
@@ -41,7 +41,7 @@ namespace Nethermind.Serialization.Ssz.Test
             BitArray decoded = Ssz.DecodeBitvector(encoded, vectorLength);
 
             // Assert
-            BitArray expected = new BitArray(value);
+            BitArray expected = new(value);
             decoded.ShouldBe(expected);
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_merkleize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            BitArray input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
             byte[] hashTreeRoot = new byte[32];
@@ -64,7 +64,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_serialize_bitarray_bitlist(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            BitArray input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
             byte[] encoded = new byte[(input.Length + 8) / 8];
@@ -85,7 +85,7 @@ namespace Nethermind.Serialization.Ssz.Test
             BitArray decoded = Ssz.DecodeBitlist(encoded);
 
             // Assert
-            BitArray expected = new BitArray(value);
+            BitArray expected = new(value);
             decoded.ShouldBe(expected);
         }
 
@@ -93,7 +93,7 @@ namespace Nethermind.Serialization.Ssz.Test
         public void Can_merkleize_bitarray_bitlist(bool[] value, ulong maximumBitlistLength, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
-            BitArray input = new BitArray(value);
+            BitArray input = new(value);
 
             // Act
             byte[] hashTreeRoot = new byte[32];

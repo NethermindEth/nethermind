@@ -10,14 +10,14 @@ public class AccumulatorCalculatorTests
     [Test]
     public void Add_AddOneHashAndUInt256_DoesNotThrow()
     {
-        using AccumulatorCalculator sut = new AccumulatorCalculator();
+        using AccumulatorCalculator sut = new();
 
         Assert.That(() => sut.Add(Keccak.Zero, 0), Throws.Nothing);
     }
     [Test]
     public void ComputeRoot_AddValues_ReturnsExpectedResult()
     {
-        using AccumulatorCalculator sut = new AccumulatorCalculator();
+        using AccumulatorCalculator sut = new();
         sut.Add(Keccak.Zero, 1);
         sut.Add(Keccak.MaxValue, 2);
 
@@ -29,7 +29,7 @@ public class AccumulatorCalculatorTests
     [Test]
     public void ComputeRoot_AddOneHashAndUInt256_DoesNotThrow()
     {
-        using AccumulatorCalculator sut = new AccumulatorCalculator();
+        using AccumulatorCalculator sut = new();
         sut.Add(Keccak.Zero, 1);
         sut.Add(Keccak.MaxValue, 2);
 

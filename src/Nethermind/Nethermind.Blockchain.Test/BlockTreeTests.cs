@@ -251,7 +251,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Cleans_invalid_blocks_before_starting()
     {
-        MemDb blockInfosDb = new MemDb();
+        MemDb blockInfosDb = new();
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithBlockInfoDb(blockInfosDb)
             .WithoutSettingHead;
@@ -337,7 +337,7 @@ public class BlockTreeTests
     {
         _blocksDb = new TestMemDb();
         _headersDb = new TestMemDb();
-        TestMemDb blocksInfosDb = new TestMemDb();
+        TestMemDb blocksInfosDb = new();
 
         Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
         blocksInfosDb.ReadFunc = (key) =>
@@ -812,7 +812,7 @@ public class BlockTreeTests
         Block genesisBlock = Build.A.Block.Genesis.TestObject;
         Block headBlock = genesisBlock;
 
-        BlockStore blockStore = new BlockStore(new MemDb());
+        BlockStore blockStore = new(new MemDb());
         blockStore.Insert(genesisBlock);
 
         TestMemDb headersDb = new();
@@ -852,7 +852,7 @@ public class BlockTreeTests
         AddToMain(blockTree, block0);
         AddToMain(blockTree, block1);
 
-        Hash256 dec = new Hash256(blockInfosDb.Get(Keccak.Zero)!);
+        Hash256 dec = new(blockInfosDb.Get(Keccak.Zero)!);
         Assert.That(dec, Is.EqualTo(block1.Hash));
     }
 
@@ -1242,9 +1242,9 @@ public class BlockTreeTests
             PivotNumber = syncPivot
         };
 
-        MemDb blockInfosDb = new MemDb();
-        MemDb headersDb = new MemDb();
-        MemDb blockDb = new MemDb();
+        MemDb blockInfosDb = new();
+        MemDb headersDb = new();
+        MemDb blockDb = new();
 
         _ = Build.A.BlockTree()
             .WithHeadersDb(headersDb)
@@ -1775,7 +1775,7 @@ public class BlockTreeTests
     public async Task Visitor_can_block_adding_blocks()
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-        ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+        ManualResetEvent manualResetEvent = new(false);
         Task acceptTask = blockTree.Accept(new TestBlockTreeVisitor(manualResetEvent), CancellationToken.None);
         blockTree.CanAcceptNewBlocks.Should().BeFalse();
         manualResetEvent.Set();
@@ -1986,7 +1986,7 @@ public class BlockTreeTests
         BlockTree blockTree = BuildBlockTree();
 
         BlockHeader currentHeader = Build.A.BlockHeader.WithTotalDifficulty(1).WithDifficulty(1).WithNumber(1).TestObject;
-        using ArrayPoolList<BlockHeader> batch = new ArrayPoolList<BlockHeader>(1);
+        using ArrayPoolList<BlockHeader> batch = new(1);
         batch.Add(currentHeader);
 
         for (int i = 0; i < 100; i++)
@@ -2055,7 +2055,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_SyncPivot_FromConfig()
     {
-        SyncConfig syncConfig = new SyncConfig()
+        SyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = 999,
@@ -2068,7 +2068,7 @@ public class BlockTreeTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Load_SyncPivot_FromDb()
     {
-        SyncConfig syncConfig = new SyncConfig()
+        SyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = 999,

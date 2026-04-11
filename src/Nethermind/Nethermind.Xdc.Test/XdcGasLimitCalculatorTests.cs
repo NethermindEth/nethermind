@@ -25,7 +25,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 
@@ -46,7 +46,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns((long?)null);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 
@@ -70,7 +70,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000, parentGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
@@ -98,7 +98,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000, parentGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
@@ -123,7 +123,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1);
         IXdcReleaseSpec spec = CreateXdcSpec(isDynamicGasLimitBlock: dynamicBlockActive);
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
@@ -150,7 +150,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader parentHeader = CreateParentHeader(1000, targetGasLimit);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: true);
 
@@ -175,7 +175,7 @@ public class XdcGasLimitCalculatorTests
         IBlocksConfig blocksConfig = Substitute.For<IBlocksConfig>();
         blocksConfig.TargetBlockGasLimit.Returns(targetGasLimit);
 
-        XdcGasLimitCalculator calculator = new XdcGasLimitCalculator(specProvider, blocksConfig);
+        XdcGasLimitCalculator calculator = new(specProvider, blocksConfig);
         BlockHeader genesisHeader = CreateParentHeader(0, 5_000_000L);
         IXdcReleaseSpec xdcSpec = CreateXdcSpec(isDynamicGasLimitBlock: false);
 

@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly string _feedName;
         private ISyncPeerPool SyncPeerPool { get; }
 
-        private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CountdownEvent _activeTasks = new(1);
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;

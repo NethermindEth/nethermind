@@ -55,7 +55,7 @@ public class EncodingExtensionsTests
 
             public ReadOnlyChunk<TT> Append(ReadOnlyMemory<TT> memory)
             {
-                ReadOnlyChunk<TT> nextChunk = new ReadOnlyChunk<TT>(memory)
+                ReadOnlyChunk<TT> nextChunk = new(memory)
                 {
                     RunningIndex = RunningIndex + Memory.Length
                 };
@@ -85,7 +85,7 @@ public class EncodingExtensionsTests
     {
         System.Text.Encoding encoding = System.Text.Encoding.UTF8;
         string expected = charsLimit > text.Length ? text : text[..charsLimit];
-        ReadOnlySequence<byte> sequence = new ReadOnlySequence<byte>(encoding.GetBytes(text));
+        ReadOnlySequence<byte> sequence = new(encoding.GetBytes(text));
 
         encoding.TryGetStringSlice(sequence, charsLimit, out bool completed, out string? result).Should().BeTrue();
 

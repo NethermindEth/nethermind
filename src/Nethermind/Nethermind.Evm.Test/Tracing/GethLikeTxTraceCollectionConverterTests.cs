@@ -26,7 +26,7 @@ public class GethLikeTxTraceCollectionConverterTests
     [Test]
     public void Write_empty()
     {
-        GethLikeTxTraceCollection collection = new GethLikeTxTraceCollection([]);
+        GethLikeTxTraceCollection collection = new([]);
         string result = _serializer.Serialize(collection);
 
         Assert.That(result, Is.EqualTo("[]"));
@@ -37,7 +37,7 @@ public class GethLikeTxTraceCollectionConverterTests
     {
         string expected = $"""[{json}]""";
 
-        GethLikeTxTraceCollection collection = new GethLikeTxTraceCollection([trace]);
+        GethLikeTxTraceCollection collection = new([trace]);
         string result = _serializer.Serialize(collection);
 
         Assert.That(JsonElement.DeepEquals(

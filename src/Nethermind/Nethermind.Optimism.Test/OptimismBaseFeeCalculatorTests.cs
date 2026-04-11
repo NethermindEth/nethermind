@@ -34,7 +34,7 @@ public class OptimismBaseFeeCalculatorTests
             BaseFeeCalculator = new OptimismBaseFeeCalculator(HoloceneTimestamp, null, new DefaultBaseFeeCalculator())
         };
 
-        EIP1559Parameters parameters = new EIP1559Parameters(0, denominator, elasticity);
+        EIP1559Parameters parameters = new(0, denominator, elasticity);
         byte[] extraData = new byte[parameters.ByteLength];
         parameters.WriteTo(extraData);
 

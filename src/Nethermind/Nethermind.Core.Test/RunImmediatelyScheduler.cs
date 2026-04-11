@@ -10,7 +10,7 @@ namespace Nethermind.Core.Test;
 
 public class RunImmediatelyScheduler : IBackgroundTaskScheduler
 {
-    public static RunImmediatelyScheduler Instance = new RunImmediatelyScheduler();
+    public static RunImmediatelyScheduler Instance = new();
 
     private RunImmediatelyScheduler()
     {

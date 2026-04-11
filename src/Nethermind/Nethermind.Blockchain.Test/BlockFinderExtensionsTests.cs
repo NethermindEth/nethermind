@@ -69,7 +69,7 @@ public class BlockFinderExtensionsTests
         // Mock the underlying method that will be called
         blockFinder.FindBlock(50, BlockTreeLookupOptions.None).Returns((Block?)null);
 
-        BlockParameter blockParameter = new BlockParameter(50);
+        BlockParameter blockParameter = new(50);
         SearchResult<Block> result = blockFinder.SearchForBlock(blockParameter);
 
         result.IsError.Should().BeTrue();

@@ -85,7 +85,7 @@ public class L1SloadPrecompileTests
             Assert.That(success, Is.True);
             Assert.That(result.Length, Is.EqualTo(32)); // Single storage value (32 bytes)
 
-            UInt256 returnedValue = new UInt256(result.AsSpan(0, 32), isBigEndian: true);
+            UInt256 returnedValue = new(result.AsSpan(0, 32), isBigEndian: true);
             Assert.That(returnedValue, Is.EqualTo(expectedValue));
         }
         finally
@@ -97,7 +97,7 @@ public class L1SloadPrecompileTests
     [Test]
     public void Run_With_Disabled_Spec_Should_Fail()
     {
-        ReleaseSpec disabledSpec = new ReleaseSpec { IsRip7728Enabled = false };
+        ReleaseSpec disabledSpec = new() { IsRip7728Enabled = false };
 
         byte[] input = CreateValidInput(Address.FromNumber(123), (UInt256)1, (UInt256)1000);
 

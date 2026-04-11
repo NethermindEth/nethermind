@@ -45,16 +45,16 @@ public class SystemConfigDeriverTests
     {
         byte[] rawAddress = new byte[Address.Size];
         rawAddress[19] = 0xAA;
-        Address address = new Address(rawAddress);
+        Address address = new(rawAddress);
 
         byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
         byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.Batcher);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
-        SystemConfig expectedConfig = new SystemConfig { BatcherAddress = address };
+        SystemConfig expectedConfig = new() { BatcherAddress = address };
 
         actualConfig.Should().Be(expectedConfig);
     }
@@ -69,10 +69,10 @@ public class SystemConfigDeriverTests
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        SystemConfig expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             Scalar = [.. new byte[31], 0xAA]
         };
@@ -94,10 +94,10 @@ public class SystemConfigDeriverTests
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        SystemConfig expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             Scalar = scalarData,
             Overhead = new byte[32]
@@ -124,8 +124,8 @@ public class SystemConfigDeriverTests
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
-        SystemConfig initialConfig = new SystemConfig();
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig initialConfig = new();
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(initialConfig, receipts);
 
         // Invalid scalars should be ignored and we should keep the initial config.
@@ -137,17 +137,17 @@ public class SystemConfigDeriverTests
     {
         byte[] rawAddress = new byte[Address.Size];
         rawAddress[19] = 0xAA;
-        Address address = new Address(rawAddress);
+        Address address = new(rawAddress);
 
         byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
         byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.UnsafeBlockSigner);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        SystemConfig expectedConfig = new SystemConfig();
+        SystemConfig expectedConfig = new();
 
         // The log data is ignored by consensus and no modifications to the
         // system config occur.
@@ -164,10 +164,10 @@ public class SystemConfigDeriverTests
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.GasLimit);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        SystemConfig expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             GasLimit = 0xBB
         };
@@ -179,17 +179,17 @@ public class SystemConfigDeriverTests
     public void UpdateSystemConfigFromL1BLock_UpdatedEIP1559Params()
     {
         byte[] eip1559ParamsRaw = [0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8];
-        UInt256 eip1559Params = new UInt256(eip1559ParamsRaw, isBigEndian: true);
+        UInt256 eip1559Params = new(eip1559ParamsRaw, isBigEndian: true);
 
         byte[] encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
         byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
 
         ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.EIP1559Params);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        SystemConfig expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             EIP1559Params = [.. new byte[24], 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
         };
@@ -216,7 +216,7 @@ public class SystemConfigDeriverTests
             }
         ];
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
         update.Should().Throw<ArgumentException>();
@@ -233,7 +233,7 @@ public class SystemConfigDeriverTests
 
         ReceiptForRpc[] receipts = BuildReceipts([.. encodedData, 0x00], SystemConfigUpdate.FeeScalars);
 
-        SystemConfigDeriver deriver = new SystemConfigDeriver(SystemConfigProxy);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
         Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
         update.Should().Throw<AbiException>();

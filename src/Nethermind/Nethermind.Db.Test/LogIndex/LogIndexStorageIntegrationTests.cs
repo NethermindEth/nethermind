@@ -91,8 +91,8 @@ namespace Nethermind.Db.Test.LogIndex
 
             Directory.CreateDirectory(_dbPath);
 
-            DbConfig config = new DbConfig();
-            RocksDbConfigFactory configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
+            DbConfig config = new();
+            RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(0), LimboLogs.Instance);
             _dbFactory = new RocksDbFactory(configFactory, config, new HyperClockCacheWrapper(), new TestLogManager(), _dbPath);
         }
 
@@ -404,9 +404,9 @@ namespace Nethermind.Db.Test.LogIndex
         {
             await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage();
 
-            Random random = new Random(42);
-            List<BlockReceipts> allReorgBlocks = new List<BlockReceipts>();
-            List<BlockReceipts> allAddedBlocks = new List<BlockReceipts>();
+            Random random = new(42);
+            List<BlockReceipts> allReorgBlocks = new();
+            List<BlockReceipts> allAddedBlocks = new();
 
             foreach (BlockReceipts[][] batches in testData.Batches.GroupBy(b => b[0].BlockNumber / reorgFrequency).Select(g => g.ToArray()))
             {
@@ -528,7 +528,7 @@ namespace Nethermind.Db.Test.LogIndex
         {
             await using ILogIndexStorage logIndexStorage = CreateLogIndexStorage(compactionDistance);
 
-            using CancellationTokenSource getCancellation = new CancellationTokenSource();
+            using CancellationTokenSource getCancellation = new();
             CancellationToken token = getCancellation.Token;
 
             ConcurrentBag<Exception> exceptions = [];

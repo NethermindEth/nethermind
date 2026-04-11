@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public static string LoadContract(Type type)
         {
-            using StreamReader reader = new StreamReader(LoadResource(type));
+            using StreamReader reader = new(LoadResource(type));
             return reader.ReadToEnd();
         }
 

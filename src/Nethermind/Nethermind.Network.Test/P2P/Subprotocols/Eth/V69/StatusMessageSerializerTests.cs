@@ -59,7 +59,7 @@ public class StatusMessageSerializerTests
     [TestCaseSource(nameof(_testData))]
     public void Roundtrip(StatusMessage69 message, string expected)
     {
-        StatusMessageSerializer69 serializer = new StatusMessageSerializer69();
+        StatusMessageSerializer69 serializer = new();
 
         SerializerTester.TestZero(
             serializer,

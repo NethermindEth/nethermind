@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected readonly ISyncConfig _syncConfig;
         private readonly IPoSSwitcher _poSSwitcher;
         private readonly ITotalDifficultyStrategy _totalDifficultyStrategy;
-        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new FastBlocksAllocationStrategy(TransferSpeedType.Headers, 0, false);
+        private FastBlocksAllocationStrategy _approximateAllocationStrategy = new(TransferSpeedType.Headers, 0, false);
 
         private readonly Lock _handlerLock = new();
 
@@ -550,7 +550,7 @@ namespace Nethermind.Synchronization.FastBlocks
             BlockHeader? lastHeader = _blockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (lastHeader is null) return batch;
 
-            using ArrayPoolList<BlockHeader> headers = new ArrayPoolList<BlockHeader>(1);
+            using ArrayPoolList<BlockHeader> headers = new(1);
             headers.Add(lastHeader);
             for (long i = batch.EndNumber - 1; i >= batch.StartNumber; i--)
             {
@@ -565,7 +565,7 @@ namespace Nethermind.Synchronization.FastBlocks
             int newRequestSize = batch.RequestSize - headers.Count;
             if (headers.Count > 0)
             {
-                using HeadersSyncBatch newBatchToProcess = new HeadersSyncBatch();
+                using HeadersSyncBatch newBatchToProcess = new();
                 newBatchToProcess.StartNumber = lastHeader.Number;
                 newBatchToProcess.RequestSize = headers.Count;
                 newBatchToProcess.Response = headers;
@@ -605,7 +605,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
-            using ArrayPoolList<BlockHeader> headersToAdd = new ArrayPoolList<BlockHeader>(batch.Response.Count);
+            using ArrayPoolList<BlockHeader> headersToAdd = new(batch.Response.Count);
             (Hash256 nextHeaderHash, UInt256? nextHeaderTotalDifficulty) = _expectedNextHeader;
 
             long addedLast = batch.StartNumber - 1;

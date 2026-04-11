@@ -77,7 +77,7 @@ public static class RpcTest
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {
         // TODO: Eventually we would like to support injecting a custom serializer
-        EthereumJsonSerializer serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         parameters ??= [];
 
         JsonElement jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));

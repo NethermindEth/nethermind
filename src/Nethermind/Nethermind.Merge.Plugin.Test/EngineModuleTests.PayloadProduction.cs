@@ -543,7 +543,7 @@ public partial class EngineModuleTests
 
         // we added transactions
         chain.AddTransactions(BuildTransactions(chain, block30.CalculateHash(), TestItem.PrivateKeyB, TestItem.AddressF, 3, 10, out _, out _));
-        PayloadAttributes payloadAttributesBlock31A = new PayloadAttributes
+        PayloadAttributes payloadAttributesBlock31A = new()
         {
             Timestamp = (ulong)DateTime.UtcNow.AddDays(3).Ticks,
             PrevRandao = TestItem.KeccakA,

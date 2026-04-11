@@ -16,7 +16,7 @@ internal static class RocksDbExtensions
     internal static unsafe void DangerousReleaseMemory(this RocksDb _, in ReadOnlySpan<byte> span)
     {
         ref byte ptr = ref MemoryMarshal.GetReference(span);
-        nint intPtr = new IntPtr(Unsafe.AsPointer(ref ptr));
+        nint intPtr = new(Unsafe.AsPointer(ref ptr));
 
         RocksDbNative.Instance.rocksdb_free(intPtr);
     }
@@ -47,7 +47,7 @@ internal static class RocksDbExtensions
         if (result == IntPtr.Zero)
             return default;
 
-        Span<byte> span = new Span<byte>((void*)result, (int)valueLength);
+        Span<byte> span = new((void*)result, (int)valueLength);
 
         return span;
     }

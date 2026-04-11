@@ -98,7 +98,7 @@ public class RpcModuleProviderTests
         _moduleProvider.Register(new SingletonModulePool<INetRpcModule>(Substitute.For<INetRpcModule>(), true));
         _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), true));
 
-        JsonRpcUrl url = new JsonRpcUrl("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
+        JsonRpcUrl url = new("http", "127.0.0.1", 8888, RpcEndpoint.Http, false, new[] { "net" });
 
         ModuleResolution inScopeResolution = _moduleProvider.Check("net_version", JsonRpcContext.Http(url));
         Assert.That(inScopeResolution, Is.EqualTo(ModuleResolution.Enabled));

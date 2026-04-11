@@ -33,7 +33,7 @@ public class RewardTests
     {
         using XdcTestBlockchain chain = await XdcTestBlockchain.Create();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-        SigningTxCache signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
+        SigningTxCache signingTxCache = new(chain.BlockTree, chain.SpecProvider);
         chain.ChangeReleaseSpec(spec =>
         {
             spec.EpochLength = 50;
@@ -46,7 +46,7 @@ public class RewardTests
             .GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(2));
 
-        XdcRewardCalculator rewardCalculator = new XdcRewardCalculator(
+        XdcRewardCalculator rewardCalculator = new(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
@@ -176,12 +176,12 @@ public class RewardTests
     {
         XdcTestBlockchain chain = await XdcTestBlockchain.Create();
         IMasternodeVotingContract masternodeVotingContract = Substitute.For<IMasternodeVotingContract>();
-        SigningTxCache signingTxCache = new SigningTxCache(chain.BlockTree, chain.SpecProvider);
+        SigningTxCache signingTxCache = new(chain.BlockTree, chain.SpecProvider);
         masternodeVotingContract
             .GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(2));
 
-        XdcRewardCalculator rewardCalculator = new XdcRewardCalculator(
+        XdcRewardCalculator rewardCalculator = new(
             chain.EpochSwitchManager,
             chain.SpecProvider,
             chain.BlockTree,
@@ -301,8 +301,8 @@ public class RewardTests
         PrivateKey signerA = masternodes.First();
         PrivateKey signerB = masternodes.Last();
 
-        Address foundationWalletAddr = new Address("0x0000000000000000000000000000000000000068");
-        Address blockSignerContract = new Address("0x0000000000000000000000000000000000000089");
+        Address foundationWalletAddr = new("0x0000000000000000000000000000000000000068");
+        Address blockSignerContract = new("0x0000000000000000000000000000000000000089");
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>())
@@ -341,13 +341,13 @@ public class RewardTests
 
         // SignerA signs blocks `mergeSignRange` and `2*mergeSignRange`
         // SignerB signs block `mergeSignRange`
-        List<Transaction> txsAtFirstIncludedBlock = new List<Transaction>
+        List<Transaction> txsAtFirstIncludedBlock = new()
         {
             BuildSigningTx(xdcSpec, firstSignedBlockNumber, blockHeaders[firstSignedBlockNumber].Hash!, signerA, nonce: 1),
             BuildSigningTx(xdcSpec, firstSignedBlockNumber, blockHeaders[firstSignedBlockNumber].Hash!, signerB, nonce: 2),
         };
 
-        List<Transaction> txsAtSecondIncludedBlock = new List<Transaction>
+        List<Transaction> txsAtSecondIncludedBlock = new()
         {
             BuildSigningTx(xdcSpec, secondSignedBlockNumber, blockHeaders[secondSignedBlockNumber].Hash!, signerA, nonce: 3),
         };
@@ -364,8 +364,8 @@ public class RewardTests
         votingContract.GetCandidateOwner(Arg.Any<ITransactionProcessor>(), Arg.Any<BlockHeader>(), Arg.Any<Address>())
             .Returns(ci => ci.ArgAt<Address>(2));
 
-        SigningTxCache signingTxCache = new SigningTxCache(tree, specProvider);
-        XdcRewardCalculator rewardCalculator = new XdcRewardCalculator(epochSwitchManager, specProvider, tree, votingContract, signingTxCache, Substitute.For<ITransactionProcessor>());
+        SigningTxCache signingTxCache = new(tree, specProvider);
+        XdcRewardCalculator rewardCalculator = new(epochSwitchManager, specProvider, tree, votingContract, signingTxCache, Substitute.For<ITransactionProcessor>());
         BlockReward[] rewards = rewardCalculator.CalculateRewards(blocks.Last());
 
         Assert.That(rewards, Has.Length.EqualTo(3));
@@ -391,7 +391,7 @@ public class RewardTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         ISigningTxCache signingTxCache = new SigningTxCache(blockTree, specProvider);
-        XdcRewardCalculator rewardCalculator = new XdcRewardCalculator(
+        XdcRewardCalculator rewardCalculator = new(
             Substitute.For<IEpochSwitchManager>(),
             specProvider,
             blockTree,

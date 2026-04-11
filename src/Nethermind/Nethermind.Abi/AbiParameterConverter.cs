@@ -116,7 +116,7 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
         Match match = AbiParameterConverterStatics.TypeExpression.Match(type);
         if (match.Success)
         {
-            string baseType = new string(match.Groups[AbiParameterConverterStatics.TypeGroup].Value.TakeWhile(char.IsLetter).ToArray());
+            string baseType = new(match.Groups[AbiParameterConverterStatics.TypeGroup].Value.TakeWhile(char.IsLetter).ToArray());
             AbiType baseAbiType = GetBaseType(baseType, match, components);
             return match.Groups[AbiParameterConverterStatics.ArrayGroup].Success
                 ? match.Groups[AbiParameterConverterStatics.LengthGroup].Success

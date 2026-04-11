@@ -73,7 +73,7 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCaseSource(nameof(DistinctTestCases))]
         public void Distinct_transactions_are_all_added(Transaction[] transactions, int expectedCount)
         {
-            TxDistinctSortedPool pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
+            TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             Parallel.ForEach(transactions, transaction =>
             {
@@ -87,7 +87,7 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCase(false)]
         public void Same_transactions_are_all_replaced_with_highest_gas_price(bool gasPriceAscending)
         {
-            TxDistinctSortedPool pool = new TxDistinctSortedPool(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
+            TxDistinctSortedPool pool = new(Capacity, _transactionComparerProvider.GetDefaultComparer(), LimboLogs.Instance);
 
             IOrderedEnumerable<Transaction> transactions = gasPriceAscending
                 ? GenerateTransactions(address: TestItem.AddressB, nonce: 3).OrderBy(static t => t.GasPrice)
@@ -183,7 +183,7 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Capacity_is_never_exceeded()
         {
-            WithFinalizerDistinctPool pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -213,7 +213,7 @@ namespace Nethermind.TxPool.Test.Collections
         [TestCase(13, 6)]
         public void Capacity_can_shrink_to_given_value(int shrinkValue, int expectedCapacity)
         {
-            ShrinkableDistinctPool pool = new ShrinkableDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            ShrinkableDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -233,7 +233,7 @@ namespace Nethermind.TxPool.Test.Collections
         [Test]
         public void Capacity_is_never_exceeded_when_there_are_duplicates()
         {
-            WithFinalizerDistinctPool pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
 
@@ -257,7 +257,7 @@ namespace Nethermind.TxPool.Test.Collections
             _finalizedCount.Should().Be(0);
             _allCount.Should().Be(0);
 
-            WithFinalizerDistinctPool pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            WithFinalizerDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             void KeepGoing(int iterations)
             {

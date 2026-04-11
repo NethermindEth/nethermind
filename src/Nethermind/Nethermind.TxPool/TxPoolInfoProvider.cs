@@ -18,15 +18,15 @@ namespace Nethermind.TxPool
             // only std txs are picked here. Should we add blobs?
             // BTW this class should be rewritten or removed - a lot of unnecessary allocations
             IDictionary<AddressAsKey, Transaction[]> groupedTransactions = txPool.GetPendingTransactionsBySender();
-            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
-            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new Dictionary<AddressAsKey, IDictionary<ulong, Transaction>>();
+            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pendingTransactions = new();
+            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queuedTransactions = new();
             foreach (KeyValuePair<AddressAsKey, Transaction[]> group in groupedTransactions)
             {
                 Address address = group.Key;
                 UInt256 accountNonce = accountStateProvider.GetNonce(address);
                 UInt256 expectedNonce = accountNonce;
-                Dictionary<ulong, Transaction> pending = new Dictionary<ulong, Transaction>();
-                Dictionary<ulong, Transaction> queued = new Dictionary<ulong, Transaction>();
+                Dictionary<ulong, Transaction> pending = new();
+                Dictionary<ulong, Transaction> queued = new();
                 IOrderedEnumerable<Transaction> transactionsOrderedByNonce = group.Value.OrderBy(static t => t.Nonce);
 
                 foreach (Transaction? transaction in transactionsOrderedByNonce)

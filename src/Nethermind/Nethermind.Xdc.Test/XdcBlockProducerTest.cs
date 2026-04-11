@@ -47,7 +47,7 @@ internal class XdcBlockProducerTest
 
         XdcBlockHeader parent = Build.A.XdcBlockHeader().TestObject;
 
-        XdcConsensusContext xdcContext = new XdcConsensusContext();
+        XdcConsensusContext xdcContext = new();
         xdcContext.SetNewRound(1);
         xdcContext.HighestQC = XdcTestHelper.CreateQc(new Types.BlockRoundInfo(parent.Hash!, 0, parent.Number), 0, masterNodes);
 
@@ -57,7 +57,7 @@ internal class XdcBlockProducerTest
         IBlockchainProcessor processor = Substitute.For<IBlockchainProcessor>();
         processor.Process(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>()).Returns(args => args.ArgAt<Block>(0));
 
-        XdcBlockProducer producer = new XdcBlockProducer(
+        XdcBlockProducer producer = new(
             epochManager,
             Substitute.For<IMasternodesCalculator>(),
             xdcContext,
@@ -72,7 +72,7 @@ internal class XdcBlockProducerTest
             Substitute.For<ILogManager>(),
             Substitute.For<IDifficultyCalculator>(),
             Substitute.For<IBlocksConfig>());
-        XdcHeaderValidator headerValidator = new XdcHeaderValidator(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
+        XdcHeaderValidator headerValidator = new(Substitute.For<IBlockTree>(), quorumCertificateManager, new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), epochManager, specProvider), specProvider, NullLogManager.Instance);
 
         Block? block = await producer.BuildBlock(parent);
 

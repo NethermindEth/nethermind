@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             Span<byte> buffer = stackalloc byte[32];
-            KeccaksIterator iterator = new KeccaksIterator(entry.TopicsRlp, buffer);
+            KeccaksIterator iterator = new(entry.TopicsRlp, buffer);
             for (int i = 0; i < expressions.Length; i++)
             {
                 if (iterator.TryGetNext(out Hash256StructRef keccak))

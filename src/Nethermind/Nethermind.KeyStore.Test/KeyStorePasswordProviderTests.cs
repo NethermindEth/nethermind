@@ -18,7 +18,7 @@ namespace Nethermind.KeyStore.Test;
 
 public class KeyStorePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+    private static readonly List<(string Name, string Content)> _files = new()
     {
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
@@ -110,7 +110,7 @@ public class KeyStorePasswordProviderTests
         keyStoreConfig.Passwords.Returns(test.Passwords);
         keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
         keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
-        KeyStorePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
+        KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
 
         for (int index = 0; index < test.PasswordFiles.Count; ++index)
         {
@@ -129,7 +129,7 @@ public class KeyStorePasswordProviderTests
         keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
         keyStoreConfig.BlockAuthorAccount.Returns(test.BlockAuthorAccount.ToString());
         keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-        KeyStorePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
+        KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
         SecureString blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
         Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
         blockAuthorPassword.Unsecure().Should().Be(test.ExpectedBlockAuthorAccountPassword, test.TestName);

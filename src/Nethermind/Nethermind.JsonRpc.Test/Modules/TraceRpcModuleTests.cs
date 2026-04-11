@@ -616,7 +616,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
         await blockchain.AddBlockMayMissTx(serviceTransaction);
-        BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
+        BlockParameter blockParameter = new(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
         traces.Data.First().Action!.Result!.GasUsed.Should().Be(0);

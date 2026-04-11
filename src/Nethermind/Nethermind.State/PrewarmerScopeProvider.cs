@@ -197,7 +197,7 @@ public class PrewarmerScopeProvider(
 
         public byte[] Get(in UInt256 index)
         {
-            StorageCell storageCell = new StorageCell(address, in index); // TODO: Make the dictionary use UInt256 directly
+            StorageCell storageCell = new(address, in index); // TODO: Make the dictionary use UInt256 directly
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (populatePreBlockCache)
             {

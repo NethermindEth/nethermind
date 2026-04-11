@@ -335,7 +335,7 @@ namespace Nethermind.Monitoring.Metrics
 
         public async Task RunTimer(CancellationToken cancellationToken)
         {
-            using PeriodicTimer standardTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(_intervalMilliseconds));
+            using PeriodicTimer standardTimer = new(TimeSpan.FromMilliseconds(_intervalMilliseconds));
 
             try
             {

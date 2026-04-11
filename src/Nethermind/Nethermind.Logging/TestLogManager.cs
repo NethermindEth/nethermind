@@ -7,7 +7,7 @@ namespace Nethermind.Logging
 {
     public class TestLogManager : ILogManager
     {
-        public static readonly TestLogManager Instance = new TestLogManager();
+        public static readonly TestLogManager Instance = new();
         private readonly NUnitLogger _logger;
 
         public TestLogManager(LogLevel level = LogLevel.Warn)

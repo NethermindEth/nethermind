@@ -177,7 +177,7 @@ namespace Nethermind.Merge.Plugin.Test
             IWorldState globalWorldState = chain.MainWorldState;
             using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
             {
-                BlockhashStore blockHashStore = new BlockhashStore(globalWorldState);
+                BlockhashStore blockHashStore = new(globalWorldState);
                 blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 

@@ -36,11 +36,11 @@ public class MCSLockTests
     {
         int counter = 0;
         int numberOfThreads = 10;
-        List<Thread> threads = new List<Thread>();
+        List<Thread> threads = new();
 
         for (int i = 0; i < numberOfThreads; i++)
         {
-            Thread thread = new Thread(() =>
+            Thread thread = new(() =>
             {
                 using McsLock.Disposable handle = mcsLock.Acquire();
 
@@ -63,13 +63,13 @@ public class MCSLockTests
     public void LockFairnessTest()
     {
         int numberOfThreads = 10;
-        List<int> executionOrder = new List<int>();
-        List<Thread> threads = new List<Thread>();
+        List<int> executionOrder = new();
+        List<Thread> threads = new();
 
         for (int i = 0; i < numberOfThreads; i++)
         {
             int threadId = i;
-            Thread thread = new Thread(() =>
+            Thread thread = new(() =>
             {
                 using McsLock.Disposable handle = mcsLock.Acquire();
                 executionOrder.Add(threadId);

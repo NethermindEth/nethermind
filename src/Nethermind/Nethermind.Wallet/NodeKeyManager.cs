@@ -52,7 +52,7 @@ namespace Nethermind.Wallet
         {
             char[] chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890".ToCharArray();
             byte[] data = _cryptoRandom.GenerateRandomBytes(size);
-            SecureString secureString = new SecureString();
+            SecureString secureString = new();
             for (int i = 0; i < data.Length; i++)
             {
                 secureString.AppendChar(chars[data[i] % chars.Length]);
@@ -70,7 +70,7 @@ namespace Nethermind.Wallet
                 string oldPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath();
                 string newPath = (_config.EnodeKeyFile ?? UnsecuredNodeKeyFilePath).GetApplicationResourcePath(_config.KeyStoreDirectory);
                 GenerateKeyIfNeeded(newPath, oldPath);
-                using PrivateKey privateKey = new PrivateKey(_fileSystem.File.ReadAllBytes(newPath));
+                using PrivateKey privateKey = new(_fileSystem.File.ReadAllBytes(newPath));
                 return new ProtectedPrivateKey(privateKey, _config.KeyStoreDirectory, _cryptoRandom);
             }
 
@@ -79,7 +79,7 @@ namespace Nethermind.Wallet
                 if (!_fileSystem.File.Exists(newFile))
                 {
                     if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration) - stored in plain + key store for JSON RPC unlocking");
-                    using PrivateKeyGenerator privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
+                    using PrivateKeyGenerator privateKeyGenerator = new(_cryptoRandom);
                     PrivateKey nodeKey = _fileSystem.File.Exists(oldFile) ? new PrivateKey(_fileSystem.File.ReadAllBytes(oldFile)) : privateKeyGenerator.Generate();
                     string keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     _fileSystem.Directory.CreateDirectory(keyStoreDirectory);
@@ -103,7 +103,7 @@ namespace Nethermind.Wallet
         {
             if (!string.IsNullOrEmpty(account))
             {
-                Address blockAuthor = new Address(Bytes.FromHexString(account));
+                Address blockAuthor = new(Bytes.FromHexString(account));
                 SecureString password = _passwordProvider.GetPassword(blockAuthor);
 
                 try

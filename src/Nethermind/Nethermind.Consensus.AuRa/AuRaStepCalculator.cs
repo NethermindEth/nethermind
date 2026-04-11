@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInTicks);
+        public TimeSpan TimeToNextStep => new(TimeToNextStepInTicks);
 
         public TimeSpan TimeToStep(long step)
         {
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa
             }
             else
             {
-                TimeSpan timeToNextStep = new TimeSpan(GetTimeToNextStepInTicks(epoch, currentStepInfo));
+                TimeSpan timeToNextStep = new(GetTimeToNextStepInTicks(epoch, currentStepInfo));
                 return timeToNextStep + TimeSpan.FromSeconds(currentStepInfo.StepDuration * (step - currentStep - 1));
             }
 

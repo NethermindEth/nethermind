@@ -258,7 +258,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
                 : Environment.ProcessorCount;
 
             // Create shared data with thread-local initializers and finalizers
-            Data<TLocal> data = new Data<TLocal>(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
+            Data<TLocal> data = new(threads, fromInclusive, toExclusive, action, init, initValue, @finally, parallelOptions.CancellationToken);
 
             // Queue work items to the thread pool for all threads except the current one
             for (int i = 0; i < threads - 1; i++)

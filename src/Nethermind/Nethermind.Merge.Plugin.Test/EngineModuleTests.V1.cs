@@ -1531,7 +1531,7 @@ public partial class EngineModuleTests
     [Test]
     public void Should_return_expected_capabilities_for_mainnet()
     {
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
@@ -1574,7 +1574,7 @@ public partial class EngineModuleTests
         ILogManager loggerManager = Substitute.For<ILogManager>();
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
-        ILogger logger = new ILogger(iLogger);
+        ILogger logger = new(iLogger);
         loggerManager.GetClassLogger<ExchangeCapabilitiesHandler>().Returns(logger);
 
         using MergeTestBlockchain chain = await CreateBaseBlockchain()

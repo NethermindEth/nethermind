@@ -49,7 +49,7 @@ namespace Nethermind.Trie.Test
         {
             // Fixed seed for reproducible fuzzing
             const int fuzzSeed = 12345;
-            Random random = new Random(fuzzSeed);
+            Random random = new(fuzzSeed);
 
             _logger.Info($"Fuzzing pruning scenarios with seed: {fuzzSeed}");
 
@@ -84,7 +84,7 @@ namespace Nethermind.Trie.Test
             pruningContext = pruningContext.WithMaxDepth(maxDepth).TurnOnPrune();
 
             // Generate random accounts and operations
-            List<int> accounts = new List<int>();
+            List<int> accounts = new();
             for (int i = 0; i < accountsCount; i++)
             {
                 accounts.Add(i);
@@ -195,8 +195,8 @@ namespace Nethermind.Trie.Test
         {
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
-            private readonly ManualResetEvent _stateDbBlocker = new ManualResetEvent(true);
-            private readonly ManualResetEventSlim _writeReached = new ManualResetEventSlim(false);
+            private readonly ManualResetEvent _stateDbBlocker = new(true);
+            private readonly ManualResetEventSlim _writeReached = new(false);
             private readonly TestMemDb _stateDb;
             private readonly TestMemDb _codeDb;
             private IDisposable? _worldStateCloser = null;
@@ -209,7 +209,7 @@ namespace Nethermind.Trie.Test
             private readonly TestPruningStrategy _pruningStrategy;
             private readonly IPruningConfig _pruningConfig;
             private readonly TestFinalizedStateProvider _finalizedStateProvider;
-            private readonly Random _random = new Random(0);
+            private readonly Random _random = new(0);
 
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
@@ -447,7 +447,7 @@ namespace Nethermind.Trie.Test
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
+                TestFinalizedStateProvider finalizedStateProvider = new(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(
                     new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
@@ -1113,7 +1113,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx
@@ -1273,7 +1273,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx
@@ -1297,7 +1297,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx

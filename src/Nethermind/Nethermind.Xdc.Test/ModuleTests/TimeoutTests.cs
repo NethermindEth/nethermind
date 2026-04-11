@@ -56,7 +56,7 @@ public class TimeoutTests
         PrivateKey[] signers = blockchain.TakeRandomMasterNodes(spec, epoch);
         ulong round = ctx.CurrentRound;
         const ulong gap = 450;
-        List<Signature> signatures = new List<Signature>();
+        List<Signature> signatures = new();
 
         // Send N-1 timeouts -> should NOT reach threshold
         for (int i = 0; i < signers.Length - 1; i++)
@@ -80,7 +80,7 @@ public class TimeoutTests
         await blockchain.TimeoutCertificateManager.HandleTimeoutVote(lastTimeoutMsg);
         signatures.Add(lastTimeoutMsg.Signature!);
 
-        TimeoutCertificate expectedTC = new TimeoutCertificate(round, signatures.ToArray(), gap);
+        TimeoutCertificate expectedTC = new(round, signatures.ToArray(), gap);
         ctx.HighestTC.Should().BeEquivalentTo(expectedTC);
         Assert.That(ctx.CurrentRound, Is.EqualTo(round + 1));
     }

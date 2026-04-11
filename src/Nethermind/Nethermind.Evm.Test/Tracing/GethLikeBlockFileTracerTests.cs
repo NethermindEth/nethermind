@@ -19,7 +19,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_have_file_names_matching_block_and_transactions()
     {
-        MockFileSystem fileSystem = new MockFileSystem();
+        MockFileSystem fileSystem = new();
         fileSystem.Initialize();
 
         Block block = Build.A.Block
@@ -29,7 +29,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
             })
             .TestObject;
 
-        GethLikeBlockFileTracer tracer = new GethLikeBlockFileTracer(block, GethTraceOptions.Default, fileSystem);
+        GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default, fileSystem);
         IBlockTracer blockTracer = (IBlockTracer)tracer;
 
         for (int i = 0; i < block.Transactions.Length; i++)

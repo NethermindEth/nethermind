@@ -35,7 +35,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
-            XdcHeaderDecoder codec = new XdcHeaderDecoder();
+            XdcHeaderDecoder codec = new();
             (XdcBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, b => b
                 .WithValidators([TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
                 .WithPenalties([TestItem.AddressD, TestItem.AddressE, TestItem.AddressF])
@@ -60,7 +60,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void No_BaseFee()
         {
-            XdcHeaderDecoder codec = new XdcHeaderDecoder();
+            XdcHeaderDecoder codec = new();
             (XdcBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, includeBaseFee: false);
 
             // Decode back
@@ -72,7 +72,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void TotalLength_Equals_GetLength()
         {
-            XdcHeaderDecoder codec = new XdcHeaderDecoder();
+            XdcHeaderDecoder codec = new();
             (XdcBlockHeader? header, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // compare to GetLength
@@ -83,7 +83,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void Encode_ForSealing_Omits_Validator()
         {
-            XdcHeaderDecoder decoder = new XdcHeaderDecoder();
+            XdcHeaderDecoder decoder = new();
             (XdcBlockHeader? header, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder);
             int fullLen = encodedBytes.Length;
 
@@ -99,7 +99,7 @@ namespace Nethermind.Xdc.Test
         [TestCase("0xf901f3a0683da113eb01cc0265a2c3399b49a80671b850c8b12739150fc6a1d2ca16b7d3a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a0efb190856ff185dded722e2dca183304c92fd7ac25f2ef5ea8ff9d518ba85693a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b901000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001018398bca4800a80a00000000000000000000000000000000000000000000000000000000000000000880000000000000000808080")]
         public void Encode_Xdc_Rlp_Decodes_Correctly(string hexRlp)
         {
-            XdcHeaderDecoder decoder = new XdcHeaderDecoder();
+            XdcHeaderDecoder decoder = new();
 
             XdcBlockHeader? unencoded = (XdcBlockHeader?)decoder.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(hexRlp));
 

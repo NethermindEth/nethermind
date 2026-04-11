@@ -146,7 +146,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        List<long> newHeadSequence = new List<long>();
+        List<long> newHeadSequence = new();
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
@@ -210,7 +210,7 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Return_Null_On_InConsistentHeaderSequence()
     {
-        using ArrayPoolList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(1);
+        using ArrayPoolList<BlockHeader?> headers = new(1);
         headers.Add(Build.A.EmptyBlockHeader);
         headers.Add(Build.A.EmptyBlockHeader);
 

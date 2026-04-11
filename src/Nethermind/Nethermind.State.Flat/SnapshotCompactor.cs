@@ -135,7 +135,7 @@ public class SnapshotCompactor : ISnapshotCompactor
         ConcurrentDictionary<HashedKey<(Hash256, TreePath)>, TrieNode> storageNodes = snapshot.Content.StorageNodes;
         ConcurrentDictionary<HashedKey<TreePath>, TrieNode> stateNodes = snapshot.Content.StateNodes;
 
-        using ArrayPoolListRef<Task> compactTask = new ArrayPoolListRef<Task>(2);
+        using ArrayPoolListRef<Task> compactTask = new(2);
 
         // Accounts
         compactTask.Add(Task.Run(() =>

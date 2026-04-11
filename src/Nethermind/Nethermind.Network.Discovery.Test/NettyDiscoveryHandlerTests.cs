@@ -189,7 +189,7 @@ namespace Nethermind.Network.Discovery.Test
             byte[] data = [1, 2, 3];
             IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10003");
-            DatagramPacket packet = new DatagramPacket(Unpooled.WrappedBuffer(data), from, to);
+            DatagramPacket packet = new(Unpooled.WrappedBuffer(data), from, to);
 
             IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
             _discoveryHandlers[0].ChannelRead(ctx, packet);

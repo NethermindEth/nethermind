@@ -25,7 +25,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void EncodeDecode_RoundTrip_Matches_AllFields()
         {
-            XdcSubnetHeaderDecoder codec = new XdcSubnetHeaderDecoder();
+            XdcSubnetHeaderDecoder codec = new();
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // Decode
@@ -42,7 +42,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void TotalLength_Equals_GetLength()
         {
-            XdcSubnetHeaderDecoder codec = new XdcSubnetHeaderDecoder();
+            XdcSubnetHeaderDecoder codec = new();
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec);
 
             // compare to GetLength
@@ -53,7 +53,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void TotalLength_Equals_GetLength_ForSealing()
         {
-            XdcSubnetHeaderDecoder codec = new XdcSubnetHeaderDecoder();
+            XdcSubnetHeaderDecoder codec = new();
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(codec, true);
 
             // compare to GetLength
@@ -65,7 +65,7 @@ namespace Nethermind.Xdc.Test
         [Test]
         public void Encode_ForSealing_Omits_Validator_And_NextValidators()
         {
-            XdcSubnetHeaderDecoder decoder = new XdcSubnetHeaderDecoder();
+            XdcSubnetHeaderDecoder decoder = new();
             (XdcSubnetBlockHeader? original, byte[]? encodedBytes) = BuildHeaderAndDefaultEncode(decoder, true);
 
             // ForSealing encoding

@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Rlp
     public sealed class BlockDecoder(IHeaderDecoder headerDecoder) : RlpValueDecoder<Block>
     {
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? throw new ArgumentNullException(nameof(headerDecoder));
-        private readonly BlockBodyDecoder _blockBodyDecoder = new BlockBodyDecoder(headerDecoder);
+        private readonly BlockBodyDecoder _blockBodyDecoder = new(headerDecoder);
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockDecoder))]
         public BlockDecoder() : this(new HeaderDecoder()) { }
@@ -138,7 +138,7 @@ namespace Nethermind.Serialization.Rlp
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
+            Rlp.ValueDecoderContext decoderContext = new(memory, true);
 
             if (decoderContext.IsNextItemEmptyList())
             {

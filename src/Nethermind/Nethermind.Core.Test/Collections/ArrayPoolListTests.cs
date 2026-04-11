@@ -215,7 +215,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_IList_the_same_as_IListT()
     {
-        using ArrayPoolList<int> listT = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> listT = new(1024);
         IList list = (IList)listT;
 
         list.Add(1);
@@ -249,7 +249,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_null_insertion_if_null_illegal()
     {
-        using ArrayPoolList<int> arrayPoolList = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
 
         Action action = () => list.Add(null);
@@ -265,7 +265,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_invalid_type_insertion()
     {
-        using ArrayPoolList<int> arrayPoolList = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
 
         Action action = () => list.Add(string.Empty);
@@ -282,7 +282,7 @@ public class ArrayPoolListTests
     [TestCase(null)]
     public void Should_not_throw_on_invalid_type_lookup(object? value)
     {
-        using ArrayPoolList<int> arrayPoolList = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> arrayPoolList = new(1024);
         IList list = (IList)arrayPoolList;
         list.Add(1);
 
@@ -296,7 +296,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_basic_properties_as_expected()
     {
-        using ArrayPoolList<int> list = new ArrayPoolList<int>(1024);
+        using ArrayPoolList<int> list = new(1024);
 
         ((ICollection<int>)list).IsReadOnly.Should().BeFalse();
         ((IList)list).IsReadOnly.Should().BeFalse();
@@ -308,7 +308,7 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
     {
-        ArrayPoolList<int> list = new ArrayPoolList<int>(0);
+        ArrayPoolList<int> list = new(0);
         list.Dispose();
 
         Action act = () => _ = list.Count;

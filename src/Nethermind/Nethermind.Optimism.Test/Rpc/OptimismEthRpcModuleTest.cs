@@ -50,7 +50,7 @@ public class OptimismEthRpcModuleTest
         txSender.SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast)
             .Returns(returnThis: (TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(chainId: TestBlockchainIds.ChainId);
+        EthereumEcdsa ethereumEcdsa = new(chainId: TestBlockchainIds.ChainId);
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockchainBridge(bridge)

@@ -41,7 +41,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private ILogger _logger;
 
     private ISpecProvider _specProvider { get; }
-    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;

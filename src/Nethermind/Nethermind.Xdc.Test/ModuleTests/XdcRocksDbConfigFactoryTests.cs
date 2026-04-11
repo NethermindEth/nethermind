@@ -20,8 +20,8 @@ namespace Nethermind.Xdc.Test.ModuleTests
             IPruningConfig pruning = Substitute.For<IPruningConfig>();
             IHardwareInfo hw = Substitute.For<IHardwareInfo>();
             ILogManager logManager = Substitute.For<ILogManager>();
-            RocksDbConfigFactory baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
-            XdcRocksDbConfigFactory custom = new XdcRocksDbConfigFactory(baseFactory, dbConfig);
+            RocksDbConfigFactory baseFactory = new(dbConfig, pruning, hw, logManager, validateConfig: true);
+            XdcRocksDbConfigFactory custom = new(baseFactory, dbConfig);
 
             IRocksDbConfig config = custom.GetForDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName, null);
 

@@ -350,7 +350,7 @@ public class SnapServerTest
         FillMultipleAccounts(context, stateSize);
         Hash256 startRange = Keccak.Zero;
 
-        ValueHash256 limit = new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 limit = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
             (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = context.Server
@@ -389,7 +389,7 @@ public class SnapServerTest
 
         try
         {
-            StorageRange storageRangeRequest = new StorageRange()
+            StorageRange storageRangeRequest = new()
             {
                 StartingHash = Keccak.Zero,
                 Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
@@ -413,7 +413,7 @@ public class SnapServerTest
 
         ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
         UInt256 asInt = lastStorageHash.ToUInt256();
-        ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
+        ValueHash256 beyondLast = new((++asInt).ToBigEndian());
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
@@ -441,7 +441,7 @@ public class SnapServerTest
 
             try
             {
-                StorageRange storageRangeRequest = new StorageRange()
+                StorageRange storageRangeRequest = new()
                 {
                     StartingHash = startRange,
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }

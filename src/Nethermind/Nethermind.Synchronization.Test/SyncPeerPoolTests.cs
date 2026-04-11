@@ -507,7 +507,7 @@ public class SyncPeerPoolTests
     public async Task Will_remove_peer_if_times_out_on_init()
     {
         await using Context ctx = new();
-        SimpleSyncPeerMock peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
         peer.SetHeaderResponseTime(int.MaxValue);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
@@ -520,7 +520,7 @@ public class SyncPeerPoolTests
     public async Task It_is_fine_to_fail_init()
     {
         await using Context ctx = new();
-        SimpleSyncPeerMock peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
@@ -608,7 +608,7 @@ public class SyncPeerPoolTests
     public async Task When_no_peer_will_cancel_on_cancellation_token()
     {
         await using Context ctx = new();
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using CancellationTokenSource cts = new();
         cts.CancelAfter(100);
 
         IOwnedReadOnlyList<BlockHeader>? result = await ctx.Pool.AllocateAndRun(

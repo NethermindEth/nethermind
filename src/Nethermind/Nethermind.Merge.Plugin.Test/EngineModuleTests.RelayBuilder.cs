@@ -122,7 +122,7 @@ public partial class EngineModuleTests
         string expected_blockHash = blockHash;
         string expected_profit = "0x0";
 
-        BoostExecutionPayloadV1 expected = new BoostExecutionPayloadV1
+        BoostExecutionPayloadV1 expected = new()
         {
             Block = new ExecutionPayload
             {

@@ -503,7 +503,7 @@ public class DebugRpcModule(
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
-        SimulatePayload<TransactionForRpc> simulatePayload = new SimulatePayload<TransactionForRpc>
+        SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
             {

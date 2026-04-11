@@ -17,7 +17,7 @@ public class FallbackToFieldFromApiTests
     [Test]
     public void CanResolveFieldWithTypeWhenSetLater()
     {
-        ContainerBuilder containerBuilder = new ContainerBuilder();
+        ContainerBuilder containerBuilder = new();
         containerBuilder.AddSingleton<Api>();
         containerBuilder.RegisterSource(new FallbackToFieldFromApi<Api>());
 
@@ -34,7 +34,7 @@ public class FallbackToFieldFromApiTests
     [TestCase(true)]
     public void ThrowExceptionIfTargetIsAlsoRegistered(bool allowRedundantRegistrations)
     {
-        ContainerBuilder containerBuilder = new ContainerBuilder();
+        ContainerBuilder containerBuilder = new();
         containerBuilder.AddSingleton<Api>();
         containerBuilder.AddSingleton<TargetService>();
         containerBuilder.RegisterSource(new FallbackToFieldFromApi<Api>(allowRedundantRegistration: allowRedundantRegistrations));
@@ -56,7 +56,7 @@ public class FallbackToFieldFromApiTests
     [TestCase(false)]
     public void OnlyRegisterFieldDirectlyDeclared(bool directlyDeclaredOnly)
     {
-        ContainerBuilder containerBuilder = new ContainerBuilder();
+        ContainerBuilder containerBuilder = new();
         containerBuilder.AddSingleton<Api2>();
         containerBuilder.RegisterSource(new FallbackToFieldFromApi<Api2>(directlyDeclaredOnly: directlyDeclaredOnly));
 

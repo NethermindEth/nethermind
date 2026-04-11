@@ -35,7 +35,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
     [Test]
     public void Correctly_read_merge_parameters_from_file()
     {
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
@@ -69,7 +69,7 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         long expectedTerminalPoWBlock = 100;
         long newMergeBlock = 50;
 
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 

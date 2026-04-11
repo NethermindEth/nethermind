@@ -19,7 +19,7 @@ internal class XdcSealerTests
     public async Task SealBlock_ShouldSignXdcBlockHeader()
     {
         // Arrange
-        XdcSealer sealer = new XdcSealer(new Signer(0, Build.A.PrivateKey.TestObject, NullLogManager.Instance));
+        XdcSealer sealer = new(new Signer(0, Build.A.PrivateKey.TestObject, NullLogManager.Instance));
         Block block = Build.A.Block.WithHeader(Build.A.XdcBlockHeader().TestObject).TestObject;
 
         // Act

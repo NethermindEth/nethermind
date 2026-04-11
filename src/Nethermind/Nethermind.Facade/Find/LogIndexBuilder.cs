@@ -255,7 +255,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private ProcessingQueue BuildQueue(bool isForward)
     {
-        TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock = new TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate>(
+        TransformBlock<IReadOnlyList<BlockReceipts>, LogIndexAggregate> aggregateBlock = new(
             batch => Aggregate(batch, isForward),
             new()
             {
@@ -266,7 +266,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             }
         );
 
-        ActionBlock<LogIndexAggregate> addReceiptsBlock = new ActionBlock<LogIndexAggregate>(
+        ActionBlock<LogIndexAggregate> addReceiptsBlock = new(
             aggr => AddReceiptsAsync(aggr, isForward),
             new()
             {

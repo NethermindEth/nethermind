@@ -19,7 +19,7 @@ public class ChainSpecLoaderTest
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }

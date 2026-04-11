@@ -13,7 +13,7 @@ namespace Nethermind.Abi.Test
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             object[] parameters = new object[] { "p1" };
-            AbiSignature abiSignature = new AbiSignature("test", AbiType.String);
+            AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
 
             abi.Encode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), parameters);
@@ -25,7 +25,7 @@ namespace Nethermind.Abi.Test
         {
             IAbiEncoder abi = Substitute.For<IAbiEncoder>();
             byte[] data = new byte[] { 100, 200 };
-            AbiSignature abiSignature = new AbiSignature("test", AbiType.String);
+            AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
 
             abi.Decode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), data);

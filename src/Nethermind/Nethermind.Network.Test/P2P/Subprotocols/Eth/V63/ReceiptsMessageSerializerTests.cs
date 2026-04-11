@@ -84,12 +84,12 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
 
-        ReceiptMessageDecoder decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+        ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
         TxReceipt decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
 
-        TxReceipt expectedDecoded = new TxReceipt
+        TxReceipt expectedDecoded = new()
         {
             TxType = receipt.TxType,
             GasUsedTotal = receipt.GasUsedTotal,

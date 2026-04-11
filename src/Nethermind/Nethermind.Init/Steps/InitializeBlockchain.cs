@@ -68,7 +68,7 @@ namespace Nethermind.Init.Steps
 
             IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,

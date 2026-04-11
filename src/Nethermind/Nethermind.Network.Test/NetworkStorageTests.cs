@@ -27,7 +27,7 @@ public class NetworkStorageTests
         _ = new ConfigProvider();
         _tempDir = TempPath.GetTempDirectory();
 
-        SimpleFilePublicKeyDb db = new SimpleFilePublicKeyDb("Test", _tempDir.Path, logManager);
+        SimpleFilePublicKeyDb db = new("Test", _tempDir.Path, logManager);
         _storage = new NetworkStorage(db, logManager);
     }
 

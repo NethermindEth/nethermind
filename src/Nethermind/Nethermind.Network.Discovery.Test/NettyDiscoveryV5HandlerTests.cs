@@ -61,7 +61,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            using CancellationTokenSource cancellationSource = new CancellationTokenSource(10_000);
+            using CancellationTokenSource cancellationSource = new(10_000);
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery.Test
             IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
             IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            using CancellationTokenSource cancellationSource = new CancellationTokenSource(10_000);
+            using CancellationTokenSource cancellationSource = new(10_000);
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);

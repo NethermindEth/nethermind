@@ -760,8 +760,8 @@ namespace Nethermind.Trie.Test
                     TrackPastKeys = TrackPastKeys,
                     PruningBoundary = LookupLimit,
                 };
-                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-                TrieStore trieStore = new TrieStore(
+                TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+                TrieStore trieStore = new(
                     new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
@@ -1148,7 +1148,7 @@ namespace Nethermind.Trie.Test
                         if (stateProvider.AccountExists(address))
                         {
                             stateProvider.TryGetAccount(address, out AccountStruct existingStruct);
-                            Account existing = new Account(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
+                            Account existing = new(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
                             if (existing.Balance != account.Balance)
                             {
                                 if (account.Balance > existing.Balance)
@@ -1239,9 +1239,9 @@ namespace Nethermind.Trie.Test
             int itemCount = 1024;
             int repetition = 100;
 
-            PruningConfig pruningConfig = new PruningConfig();
-            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-            using TrieStore trieStore = new TrieStore(
+            PruningConfig pruningConfig = new();
+            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+            using TrieStore trieStore = new(
                 new NodeStorage(new MemDb()),
                 new TestPruningStrategy(shouldPrune: true),
                 Persist.EveryBlock,
@@ -1251,9 +1251,9 @@ namespace Nethermind.Trie.Test
             );
             finalizedStateProvider.TrieStore = trieStore;
 
-            PatriciaTree tree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
 
-            using ArrayPoolList<(Hash256, Hash256)> kv = new ArrayPoolList<(Hash256, Hash256)>(itemCount);
+            using ArrayPoolList<(Hash256, Hash256)> kv = new(itemCount);
 
             Span<byte> buffer = stackalloc byte[32];
             for (int i = 0; i < itemCount; i++)

@@ -219,7 +219,7 @@ public class BlockhashProviderTests
         Block current = Build.A.Block.WithParent(head!).WithStateRoot(stateRoot).TestObject;
         tree.SuggestHeader(current.Header);
 
-        CustomSpecProvider specProvider = new CustomSpecProvider(
+        CustomSpecProvider specProvider = new(
             (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
             (new ForkActivation(0, current.Timestamp), Prague.Instance));
         BlockhashProvider provider = new(new BlockhashCache(blockTreeBuilder.HeaderStore, LimboLogs.Instance), worldState, LimboLogs.Instance);
@@ -306,7 +306,7 @@ public class BlockhashProviderTests
             Eip2935RingBufferSize = customRingBufferSize
         };
 
-        CustomSpecProvider specProvider = new CustomSpecProvider((new ForkActivation(0, genesis.Timestamp), customSpec));
+        CustomSpecProvider specProvider = new((new ForkActivation(0, genesis.Timestamp), customSpec));
         BlockhashStore store = new(worldState);
 
         using IDisposable _ = worldState.BeginScope(current.Header);

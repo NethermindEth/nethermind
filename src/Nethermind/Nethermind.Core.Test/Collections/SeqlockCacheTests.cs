@@ -398,9 +398,9 @@ public class SeqlockCacheTests
     public void AddressAsKey_works_with_cache()
     {
         SeqlockCache<AddressAsKey, Account> cache = new();
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
         AddressAsKey key = address;
-        Account account = new Account(100, 1);
+        Account account = new(100, 1);
 
         cache.Set(in key, account);
         bool found = cache.TryGetValue(in key, out Account? result);

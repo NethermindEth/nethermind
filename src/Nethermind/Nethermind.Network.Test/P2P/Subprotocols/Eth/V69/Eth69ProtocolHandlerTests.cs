@@ -133,7 +133,7 @@ public class Eth69ProtocolHandlerTests
     public void Should_not_exceed_soft_message_size_limit_for_receipts()
     {
         const int count = 512;
-        using GetReceiptsMessage66 msg = new GetReceiptsMessage66(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        using GetReceiptsMessage66 msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray());
 
         HandleIncomingStatusMessage();
@@ -174,7 +174,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_handle_GetReceipts()
     {
-        using GetReceiptsMessage66 msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        using GetReceiptsMessage66 msg66 = new(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
@@ -184,7 +184,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_throw_when_receiving_unrequested_receipts()
     {
-        using ReceiptsMessage msg66 = new ReceiptsMessage(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
+        using ReceiptsMessage msg66 = new(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
 
         HandleIncomingStatusMessage();
         Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
@@ -215,7 +215,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_handle_BlockRangeUpdate()
     {
-        using BlockRangeUpdateMessage msg = new BlockRangeUpdateMessage
+        using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 1,
             LatestBlock = 2,
@@ -235,7 +235,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_disconnect_on_invalid_BlockRangeUpdate()
     {
-        using BlockRangeUpdateMessage msg = new BlockRangeUpdateMessage
+        using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 2,
             LatestBlock = 1,
@@ -251,7 +251,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Should_disconnect_on_invalid_BlockRangeUpdate_empty_hash()
     {
-        using BlockRangeUpdateMessage msg = new BlockRangeUpdateMessage
+        using BlockRangeUpdateMessage msg = new()
         {
             EarliestBlock = 1,
             LatestBlock = 2,
@@ -278,7 +278,7 @@ public class Eth69ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        using StatusMessage69 statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
+        using StatusMessage69 statusMsg = new() { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();

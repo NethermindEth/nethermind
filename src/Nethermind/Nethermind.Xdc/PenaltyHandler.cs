@@ -68,7 +68,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
         XdcBlockHeader header = (XdcBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
         Address[] preMasternodes = epochSwitchManager.GetEpochSwitchInfo(parentHash)!.Masternodes;
-        HashSet<Address> penalties = new HashSet<Address>();
+        HashSet<Address> penalties = new();
 
         int minMinerBlockPerEpoch = currentSpec.IsTipUpgradePenaltyEnabled
             ? currentSpec.MinimumMinerBlockPerEpoch
@@ -91,7 +91,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                 Address[] prevPenalties = GetPreviousPenalties(parentHash, currentSpec, (ulong)currentSpec.LimitPenaltyEpochV2);
                 HashSet<Address> penComebacks = prevPenalties.Intersect(candidates).ToHashSet();
 
-                HashSet<Hash256> blockHashes = new HashSet<Hash256>();
+                HashSet<Hash256> blockHashes = new();
                 int startRange = Math.Min((int)currentSpec.RangeReturnSigner, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
@@ -108,7 +108,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        Hash256 signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         Address fromSigner = tx.SenderAddress;
 
                         if (blockHashes.Contains(signedBlockHash))
@@ -141,8 +141,8 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     if (i == 0) lastPenalty = previousPenalties;
                 }
 
-                HashSet<Hash256> blockHashes = new HashSet<Hash256>();
-                Dictionary<Address, int> txSignerMap = new Dictionary<Address, int>();
+                HashSet<Hash256> blockHashes = new();
+                Dictionary<Address, int> txSignerMap = new();
                 int startRange = Math.Min(currentSpec.EpochLength, listBlockHash.Count) - 1;
 
                 for (int i = startRange; i >= 0; i--)
@@ -156,7 +156,7 @@ internal class PenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpoc
                     Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
                     foreach (Transaction tx in signingTxs)
                     {
-                        Hash256 signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                        Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                         Address fromSigner = tx.SenderAddress!;
                         if (blockHashes.Contains(signedBlockHash))
                         {

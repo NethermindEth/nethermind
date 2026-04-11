@@ -29,7 +29,7 @@ public static class ProcessExtensions
         }
         else
         {
-            HashSet<int> children = new HashSet<int>();
+            HashSet<int> children = new();
             GetAllChildIdsUnix(process.Id, children, timeout);
             foreach (int childId in children)
             {
@@ -48,7 +48,7 @@ public static class ProcessExtensions
 
         if (exitCode == 0 && !string.IsNullOrEmpty(stdout))
         {
-            using StringReader reader = new StringReader(stdout);
+            using StringReader reader = new(stdout);
 
             while (true)
             {
@@ -68,7 +68,7 @@ public static class ProcessExtensions
 
     private static (int exitCode, string output) RunProcessAndReadOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        ProcessStartInfo startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,
@@ -94,7 +94,7 @@ public static class ProcessExtensions
 
     private static int RunProcessAndIgnoreOutput(string fileName, string arguments, TimeSpan timeout)
     {
-        ProcessStartInfo startInfo = new ProcessStartInfo
+        ProcessStartInfo startInfo = new()
         {
             FileName = fileName,
             Arguments = arguments,

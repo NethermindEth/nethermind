@@ -31,7 +31,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
     }
 
     private static KestrelMetricServerOptions LegacyOptions(string hostname, int port, string url, CollectorRegistry? registry, X509Certificate2? certificate) =>
-        new KestrelMetricServerOptions
+        new()
         {
             Hostname = hostname,
             Port = (ushort)port,

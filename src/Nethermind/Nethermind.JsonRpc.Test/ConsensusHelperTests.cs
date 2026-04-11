@@ -248,7 +248,7 @@ namespace Nethermind.JsonRpc.Test
             {
                 if (token is JsonObject jObject)
                 {
-                    JsonObject copy = new JsonObject();
+                    JsonObject copy = new();
                     foreach (KeyValuePair<string, JsonNode?> prop in jObject)
                     {
                         JsonNode? child = prop.Value;
@@ -265,7 +265,7 @@ namespace Nethermind.JsonRpc.Test
                 }
                 else if (token is JsonArray jArray)
                 {
-                    JsonArray copy = new JsonArray();
+                    JsonArray copy = new();
                     foreach (JsonNode? item in jArray)
                     {
                         JsonNode? child = item;

@@ -276,8 +276,8 @@ namespace Nethermind.Synchronization.Blocks
         {
             bool? bodiesOnly = null; // Otherwise receipts only
 
-            ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
-            ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -413,7 +413,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                Block block = new Block(entry.Header, body);
+                Block block = new(entry.Header, body);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;

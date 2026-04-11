@@ -416,7 +416,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code3).Bytes] = TrieScenarios.Code3;
 
             Hash256 theAccount = TestItem.KeccakA;
-            StorageTree storageTree = new StorageTree(remote.TrieStore.GetTrieStore(theAccount), LimboLogs.Instance);
+            StorageTree storageTree = new(remote.TrieStore.GetTrieStore(theAccount), LimboLogs.Instance);
             for (int i = 0; i < 10; i++)
             {
                 storageTree.Set((UInt256)i, TestItem.Keccaks[i].BytesToArray());
@@ -482,7 +482,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             {
                 using StateSyncBatch request = (await ctx.Feed.PrepareRequest(cancellation))!;
                 if (request is null) return 0;
-                PeerInfo peer = new PeerInfo(ctx.SyncPeerMocks[0]);
+                PeerInfo peer = new(ctx.SyncPeerMocks[0]);
                 await ctx.Downloader.Dispatch(peer, request!, cancellation);
                 int requestCount = request.RequestedNodes?.Count ?? 0;
                 ctx.Feed.HandleResponse(request, peer);

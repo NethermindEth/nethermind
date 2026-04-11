@@ -80,7 +80,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
     {
-        XdcReleaseSpec xdcSpec = new XdcReleaseSpec();
+        XdcReleaseSpec xdcSpec = new();
 
         Type baseType = typeof(ReleaseSpec);
         PropertyInfo[] properties = baseType.GetProperties();

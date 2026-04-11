@@ -34,7 +34,7 @@ public class VoteTests
         IXdcReleaseSpec releaseSpec = blockchain.SpecProvider.GetXdcSpec(header, ctx.CurrentRound);
         EpochSwitchInfo switchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(header)!;
         PrivateKey[] keys = blockchain.TakeRandomMasterNodes(releaseSpec, switchInfo);
-        BlockRoundInfo blockInfo = new BlockRoundInfo(currentBlockHash, ctx.CurrentRound, freshBlock!.Number);
+        BlockRoundInfo blockInfo = new(currentBlockHash, ctx.CurrentRound, freshBlock!.Number);
         ulong gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % releaseSpec.EpochLength - releaseSpec.Gap);
 
         // Initial values to check

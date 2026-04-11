@@ -27,7 +27,7 @@ public class SyncDispatcherTests
     private class TestSyncPeerPool : ISyncPeerPool
     {
         private readonly SemaphoreSlim _peerSemaphore;
-        private readonly Lock _lock = new Lock();
+        private readonly Lock _lock = new();
 
         public TestSyncPeerPool(int peerCount = 1)
         {
@@ -173,8 +173,8 @@ public class SyncDispatcherTests
 
         public readonly HashSet<int> _results = new();
         private readonly ConcurrentQueue<TestBatch> _returned = new();
-        private readonly ManualResetEvent _responseLock = new ManualResetEvent(true);
-        private readonly TaskCompletionSource _handleResponseCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ManualResetEvent _responseLock = new(true);
+        private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public void LockResponse()
         {
@@ -266,7 +266,7 @@ public class SyncDispatcherTests
     public async Task Simple_test_sync()
     {
         TestSyncFeed syncFeed = new();
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
@@ -291,7 +291,7 @@ public class SyncDispatcherTests
 
         TestSyncFeed syncFeed = new(isMultiFeed: true);
         syncFeed.LockResponse();
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig(),
             syncFeed,
@@ -382,7 +382,7 @@ public class SyncDispatcherTests
         TestSyncFeed syncFeed = new(isMultiSync, 999999);
         syncFeed.LockResponse();
 
-        TestDownloader downloader = new TestDownloader();
+        TestDownloader downloader = new();
         SyncDispatcher<TestBatch> dispatcher = new(
             new TestSyncConfig()
             {

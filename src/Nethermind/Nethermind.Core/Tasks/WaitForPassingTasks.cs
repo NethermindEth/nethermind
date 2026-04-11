@@ -19,7 +19,7 @@ public static class Wait
     /// <returns></returns>
     public static async Task<T> AnyWhere<T>(Func<T, bool> cond, params IEnumerable<Task<T>> tasks)
     {
-        HashSet<Task<T>> taskSet = new HashSet<Task<T>>(tasks);
+        HashSet<Task<T>> taskSet = new(tasks);
         while (taskSet.Count != 0)
         {
             Task<T> resolved = await Task.WhenAny<T>(taskSet);

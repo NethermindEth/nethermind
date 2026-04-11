@@ -74,7 +74,7 @@ public class AdminModuleTests
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
 
         // Create a peer with a validated session
-        Peer testPeer = new Peer(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
+        Peer testPeer = new(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
         ISession validatedSession = Substitute.For<ISession>();
         validatedSession.IsNetworkIdMatched.Returns(true);
         testPeer.OutSession = validatedSession;
@@ -535,7 +535,7 @@ public class AdminModuleTests
     {
         Node node = new(TestItem.PublicKeyA, "192.168.1.18", 8000, false);
         DisconnectEventArgs disconnectEventArgs = new(new DisconnectReason(), new DisconnectType(), "");
-        PeerEventArgs peerEventArgs = new PeerEventArgs(node, "BitTorrent", 1, 2);
+        PeerEventArgs peerEventArgs = new(node, "BitTorrent", 1, 2);
         PeerEventsSubscription peerEventsSubscription = new(_jsonRpcDuplexClient, _logManager, _peerPool, _rlpxPeer);
         JsonRpcResult jsonRpcResult = new();
         ManualResetEvent manualResetEvent = new(false);
@@ -553,7 +553,7 @@ public class AdminModuleTests
     private static AdminRpcModule CreateMinimalAdminModule(IPeerPool peerPool)
     {
         BlockTree blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
-        NetworkConfig networkConfig = new NetworkConfig();
+        NetworkConfig networkConfig = new();
         IStateReader stateReader = Substitute.For<IStateReader>();
         ISubscriptionManager subscriptionManager = Substitute.For<ISubscriptionManager>();
 
@@ -572,7 +572,7 @@ public class AdminModuleTests
 
     private static IPeerPool CreatePeerPool(Peer peer)
     {
-        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new ConcurrentDictionary<PublicKeyAsKey, Peer>();
+        ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
         peers.TryAdd(TestItem.PublicKeyA, peer);
 
         IPeerPool peerPool = Substitute.For<IPeerPool>();
@@ -583,11 +583,11 @@ public class AdminModuleTests
     private static Peer CreateTestPeer(string clientId, Capability[] capabilities, bool isStatic = false, bool isInbound = false)
     {
         // Create node
-        Node node = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic);
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303, isStatic);
         node.ClientId = clientId;
 
         // Create peer
-        Peer peer = new Peer(node);
+        Peer peer = new(node);
 
         // Create session
         ISession session = Substitute.For<ISession>();

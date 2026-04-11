@@ -66,7 +66,7 @@ public class CompositeTxSourceTests
         Transaction[] originalTxs = Build.A.Transaction.TestObjectNTimes(5);
         innerPendingTxSelector.GetTransactions(parentHeader, Arg.Any<long>()).Returns(originalTxs);
 
-        CompositeTxSource compositeTxSource = new CompositeTxSource(
+        CompositeTxSource compositeTxSource = new(
             immediateTransactionSource1, immediateTransactionSource2, immediateTransactionSource3, innerPendingTxSelector);
 
         Transaction[] transactions = compositeTxSource.GetTransactions(parentHeader, gasLimit).ToArray();

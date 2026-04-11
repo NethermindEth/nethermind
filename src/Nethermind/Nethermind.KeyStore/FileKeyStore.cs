@@ -256,7 +256,7 @@ namespace Nethermind.KeyStore
             Span<byte> mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
             string addressString = address.ToString(false, false);
-            KeyStoreItem keyStoreItem = new KeyStoreItem
+            KeyStoreItem keyStoreItem = new()
             {
                 Address = addressString,
                 Crypto = new Crypto

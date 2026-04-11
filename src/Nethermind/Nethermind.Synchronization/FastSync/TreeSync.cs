@@ -742,7 +742,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
-            DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
+            DependentItem dependentItem = new(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
             using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
@@ -950,7 +950,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.AsSpan());
+                        Rlp.ValueDecoderContext ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

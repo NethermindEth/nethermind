@@ -100,6 +100,8 @@ dotnet_diagnostic.CA1825.severity = warning
 dotnet_diagnostic.CA1829.severity = warning
 dotnet_diagnostic.CA1834.severity = warning
 dotnet_diagnostic.IDE0008.severity = error
+dotnet_diagnostic.IDE0090.severity = error
+csharp_style_implicit_object_creation_when_type_is_apparent = true
 dotnet_diagnostic.CA1507.severity = warning
 dotnet_diagnostic.CA1510.severity = warning
 

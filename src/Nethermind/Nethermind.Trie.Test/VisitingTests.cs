@@ -43,11 +43,11 @@ public class VisitingTests
 
         using (trieStore.BeginBlockCommit(0)) { patriciaTree.Commit(); }
 
-        AppendingVisitor visitor = new AppendingVisitor(false);
+        AppendingVisitor visitor = new(false);
 
         patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
 
-        HashSet<int> setNibbles = new HashSet<int>(Enumerable.Range(0, 64));
+        HashSet<int> setNibbles = new(Enumerable.Range(0, 64));
 
         foreach (byte[] path in visitor.LeafPaths)
         {
@@ -106,7 +106,7 @@ public class VisitingTests
         stateTree.Commit();
         blockCommit.Dispose();
 
-        AppendingVisitor visitor = new AppendingVisitor(true);
+        AppendingVisitor visitor = new(true);
 
         stateTree.Accept(visitor, stateTree.RootHash, options);
 
