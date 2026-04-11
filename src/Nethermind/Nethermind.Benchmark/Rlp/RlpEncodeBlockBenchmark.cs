@@ -15,7 +15,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpEncodeBlockBenchmark
     {
-        private static BlockDecoder _blockDecoder = new BlockDecoder();
+        private static BlockDecoder _blockDecoder = new();
 
         private static Block _block;
 
@@ -74,7 +74,7 @@ namespace Nethermind.Benchmarks.Rlp
         public byte[] Improved3()
         {
             int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
-            RlpStream stream = new RlpStream(length);
+            RlpStream stream = new(length);
             _blockDecoder.Encode(stream, _block);
             return Bytes.Empty;
         }

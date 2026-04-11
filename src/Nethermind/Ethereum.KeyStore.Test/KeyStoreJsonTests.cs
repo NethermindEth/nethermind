@@ -60,12 +60,12 @@ namespace Ethereum.KeyStore.Test
         {
             KeyStoreTestModel testModel = _testsModel[testName];
             testModel.KeyData.Address = testModel.Address ?? new PrivateKey(testModel.Priv).Address.ToString(false, false);
-            Address address = new Address(testModel.KeyData.Address);
+            Address address = new(testModel.KeyData.Address);
             _store.StoreKey(address, testModel.KeyData);
 
             try
             {
-                SecureString securedPass = new SecureString();
+                SecureString securedPass = new();
                 testModel.Password.ToCharArray().ForEach(x => securedPass.AppendChar(x));
                 securedPass.MakeReadOnly();
                 (PrivateKey key, Result result) = _store.GetKey(address, securedPass);

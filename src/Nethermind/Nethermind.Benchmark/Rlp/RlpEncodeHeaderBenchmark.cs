@@ -14,7 +14,7 @@ namespace Nethermind.Benchmarks.Rlp
 {
     public class RlpEncodeHeaderBenchmark
     {
-        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+        private static HeaderDecoder _headerDecoder = new();
 
         private static BlockHeader _header;
 
