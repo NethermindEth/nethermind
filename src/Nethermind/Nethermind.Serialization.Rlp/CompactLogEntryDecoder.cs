@@ -38,10 +38,7 @@ namespace Nethermind.Serialization.Rlp
             }
             decoderContext.Check(untilPosition);
 
-            int zeroPrefix = decoderContext.DecodeInt();
-            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
-            byte[] data = new byte[zeroPrefix + rlpData.Length];
-            rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            byte[] data = DecodeCompactData(ref decoderContext);
             decoderContext.Check(logEntryCheck);
 
             return new LogEntry(address, data, topics.ToArray());
@@ -64,10 +61,7 @@ namespace Nethermind.Serialization.Rlp
             var topics = decoderContext.Data.Slice(decoderContext.Position, sequenceLength);
             decoderContext.SkipItem();
 
-            int zeroPrefix = decoderContext.DecodeInt();
-            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
-            byte[] data = new byte[zeroPrefix + rlpData.Length];
-            rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            byte[] data = DecodeCompactData(ref decoderContext);
             decoderContext.Check(logEntryCheck);
 
             item = new LogEntryStructRef(address, data, topics);
@@ -120,6 +114,22 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return Rlp.LengthOfSequence(GetContentLength(item).Total);
+        }
+
+        private static byte[] DecodeCompactData(scoped ref Rlp.ValueDecoderContext decoderContext)
+        {
+            int zeroPrefix = decoderContext.DecodeInt();
+            ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
+
+            if (zeroPrefix < 0 || zeroPrefix > RlpLimit.Limit - rlpData.Length)
+            {
+                throw new RlpLimitException($"Expanded {nameof(LogEntry)} data with zero prefix {zeroPrefix} and content length {rlpData.Length} exceeds limit {RlpLimit.Limit}.");
+            }
+
+            int dataLength = zeroPrefix + rlpData.Length;
+            byte[] data = new byte[dataLength];
+            rlpData.CopyTo(data.AsSpan(zeroPrefix));
+            return data;
         }
 
         private static (int Total, int Topics) GetContentLength(LogEntry? item)

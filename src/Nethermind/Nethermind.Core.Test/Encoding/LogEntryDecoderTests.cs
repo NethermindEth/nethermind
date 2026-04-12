@@ -97,4 +97,34 @@ public class LogEntryDecoderTests
             LogEntryDecoder.Instance.Decode(ref ctx);
         }
     }
+
+    [Test]
+    public void Compact_decoder_rejects_zero_prefix_that_expands_data_beyond_limit()
+    {
+        Rlp malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            CompactLogEntryDecoder.Decode(ref ctx);
+        });
+    }
+
+    [Test]
+    public void Compact_struct_ref_decoder_rejects_zero_prefix_that_expands_data_beyond_limit()
+    {
+        Rlp malformed = CreateCompactLogEntryWithTooLargeZeroPrefix();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed.Bytes);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+        });
+    }
+
+    private static Rlp CreateCompactLogEntryWithTooLargeZeroPrefix() => Rlp.Encode(
+        Rlp.Encode(TestItem.AddressA.Bytes),
+        Rlp.OfEmptyList,
+        Rlp.Encode((int)16.MB),
+        Rlp.Encode(new byte[] { 1 }));
 }
