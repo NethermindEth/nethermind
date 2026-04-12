@@ -53,6 +53,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             IMessageSerializationService serializer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager,
+            ISyncConfig syncConfig,
             ISnapServer? snapServer = null)
             : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
@@ -62,6 +63,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
             ServingEnabled = SyncServer is not null;
+            SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;

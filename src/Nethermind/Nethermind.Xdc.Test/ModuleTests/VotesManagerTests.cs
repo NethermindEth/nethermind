@@ -296,6 +296,7 @@ public class VotesManagerTests
             V2Configs = [new V2ConfigParams()]
         });
         ISigner signer = Substitute.For<ISigner>();
+        signer.Address.Returns(TestItem.AddressA);
         IForensicsProcessor forensicsProcessor = Substitute.For<IForensicsProcessor>();
 
         return new VotesManager(ctx, Substitute.For<ISyncPeerPool>(), blockTree, epochSwitchManager, snapshotManager, quorumCertificateManager,

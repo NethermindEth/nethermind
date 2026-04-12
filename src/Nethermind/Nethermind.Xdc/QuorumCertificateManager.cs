@@ -148,7 +148,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Full)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;

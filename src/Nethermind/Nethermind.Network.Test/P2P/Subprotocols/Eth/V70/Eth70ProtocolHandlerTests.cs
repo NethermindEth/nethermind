@@ -302,6 +302,33 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
+    {
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[][] payload = [[], block2Receipts];
+
+            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        Assert.That(result.Count, Is.EqualTo(2));
+        Assert.That(result[0], Is.Empty);
+        Assert.That(result[1].Length, Is.EqualTo(block2Receipts.Length));
+        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+        Assert.That(result[1][0].Logs, Is.Empty);
+    }
+
+    [Test]
     public async Task Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =

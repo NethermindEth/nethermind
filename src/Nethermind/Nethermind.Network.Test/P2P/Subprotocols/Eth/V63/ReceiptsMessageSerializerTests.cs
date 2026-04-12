@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -37,9 +37,9 @@ public class ReceiptsMessageSerializerTests
             Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(txReceipts.Length), "length");
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                if (txReceipts[i] is null)
+                if (txReceipts[i] is null || txReceipts[i].Length == 0)
                 {
-                    Assert.That(deserialized.TxReceipts[i], Is.Null, $"receipts[{i}]");
+                    Assert.That(deserialized.TxReceipts[i], Is.Empty, $"receipts[{i}]");
                 }
                 else
                 {
@@ -104,6 +104,13 @@ public class ReceiptsMessageSerializerTests
     public void Roundtrip_with_eip658()
     {
         TxReceipt[][] data = [[Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject], [Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(MainnetSpecProvider.ConstantinopleFixBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject]];
+        Test(data);
+    }
+
+    [Test]
+    public void Roundtrip_with_empty_block()
+    {
+        TxReceipt[][] data = [[], [Build.A.Receipt.WithAllFieldsFilled.TestObject]];
         Test(data);
     }
 

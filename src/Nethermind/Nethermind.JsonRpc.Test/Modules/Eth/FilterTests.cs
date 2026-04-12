@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections;
 using System.Text.Json;
 
@@ -107,5 +108,15 @@ public class FilterTests
         using JsonDocument doc = JsonDocument.Parse(json);
         filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
         filter.Should().BeEquivalentTo(expectation);
+    }
+
+    [Test]
+    public void ReadJson_throws_when_filter_string_exceeds_limit()
+    {
+        Filter filter = new();
+        string oversized = $"\"{new string('a', 1_000_001)}\"";
+        using JsonDocument doc = JsonDocument.Parse(oversized);
+        Action act = () => filter.ReadJson(doc.RootElement, EthereumJsonSerializer.JsonOptions);
+        act.Should().Throw<ArgumentException>().WithMessage("*exceeds maximum*");
     }
 }
