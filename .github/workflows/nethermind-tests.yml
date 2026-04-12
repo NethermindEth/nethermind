@@ -7,7 +7,7 @@ concurrency:
 on:
   pull_request:
   push:
-    branches: [master, test/legacy-vm-timeout-bump]
+    branches: [master]
   workflow_dispatch:
     inputs:
       coverage:
