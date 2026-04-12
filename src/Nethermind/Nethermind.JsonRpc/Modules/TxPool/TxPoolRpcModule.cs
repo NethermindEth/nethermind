@@ -12,7 +12,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
         public ResultWrapper<TxPoolStatus> txpool_status()
         {
             TxPoolInfo poolInfo = txPoolInfoProvider.GetInfo();
-            TxPoolStatus poolStatus = new TxPoolStatus(poolInfo);
+            TxPoolStatus poolStatus = new(poolInfo);
 
             return ResultWrapper<TxPoolStatus>.Success(poolStatus);
         }

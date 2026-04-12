@@ -919,7 +919,7 @@ public class TrieNodeTests
     [Test]
     public void Rlp_is_cloned_when_cloning()
     {
-        TestRawTrieStore fullTrieStore = new TestRawTrieStore(new MemDb());
+        TestRawTrieStore fullTrieStore = new(new MemDb());
         IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
         TrieNode leaf1 = new(NodeType.Leaf);
@@ -988,9 +988,9 @@ public class TrieNodeTests
     [Test]
     public void Do_Not_MarkUnpersistedChildAsPersisted()
     {
-        InMemoryScopedTrieStore inMemoryScopedTrieStore = new InMemoryScopedTrieStore();
+        InMemoryScopedTrieStore inMemoryScopedTrieStore = new();
 
-        PatriciaTree tree = new PatriciaTree(inMemoryScopedTrieStore, LimboLogs.Instance);
+        PatriciaTree tree = new(inMemoryScopedTrieStore, LimboLogs.Instance);
         tree.Set(Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000"), [1]);
         tree.Set(Bytes.FromHexString("0000000000000000010000000000000000000000000000000000000000000000"), [1]);
         tree.Set(Bytes.FromHexString("0000000000000000011000000000000000000000000000000000000000000000"), [1]);
@@ -1017,7 +1017,7 @@ public class TrieNodeTests
 
     private class InMemoryScopedTrieStore : IScopedTrieStore
     {
-        private readonly ConcurrentDictionary<TreePath, TrieNode> _nodes = new ConcurrentDictionary<TreePath, TrieNode>();
+        private readonly ConcurrentDictionary<TreePath, TrieNode> _nodes = new();
 
         private TrieNode GetOrAddNode(in TreePath path, TrieNode node)
         {

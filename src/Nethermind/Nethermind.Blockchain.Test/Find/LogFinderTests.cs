@@ -177,7 +177,7 @@ public class LogFinderTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         _logFinder = CreateLogFinder(blockFinder);
         LogFilter logFilter = AllBlockFilter().Build();
-        Func<IEnumerable<FilterLog>> action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
+        Func<IEnumerable<FilterLog>> action = new(() => _logFinder.FindLogs(logFilter));
         action.Should().Throw<ResourceNotFoundException>();
         blockFinder.Received().FindHeader(logFilter.ToBlock, false);
         blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
@@ -428,7 +428,7 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
-        IndexedLogFinder logFinder = new IndexedLogFinder(
+        IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
             logIndexStorage, minBlocksToUseIndex: 1
         );

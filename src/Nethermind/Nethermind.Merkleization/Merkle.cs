@@ -83,7 +83,7 @@ public static partial class Merkle
     public static void MixIn(ref UInt256 root, int value)
     {
         ulong v = value < 0 ? ulong.MaxValue : 0L;
-        UInt256 lengthPart = new UInt256((ulong)value, v, v, v);
+        UInt256 lengthPart = new((ulong)value, v, v, v);
         root = HashConcatenation(root, lengthPart, 0);
     }
 
@@ -141,7 +141,7 @@ public static partial class Merkle
         {
             fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
             {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
 
                 root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
             }
@@ -155,7 +155,7 @@ public static partial class Merkle
         {
             fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
             {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
 
                 root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
             }
@@ -371,7 +371,7 @@ public static partial class Merkle
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
@@ -395,7 +395,7 @@ public static partial class Merkle
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {

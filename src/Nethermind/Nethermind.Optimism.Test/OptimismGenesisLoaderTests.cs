@@ -39,7 +39,7 @@ public class OptimismGenesisLoaderTests
             .WithStateRoot(new Hash256("0xd977c5f1679de709aef87832d3b3b08009fd1b2df5672021f61aa30b3981c2dd"))
             .WithExtraData(Bytes.FromHexString("0x00000000fa00000006"))
             .TestObject;
-        ValueHash256 storageRoot = new ValueHash256("0x8ed4baae3a927be3dea54996b4d5899f8c01e7594bf50b17dc1e741388ce3d12");
+        ValueHash256 storageRoot = new("0x8ed4baae3a927be3dea54996b4d5899f8c01e7594bf50b17dc1e741388ce3d12");
 
         ChainSpec chainspec = Substitute.For<ChainSpec>();
         chainspec.Genesis = genesis;
@@ -60,10 +60,10 @@ public class OptimismGenesisLoaderTests
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
         ILogManager logManager = Substitute.For<ILogManager>();
 
-        OptimismWithdrawalProcessor withdrawalProcessor = new OptimismWithdrawalProcessor(stateProvider, logManager, specHelper);
-        OptimismGenesisPostProcessor postProcessor = new OptimismGenesisPostProcessor(withdrawalProcessor, specProvider);
+        OptimismWithdrawalProcessor withdrawalProcessor = new(stateProvider, logManager, specHelper);
+        OptimismGenesisPostProcessor postProcessor = new(withdrawalProcessor, specProvider);
 
-        GenesisBuilder loader = new GenesisBuilder(
+        GenesisBuilder loader = new(
             chainspec,
             specProvider,
             stateProvider,

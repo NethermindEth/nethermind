@@ -304,10 +304,10 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     }
 
     private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
-    private static readonly Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
+    private static readonly Address sender = new("0x59ede65f910076f60e07b2aeb189c72348525e72");
 
-    private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
-    private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
+    private static readonly Address to = new("0x000000000000000000000000636f6e7472616374");
+    private static readonly Address coinbase = new("0x4444588443C3a91288c5002483449Aba1054192b");
     // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
     private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork);
     private static string Run(byte[] input)

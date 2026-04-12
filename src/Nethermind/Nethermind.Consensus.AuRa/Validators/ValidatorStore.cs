@@ -14,13 +14,13 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         internal static readonly Hash256 LatestFinalizedValidatorsBlockNumberKey = Keccak.Compute("LatestFinalizedValidatorsBlockNumber");
         internal static readonly Hash256 PendingValidatorsKey = Keccak.Compute("PendingValidators");
-        private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new PendingValidatorsDecoder();
+        private static readonly PendingValidatorsDecoder PendingValidatorsDecoder = new();
 
         private readonly IDb _db;
         private long _latestFinalizedValidatorsBlockNumber;
         private ValidatorInfo _latestValidatorInfo;
         private static readonly int EmptyBlockNumber = -1;
-        private static readonly ValidatorInfo EmptyValidatorInfo = new ValidatorInfo(-1, -1, []);
+        private static readonly ValidatorInfo EmptyValidatorInfo = new(-1, -1, []);
         private static Hash256 GetKey(in long blockNumber) => Keccak.Compute("Validators" + blockNumber);
 
         public ValidatorStore([KeyFilter(DbNames.BlockInfos)] IDb db)
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (finalizingBlockNumber > _latestFinalizedValidatorsBlockNumber)
             {
-                ValidatorInfo validatorInfo = new ValidatorInfo(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
+                ValidatorInfo validatorInfo = new(finalizingBlockNumber, _latestFinalizedValidatorsBlockNumber, validators);
                 Rlp rlp = Rlp.Encode(validatorInfo);
                 _db.Set(GetKey(finalizingBlockNumber), rlp.Bytes);
                 _db.PutSpan(LatestFinalizedValidatorsBlockNumberKey.Bytes, finalizingBlockNumber.ToBigEndianSpanWithoutLeadingZeros(out _));

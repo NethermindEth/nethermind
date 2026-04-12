@@ -205,7 +205,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
     {
         IConfigProvider configProvider = new ConfigProvider();
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
 
         // Set basefeepergas in genesis or it will fail 1559 validation.
@@ -568,7 +568,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private const bool VerifyTrieOnFinished = false;
         private const int DeployEveryNBlocks = 10;
 
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly BlockDecoder _blockDecoder = new();
         private readonly ReceiptsMessageSerializer _receiptsMessageSerializer = new(specProvider);
 
         // Track deployed contracts for storage testing
@@ -608,7 +608,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
-            Node serverNode = new Node(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
+            Node serverNode = new(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
             if (!await rlpxHost.ConnectAsync(serverNode))
             {
                 throw new NetworkingException($"Failed to connect to {serverNode:s}", NetworkExceptionType.TargetUnreachable);
@@ -736,7 +736,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
             TxReceipt[][] wrappedReceipts = new[] { receipts };
-            using ReceiptsMessage asReceiptsMessage = new ReceiptsMessage(wrappedReceipts.ToPooledList());
+            using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
             IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
             try
@@ -780,7 +780,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private class ImmediateDisconnectFailure : IDisconnectsAnalyzer
     {
         private string? DisconnectFailure = null;
-        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+        private readonly CancellationTokenSource _cts = new();
 
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
@@ -813,7 +813,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         }
 
         private Exception? BlockProcessingFailure;
-        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private CancellationTokenSource _cts = new();
 
         private void ReportException(Exception exception)
         {

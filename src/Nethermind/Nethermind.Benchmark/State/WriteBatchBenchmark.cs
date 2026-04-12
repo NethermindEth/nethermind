@@ -57,20 +57,20 @@ public class WriteBatchBenchmark
             int storageAccountCount = 10;
             int slotsPerStorageAccount = 50;
 
-            SnapshotPooledList prevSnapshots = new SnapshotPooledList(_baseSnapshots.Count);
+            SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
             foreach (FlatSnapshot s in _baseSnapshots)
             {
                 s.TryAcquire();
                 prevSnapshots.Add(s);
             }
 
-            ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
+            ReadOnlySnapshotBundle readOnly = new(
                 prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-            NullTrieNodeCache cache = new NullTrieNodeCache();
-            SnapshotBundle bundle = new SnapshotBundle(
+            NullTrieNodeCache cache = new();
+            SnapshotBundle bundle = new(
                 readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-            CapturingCommitTarget commitTarget = new CapturingCommitTarget();
-            FlatWorldStateScope scope = new FlatWorldStateScope(
+            CapturingCommitTarget commitTarget = new();
+            FlatWorldStateScope scope = new(
                 currentStateId: _currentStateId,
                 snapshotBundle: bundle,
                 codeDb: new NullCodeDb(),
@@ -139,19 +139,19 @@ public class WriteBatchBenchmark
     [IterationSetup]
     public void IterationSetup()
     {
-        SnapshotPooledList prevSnapshots = new SnapshotPooledList(_baseSnapshots.Count);
+        SnapshotPooledList prevSnapshots = new(_baseSnapshots.Count);
         foreach (FlatSnapshot s in _baseSnapshots)
         {
             s.TryAcquire();
             prevSnapshots.Add(s);
         }
 
-        ReadOnlySnapshotBundle readOnly = new ReadOnlySnapshotBundle(
+        ReadOnlySnapshotBundle readOnly = new(
             prevSnapshots, new NoopPersistenceReader(), recordDetailedMetrics: false);
-        NullTrieNodeCache cache = new NullTrieNodeCache();
-        SnapshotBundle bundle = new SnapshotBundle(
+        NullTrieNodeCache cache = new();
+        SnapshotBundle bundle = new(
             readOnly, cache, _resourcePool, ResourcePool.Usage.MainBlockProcessing);
-        CapturingCommitTarget commitTarget = new CapturingCommitTarget();
+        CapturingCommitTarget commitTarget = new();
         _scope = new FlatWorldStateScope(
             currentStateId: _currentStateId,
             snapshotBundle: bundle,
@@ -232,7 +232,7 @@ public class WriteBatchBenchmark
     }
 
     private static Address DeriveAddress(int index) =>
-        new Address(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
+        new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
 
     private sealed class NullTrieNodeCache : ITrieNodeCache
     {
@@ -268,7 +268,7 @@ public class WriteBatchBenchmark
 
         private sealed class NullCodeSetter : IWorldStateScopeProvider.ICodeSetter
         {
-            public static readonly NullCodeSetter Instance = new NullCodeSetter();
+            public static readonly NullCodeSetter Instance = new();
 
             public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) { }
 

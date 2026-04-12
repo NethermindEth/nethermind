@@ -194,7 +194,7 @@ public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV
 
         public override int Read(byte[] buffer, int offset, int count)
         {
-            SequenceReader<byte> reader = new SequenceReader<byte>(sequence.Slice(_position));
+            SequenceReader<byte> reader = new(sequence.Slice(_position));
 
             int totalRead = 0;
             while (totalRead < count && reader.Remaining > 0)

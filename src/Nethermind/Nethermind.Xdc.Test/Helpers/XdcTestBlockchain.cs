@@ -355,7 +355,7 @@ public class XdcTestBlockchain : TestBlockchain
 
             XdcBlockHeaderBuilder xdcBlockHeaderBuilder = new();
 
-            Block genesisBlock = new Block(xdcBlockHeaderBuilder
+            Block genesisBlock = new(xdcBlockHeaderBuilder
                 .WithValidators(finalSpec.GenesisMasterNodes)
                 .WithNumber(finalSpec.SwitchBlock)
                 .WithGasUsed(0)
@@ -485,9 +485,9 @@ public class XdcTestBlockchain : TestBlockchain
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        VoteDecoder voteDecoder = new VoteDecoder();
+        VoteDecoder voteDecoder = new();
 
-        TaskCompletionSource newRoundWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource newRoundWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
         XdcContext.NewRoundSetEvent += OnNewRound;
         try
         {
@@ -503,7 +503,7 @@ public class XdcTestBlockchain : TestBlockchain
                     break;
                 }
                 //Will cast a random master candidate vote for the head block and when vote threshold is reached the block should be proposed
-                Vote vote = new Vote(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
+                Vote vote = new(new BlockRoundInfo(head.Hash!, head.ExtraConsensusData?.BlockRound ?? XdcContext.CurrentRound, head.Number), (ulong)gapNumber);
                 SignRandom(vote);
                 Task voteTask = this.VotesManager.OnReceiveVote(vote);
             }
@@ -537,7 +537,7 @@ public class XdcTestBlockchain : TestBlockchain
         XdcBlockHeader head = (XdcBlockHeader)BlockTree.Head!.Header;
         IXdcReleaseSpec spec = SpecProvider.GetXdcSpec(head, XdcContext.CurrentRound);
 
-        TaskCompletionSource newHeadWaitHandle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource newHeadWaitHandle = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         BlockTree.NewHeadBlock += OnNewHead;
         try

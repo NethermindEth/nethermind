@@ -33,7 +33,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
+        RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
         _txDecoder.Encode(rlpStream, testCase.Tx);
         Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -91,7 +91,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TamperedTestCaseSource))]
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
-        RlpStream stream = new RlpStream(_txDecoder.GetLength(tx, RlpBehaviors.None));
+        RlpStream stream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
         _txDecoder.Encode(stream, tx);
         // Tamper with sequence length
         {

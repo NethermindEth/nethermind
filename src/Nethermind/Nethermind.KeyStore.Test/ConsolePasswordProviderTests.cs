@@ -17,7 +17,7 @@ public class ConsolePasswordProviderTests
     [Test]
     public void Alternative_provider_sets_correctly()
     {
-        FilePasswordProvider emptyPasswordProvider = new FilePasswordProvider(static address => string.Empty);
+        FilePasswordProvider emptyPasswordProvider = new(static address => string.Empty);
         BasePasswordProvider consolePasswordProvider1 = emptyPasswordProvider
                                         .OrReadFromConsole("Test1");
 
@@ -43,7 +43,7 @@ public class ConsolePasswordProviderTests
             ++iterator;
             return key;
         });
-        ConsolePasswordProvider passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
+        ConsolePasswordProvider passwordProvider = new(new ConsoleUtils(consoleWrapper));
         SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password.IsReadOnly(), Is.True);
         Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
@@ -58,8 +58,8 @@ public class ConsolePasswordProviderTests
                 ExpectedPassword = "T",
                 InputChars = new ConsoleKeyInfo[]
                 {
-                    new ConsoleKeyInfo('T', ConsoleKey.T, false, false, false),
-                    new ConsoleKeyInfo((char)13, ConsoleKey.Enter, false, false, false)
+                    new('T', ConsoleKey.T, false, false, false),
+                    new((char)13, ConsoleKey.Enter, false, false, false)
                 },
             };
             yield return new ConsolePasswordProviderTest()
@@ -67,10 +67,10 @@ public class ConsolePasswordProviderTests
                 ExpectedPassword = "Asx",
                 InputChars = new ConsoleKeyInfo[]
                 {
-                    new ConsoleKeyInfo('A', ConsoleKey.A, false, false, false),
-                    new ConsoleKeyInfo('s', ConsoleKey.S, false, false, false),
-                    new ConsoleKeyInfo('x', ConsoleKey.X, false, false, false),
-                    new ConsoleKeyInfo((char)13, ConsoleKey.Enter, false, false, false)
+                    new('A', ConsoleKey.A, false, false, false),
+                    new('s', ConsoleKey.S, false, false, false),
+                    new('x', ConsoleKey.X, false, false, false),
+                    new((char)13, ConsoleKey.Enter, false, false, false)
                 },
             };
             yield return new ConsolePasswordProviderTest()
@@ -78,11 +78,11 @@ public class ConsolePasswordProviderTests
                 ExpectedPassword = "rd",
                 InputChars = new ConsoleKeyInfo[]
                 {
-                    new ConsoleKeyInfo('A', ConsoleKey.A, false, false, false),
-                    new ConsoleKeyInfo((char)8, ConsoleKey.Backspace, false, false, false),
-                    new ConsoleKeyInfo('r', ConsoleKey.R, false, false, false),
-                    new ConsoleKeyInfo('d', ConsoleKey.D, false, false, false),
-                    new ConsoleKeyInfo((char)13, ConsoleKey.Enter, false, false, false)
+                    new('A', ConsoleKey.A, false, false, false),
+                    new((char)8, ConsoleKey.Backspace, false, false, false),
+                    new('r', ConsoleKey.R, false, false, false),
+                    new('d', ConsoleKey.D, false, false, false),
+                    new((char)13, ConsoleKey.Enter, false, false, false)
                 },
             };
             yield return new ConsolePasswordProviderTest()
@@ -90,15 +90,15 @@ public class ConsolePasswordProviderTests
                 ExpectedPassword = "po",
                 InputChars = new ConsoleKeyInfo[]
                 {
-                    new ConsoleKeyInfo((char)8, ConsoleKey.Backspace, false, false, false),
-                    new ConsoleKeyInfo('j', ConsoleKey.A, false, false, false),
-                    new ConsoleKeyInfo((char)8, ConsoleKey.Backspace, false, false, false),
-                    new ConsoleKeyInfo((char)8, ConsoleKey.Backspace, false, false, false),
-                    new ConsoleKeyInfo('p', ConsoleKey.R, false, false, false),
-                    new ConsoleKeyInfo('o', ConsoleKey.D, false, false, false),
-                    new ConsoleKeyInfo('o', ConsoleKey.D, false, false, false),
-                    new ConsoleKeyInfo((char)8, ConsoleKey.Backspace, false, false, false),
-                    new ConsoleKeyInfo((char)13, ConsoleKey.Enter, false, false, false)
+                    new((char)8, ConsoleKey.Backspace, false, false, false),
+                    new('j', ConsoleKey.A, false, false, false),
+                    new((char)8, ConsoleKey.Backspace, false, false, false),
+                    new((char)8, ConsoleKey.Backspace, false, false, false),
+                    new('p', ConsoleKey.R, false, false, false),
+                    new('o', ConsoleKey.D, false, false, false),
+                    new('o', ConsoleKey.D, false, false, false),
+                    new((char)8, ConsoleKey.Backspace, false, false, false),
+                    new((char)13, ConsoleKey.Enter, false, false, false)
                 },
             };
         }

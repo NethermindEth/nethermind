@@ -162,7 +162,7 @@ public class ReceiptsMessageSerializerTests
             receipts
         }));
 
-        ReceiptsMessageSerializer69 serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
 
         IByteBuffer x = PooledByteBufferAllocator.Default.Buffer(1024);
         serializer.Serialize(x, message);
@@ -185,7 +185,7 @@ public class ReceiptsMessageSerializerTests
             }
         }));
 
-        ReceiptsMessageSerializer69 serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
+        ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
         message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue

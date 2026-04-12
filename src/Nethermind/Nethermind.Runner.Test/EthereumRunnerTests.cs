@@ -94,19 +94,19 @@ public class EthereumRunnerTests
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();
         Parallel.ForEach(Directory.GetFiles("configs"), configFile =>
         {
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource(configFile));
             configProvider.Initialize();
             resultQueue.Enqueue((configFile, configProvider));
         });
 
         // Sort so that is is consistent so that its easy to run via Rider.
-        List<(string, ConfigProvider)> result = new List<(string, ConfigProvider)>(resultQueue);
+        List<(string, ConfigProvider)> result = new(resultQueue);
         result.Sort();
 
         {
             // Special case for verify trie on state sync finished
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<ISyncConfig>().VerifyTrieOnStateSyncFinished = true;
@@ -115,7 +115,7 @@ public class EthereumRunnerTests
 
         {
             // Flashbots
-            ConfigProvider configProvider = new ConfigProvider();
+            ConfigProvider configProvider = new();
             configProvider.AddSource(new JsonConfigSource("configs/mainnet.json"));
             configProvider.Initialize();
             configProvider.GetConfig<IFlashbotsConfig>().Enabled = true;
@@ -364,7 +364,7 @@ public class EthereumRunnerTests
             );
             pluginLoader.Load();
 
-            ApiBuilder builder = new ApiBuilder(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
+            ApiBuilder builder = new(Substitute.For<IProcessExitSource>(), configProvider, LimboLogs.Instance);
             IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
             plugins.Add(new RunnerTestPlugin());
             EthereumRunner runner = builder.CreateEthereumRunner(plugins);

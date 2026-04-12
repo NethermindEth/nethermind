@@ -127,7 +127,7 @@ public class BlockProcessorTests
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether);
         await testRpc.AddBlock();
-        SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+        SemaphoreSlim suggestedBlockResetEvent = new(0);
         testRpc.BlockTree.NewHeadBlock += (_, _) =>
         {
             suggestedBlockResetEvent.Release(1);

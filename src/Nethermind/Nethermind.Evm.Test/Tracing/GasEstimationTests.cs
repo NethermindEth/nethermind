@@ -273,7 +273,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, 1, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -358,7 +358,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,

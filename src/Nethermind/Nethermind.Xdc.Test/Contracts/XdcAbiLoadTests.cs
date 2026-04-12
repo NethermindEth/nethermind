@@ -16,7 +16,7 @@ internal class XdcAbiLoadTests
     [TestCase(typeof(MasternodeVotingContract))]
     public void Can_load_contract(Type contractType)
     {
-        AbiDefinitionParser parser = new AbiDefinitionParser();
+        AbiDefinitionParser parser = new();
         string json = AbiDefinitionParser.LoadContract(contractType);
         AbiDefinition contract = parser.Parse(json);
         string serialized = AbiDefinitionParser.Serialize(contract);

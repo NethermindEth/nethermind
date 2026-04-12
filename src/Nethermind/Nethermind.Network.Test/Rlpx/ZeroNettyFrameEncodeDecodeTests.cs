@@ -25,11 +25,11 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
-        FrameCipher frameCipher = new FrameCipher(B.AesSecret);
-        FrameMacProcessor macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
+        FrameCipher frameCipher = new(B.AesSecret);
+        FrameMacProcessor macProcessor = new(TestItem.IgnoredPublicKey, B);
 
-        FrameCipher frameCipher2 = new FrameCipher(A.AesSecret);
-        FrameMacProcessor macProcessor2 = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
+        FrameCipher frameCipher2 = new(A.AesSecret);
+        FrameMacProcessor macProcessor2 = new(TestItem.IgnoredPublicKey, A);
 
         Task t1 = Task.Factory.StartNew(() => RunStreamTests(frameCipher, macProcessor, frameCipher2, macProcessor2), TaskCreationOptions.LongRunning);
         Task t2 = Task.Factory.StartNew(() => RunStreamTests(frameCipher2, macProcessor2, frameCipher, macProcessor), TaskCreationOptions.LongRunning);
@@ -53,7 +53,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             .Do((info =>
             {
                 ZeroPacket packet = (ZeroPacket)info[0];
-                NettyRlpStream rlpStream = new NettyRlpStream(packet.Content);
+                NettyRlpStream rlpStream = new(packet.Content);
                 Rlp.ValueDecoderContext ctx = new(rlpStream.AsSpan());
                 byte[] bytes = ctx.DecodeByteArray();
                 reDecoded.WriteBytes(bytes);

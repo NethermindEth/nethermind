@@ -73,7 +73,7 @@ public class EciesCipher : IEciesCipher
         return iesEngine.ProcessBlock(ciphertextBody, macData);
     }
 
-    private static readonly IesWithCipherParameters _iesParameters = new IesWithCipherParameters([], [], KeySize, KeySize);
+    private static readonly IesWithCipherParameters _iesParameters = new([], [], KeySize, KeySize);
 
     private static EthereumIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
     {

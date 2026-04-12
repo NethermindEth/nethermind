@@ -64,7 +64,7 @@ internal class VotesManager(
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        Vote vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
+        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -248,8 +248,8 @@ internal class VotesManager(
 
     private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        HashSet<Address> masternodeSet = new HashSet<Address>(masternodes);
-        List<Signature> signatures = new List<Signature>();
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
         foreach (Vote vote in votes)
         {
             if (vote.Signer is null)

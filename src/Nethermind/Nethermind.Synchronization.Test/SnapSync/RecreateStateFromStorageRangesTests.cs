@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
             ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
 
-            PathWithAccount pathWithAccount = new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            PathWithAccount pathWithAccount = new(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
             (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
                 factory,
                 pathWithAccount,
@@ -214,7 +214,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             ISnapTestHelper helper = container.Resolve<ISnapTestHelper>();
             ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
 
-            PathWithAccount pathWithAccount = new PathWithAccount(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
+            PathWithAccount pathWithAccount = new(account, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA));
             (AddRangeResult result, bool moreChildrenToRight, Hash256 _, bool rootFinished) = SnapProviderHelper.AddStorageRange(
                 factory,
                 pathWithAccount,

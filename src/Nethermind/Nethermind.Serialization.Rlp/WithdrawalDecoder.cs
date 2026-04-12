@@ -49,7 +49,7 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 
     public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpStream stream = new RlpStream(GetLength(item, rlpBehaviors));
+        RlpStream stream = new(GetLength(item, rlpBehaviors));
 
         Encode(stream, item, rlpBehaviors);
 

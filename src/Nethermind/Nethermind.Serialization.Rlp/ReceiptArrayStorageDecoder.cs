@@ -125,12 +125,12 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
         if (receiptsData.Length > 0 && receiptsData[0] == CompactEncoding)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(receiptsData[1..]);
+            Rlp.ValueDecoderContext decoderContext = new(receiptsData[1..]);
             return CompactValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes);
         }
         else
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(receiptsData);
+            Rlp.ValueDecoderContext decoderContext = new(receiptsData);
             try
             {
                 return ValueDecoder.DecodeArray(ref decoderContext, RlpBehaviors.Storage);
@@ -145,7 +145,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
 
     public TxReceipt DeserializeReceiptObsolete(Hash256 hash, Span<byte> receiptData)
     {
-        Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(receiptData);
+        Rlp.ValueDecoderContext context = new(receiptData);
         try
         {
             TxReceipt receipt = ValueDecoder.Decode(ref context, RlpBehaviors.Storage);

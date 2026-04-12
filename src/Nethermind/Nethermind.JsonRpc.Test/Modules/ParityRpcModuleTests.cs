@@ -67,7 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeersCount.Returns(5);
             peerManager.MaxActivePeers.Returns(15);
 
-            TestReadOnlyStateProvider stateProvider = new TestReadOnlyStateProvider();
+            TestReadOnlyStateProvider stateProvider = new();
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead

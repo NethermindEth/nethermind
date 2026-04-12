@@ -55,7 +55,7 @@ public class ResourcePoolTests
         // For MainBlockProcessing: capacity = config.CompactSize + 8 = 2 + 8 = 10
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
         int capacity = _config.CompactSize + 8;
-        List<SnapshotContent> items = new List<SnapshotContent>();
+        List<SnapshotContent> items = new();
 
         for (int i = 0; i < capacity + 5; i++)
         {
@@ -128,8 +128,8 @@ public class ResourcePoolTests
     [Test]
     public void Test_CreateSnapshot_UsesPool()
     {
-        StateId from = new StateId(1, Keccak.Zero);
-        StateId to = new StateId(2, Keccak.Zero);
+        StateId from = new(1, Keccak.Zero);
+        StateId to = new(2, Keccak.Zero);
         ResourcePool.Usage usage = ResourcePool.Usage.MainBlockProcessing;
 
         SnapshotContent content;

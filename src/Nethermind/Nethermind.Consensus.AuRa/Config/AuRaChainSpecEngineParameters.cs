@@ -129,7 +129,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
         public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            SortedDictionary<long, long> value = new SortedDictionary<long, long>();
+            SortedDictionary<long, long> value = new();
             if (reader.TokenType == JsonTokenType.String)
             {
                 value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));

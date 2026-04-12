@@ -24,14 +24,14 @@ namespace Nethermind.Serialization.Ssz.Test
 
         public static ReadOnlySpan<byte> Chunk(ReadOnlySpan<byte> input)
         {
-            Span<byte> chunk = new Span<byte>(new byte[32]);
+            Span<byte> chunk = new(new byte[32]);
             input.CopyTo(chunk);
             return chunk;
         }
 
         public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
-            Span<byte> combined = new Span<byte>(new byte[64]);
+            Span<byte> combined = new(new byte[64]);
             a.CopyTo(combined);
             b.CopyTo(combined[32..]);
             return _hashAlgorithm.ComputeHash(combined.ToArray());

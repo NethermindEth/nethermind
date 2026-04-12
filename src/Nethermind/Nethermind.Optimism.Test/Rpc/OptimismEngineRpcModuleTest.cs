@@ -87,8 +87,8 @@ public class OptimismEngineRpcModuleTest
     [Test]
     public void SignalSuperchainV1_ReturnsCurrentVersion()
     {
-        OptimismProtocolVersion.V0 current = new OptimismProtocolVersion.V0(new byte[8], 3, 2, 1, 0);
-        OptimismSuperchainSignal signal = new OptimismSuperchainSignal(
+        OptimismProtocolVersion.V0 current = new(new byte[8], 3, 2, 1, 0);
+        OptimismSuperchainSignal signal = new(
             Recommended: new OptimismProtocolVersion.V0(new byte[8], 2, 0, 0, 0),
             Required: new OptimismProtocolVersion.V0(new byte[8], 1, 0, 0, 0));
 

@@ -34,7 +34,7 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             throw new ArgumentException($"Cannot deserialize {nameof(ParityTraceActionConverter)}.");
         }
 
-        ParityTraceAction value = new ParityTraceAction();
+        ParityTraceAction value = new();
 
         reader.Read();
         while (reader.TokenType != JsonTokenType.EndObject)

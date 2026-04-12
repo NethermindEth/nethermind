@@ -161,7 +161,7 @@ public class CliqueBlockProducerTests
                 _cliqueConfig,
                 nodeLogManager);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 _timestamper,
                 new CryptoRandom(),
@@ -172,7 +172,7 @@ public class CliqueBlockProducerTests
 
             producerRunner.Start();
 
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+            ProducedBlockSuggester suggester = new(blockTree, producerRunner);
 
             _producers.Add(privateKey, producerRunner);
 
@@ -496,7 +496,7 @@ public class CliqueBlockProducerTests
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
             // gas limit too high
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;

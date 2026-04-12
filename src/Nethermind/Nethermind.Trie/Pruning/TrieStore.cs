@@ -56,10 +56,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     // Only one scope can be active at the same time. Any mutation to trieStore as part of block processing need to
     // acquire _scopeLock.
-    private readonly Lock _scopeLock = new Lock();
+    private readonly Lock _scopeLock = new();
 
     // Protect _dirtyNodes from mutation. Used during memory pruning or WorldState scope.
-    private readonly Lock _pruningLock = new Lock();
+    private readonly Lock _pruningLock = new();
 
     private readonly bool _deleteOldNodes = false;
     private readonly bool _pastKeyTrackingEnabled = false;
@@ -332,7 +332,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         _scopeLock.Enter();
 
-        SpinWait spinWait = new SpinWait();
+        SpinWait spinWait = new();
         while (true)
         {
             if (_pruningLock.TryEnter())
@@ -456,7 +456,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         if (_logger.IsDebug) _logger.Debug($"Beginning new {nameof(BlockCommitSet)} - {blockNumber}");
         VerifyNewCommitSet(blockNumber);
 
-        BlockCommitSet commitSet = new BlockCommitSet(blockNumber);
+        BlockCommitSet commitSet = new(blockNumber);
 
         _currentBlockCommitter = new BlockCommitter(this, commitSet);
         return _currentBlockCommitter;
@@ -533,7 +533,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         ArgumentNullException.ThrowIfNull(hash);
 
-        TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
+        TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
         return _commitBuffer is { } commitBuffer
             ? commitBuffer.FindCachedOrUnknown(key, isReadOnly)
             : FindCachedOrUnknown(key, isReadOnly);
@@ -1039,7 +1039,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
     private readonly ILogger _logger;
 
-    private CommitSetQueue _commitSetQueue = new CommitSetQueue();
+    private CommitSetQueue _commitSetQueue = new();
     public CommitSetQueue CommitSetQueue => _commitSetQueue;
 
     private BlockCommitSet? _lastCommitSet = null;
@@ -1190,7 +1190,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
 
         if (currentNode.Keccak is not null)
         {
-            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, currentNode.Keccak);
+            TrieStoreDirtyNodesCache.Key key = new(address, path, currentNode.Keccak);
             // Unpersisted note may have lower commit number than its parent. This can when its child is created
             // on a different block than its parent.
             GetDirtyNodeShard(key).GetOrAdd(key, new TrieStoreDirtyNodesCache.NodeRecord(currentNode, blockNumber));
@@ -1742,7 +1742,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
 
         // we returning a copy to avoid multithreaded access
-        TrieNode trieNode = new TrieNode(NodeType.Unknown, key.Keccak, node.FullRlp);
+        TrieNode trieNode = new(NodeType.Unknown, key.Keccak, node.FullRlp);
         trieNode.ResolveNode(GetTrieStore(key.Address), key.Path);
         trieNode.Keccak = key.Keccak;
         return trieNode;
@@ -1758,7 +1758,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         {
             ArgumentNullException.ThrowIfNull(hash);
 
-            TrieStoreDirtyNodesCache.Key key = new TrieStoreDirtyNodesCache.Key(address, path, hash);
+            TrieStoreDirtyNodesCache.Key key = new(address, path, hash);
             return baseTrieStore.FindCachedOrUnknown(key, false);
         }
 

@@ -75,7 +75,7 @@ public class SystemConfigDeriver(
 
         if (updateType == SystemConfigUpdate.Batcher)
         {
-            AbiSignature signature = new AbiSignature(nameof(SystemConfigUpdate.Batcher), AbiType.UInt64, AbiType.UInt64, AbiType.Address);
+            AbiSignature signature = new(nameof(SystemConfigUpdate.Batcher), AbiType.UInt64, AbiType.UInt64, AbiType.Address);
             object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
@@ -89,7 +89,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.FeeScalars)
         {
-            AbiSignature signature = new AbiSignature(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
+            AbiSignature signature = new(nameof(SystemConfigUpdate.FeeScalars), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
             object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
@@ -104,7 +104,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.GasLimit)
         {
-            AbiSignature signature = new AbiSignature(nameof(SystemConfigUpdate.GasLimit), AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
+            AbiSignature signature = new(nameof(SystemConfigUpdate.GasLimit), AbiType.UInt64, AbiType.UInt64, AbiType.UInt64);
             object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");
@@ -118,7 +118,7 @@ public class SystemConfigDeriver(
         }
         else if (updateType == SystemConfigUpdate.EIP1559Params)
         {
-            AbiSignature signature = new AbiSignature(nameof(SystemConfigUpdate.EIP1559Params), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
+            AbiSignature signature = new(nameof(SystemConfigUpdate.EIP1559Params), AbiType.UInt64, AbiType.UInt64, AbiType.Bytes32);
             object[] decoded = AbiEncoder.Instance.Decode(AbiEncodingStyle.None, signature, log.Data);
 
             if ((UInt64)decoded[0] != 32) throw new FormatException("Invalid pointer field");

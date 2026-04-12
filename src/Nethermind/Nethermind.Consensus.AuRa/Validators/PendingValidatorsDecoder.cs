@@ -26,14 +26,14 @@ namespace Nethermind.Consensus.AuRa.Validators
 
             int addressSequenceLength = decoderContext.ReadSequenceLength();
             int addressCheck = decoderContext.Position + addressSequenceLength;
-            List<Address> addresses = new List<Address>();
+            List<Address> addresses = new();
             while (decoderContext.Position < addressCheck)
             {
                 addresses.Add(decoderContext.DecodeAddress());
             }
             decoderContext.Check(addressCheck);
 
-            PendingValidators result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
+            PendingValidators result = new(blockNumber, blockHash, addresses.ToArray())
             {
                 AreFinalized = decoderContext.DecodeBool()
             };
@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return Rlp.OfEmptyList;
             }
 
-            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
             return new Rlp(rlpStream.Data.ToArray());
         }

@@ -50,7 +50,7 @@ public class LocalDbContext(
         StateTree.RootHash = remote.StateTree.RootHash;
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
-        TreeDumper dumper = new TreeDumper();
+        TreeDumper dumper = new();
         remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);

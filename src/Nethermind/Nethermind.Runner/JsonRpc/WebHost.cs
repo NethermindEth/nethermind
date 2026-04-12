@@ -83,8 +83,8 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
 
         _applicationLifetime = _applicationServices.GetRequiredService<ApplicationLifetime>();
 
-        HttpContextFactory httpContextFactory = new HttpContextFactory(Services);
-        HostingApplication hostingApp = new HostingApplication(application, _logManager, httpContextFactory);
+        HttpContextFactory httpContextFactory = new(Services);
+        HostingApplication hostingApp = new(application, _logManager, httpContextFactory);
 
         await Server.StartAsync(hostingApp, cancellationToken).ConfigureAwait(false);
         _startedServer = true;

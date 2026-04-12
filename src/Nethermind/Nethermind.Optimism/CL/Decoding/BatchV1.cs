@@ -85,7 +85,7 @@ public sealed class BatchV1
         {
             ulong txIdx = from + i;
             bool parityBit = ((Txs.YParityBits >> (int)txIdx) & 1) == 1;
-            Transaction tx = new Transaction
+            Transaction tx = new()
             {
                 ChainId = chainId,
                 Type = Txs.Types[(int)txIdx],

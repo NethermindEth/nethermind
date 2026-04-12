@@ -556,10 +556,10 @@ public class AbiTests
     [Test]
     public void Should_encode_arrays_and_lists_equally()
     {
-        AbiArray abi = new AbiArray(AbiType.UInt256);
+        AbiArray abi = new(AbiType.UInt256);
         UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        List<UInt256> list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
-        using ArrayPoolList<UInt256> pool = new ArrayPoolList<UInt256>(4);
+        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);
 
@@ -572,7 +572,7 @@ public class AbiTests
     [Test]
     public void Should_throw_on_malformed_abi()
     {
-        AbiSignature abi = new AbiSignature(
+        AbiSignature abi = new(
             "DepositEvent",
             AbiType.DynamicBytes,
             AbiType.DynamicBytes,

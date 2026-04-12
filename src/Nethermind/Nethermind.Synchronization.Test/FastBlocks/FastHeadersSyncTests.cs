@@ -130,7 +130,7 @@ public class FastHeadersSyncTests
         ISyncReport syncReport = new NullSyncReport();
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
 
         ManualResetEventSlim hangLatch = new(false);
         BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
@@ -479,7 +479,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
         BlockHeader pivotHeader = peerChain.FindHeader(998)!;
-        TestSyncConfig syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -535,7 +535,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
         BlockHeader pivotHeader = peerChain.FindHeader(999)!;
-        TestSyncConfig syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -588,7 +588,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
         BlockHeader pivotHeader = peerChain.FindHeader(700)!;
-        TestSyncConfig syncConfig = new TestSyncConfig
+        TestSyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = pivotHeader.Number,
@@ -620,7 +620,7 @@ public class FastHeadersSyncTests
     {
         IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
         BlockHeader pivotHeader = peerChain.FindHeader(700)!;
-        TestSyncConfig syncConfig = new TestSyncConfig
+        TestSyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = pivotHeader.Number,

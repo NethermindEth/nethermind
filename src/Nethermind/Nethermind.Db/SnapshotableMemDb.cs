@@ -449,7 +449,7 @@ namespace Nethermind.Db
 
             SortedSet<(byte[] Key, int Version, byte[]? Value)> view = _db.GetViewBetween(lower, upper);
             // Materialize before removing to avoid modifying during enumeration
-            List<(byte[] Key, int Version, byte[]? Value)> toRemove = new List<(byte[] Key, int Version, byte[]? Value)>(view);
+            List<(byte[] Key, int Version, byte[]? Value)> toRemove = new(view);
             foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
             {
                 _db.Remove(entry);

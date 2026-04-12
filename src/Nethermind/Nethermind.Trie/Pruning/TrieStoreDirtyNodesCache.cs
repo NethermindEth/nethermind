@@ -424,7 +424,7 @@ internal class TrieStoreDirtyNodesCache
         {
             if (n.Keccak is null) return;
             if (n.NodeType == NodeType.Unknown) return;
-            Key key = new Key(address, path, n.Keccak);
+            Key key = new(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
                 nodeStorage.Set(address, path, n.Keccak, n.FullRlp.AsSpan());

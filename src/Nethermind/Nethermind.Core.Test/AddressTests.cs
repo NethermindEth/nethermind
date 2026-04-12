@@ -214,11 +214,11 @@ public class AddressTests
                 addressBytes[i] = (byte)(i + j);
             }
 
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
 
             Span<byte> expectedHashBytes = stackalloc byte[Hash256.Size];
             addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
-            ValueHash256 expectedHash = new ValueHash256(expectedHashBytes);
+            ValueHash256 expectedHash = new(expectedHashBytes);
 
             address.ToHash().Should().BeEquivalentTo(expectedHash);
         }

@@ -299,13 +299,13 @@ namespace Nethermind.Core.Test
             Random.Shared.NextBytes(randomBytes);
 
             int requiredLength = Rlp.LengthOf(randomBytes) * 3;
-            RlpStream stream = new RlpStream(requiredLength);
+            RlpStream stream = new(requiredLength);
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
 
             Memory<byte> memory = stream.Data.ToArray();
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(memory, sliceValue);
+            Rlp.ValueDecoderContext context = new(memory, sliceValue);
 
             for (int i = 0; i < 3; i++)
             {

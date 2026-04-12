@@ -67,7 +67,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(withdrawalsRoot)
         );
 
-        OptimismBlockValidator validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -99,7 +99,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithWithdrawalsRoot(GetWithdrawalsRoot())
         );
 
-        OptimismBlockValidator validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,
@@ -130,7 +130,7 @@ public class OptimismBlockValidatorTests(Fork fork)
             .WithBlobGasUsed((ulong?)blobGasUsed)
         );
 
-        OptimismBlockValidator validator = new OptimismBlockValidator(
+        OptimismBlockValidator validator = new(
             Always.Valid,
             Always.Valid,
             Always.Valid,

@@ -46,8 +46,8 @@ public class RangeQueryVisitorTests
     [Test]
     public void AccountRangeFetchVisitor()
     {
-        Hash256 startHash = new Hash256("0000000000000000000000000000000000000000000000000000000001113456");
-        Hash256 limitHash = new Hash256("0000000000000000000000000000000000000000000000000000000001123458");
+        Hash256 startHash = new("0000000000000000000000000000000000000000000000000000000001113456");
+        Hash256 limitHash = new("0000000000000000000000000000000000000000000000000000000001123458");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
@@ -64,7 +64,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void AccountRangeFetchWithSparserTree()
     {
-        StateTree tree = new StateTree();
+        StateTree tree = new();
         tree.Set(new Hash256("0100000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0200000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0300000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
@@ -73,8 +73,8 @@ public class RangeQueryVisitorTests
         tree.UpdateRootHash();
         tree.Commit();
 
-        Hash256 startHash = new Hash256("0150000000000000000000000000000000000000000000000000000000000000");
-        Hash256 limitHash = new Hash256("0350000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0150000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0350000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
@@ -91,14 +91,14 @@ public class RangeQueryVisitorTests
     [Test]
     public void AccountRangeFetch_AfterTree()
     {
-        StateTree tree = new StateTree();
+        StateTree tree = new();
         tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         tree.UpdateRootHash();
         tree.Commit();
 
-        Hash256 startHash = new Hash256("0510000000000000000000000000000000000000000000000000000000000000");
-        Hash256 limitHash = new Hash256("0600000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0510000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0600000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
@@ -114,7 +114,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void RangeFetchPartialLimit()
     {
-        StateTree stateTree = new StateTree();
+        StateTree stateTree = new();
         stateTree.Set(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Set(new Hash256("0x2000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
@@ -126,8 +126,8 @@ public class RangeQueryVisitorTests
         stateTree.Set(new Hash256("0x8000000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
         stateTree.Commit();
 
-        Hash256 startHash = new Hash256("0x3000000000000000000000000000000000000000000000000000000000000000");
-        Hash256 limitHash = new Hash256("0x4500000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0x3000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0x4500000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
@@ -154,16 +154,16 @@ public class RangeQueryVisitorTests
             "0x1320000000000000000000000000000000000000000000000000000000000000",
         ];
 
-        StateTree stateTree = new StateTree();
-        Random random = new Random(0);
+        StateTree stateTree = new();
+        Random random = new(0);
         foreach (string path in paths)
         {
             stateTree.Set(new Hash256(path), TestItem.GenerateRandomAccount(random));
         }
         stateTree.Commit();
 
-        Hash256 startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
-        Hash256 limitHash = new Hash256("0x1235000000000000000000000000000000000000000000000000000000000000");
+        Hash256 startHash = new("0x1140000000000000000000000000000000000000000000000000000000000000");
+        Hash256 limitHash = new("0x1235000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
         using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
@@ -200,7 +200,7 @@ public class RangeQueryVisitorTests
     [Test]
     public void StorageRangeFetchVisitor()
     {
-        TestRawTrieStore store = new TestRawTrieStore(new MemDb());
+        TestRawTrieStore store = new(new MemDb());
         (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
 
         RlpCollector leafCollector = new();

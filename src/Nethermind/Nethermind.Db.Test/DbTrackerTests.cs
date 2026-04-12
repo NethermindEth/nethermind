@@ -121,11 +121,11 @@ public class DbTrackerTests
         IContainer container = builder
             .Build();
 
-        IDbMeta.DbMetric metric = new IDbMeta.DbMetric()
+        IDbMeta.DbMetric metric = new()
         {
             TotalReads = 10
         };
-        FakeDb fakeDb = new FakeDb(metric);
+        FakeDb fakeDb = new(metric);
         fakeDbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(fakeDb);
 
         Action updateAction = null;

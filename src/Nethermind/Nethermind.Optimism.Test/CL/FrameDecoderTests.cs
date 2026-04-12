@@ -16,7 +16,7 @@ public class FrameDecoderTests
     [Test]
     public void DecodeSingleFrame()
     {
-        Frame frame = new Frame
+        Frame frame = new()
         {
             ChannelId = 1,
             FrameNumber = 1,
@@ -37,7 +37,7 @@ public class FrameDecoderTests
     [Test]
     public void DecodeMultipleFrames()
     {
-        Frame frame1 = new Frame
+        Frame frame1 = new()
         {
             ChannelId = 1,
             FrameNumber = 1,
@@ -46,7 +46,7 @@ public class FrameDecoderTests
         };
 
 
-        Frame frame2 = new Frame
+        Frame frame2 = new()
         {
             ChannelId = 1,
             FrameNumber = 2,

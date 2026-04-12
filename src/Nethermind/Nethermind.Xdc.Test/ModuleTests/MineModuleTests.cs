@@ -69,7 +69,7 @@ internal class MineModuleTests
             blocksProposed++;
         };
 
-        TaskCompletionSource newRoundWaitHandle = new TaskCompletionSource();
+        TaskCompletionSource newRoundWaitHandle = new();
         xdcBlockchain.XdcContext.NewRoundSetEvent += (sender, args) =>
         {
             newRoundWaitHandle.TrySetResult();

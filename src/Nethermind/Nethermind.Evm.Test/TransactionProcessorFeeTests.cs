@@ -248,7 +248,7 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
-        BlockExecutionContext blkCtx = new BlockExecutionContext(block.Header, _spec);
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
         blockTracer.StartNewBlockTrace(block);
         {
             ITxTracer txTracer = blockTracer.StartNewTxTrace(tx1);

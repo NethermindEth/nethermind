@@ -77,7 +77,7 @@ namespace Nethermind.Serialization.Json
         {
             SnapshotGlobalOptions(out bool strictHexFormat, out JsonConverter[] additionalConverters, out IJsonTypeInfoResolver[] additionalResolvers);
 
-            JsonSerializerOptions result = new JsonSerializerOptions
+            JsonSerializerOptions result = new()
             {
                 WriteIndented = indented,
                 NewLine = "\n",
@@ -182,7 +182,7 @@ namespace Nethermind.Serialization.Json
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
             CountingStreamPipeWriter countingWriter = GetPipeWriter(stream, leaveOpen);
-            using Utf8JsonWriter writer = new Utf8JsonWriter(countingWriter, CreateWriterOptions(indented));
+            using Utf8JsonWriter writer = new(countingWriter, CreateWriterOptions(indented));
             JsonSerializer.Serialize(writer, value, GetSerializerOptions(indented));
             countingWriter.Complete();
 
@@ -192,7 +192,7 @@ namespace Nethermind.Serialization.Json
 
         private JsonWriterOptions CreateWriterOptions(bool indented)
         {
-            JsonWriterOptions writerOptions = new JsonWriterOptions { SkipValidation = true, Indented = indented };
+            JsonWriterOptions writerOptions = new() { SkipValidation = true, Indented = indented };
             writerOptions.MaxDepth = _maxDepth ?? writerOptions.MaxDepth;
             return writerOptions;
         }
@@ -209,7 +209,7 @@ namespace Nethermind.Serialization.Json
 
         public Task SerializeAsync<T>(PipeWriter writer, T value, bool indented = false)
         {
-            using Utf8JsonWriter jsonWriter = new Utf8JsonWriter((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
+            using Utf8JsonWriter jsonWriter = new((IBufferWriter<byte>)writer, CreateWriterOptions(indented));
             JsonSerializer.Serialize(jsonWriter, value, GetSerializerOptions(indented));
             return Task.CompletedTask;
         }

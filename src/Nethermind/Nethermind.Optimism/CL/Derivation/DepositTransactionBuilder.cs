@@ -115,8 +115,8 @@ public class DepositTransactionBuilder(ulong chainId, CLChainSpecEngineParameter
         if (log.Topics[1].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[1]}");
         if (log.Topics[2].Bytes.Length != 32) throw new ArgumentException($"Expected padded {nameof(Address)}, got {log.Topics[2]}");
 
-        Address from = new Address(log.Topics[1].Bytes[^Address.Size..]);
-        Address to = new Address(log.Topics[2].Bytes[^Address.Size..]);
+        Address from = new(log.Topics[1].Bytes[^Address.Size..]);
+        Address to = new(log.Topics[2].Bytes[^Address.Size..]);
 
         static Hash256 ComputeSourceHash(Hash256 l1BlockHash, ulong logIndex)
         {

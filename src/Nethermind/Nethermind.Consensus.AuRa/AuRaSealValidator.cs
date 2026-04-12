@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
-        private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
+        private readonly ReceivedSteps _receivedSteps = new();
         private readonly Lazy<IReportingValidator> _reportingValidator;
 
         public AuRaSealValidator(
@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.AuRa
 
         private Address GetSealer(BlockHeader header)
         {
-            Signature signature = new Signature(header.AuRaSignature);
+            Signature signature = new(header.AuRaSignature);
             signature.V += Signature.VOffset;
             ValueHash256 message = header.CalculateValueHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, in message);
@@ -172,7 +172,7 @@ namespace Nethermind.Consensus.AuRa
 
         private class ReceivedSteps
         {
-            private McsLock _lock = new McsLock();
+            private McsLock _lock = new();
 
             private readonly struct AuthorBlock : IEquatable<AuthorBlock>
             {
@@ -207,7 +207,7 @@ namespace Nethermind.Consensus.AuRa
 
             private class StepElementComparer : IComparer<AuthorBlockForStep>
             {
-                public static readonly StepElementComparer Instance = new StepElementComparer();
+                public static readonly StepElementComparer Instance = new();
 
                 public int Compare(AuthorBlockForStep x, AuthorBlockForStep y)
                 {
@@ -216,7 +216,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             private readonly List<AuthorBlockForStep> _list
-                = new List<AuthorBlockForStep>();
+                = new();
 
             private const int CacheSizeFullRoundsMultiplier = 4;
 
@@ -229,7 +229,7 @@ namespace Nethermind.Consensus.AuRa
                 Hash256 hash = header.Hash;
                 int index = BinarySearch(step);
                 bool contains = index >= 0;
-                AuthorBlock item = new AuthorBlock(author, hash);
+                AuthorBlock item = new(author, hash);
                 bool containsSibling = false;
                 if (contains)
                 {

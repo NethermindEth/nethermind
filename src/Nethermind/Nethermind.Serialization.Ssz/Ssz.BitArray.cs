@@ -64,7 +64,7 @@ public static partial class Ssz
             }
         }
 
-        BitArray value = new BitArray(span.ToArray());
+        BitArray value = new(span.ToArray());
         value.Length = vectorLength;
         return value;
     }
@@ -81,7 +81,7 @@ public static partial class Ssz
             throw new InvalidDataException("Invalid bitlist: last byte is zero (missing sentinel bit)");
         }
 
-        BitArray value = new BitArray(span.ToArray());
+        BitArray value = new(span.ToArray());
         int length = value.Length - 1;
         int lastByte = span[^1];
         int mask = 0x80;

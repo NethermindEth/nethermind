@@ -45,14 +45,14 @@ public class OptimismOptimismRpcModule(
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");
         }
 
-        OptimismOutputV0 output = new OptimismOutputV0
+        OptimismOutputV0 output = new()
         {
             StateRoot = block.StateRoot,
             MessagePasserStorageRoot = proof.StorageRoot,
             BlockHash = block.Hash
         };
 
-        OptimismOutputAtBlock result = new OptimismOutputAtBlock
+        OptimismOutputAtBlock result = new()
         {
             Version = OptimismOutputV0.Version,
             OutputRoot = output.Root(),
@@ -94,7 +94,7 @@ public class OptimismOptimismRpcModule(
         Task<L2Block> safeL2 = l2Api.GetBlockByNumber(currentL2Blocks.Safe.Number);
         Task<L2Block> finalizedL2 = l2Api.GetBlockByNumber(currentL2Blocks.Finalized.Number);
 
-        OptimismSyncStatus syncStatus = new OptimismSyncStatus
+        OptimismSyncStatus syncStatus = new()
         {
             // L1
             CurrentL1 = currentL1,

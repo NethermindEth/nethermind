@@ -63,7 +63,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             byte[] key = new byte[32];
             // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
             ((UInt256)(i * 255)).ToBigEndian(key);
-            Hash256 keccak = new Hash256(key);
+            Hash256 keccak = new(key);
             pathPool[i] = keccak;
         }
 

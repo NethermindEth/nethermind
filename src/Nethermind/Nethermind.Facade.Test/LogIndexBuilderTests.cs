@@ -175,7 +175,7 @@ public class LogIndexBuilderTests
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
         int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
-        TestLogIndexStorage storage = new TestLogIndexStorage
+        TestLogIndexStorage storage = new()
         {
             MinBlockNumber = synced[0] < 0 ? null : synced[0],
             MaxBlockNumber = synced[1] < 0 ? null : synced[1]
@@ -201,7 +201,7 @@ public class LogIndexBuilderTests
         [Values(0, 1, 4)] int failAfter
     )
     {
-        Exception exception = new Exception(nameof(Should_ForwardError));
+        Exception exception = new(nameof(Should_ForwardError));
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();

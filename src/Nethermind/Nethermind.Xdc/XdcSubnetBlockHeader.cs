@@ -43,7 +43,7 @@ public class XdcSubnetBlockHeader : XdcBlockHeader
 
     public override ValueHash256 CalculateHash()
     {
-        KeccakRlpStream rlpStream = new KeccakRlpStream();
+        KeccakRlpStream rlpStream = new();
         _headerDecoder.Encode(rlpStream, this);
         return rlpStream.GetHash();
     }

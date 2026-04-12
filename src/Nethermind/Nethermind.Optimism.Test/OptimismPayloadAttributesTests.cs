@@ -38,7 +38,7 @@ public class OptimismPayloadAttributesTests
     public void Compute_PayloadID_with_EIP1559Params((string HexStringEIP1559Params, string PayloadId) testCase)
     {
         BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-        OptimismPayloadAttributes payloadAttributes = new OptimismPayloadAttributes
+        OptimismPayloadAttributes payloadAttributes = new()
         {
             GasLimit = 1,
             Transactions = [],
@@ -67,7 +67,7 @@ public class OptimismPayloadAttributesTests
         [ValueSource(typeof(Fork), nameof(Fork.AllAndNextToGenesis))] Fork fork
     )
     {
-        OptimismPayloadAttributes payloadAttributes = new OptimismPayloadAttributes
+        OptimismPayloadAttributes payloadAttributes = new()
         {
             GasLimit = 1,
             Transactions = [],

@@ -22,7 +22,7 @@ public class DecodingPipeline(ILogManager logManager) : IDecodingPipeline
 
     public async Task Run(CancellationToken token)
     {
-        Memory<byte> buffer = new Memory<byte>(new byte[BlobDecoder.MaxBlobDataSize]);
+        Memory<byte> buffer = new(new byte[BlobDecoder.MaxBlobDataSize]);
         try
         {
             while (!token.IsCancellationRequested)

@@ -41,8 +41,8 @@ public class OptimismReceiptTests
         IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(false);
 
-        L1BlockGasInfo blockGasInfo = new L1BlockGasInfo(block, helper);
-        OptimismReceiptForRpc receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -80,8 +80,8 @@ public class OptimismReceiptTests
         IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
 
-        L1BlockGasInfo blockGasInfo = new L1BlockGasInfo(block, helper);
-        OptimismReceiptForRpc receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -125,8 +125,8 @@ public class OptimismReceiptTests
         IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
 
-        L1BlockGasInfo blockGasInfo = new L1BlockGasInfo(block, helper);
-        OptimismReceiptForRpc receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,

@@ -124,7 +124,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 throw new AuRaException("Decrypted random number doesn't agree with the hash.");
                             }
 
-                            UInt256 number = new UInt256(bytes, true);
+                            UInt256 number = new(bytes, true);
 
                             Metrics.RevealNumber++;
                             return contract.RevealNumber(number);

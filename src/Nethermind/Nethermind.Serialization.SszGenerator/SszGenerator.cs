@@ -42,7 +42,7 @@ public partial class SszGenerator : IIncrementalGenerator
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
                 if (methodSymbol is not null && methodSymbol.ContainingType.ToString() == "Nethermind.Serialization.Ssz.SszSerializableAttribute")
                 {
-                    List<SszType> foundTypes = new List<SszType>(SszType.BasicTypes);
+                    List<SszType> foundTypes = new(SszType.BasicTypes);
                     return (SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!), foundTypes);
                 }
             }
@@ -671,7 +671,7 @@ public partial class SszEncoding
         string[] lines = input.Split('\n');
         int lineNumberWidth = lines.Length.ToString().Length;
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         for (int i = 0; i < lines.Length; i++)
         {
             string lineNumber = (i + 1).ToString().PadLeft(lineNumberWidth);

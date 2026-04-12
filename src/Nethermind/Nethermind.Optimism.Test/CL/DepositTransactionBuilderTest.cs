@@ -169,7 +169,7 @@ public class DepositTransactionBuilderTest
         Address from = SomeAddressA;
         Address to = SomeAddressB;
 
-        DepositLogEventV0 depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -217,7 +217,7 @@ public class DepositTransactionBuilderTest
         Address from = SomeAddressA;
         Address to = SomeAddressB;
 
-        DepositLogEventV0 depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -281,7 +281,7 @@ public class DepositTransactionBuilderTest
         Hash256 blockHash = SomeHash;
         Address from = SomeAddressA;
 
-        DepositLogEventV0 depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -346,7 +346,7 @@ public class DepositTransactionBuilderTest
         Address from = SomeAddressA;
         Address to = SomeAddressB;
 
-        DepositLogEventV0 depositLogEventV0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -434,7 +434,7 @@ public class DepositTransactionBuilderTest
         Address from = SomeAddressA;
         Address to = SomeAddressB;
 
-        DepositLogEventV0 depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -444,7 +444,7 @@ public class DepositTransactionBuilderTest
         };
         byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        DepositLogEventV0 depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,
@@ -539,7 +539,7 @@ public class DepositTransactionBuilderTest
         Address from = SomeAddressA;
         Address to = SomeAddressB;
 
-        DepositLogEventV0 depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -549,7 +549,7 @@ public class DepositTransactionBuilderTest
         };
         byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        DepositLogEventV0 depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,
@@ -614,7 +614,7 @@ public class DepositTransactionBuilderTest
         Address from_1 = SomeAddressC;
         Address to_1 = SomeAddressD;
 
-        DepositLogEventV0 depositLogEventV0_0 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_0 = new()
         {
             Data = Bytes.FromHexString("0x3444f4d68305342838072b3c49df1b64c60a"),
             Mint = 0,
@@ -624,7 +624,7 @@ public class DepositTransactionBuilderTest
         };
         byte[] logData_0 = depositLogEventV0_0.ToBytes();
 
-        DepositLogEventV0 depositLogEventV0_1 = new DepositLogEventV0
+        DepositLogEventV0 depositLogEventV0_1 = new()
         {
             Data = Bytes.FromHexString("0xe19ea336343e12e35237bb667fd0336a4fd9"),
             Mint = 0,

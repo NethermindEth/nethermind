@@ -432,7 +432,7 @@ namespace Nethermind.Consensus.Processing
 
         private class BlockDataPolicy() : IPooledObjectPolicy<BlockData>
         {
-            public BlockData Create() => new BlockData();
+            public BlockData Create() => new();
             public bool Return(BlockData data)
             {
                 // Release the object references so we don't hold them from being GC'd

@@ -43,7 +43,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public void Improved()
         {
-            Vector<byte> aVec = new Vector<byte>(a);
+            Vector<byte> aVec = new(a);
             Vector.Xor(aVec, new Vector<byte>(BytesMax32)).CopyTo(c);
         }
     }

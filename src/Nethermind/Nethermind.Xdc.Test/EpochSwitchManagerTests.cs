@@ -138,8 +138,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)releaseSpec.SwitchBlock;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), gapNumber);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), gapNumber);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         // Act
@@ -169,8 +169,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
@@ -201,8 +201,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound - 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound - 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
@@ -233,8 +233,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
         // Act
         bool result = _epochSwitchManager.IsEpochSwitchAtBlock(proposedHeader);
@@ -338,8 +338,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         ulong currentEpochNumber = (ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound / (ulong)releaseSpec.EpochLength;
@@ -377,8 +377,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound) / (ulong)releaseSpec.EpochLength;
@@ -416,8 +416,8 @@ internal class EpochSwitchManagerTests
         proposedHeader.Number = (long)chainHead.Number + 1;
         proposedHeader.ParentHash = chainHead.Hash;
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(chainHead.Hash!, chainHead.ExtraConsensusData!.BlockRound, chainHead.Number), SignerSignatures.ToArray(), 1);
+        ExtraFieldsV2 extraFieldsV2 = new(chainHead.ExtraConsensusData!.BlockRound + 1, qc);
         proposedHeader.ExtraConsensusData = extraFieldsV2;
 
         ulong currentEpochNumber = ((ulong)releaseSpec.SwitchEpoch + extraFieldsV2.BlockRound) / (ulong)releaseSpec.EpochLength;
@@ -607,7 +607,7 @@ internal class EpochSwitchManagerTests
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 100);
 
-        Block headBlock = new Block(chainHead);
+        Block headBlock = new(chainHead);
         _tree.Head.Returns(headBlock);
 
         int expectedBlockNumber = (int)(epochNumber * epochLength);
@@ -631,11 +631,11 @@ internal class EpochSwitchManagerTests
 
         XdcBlockHeader chainHead = GetChainOfBlocks(_tree, _snapshotManager, releaseSpec, 20);
 
-        Block headBlock = new Block(chainHead);
+        Block headBlock = new(chainHead);
         _tree.Head.Returns(headBlock);
 
         // TC round 12 is within epoch that started at round 10
-        TimeoutCertificate timeoutCertificate = new TimeoutCertificate(12, [], 0);
+        TimeoutCertificate timeoutCertificate = new(12, [], 0);
         EpochSwitchInfo? result = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
         result.Should().NotBeNull();
         result!.EpochSwitchBlockInfo.Round.Should().Be(10);
@@ -682,8 +682,8 @@ internal class EpochSwitchManagerTests
         Hash256 newBlockHash = Keccak.Compute(BitConverter.GetBytes(blockNumber).PadLeft(32));
 
 
-        QuorumCertificate qc = new QuorumCertificate(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, parent?.Number ?? 0), SignerSignatures.ToArray(), (ulong)spec.Gap);
-        ExtraFieldsV2 extraFieldsV2 = new ExtraFieldsV2((ulong)newRound, qc);
+        QuorumCertificate qc = new(new BlockRoundInfo(parent?.Hash ?? Keccak.Zero, prevRound, parent?.Number ?? 0), SignerSignatures.ToArray(), (ulong)spec.Gap);
+        ExtraFieldsV2 extraFieldsV2 = new((ulong)newRound, qc);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .TestObject;

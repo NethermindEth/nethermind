@@ -58,7 +58,7 @@ public class TxPoolRpcModuleTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.ChainId.Returns(SomeChainId);
 
-        TxPoolRpcModule txPoolRpcModule = new TxPoolRpcModule(txPoolInfoProvider, specProvider);
+        TxPoolRpcModule txPoolRpcModule = new(txPoolInfoProvider, specProvider);
 
         TxPoolContent txpoolContent = txPoolRpcModule.txpool_content().Data;
 

@@ -462,7 +462,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         return result;
     }
 
-    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new StreamPipeReaderOptions(leaveOpen: false);
+    private static readonly StreamPipeReaderOptions _pipeReaderOptions = new(leaveOpen: false);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private async ValueTask<PipeReader> RecordRequest(PipeReader reader)

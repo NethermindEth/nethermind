@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return null;
             }
 
-            PersistentReport persistentReport = new PersistentReport(validator, (UInt256)blockNumber, proof);
+            PersistentReport persistentReport = new(validator, (UInt256)blockNumber, proof);
 
             if (IsPosdao(blockNumber))
             {

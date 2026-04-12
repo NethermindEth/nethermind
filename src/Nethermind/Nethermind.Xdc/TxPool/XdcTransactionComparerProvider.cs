@@ -45,7 +45,7 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
     {
         IComparer<Transaction> defaultComparer = defaultComparerProvider.GetDefaultComparer();
 
-        CompareTxBySender signerFilter = new CompareTxBySender(specProvider);
+        CompareTxBySender signerFilter = new(specProvider);
 
         return signerFilter.ThenBy(defaultComparer);
     }
@@ -56,7 +56,7 @@ internal class XdcTransactionComparerProvider(ISpecProvider specProvider, IBlock
 
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(blockPreparationContext.BlockNumber);
 
-        CompareTxBySender signerFilter = new CompareTxBySender(currentSpec);
+        CompareTxBySender signerFilter = new(currentSpec);
 
         return signerFilter.ThenBy(defaultComparer);
     }

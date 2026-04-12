@@ -431,11 +431,11 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_clears_cache()
     {
-        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        PreBlockCaches preBlockCaches = new();
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-        StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
+        StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
@@ -602,9 +602,9 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_persist_between_commit()
     {
-        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        PreBlockCaches preBlockCaches = new();
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
-        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);

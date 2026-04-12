@@ -60,7 +60,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
             GethLikeTxTrace? trace = _currentTxTracer.BuildResult();
 
             // Write the final summary line for this transaction
-            using Utf8JsonWriter writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+            using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
             writer.WriteStartObject();
             writer.WritePropertyName("output");
@@ -96,7 +96,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
     /// </summary>
     public void TestFinished(string testName, bool pass, IReleaseSpec spec, TimeSpan? duration, Hash256? headStateRoot)
     {
-        using Utf8JsonWriter writer = new Utf8JsonWriter(_output, new JsonWriterOptions
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions
         {
             Indented = false  // Critical: Single line for JSONL compliance
         });
@@ -139,7 +139,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
 
     private void WriteTraceEntry(GethTxFileTraceEntry entry)
     {
-        using Utf8JsonWriter writer = new Utf8JsonWriter(_output, new JsonWriterOptions { Indented = false });
+        using Utf8JsonWriter writer = new(_output, new JsonWriterOptions { Indented = false });
 
         // Write trace entry (same format as GethLikeTxTraceJsonLinesConverter)
         writer.WriteStartObject();

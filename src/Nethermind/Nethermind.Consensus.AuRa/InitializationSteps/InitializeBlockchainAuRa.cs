@@ -53,7 +53,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
                 localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.Priorities,
                     api.BlockTree,

@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program
     {
-        private static readonly List<string> AllFailingTests = new List<string>();
+        private static readonly List<string> AllFailingTests = new();
         private static double _totalMs;
 
         public static async Task Main(params string[] args)
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 string command = input[0];
                 string testWildcard = input.Length <= 1 ? null : input[1];
 
-                Stopwatch stopwatch = new Stopwatch();
+                Stopwatch stopwatch = new();
                 if (command == "p")
                 {
 #if DEBUG

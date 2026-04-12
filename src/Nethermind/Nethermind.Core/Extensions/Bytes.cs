@@ -516,7 +516,7 @@ namespace Nethermind.Core.Extensions
 
         public static string ToBitString(this BitArray bits)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
 
             for (int i = 0; i < bits.Count; i++)
             {

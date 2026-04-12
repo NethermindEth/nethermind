@@ -199,8 +199,8 @@ internal class PenaltyTests
         int chainSize = (int)(targetEpoch + 1);
 
         XdcBlockHeader[] blockHeaders = new XdcBlockHeader[chainSize];
-        Dictionary<Hash256, XdcBlockHeader> hashToHeader = new Dictionary<Hash256, XdcBlockHeader>();
-        Dictionary<Hash256, Block> hashToBlock = new Dictionary<Hash256, Block>();
+        Dictionary<Hash256, XdcBlockHeader> hashToHeader = new();
+        Dictionary<Hash256, Block> hashToBlock = new();
         Block[] blocks = new Block[chainSize];
 
         for (int i = 0; i < chainSize; i++)

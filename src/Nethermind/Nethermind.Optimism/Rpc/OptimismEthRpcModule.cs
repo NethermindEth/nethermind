@@ -153,7 +153,7 @@ public class OptimismEthRpcModule(
         }
 
         Block block = foundBlock.Object;
-        L1BlockGasInfo l1GasInfo = new L1BlockGasInfo(block, opSpecHelper);
+        L1BlockGasInfo l1GasInfo = new(block, opSpecHelper);
         OptimismReceiptForRpc result =
             receipt is OptimismTxReceipt optimismTxReceipt
                 ? new OptimismReceiptForRpc(
@@ -249,7 +249,7 @@ public class OptimismEthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc result = new BlockForRpc(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
+        BlockForRpc result = new(block, includeFullTransactionData: false, _specProvider, skipTxs: returnFullTransactionObjects);
 
         if (returnFullTransactionObjects)
         {

@@ -230,7 +230,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             get
             {
                 byte[] code = new byte[1024];
-                TestCaseData test = new TestCaseData(code);
+                TestCaseData test = new(code);
                 test.TestName = "Code_All_0x00";
                 yield return test;
 

@@ -1329,7 +1329,7 @@ namespace Nethermind.Trie
                 if (childOrRef is null)
                 {
                     // Allows to load children in parallel
-                    ValueRlpStream rlpStream = new ValueRlpStream(rlp);
+                    ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
                     int prefix = rlpStream.ReadByte();
 

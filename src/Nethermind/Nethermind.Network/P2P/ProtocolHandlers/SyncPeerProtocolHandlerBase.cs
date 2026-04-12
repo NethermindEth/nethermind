@@ -423,7 +423,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     return headers;
                 }
 
-                ArrayPoolList<BlockHeader> newList = new ArrayPoolList<BlockHeader>(toTake, headers.Take(toTake));
+                ArrayPoolList<BlockHeader> newList = new(toTake, headers.Take(toTake));
                 headers.Dispose();
                 return newList;
             }

@@ -12,7 +12,7 @@ namespace Nethermind.KeyStore.Test;
 
 public class FilePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+    private static readonly List<(string Name, string Content)> _files = new()
     {
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
@@ -52,7 +52,7 @@ public class FilePasswordProviderTests
     public void GetPassword([ValueSource(nameof(PasswordProviderTestCases))]
         FilePasswordProviderTest test)
     {
-        FilePasswordProvider passwordProvider = new FilePasswordProvider(address => Path.Combine(TestDir, test.FileName));
+        FilePasswordProvider passwordProvider = new(address => Path.Combine(TestDir, test.FileName));
 
         SecureString password = passwordProvider.GetPassword(Address.Zero);
         Assert.That(password.IsReadOnly(), Is.True);
@@ -62,7 +62,7 @@ public class FilePasswordProviderTests
     [Test]
     public void Return_null_when_file_not_exists()
     {
-        FilePasswordProvider passwordProvider = new FilePasswordProvider(static address =>
+        FilePasswordProvider passwordProvider = new(static address =>
         {
             if (address == Address.Zero)
             {

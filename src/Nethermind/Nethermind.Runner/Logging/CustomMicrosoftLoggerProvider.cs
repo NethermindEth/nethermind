@@ -20,7 +20,7 @@ namespace Nethermind.Runner.Logging
         public ILogger CreateLogger(string categoryName)
         {
             Nethermind.Logging.ILogger coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
-            CustomMicrosoftLogger customLogger = new CustomMicrosoftLogger(coreLogger);
+            CustomMicrosoftLogger customLogger = new(coreLogger);
             return customLogger;
         }
 

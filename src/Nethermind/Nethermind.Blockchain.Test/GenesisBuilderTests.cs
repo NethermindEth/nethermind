@@ -53,7 +53,7 @@ public class GenesisBuilderTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/shanghai_from_genesis.json");
         ChainSpec chainSpec = LoadChainSpec(path);
 
-        FunctionalGenesisPostProcessor genesisPostProcessor = new FunctionalGenesisPostProcessor((block) =>
+        FunctionalGenesisPostProcessor genesisPostProcessor = new((block) =>
         {
             chainSpec.Allocations.Should().NotBeNull();
         });
@@ -100,7 +100,7 @@ public class GenesisBuilderTests
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        ChainSpecFileLoader loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }

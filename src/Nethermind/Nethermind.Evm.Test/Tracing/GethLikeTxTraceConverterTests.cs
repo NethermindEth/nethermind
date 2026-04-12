@@ -37,7 +37,7 @@ public class GethLikeTxTraceConverterTests
     [TestCaseSource(nameof(CustomValueTracerResults))]
     public void Write_custom_tracer_result(object value, string expected)
     {
-        GethLikeTxTrace trace = new GethLikeTxTrace
+        GethLikeTxTrace trace = new()
         {
             CustomTracerResult = new GethLikeCustomTrace { Value = value }
         };

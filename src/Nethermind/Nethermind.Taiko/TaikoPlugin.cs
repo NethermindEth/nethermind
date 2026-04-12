@@ -88,7 +88,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         if (logger.IsInfo) logger.Info($"L1SLOAD: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
 
-        JsonRpcL1StorageProvider storageProvider = new JsonRpcL1StorageProvider(
+        JsonRpcL1StorageProvider storageProvider = new(
             surgeConfig.L1EthApiEndpoint,
             _api.Context.Resolve<IJsonSerializer>(),
             _api.Context.Resolve<ILogManager>());
@@ -189,7 +189,7 @@ public class TaikoModule : Module
                     throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
                 }
 
-                BasicJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
+                BasicJsonRpcClient l1RpcClient = new(
                     new Uri(surgeConfig.L1EthApiEndpoint),
                     ctx.Resolve<IJsonSerializer>(),
                     ctx.Resolve<ILogManager>());

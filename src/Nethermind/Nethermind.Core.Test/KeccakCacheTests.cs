@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test
         {
             const int spins = 10;
 
-            Random random = new Random(13);
+            Random random = new(13);
             byte[] bytes = new byte[31]; // misaligned length
             random.NextBytes(bytes);
 
@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test
 
         private string[] GetBucketCollisions()
         {
-            Random random = new Random(13);
+            Random random = new(13);
             Span<byte> span = stackalloc byte[32];
             string[] collisions = new string[4];
 
@@ -122,7 +122,7 @@ namespace Nethermind.Core.Test
         public void Hash256_32_byte_path()
         {
             // Tests the optimized 32-byte path (most common - Hash256/UInt256)
-            Random random = new Random(42);
+            Random random = new(42);
             for (int i = 0; i < 1000; i++)
             {
                 byte[] bytes = new byte[32];
@@ -141,7 +141,7 @@ namespace Nethermind.Core.Test
         public void Address_20_byte_path()
         {
             // Tests the optimized 20-byte path (Address)
-            Random random = new Random(42);
+            Random random = new(42);
             for (int i = 0; i < 1000; i++)
             {
                 byte[] bytes = new byte[20];
@@ -170,7 +170,7 @@ namespace Nethermind.Core.Test
             // Create different keys that hash to the same bucket (will cause cache eviction)
             byte[][] collisions = new byte[4][];
             collisions[0] = bytes;
-            Random random = new Random(456);
+            Random random = new(456);
             uint bucket = KeccakCache.GetBucket(bytes);
             int found = 1;
             while (found < 4)

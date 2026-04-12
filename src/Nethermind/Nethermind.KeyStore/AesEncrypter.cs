@@ -44,7 +44,7 @@ namespace Nethermind.KeyStore
                     case "aes-128-ctr":
                         {
                             using RecyclableMemoryStream outputEncryptedStream = RecyclableStream.GetStream("aes-128-ctr-encrypt");
-                            using MemoryStream inputStream = new MemoryStream(content);
+                            using MemoryStream inputStream = new(content);
                             AesCtr(key, iv, inputStream, outputEncryptedStream);
                             outputEncryptedStream.Position = 0;
                             return outputEncryptedStream.ToArray();
@@ -79,7 +79,7 @@ namespace Nethermind.KeyStore
                         }
                     case "aes-128-ctr":
                         {
-                            using MemoryStream outputEncryptedStream = new MemoryStream(cipher);
+                            using MemoryStream outputEncryptedStream = new(cipher);
                             using RecyclableMemoryStream outputDecryptedStream = RecyclableStream.GetStream("aes-128-ctr-decrypt");
                             AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
                             outputDecryptedStream.Position = 0;
@@ -99,7 +99,7 @@ namespace Nethermind.KeyStore
         private static byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
         {
             using RecyclableMemoryStream memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter));
-            using CryptoStream cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true);
+            using CryptoStream cryptoStream = new(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true);
             cryptoStream.Write(data, 0, data.Length);
             cryptoStream.FlushFinalBlock();
             return memoryStream.ToArray();
@@ -117,7 +117,7 @@ namespace Nethermind.KeyStore
             }
 
             byte[] counter = (byte[])salt.Clone();
-            Queue<byte> xorMask = new Queue<byte>();
+            Queue<byte> xorMask = new();
             byte[] zeroIv = new byte[blockSize];
             using ICryptoTransform encryptor = aes.CreateEncryptor(key, zeroIv);
 

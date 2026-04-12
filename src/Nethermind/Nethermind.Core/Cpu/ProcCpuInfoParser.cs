@@ -15,8 +15,8 @@ internal static partial class ProcCpuInfoParser
     internal static CpuInfo ParseOutput(string? content)
     {
         List<Dictionary<string, string>> logicalCores = SectionsHelper.ParseSections(content, ':');
-        HashSet<string> processorModelNames = new HashSet<string>();
-        Dictionary<string, int> processorsToPhysicalCoreCount = new Dictionary<string, int>();
+        HashSet<string> processorModelNames = new();
+        Dictionary<string, int> processorsToPhysicalCoreCount = new();
 
         int logicalCoreCount = 0;
         Frequency nominalFrequency = Frequency.Zero;

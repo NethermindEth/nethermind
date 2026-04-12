@@ -14,7 +14,7 @@ public static class BatchDecoder
     private const ulong MaxSpanBatchElementCount = 10_000_000;
     public static IEnumerable<BatchV1> DecodeSpanBatches(ReadOnlyMemory<byte> source)
     {
-        BinaryMemoryReader reader = new BinaryMemoryReader(source);
+        BinaryMemoryReader reader = new(source);
         while (reader.HasRemainder)
         {
             byte type = reader.TakeByte();

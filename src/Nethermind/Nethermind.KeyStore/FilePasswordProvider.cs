@@ -35,9 +35,9 @@ namespace Nethermind.KeyStore
 
         public static SecureString GetPasswordFromFile(string filePath)
         {
-            List<char> whitespaces = new List<char>();
-            SecureString secureString = new SecureString();
-            using (StreamReader stream = new StreamReader(filePath))
+            List<char> whitespaces = new();
+            SecureString secureString = new();
+            using (StreamReader stream = new(filePath))
             {
                 bool trimBeginFinished = false;
                 while (stream.Peek() >= 0)

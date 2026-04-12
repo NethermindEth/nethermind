@@ -14,10 +14,10 @@ namespace Nethermind.Grpc.Servers
     {
         private const int MaxCapacity = 1000;
         private readonly IJsonSerializer _jsonSerializer;
-        private static readonly QueryResponse EmptyQueryResponse = new QueryResponse();
+        private static readonly QueryResponse EmptyQueryResponse = new();
 
         private readonly ConcurrentDictionary<string, BlockingCollection<string>> _clientResults =
-            new ConcurrentDictionary<string, BlockingCollection<string>>();
+            new();
 
         private readonly ILogger _logger;
 

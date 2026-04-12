@@ -223,7 +223,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
                 stateRoot = WorldState.StateRoot;
             }
 
-            LogEntry log = new LogEntry(tx.To, [], []);
+            LogEntry log = new(tx.To, [], []);
             tracer.MarkAsSuccess(tx.To, 0, [], [log], stateRoot);
         }
 

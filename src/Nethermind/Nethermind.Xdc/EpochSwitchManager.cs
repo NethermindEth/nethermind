@@ -178,7 +178,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
-        List<EpochSwitchInfo> epochSwitchInfos = new List<EpochSwitchInfo>();
+        List<EpochSwitchInfo> epochSwitchInfos = new();
 
         Hash256 iteratorHash = end.Hash;
         long iteratorBlockNumber = end.Number;
@@ -212,7 +212,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
 
     private BlockRoundInfo? GetBlockInfoInCache(ulong estRound, ulong epoch)
     {
-        List<BlockRoundInfo> epochSwitchInCache = new List<BlockRoundInfo>();
+        List<BlockRoundInfo> epochSwitchInCache = new();
 
         for (ulong r = estRound; r < estRound + (ulong)epoch; r++)
         {
@@ -323,7 +323,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
         ulong epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
         ulong tempTCEpoch = (ulong)xdcSpec.SwitchEpoch + epochRound / (ulong)xdcSpec.EpochLength;
 
-        BlockRoundInfo epochBlockInfo = new BlockRoundInfo(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
+        BlockRoundInfo epochBlockInfo = new(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
 
         while (epochBlockInfo.Round > timeoutCert.Round)
         {

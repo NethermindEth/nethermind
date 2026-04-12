@@ -255,8 +255,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        AbiEncoder abiEncoder = new AbiEncoder();
-        AbiSignature errorSignature = new AbiSignature(
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new(
             "Error",
             AbiType.String
         );
@@ -292,7 +292,7 @@ public partial class EthRpcModuleTests
             }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        LegacyTransactionForRpc transaction = new LegacyTransactionForRpc(
+        LegacyTransactionForRpc transaction = new(
             tx,
             new(tx.ChainId ?? BlockchainIds.Mainnet))
         {

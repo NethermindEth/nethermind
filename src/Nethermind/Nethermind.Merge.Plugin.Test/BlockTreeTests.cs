@@ -266,7 +266,7 @@ public partial class BlockTreeTests
                 IReceiptStorage? receiptStorage = null
             )
             {
-                TestSpecProvider testSpecProvider = new TestSpecProvider(London.Instance);
+                TestSpecProvider testSpecProvider = new(London.Instance);
                 if (ttd is not null) testSpecProvider.TerminalTotalDifficulty = ttd;
 
                 NotSyncedTreeBuilder = Build.A.BlockTree()
@@ -411,7 +411,7 @@ public partial class BlockTreeTests
             public ScenarioBuilder InsertFork(long low, long high, bool moveToBeaconMainChain = false, bool moveSyncedTree = true, ulong nonce = 0)
             {
                 List<BlockInfo> blockInfos = new();
-                List<Block> blocks = new List<Block>();
+                List<Block> blocks = new();
                 Block? parent = null;
                 for (long i = low; i <= high; i++)
                 {

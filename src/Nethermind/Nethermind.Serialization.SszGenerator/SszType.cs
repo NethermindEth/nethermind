@@ -112,7 +112,7 @@ class SszType
 
         INamedTypeSymbol? enumType = (type as INamedTypeSymbol)?.EnumUnderlyingType;
 
-        SszType result = new SszType
+        SszType result = new()
         {
             Namespace = @namespace,
             Name = name,

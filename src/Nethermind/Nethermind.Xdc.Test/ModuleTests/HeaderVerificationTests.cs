@@ -52,9 +52,9 @@ internal class HeaderVerificationTests
         XdcBlockHeader invalidRoundBlock = GetLastHeader(false);
         XdcBlockHeader invalidRoundBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidRoundBlock.ParentHash!)!;
 
-        BlockRoundInfo proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
+        BlockRoundInfo proposedBlockInfo = new(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
 
-        Vote voteForSign = new Vote(proposedBlockInfo, 1);
+        Vote voteForSign = new(proposedBlockInfo, 1);
 
         List<Signer> validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvKey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
@@ -68,9 +68,9 @@ internal class HeaderVerificationTests
             signatures.Add(voteForSign.Signature!);
         }
 
-        QuorumCertificate quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
+        QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
 
-        ExtraFieldsV2 extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
+        ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
         byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
 
         invalidRoundBlock.ExtraData = extraInBytes;
@@ -258,8 +258,8 @@ internal class HeaderVerificationTests
     {
         XdcBlockHeader invalidQcSignatureBlock = GetLastHeader(false);
         XdcBlockHeader invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
-        BlockRoundInfo proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
-        Vote voteForSign = new Vote(proposedBlockInfo, 1);
+        BlockRoundInfo proposedBlockInfo = new(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
+        Vote voteForSign = new(proposedBlockInfo, 1);
         List<Signer> validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvKey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
             .Select(pvKey => new Signer(0, pvKey, xdcTestBlockchain.LogManager))
@@ -275,8 +275,8 @@ internal class HeaderVerificationTests
             signatures.Add(voteForSign.Signature!);
         }
 
-        QuorumCertificate quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
-        ExtraFieldsV2 extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
+        QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
+        ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
         byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
         invalidQcSignatureBlock.ExtraData = extraInBytes;
         bool result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
@@ -285,7 +285,7 @@ internal class HeaderVerificationTests
 
     private void Sign(Vote vote, Consensus.ISigner signer)
     {
-        VoteDecoder voteEncoder = new VoteDecoder();
+        VoteDecoder voteEncoder = new();
         KeccakRlpStream stream = new();
         voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = signer.Sign(stream.GetValueHash());

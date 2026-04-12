@@ -19,7 +19,7 @@ public class WithdrawalTrieTests
     public void Should_compute_hash_root()
     {
         Block block = Build.A.Block.WithWithdrawals(10).TestObject;
-        WithdrawalTrie trie = new WithdrawalTrie(block.Withdrawals!);
+        WithdrawalTrie trie = new(block.Withdrawals!);
 
         Assert.That(
             trie.RootHash.ToString(), Is.EqualTo("0xf3a83e722a656f6d1813498178b7c9490a7488de8c576144f8bd473c61c3239f"));
@@ -30,7 +30,7 @@ public class WithdrawalTrieTests
     {
         int count = 10;
         Block block = Build.A.Block.WithWithdrawals(count).TestObject;
-        WithdrawalTrie trie = new WithdrawalTrie(block.Withdrawals!, true);
+        WithdrawalTrie trie = new(block.Withdrawals!, true);
 
         for (int i = 0; i < count; i++)
         {

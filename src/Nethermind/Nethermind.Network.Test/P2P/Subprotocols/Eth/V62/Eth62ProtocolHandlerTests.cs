@@ -198,7 +198,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Receiving_request_before_status_fails()
         {
-            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = TestItem.KeccakA;
             msg.MaxHeaders = 3;
             msg.Skip = 1;
@@ -370,7 +370,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(50, 19)]
         public void Should_truncate_array_when_too_many_body(int availableBody, int expectedResponseSize)
         {
-            List<Block> blocks = new List<Block>();
+            List<Block> blocks = new();
             Transaction[] transactions = Build.A.Transaction.TestObjectNTimes(1000);
             for (int i = 0; i < availableBody; i++)
             {
@@ -435,7 +435,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
-            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new AlwaysTimeoutBackgroundTaskScheduler();
+            AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new();
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
@@ -659,7 +659,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleIncomingStatusMessage()
         {
-            using StatusMessage statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            using StatusMessage statusMsg = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
             using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
             statusPacket.ReadByte();

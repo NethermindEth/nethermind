@@ -32,8 +32,8 @@ public class PeerPoolTests
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
 
-        TestNodeSource nodeSource = new TestNodeSource();
-        PeerPool pool = new PeerPool(
+        TestNodeSource nodeSource = new();
+        PeerPool pool = new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
             new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
@@ -45,8 +45,8 @@ public class PeerPoolTests
             LimboLogs.Instance,
             trustedNodesManager);
 
-        Random rand = new Random(0);
-        PrivateKeyGenerator keyGen = new PrivateKeyGenerator(new TestRandom((m) => rand.Next(m), (s) =>
+        Random rand = new(0);
+        PrivateKeyGenerator keyGen = new(new TestRandom((m) => rand.Next(m), (s) =>
         {
             byte[] buffer = new byte[s];
             rand.NextBytes(buffer);
@@ -56,7 +56,7 @@ public class PeerPoolTests
         for (int i = 0; i < 5; i++)
         {
             PublicKey key = keyGen.Generate().PublicKey;
-            Node node = new Node(key, "1.2.3.4", 1234);
+            Node node = new(key, "1.2.3.4", 1234);
             Peer peer = pool.GetOrAdd(node);
             pool.ActivePeers[key] = peer;
         }
@@ -66,7 +66,7 @@ public class PeerPoolTests
         for (int i = 0; i < 10; i++)
         {
             PublicKey key = keyGen.Generate().PublicKey;
-            Node node = new Node(key, "1.2.3.4", 1234);
+            Node node = new(key, "1.2.3.4", 1234);
             nodeSource.AddNode(node);
         }
 
@@ -79,17 +79,17 @@ public class PeerPoolTests
     public async Task PeerPool_RunPeerCommit_ShouldContinueAfterNoPendingChange()
     {
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        TestNodeSource nodeSource = new TestNodeSource();
+        TestNodeSource nodeSource = new();
         INodeStatsManager stats = Substitute.For<INodeStatsManager>();
-        TestNetworkStorage storage = new TestNetworkStorage();
-        NetworkConfig networkConfig = new NetworkConfig
+        TestNetworkStorage storage = new();
+        NetworkConfig networkConfig = new()
         {
             PeersPersistenceInterval = 50,
             MaxActivePeers = 0,
             MaxCandidatePeerCount = 0
         };
 
-        PeerPool pool = new PeerPool(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+        PeerPool pool = new(nodeSource, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
 
         storage.Pending = false;
         pool.Start();

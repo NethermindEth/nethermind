@@ -38,8 +38,8 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public void Improved()
         {
-            Vector<byte> aVec = new Vector<byte>(a);
-            Vector<byte> bVec = new Vector<byte>(b);
+            Vector<byte> aVec = new(a);
+            Vector<byte> bVec = new(b);
 
             Vector.BitwiseAnd(aVec, bVec).CopyTo(c);
         }

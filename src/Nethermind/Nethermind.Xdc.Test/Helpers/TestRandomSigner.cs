@@ -15,8 +15,8 @@ namespace Nethermind.Xdc.Test.Helpers;
 
 internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTree blockTree, IEpochSwitchManager epochSwitchManager) : ISigner
 {
-    private readonly Random _rnd = new Random();
-    private readonly EthereumEcdsa _ecdsa = new EthereumEcdsa(0);
+    private readonly Random _rnd = new();
+    private readonly EthereumEcdsa _ecdsa = new(0);
     public PrivateKey? Key { get; private set; }
 
     public Address Address => Key!.Address;

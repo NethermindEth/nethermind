@@ -65,7 +65,7 @@ internal class SpecialTransactionsTests
             .WithNonce(nonce)
             .TestObject;
 
-        Signer signer = new Signer(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
+        Signer signer = new(chain.SpecProvider.ChainId, source, NullLogManager.Instance);
         signer.Sign(tx);
 
         tx.Hash = tx.CalculateHash();
@@ -177,7 +177,7 @@ internal class SpecialTransactionsTests
         XdcBlockHeader? head = blockChain.BlockTree.Head!.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = blockChain.SpecProvider.GetXdcSpec(head!);
 
-        Random random = new Random();
+        Random random = new();
 
         PrivateKey[] accounts = FilledAccounts(blockChain);
 
@@ -237,9 +237,9 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance, Substitute.For<IMasternodeVotingContract>());
+        XdcTransactionProcessor transactionProcessor = new(BlobBaseFeeCalculator.Instance, blockChain.SpecProvider, blockChain.MainWorldState, moqVm, Substitute.For<ICodeInfoRepository>(), NullLogManager.Instance, Substitute.For<IMasternodeVotingContract>());
 
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
@@ -289,9 +289,9 @@ internal class SpecialTransactionsTests
             spec.IsBlackListingEnabled = blackListingActivated;
             spec.IsTipTrc21FeeEnabled = false;
         });
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -348,7 +348,7 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
         XdcBlockHeader head = (XdcBlockHeader)blockChain.BlockTree.Head!.Header!;
         XdcReleaseSpec spec = (XdcReleaseSpec)blockChain.SpecProvider.GetXdcSpec(head);
@@ -380,9 +380,9 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -436,9 +436,9 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -493,9 +493,9 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -693,9 +693,9 @@ internal class SpecialTransactionsTests
             spec.IsTipTrc21FeeEnabled = false;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -719,7 +719,7 @@ internal class SpecialTransactionsTests
 
         await blockChain.Signer.Sign(tx);
 
-        BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+        BlockReceiptsTracer receiptsTracer = new();
 
         int initialCountOfReceipts = receiptsTracer.TxReceipts.Length;
 
@@ -769,9 +769,9 @@ internal class SpecialTransactionsTests
             spec.XDCXLendingFinalizedTradeAddressBinary = new Address("0x00000000000000000000000000000000b000094");
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
-        XdcTransactionProcessor transactionProcessor = new XdcTransactionProcessor(
+        XdcTransactionProcessor transactionProcessor = new(
             BlobBaseFeeCalculator.Instance,
             blockChain.SpecProvider,
             blockChain.MainWorldState,
@@ -795,7 +795,7 @@ internal class SpecialTransactionsTests
             spec.XDCXLendingFinalizedTradeAddressBinary,
             ];
 
-        BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+        BlockReceiptsTracer receiptsTracer = new();
 
         receiptsTracer.StartNewBlockTrace(head);
         foreach (Address address in addresses)
@@ -896,7 +896,7 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = enableEip1559;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
         XdcTransactionProcessor? transactionProcessor = blockChain.TxProcessor as XdcTransactionProcessor;
 
@@ -931,7 +931,7 @@ internal class SpecialTransactionsTests
 
         await blockChain.Signer.Sign(tx);
 
-        BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+        BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(head);
         receiptsTracer.StartNewTxTrace(tx);
 
@@ -964,7 +964,7 @@ internal class SpecialTransactionsTests
             spec.IsEip1559Enabled = enableEip1559;
         });
 
-        VirtualMachine moqVm = new VirtualMachine(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
+        VirtualMachine moqVm = new(new BlockhashProvider(new BlockhashCache(blockChain.Container.Resolve<IHeaderFinder>(), NullLogManager.Instance), blockChain.MainWorldState, NullLogManager.Instance), blockChain.SpecProvider, NullLogManager.Instance);
 
         XdcTransactionProcessor? transactionProcessor = blockChain.TxProcessor as XdcTransactionProcessor;
 
@@ -1002,7 +1002,7 @@ internal class SpecialTransactionsTests
 
         await blockChain.Signer.Sign(tx);
 
-        BlockReceiptsTracer receiptsTracer = new BlockReceiptsTracer();
+        BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(head);
         receiptsTracer.StartNewTxTrace(tx);
 

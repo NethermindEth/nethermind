@@ -85,7 +85,7 @@ namespace Nethermind.Xdc
             Dictionary<Address, UInt256> rewardSigners = CalculateRewardForSigners(chainReward, signers, count);
 
             UInt256 totalFoundationWalletReward = UInt256.Zero;
-            List<BlockReward> rewards = new List<BlockReward>();
+            List<BlockReward> rewards = new();
             foreach ((Address signer, UInt256 reward) in rewardSigners)
             {
                 (BlockReward holderReward, UInt256 foundationWalletReward) = DistributeRewards(signer, reward, xdcHeader);
@@ -98,15 +98,15 @@ namespace Nethermind.Xdc
 
         private (Dictionary<Address, long> Signers, long Count) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
         {
-            Dictionary<Address, long> signers = new Dictionary<Address, long>();
+            Dictionary<Address, long> signers = new();
             long number = epochHeader.Number;
             if (number == 0) return (signers, 0);
 
             long signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0, signingCount = 0;
 
-            Dictionary<long, Hash256> blockNumberToHash = new Dictionary<long, Hash256>();
-            Dictionary<Hash256, HashSet<Address>> hashToSigningAddress = new Dictionary<Hash256, HashSet<Address>>();
-            HashSet<Address> masternodes = new HashSet<Address>();
+            Dictionary<long, Hash256> blockNumberToHash = new();
+            Dictionary<Hash256, HashSet<Address>> hashToSigningAddress = new();
+            HashSet<Address> masternodes = new();
             long mergeSignRange = spec.MergeSignRange;
 
             XdcBlockHeader h = epochHeader;
@@ -179,7 +179,7 @@ namespace Nethermind.Xdc
         private Dictionary<Address, UInt256> CalculateRewardForSigners(UInt256 totalReward,
             Dictionary<Address, long> signers, long totalSigningCount)
         {
-            Dictionary<Address, UInt256> rewardSigners = new Dictionary<Address, UInt256>();
+            Dictionary<Address, UInt256> rewardSigners = new();
             foreach ((Address signer, long count) in signers)
             {
                 UInt256 reward = CalculateProportionalReward(count, totalSigningCount, totalReward);

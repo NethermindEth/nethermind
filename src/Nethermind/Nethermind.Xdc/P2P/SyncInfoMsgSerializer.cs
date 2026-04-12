@@ -10,7 +10,7 @@ namespace Nethermind.Xdc.P2P;
 
 internal class SyncInfoMsgSerializer : IZeroInnerMessageSerializer<SyncInfoMsg>
 {
-    private static readonly SyncInfoDecoder _syncInfoDecoder = new SyncInfoDecoder();
+    private static readonly SyncInfoDecoder _syncInfoDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, SyncInfoMsg message)
     {

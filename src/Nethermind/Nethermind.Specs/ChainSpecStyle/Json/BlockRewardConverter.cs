@@ -22,7 +22,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
     public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
-        SortedDictionary<long, UInt256> value = new SortedDictionary<long, UInt256>();
+        SortedDictionary<long, UInt256> value = new();
         if (reader.TokenType == JsonTokenType.String)
         {
             UInt256 blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);

@@ -67,7 +67,7 @@ public class LogIndexFilterVisitorTests
     [TestCase(1000, 1000)]
     public void IntersectEnumerator_Random(int len1, int len2)
     {
-        Random random = new Random(42);
+        Random random = new(42);
         int[] s1 = RandomAscending(random, len1, Math.Max(1, len1 / 10));
         int[] s2 = RandomAscending(random, len2, Math.Max(1, len2 / 10));
 
@@ -120,7 +120,7 @@ public class LogIndexFilterVisitorTests
     [TestCase(1000, 1000)]
     public void UnionEnumerator_Random(int len1, int len2)
     {
-        Random random = new Random(42);
+        Random random = new(42);
         int[] s1 = RandomAscending(random, len1, Math.Max(1, len1 / 10));
         int[] s2 = RandomAscending(random, len2, Math.Max(1, len2 / 10));
 
@@ -382,9 +382,9 @@ public class LogIndexFilterVisitorTests
 
     private static Ranges GenerateLogIndexRanges()
     {
-        Random random = new Random(42);
+        Random random = new(42);
 
-        Dictionary<Address, List<int>> addressRanges = new Dictionary<Address, List<int>>();
+        Dictionary<Address, List<int>> addressRanges = new();
         foreach (Address address in new[] { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD, TestItem.AddressE })
         {
             List<int> range = Enumerable.Range((int)FromBlock, (int)(ToBlock + 1)).Where(_ => random.NextDouble() < 0.3).ToList();

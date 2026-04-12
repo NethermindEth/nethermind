@@ -24,7 +24,7 @@ namespace Nethermind.Xdc;
 
 public class TimeoutCertificateManager : ITimeoutCertificateManager
 {
-    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private static readonly TimeoutDecoder _timeoutDecoder = new();
     private readonly IXdcConsensusContext _consensusContext;
     private readonly ITimeoutTimer _timeoutTimer;
@@ -100,7 +100,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     {
         Signature[] signatures = timeouts.Select(t => t.Signature).ToArray();
 
-        TimeoutCertificate timeoutCertificate = new TimeoutCertificate(timeout.Round, signatures, timeout.GapNumber);
+        TimeoutCertificate timeoutCertificate = new(timeout.Round, signatures, timeout.GapNumber);
 
         ProcessTimeoutCertificate(timeoutCertificate);
     }
@@ -136,9 +136,9 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
             errorMessage = "Empty master node list from snapshot";
             return false;
         }
-        HashSet<Address> nextEpochCandidates = new HashSet<Address>(snapshot.NextEpochCandidates);
+        HashSet<Address> nextEpochCandidates = new(snapshot.NextEpochCandidates);
 
-        HashSet<Signature> signatures = new HashSet<Signature>(timeoutCertificate.Signatures);
+        HashSet<Signature> signatures = new(timeoutCertificate.Signatures);
         XdcBlockHeader xdcHeader = _blockTree.Head?.Header as XdcBlockHeader;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(xdcHeader, timeoutCertificate.Round);
         EpochSwitchInfo epochInfo = _epochSwitchManager.GetTimeoutCertificateEpochInfo(timeoutCertificate);
@@ -244,7 +244,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return snapshot.NextEpochCandidates.Contains(signer);
     }
 
-    internal SyncInfo GetSyncInfo() => new SyncInfo(_consensusContext.HighestQC, _consensusContext.HighestTC);
+    internal SyncInfo GetSyncInfo() => new(_consensusContext.HighestQC, _consensusContext.HighestTC);
 
     private void SendTimeout()
     {
@@ -270,7 +270,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
 
         ValueHash256 msgHash = ComputeTimeoutMsgHash(currentRound, (ulong)gapNumber);
         Signature signedHash = _signer.Sign(msgHash);
-        Timeout timeoutMsg = new Timeout(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
+        Timeout timeoutMsg = new(currentRound, signedHash, (ulong)gapNumber, isMyVote: true);
         timeoutMsg.Signer = _signer.Address;
 
         HandleTimeoutVote(timeoutMsg);
@@ -289,7 +289,7 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
     internal static ValueHash256 ComputeTimeoutMsgHash(ulong round, ulong gap)
     {
         Timeout timeout = new(round, null, gap);
-        KeccakRlpStream stream = new KeccakRlpStream();
+        KeccakRlpStream stream = new();
         _timeoutDecoder.Encode(stream, timeout, RlpBehaviors.ForSealing);
         return stream.GetValueHash();
     }

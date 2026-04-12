@@ -46,7 +46,7 @@ public class L1ConfigValidatorTests
     {
         IEthApi ethApi = Substitute.For<IEthApi>();
         ILogManager logManager = NullLogManager.Instance;
-        L1ConfigValidator validator = new L1ConfigValidator(ethApi, logManager);
+        L1ConfigValidator validator = new(ethApi, logManager);
 
         ethApi.GetChainId().Returns(Task.FromResult(actualChainId));
         ethApi.GetBlockByNumber(genesisNumber, true).Returns(Task.FromResult<L1Block?>(new L1Block { Hash = actualGenesisHash }));

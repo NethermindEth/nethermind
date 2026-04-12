@@ -37,10 +37,10 @@ public class RefCountingTests
     {
         const int sleepInMs = 100;
 
-        TestRefCounting counter = new TestRefCounting();
+        TestRefCounting counter = new();
 
-        Thread thread1 = new Thread(LeaseRelease);
-        Thread thread2 = new Thread(LeaseRelease);
+        Thread thread1 = new(LeaseRelease);
+        Thread thread2 = new(LeaseRelease);
 
         thread1.Start();
         thread2.Start();

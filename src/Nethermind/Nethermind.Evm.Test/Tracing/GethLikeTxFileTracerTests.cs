@@ -15,7 +15,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_have_expected_file_tracing_flags()
     {
-        GethLikeTxFileTracer tracer = new GethLikeTxFileTracer(static e => { }, GethTraceOptions.Default);
+        GethLikeTxFileTracer tracer = new(static e => { }, GethTraceOptions.Default);
 
         tracer.IsTracingMemory.Should().BeTrue();
         tracer.IsTracingOpLevelStorage.Should().BeFalse();
@@ -34,7 +34,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_size_with_memory_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new List<GethTxFileTraceEntry>();
+        List<GethTxFileTraceEntry> entries = new();
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         entries[0].MemorySize.Should().Be(0);
@@ -51,7 +51,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_memory_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new List<GethTxFileTraceEntry>();
+        List<GethTxFileTraceEntry> entries = new();
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { EnableMemory = true });
 
         entries[0].Memory.Length.Should().Be(0);
@@ -66,7 +66,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_return_stack_when_enabled()
     {
-        List<GethTxFileTraceEntry> entries = new List<GethTxFileTraceEntry>();
+        List<GethTxFileTraceEntry> entries = new();
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default);
 
         entries[0].Stack.Length.Should().Be(0);
@@ -81,7 +81,7 @@ public class GethLikeTxFileTracerTests : VirtualMachineTestsBase
     [Test]
     public void Should_not_return_stack_when_disabled()
     {
-        List<GethTxFileTraceEntry> entries = new List<GethTxFileTraceEntry>();
+        List<GethTxFileTraceEntry> entries = new();
         GethLikeTxTrace trace = ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), GetBytecode(), GethTraceOptions.Default with { DisableStack = true });
 
         entries.All(e => e.Stack is null).Should().BeTrue();

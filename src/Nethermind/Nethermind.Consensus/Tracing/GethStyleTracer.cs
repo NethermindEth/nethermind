@@ -144,7 +144,7 @@ public class GethStyleTracer(
         BlockHeader parent = FindParent(block);
 
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -161,7 +161,7 @@ public class GethStyleTracer(
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
         BlockHeader parent = FindParent(block);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        GethLikeBlockFileTracer tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;

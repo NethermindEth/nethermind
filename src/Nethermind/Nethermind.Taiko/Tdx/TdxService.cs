@@ -56,7 +56,7 @@ public class TdxService : ITdxService
         _logger.Info("Bootstrapping TDX service");
 
         // Generate private key
-        using PrivateKeyGenerator keyGenerator = new PrivateKeyGenerator();
+        using PrivateKeyGenerator keyGenerator = new();
         _privateKey = keyGenerator.Generate();
         Address address = _privateKey.Address;
 
@@ -179,7 +179,7 @@ public class TdxService : ITdxService
         string keyPath = GetKeyPath();
         if (OperatingSystem.IsLinux())
         {
-            using FileStream fs = new FileStream(keyPath, new FileStreamOptions
+            using FileStream fs = new(keyPath, new FileStreamOptions
             {
                 Mode = FileMode.Create,
                 Access = FileAccess.Write,

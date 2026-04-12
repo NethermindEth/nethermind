@@ -332,7 +332,7 @@ public sealed class JsonRpcService : IJsonRpcService
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
             builder.Append(methodName);
             builder.Append(" with params [");
@@ -443,7 +443,7 @@ public sealed class JsonRpcService : IJsonRpcService
             reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
 
             // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
             {
                 [paramType] = reparseString
             };
