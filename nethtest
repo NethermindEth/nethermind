@@ -1,0 +1,2 @@
+#!/bin/bash
+exec dotnet run --no-build -c Release --project /Users/spencer/ethereum/clients/nethermind/src/Nethermind/Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -- "$@"

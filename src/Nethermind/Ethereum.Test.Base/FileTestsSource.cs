@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 
 namespace Ethereum.Test.Base
 {
@@ -26,12 +25,15 @@ namespace Ethereum.Test.Base
                     return [];
                 }
 
-                string json = File.ReadAllText(_fileName, Encoding.Default);
+                // Read as UTF-8 bytes directly — avoids the intermediate string allocation
+                // from File.ReadAllText. System.Text.Json can deserialize from byte spans
+                // without encoding conversion overhead.
+                byte[] jsonBytes = File.ReadAllBytes(_fileName);
 
                 return testType switch
                 {
-                    TestType.State => JsonToEthereumTest.ConvertStateTest(json),
-                    _ => JsonToEthereumTest.ConvertToBlockchainTests(json)
+                    TestType.State => JsonToEthereumTest.ConvertStateTest(jsonBytes),
+                    _ => JsonToEthereumTest.ConvertToBlockchainTests(jsonBytes)
                 };
             }
             catch (Exception e)

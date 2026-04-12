@@ -188,10 +188,18 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
+            // Capture tx error for exception mapping (even when test passes)
+            string txError = "";
+            if (txResult is not null && txResult.Value != TransactionResult.Ok)
+                txError = txResult.Value.ErrorDescription;
+            else if (blockValidationError is not null)
+                txError = blockValidationError;
+
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0)
             {
                 TimeInMs = stopwatch.Elapsed.TotalMilliseconds,
-                StateRoot = stateProvider.StateRoot
+                StateRoot = stateProvider.StateRoot,
+                Error = differences.Count > 0 ? string.Join("; ", differences) : txError,
             };
 
             if (differences.Count > 0)
