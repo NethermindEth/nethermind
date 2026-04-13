@@ -7,11 +7,13 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.JsonRpc.Data;
 
-public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>? calls = null) : IJsonRpcParam, IDisposable
+public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>? calls) : IJsonRpcParam, IDisposable
 {
     private const int MaxCallCount = 1024;
 
     private ArrayPoolList<TransactionForRpcWithTraceTypes>? _calls = calls;
+
+    public TraceCallManyRequest() :this(null){ }
 
     public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls => _calls ??= ArrayPoolList<TransactionForRpcWithTraceTypes>.Empty();
 
