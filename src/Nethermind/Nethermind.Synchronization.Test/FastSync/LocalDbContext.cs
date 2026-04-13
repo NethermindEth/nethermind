@@ -11,21 +11,31 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
-public class LocalDbContext(
-    [KeyFilter(DbNames.Code)] IDb codeDb,
-    [KeyFilter(DbNames.State)] IDb stateDb,
-    INodeStorage nodeStorage,
-    ILogManager logManager)
-    : IStateSyncTestOperation
+public class LocalDbContext : IStateSyncTestOperation
 {
-    private TestMemDb CodeDb { get; } = (TestMemDb)codeDb;
-    private TestMemDb Db { get; } = (TestMemDb)stateDb;
-    private INodeStorage NodeStorage { get; } = nodeStorage;
-    private StateTree StateTree { get; } = new(TestTrieStoreFactory.Build(nodeStorage, logManager), logManager);
+    private TestMemDb CodeDb { get; }
+    private TestMemDb Db { get; }
+    private INodeStorage NodeStorage { get; }
+    private ITrieStore TrieStore { get; }
+    private StateTree StateTree { get; }
+
+    public LocalDbContext(
+        [KeyFilter(DbNames.Code)] IDb codeDb,
+        [KeyFilter(DbNames.State)] IDb stateDb,
+        INodeStorage nodeStorage,
+        ILogManager logManager)
+    {
+        CodeDb = (TestMemDb)codeDb;
+        Db = (TestMemDb)stateDb;
+        NodeStorage = nodeStorage;
+        TrieStore = TestTrieStoreFactory.Build(nodeStorage, logManager);
+        StateTree = new(TrieStore.GetTrieStore(null), logManager);
+    }
 
     public Hash256 RootHash => StateTree.RootHash;
 
@@ -51,12 +61,12 @@ public class LocalDbContext(
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        dumper.Traverse(remote.StateTree.RootHash, remote.TrieStore);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);
         if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        StateTree.Accept(dumper, StateTree.RootHash);
+        dumper.Traverse(StateTree.RootHash, TrieStore);
         string localStr = dumper.ToString();
         if (!skipLogs) logger.Info(localStr);
 
@@ -64,7 +74,7 @@ public class LocalDbContext(
         {
             Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
             TrieStatsCollector collector = new(CodeDb, LimboLogs.Instance);
-            StateTree.Accept(collector, StateTree.RootHash);
+            collector.Traverse(StateTree.RootHash, TrieStore);
             Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
             Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
         }

@@ -121,7 +121,7 @@ namespace Nethermind.Core.Test.Builders
 
                 Account account = Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject;
 
-                StateTree stateTree = new(store, LimboLogs.Instance);
+                StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(AccountAddress0, account);
                 stateTree.Commit();
 

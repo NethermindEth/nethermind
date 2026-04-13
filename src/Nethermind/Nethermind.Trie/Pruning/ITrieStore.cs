@@ -9,9 +9,17 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Trie.Pruning
 {
     /// <summary>
+    /// Provides scoped trie node resolvers for state and storage tries.
+    /// </summary>
+    public interface ITrieNodeResolverProvider
+    {
+        IScopedTrieStore GetTrieStore(Hash256? address);
+    }
+
+    /// <summary>
     /// Full traditional trie store.
     /// </summary>
-    public interface ITrieStore : IDisposable, IScopableTrieStore
+    public interface ITrieStore : IDisposable, IScopableTrieStore, ITrieNodeResolverProvider
     {
         bool HasRoot(Hash256 stateRoot);
 
@@ -23,8 +31,6 @@ namespace Nethermind.Trie.Pruning
         bool HasRoot(Hash256 stateRoot, long blockNumber) => HasRoot(stateRoot);
 
         IDisposable BeginScope(BlockHeader? baseBlock);
-
-        IScopedTrieStore GetTrieStore(Hash256? address);
 
         /// <summary>
         /// Begin a block commit for this block number. This call may be blocked if a memory pruning is currently happening.

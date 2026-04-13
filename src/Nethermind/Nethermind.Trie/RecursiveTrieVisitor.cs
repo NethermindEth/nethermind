@@ -1,9 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.IO;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -13,20 +10,9 @@ using Nethermind.Core.Threading;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
-[assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Trie.Test")]
-
 namespace Nethermind.Trie
 {
-    partial class TrieNode
-    {
-        internal void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
-            ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext> => new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext)
-                .Start(this, nodeContext, nodeResolver, ref path);
-    }
-
-    public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options) where TNodeContext : struct, INodeContext<TNodeContext>
+    public class RecursiveTrieVisitor<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options, ITrieStore? trieStore = null) where TNodeContext : struct, INodeContext<TNodeContext>
     {
         private static readonly AccountDecoder _accountDecoder = new();
         private int _maxDegreeOfParallelism = options.MaxDegreeOfParallelism;
@@ -35,7 +21,8 @@ namespace Nethermind.Trie
 
         private int _visitedNodes;
 
-        internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path) => _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
+        public void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path) =>
+            _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
 
         internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, bool isStorage, long subtreeSizeHint)
         {
@@ -90,7 +77,7 @@ namespace Nethermind.Trie
                     {
                         visitor.VisitExtension(nodeContext, node);
                         AddVisited();
-                        TrieNode child = node.GetChild(nodeResolver, ref path, 0) ?? throw new InvalidDataException($"Child of an extension {node.Key} should not be null.");
+                        TrieNode child = node.GetChild(nodeResolver, ref path, 0) ?? throw new System.IO.InvalidDataException($"Child of an extension {node.Key} should not be null.");
                         int previousPathLength = node.AppendChildPath(ref path, 0);
                         child.ResolveKey(nodeResolver, ref path);
                         TNodeContext childContext = nodeContext.Add(node.Key!);
@@ -116,23 +103,31 @@ namespace Nethermind.Trie
                             Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
                             if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
-                                throw new InvalidDataException("Non storage leaf should be an account");
+                                throw new System.IO.InvalidDataException("Non storage leaf should be an account");
                             }
                             visitor.VisitAccount(leafContext, node, account);
 
-                            if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
+                            if (account.HasStorage && trieStore is not null && visitor.ShouldVisit(leafContext, account.StorageRoot))
                             {
-                                if (node.TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? storageRoot))
+                                Hash256 storageAccount;
+                                using (path.ScopedAppend(node.Key))
                                 {
-                                    Hash256 storageAccount;
-                                    using (path.ScopedAppend(node.Key))
-                                    {
-                                        storageAccount = path.Path.ToCommitment();
-                                    }
+                                    storageAccount = path.Path.ToCommitment();
+                                }
 
+                                TrieNode? storageRoot = node.StorageRoot;
+                                if (storageRoot is null && account.StorageRoot != Keccak.EmptyTreeHash)
+                                {
+                                    TreePath emptyPath2 = TreePath.Empty;
+                                    node.StorageRoot = storageRoot = trieStore.GetTrieStore(storageAccount)
+                                        .FindCachedOrUnknown(in emptyPath2, account.StorageRoot.ToCommitment());
+                                }
+
+                                if (storageRoot is not null)
+                                {
                                     TNodeContext storageContext = leafContext.AddStorage(storageAccount);
                                     TreePath emptyPath = TreePath.Empty;
-                                    actualSubtreeSize += Accept(storageRoot!, storageContext, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, true, subtreeSizeHint);
+                                    actualSubtreeSize += Accept(storageRoot, storageContext, trieStore.GetTrieStore(storageAccount), ref emptyPath, true, subtreeSizeHint);
                                 }
                                 else
                                 {
@@ -272,7 +267,7 @@ namespace Nethermind.Trie
             // TODO: Fine tune interval? Use TrieNode.GetMemorySize(false) to calculate memory usage?
             if (visitedNodes % 20_000_000 == 0)
             {
-                GC.Collect();
+                System.GC.Collect();
             }
         }
     }

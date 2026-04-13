@@ -50,8 +50,7 @@ public class TrieNodeResolverWithReadFlagsTests
         ReadFlags theFlags = ReadFlags.HintCacheMiss;
         TestMemDb memDb = new();
         ITrieStore trieStore = TestTrieStoreFactory.Build(memDb, LimboLogs.Instance);
-        ITrieNodeResolver resolver = new TrieNodeResolverWithReadFlags(trieStore.GetTrieStore(null), theFlags);
-        resolver = resolver.GetStorageTrieNodeResolver(TestItem.KeccakA);
+        ITrieNodeResolver resolver = new TrieNodeResolverWithReadFlags(trieStore.GetTrieStore(TestItem.KeccakA), theFlags);
 
         Hash256 theKeccak = TestItem.KeccakA;
         memDb[NodeStorage.GetHalfPathNodeStoragePath(TestItem.KeccakA, TreePath.Empty, theKeccak)] = TestItem.KeccakA.BytesToArray();

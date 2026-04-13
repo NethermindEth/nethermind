@@ -628,6 +628,40 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public void Will_persist_storage_nodes_via_state_tree()
+        {
+            MemDb memDb = new();
+            NodeStorage nodeStorage = new NodeStorage(memDb, scheme, requirePath: scheme == INodeStorage.KeyScheme.HalfPath);
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(shouldPrune: true),
+                persistenceStrategy: Archive.Instance,
+                pruningConfig: new PruningConfig() { PruningBoundary = 0 });
+
+            Hash256 address = TestItem.KeccakA;
+            StateTree stateTree = new(fullTrieStore.GetTrieStore(null), LimboLogs.Instance);
+            StorageTree storageTree = new(fullTrieStore.GetTrieStore(address), LimboLogs.Instance);
+
+            using (fullTrieStore.BeginBlockCommit(1))
+            {
+                storageTree.Set(Keccak.Compute(1.ToBigEndianByteArray()).Bytes, Keccak.Compute(2.ToBigEndianByteArray()).BytesToArray());
+                storageTree.Commit();
+
+                stateTree.Set(address, new Account(0, 1, storageTree.RootHash, Keccak.OfAnEmptyString));
+                stateTree.Commit();
+            }
+
+            fullTrieStore.WaitForPruning();
+
+            // Verify state nodes persisted
+            nodeStorage.Get(null, TreePath.Empty, stateTree.RootHash).Should().NotBeNull("state root should be persisted");
+
+            // Verify storage nodes persisted — this exercises CallRecursively's storage traversal
+            nodeStorage.Get(address, TreePath.Empty, storageTree.RootHash).Should().NotBeNull("storage root should be persisted");
+        }
+
+        [Test]
         public void Will_drop_transient_storage()
         {
             TrieNode storage1 = new(NodeType.Leaf, new byte[2]);
@@ -874,7 +908,7 @@ namespace Nethermind.Trie.Test.Pruning
             MemDb db = new();
             TrieStore trieStore = CreateTrieStore(kvStore: db);
             trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             Account account = new(1);
             {
@@ -910,7 +944,7 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = false
                 });
 
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             // Commit blocks 0..9
             Hash256[] rootHashes = new Hash256[10];
@@ -963,7 +997,7 @@ namespace Nethermind.Trie.Test.Pruning
                     TrackPastKeys = trackPastKeys
                 });
 
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             // Start from block 1 (not genesis) to avoid special-casing block 0
             int startBlock = 1;
@@ -1402,17 +1436,16 @@ namespace Nethermind.Trie.Test.Pruning
             HashSet<Hash256> rootsToTests = new();
             void VerifyAllTrie()
             {
-                PatriciaTree readOnlyPTree = new(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
                 MemDb stubCodeDb = new();
                 foreach (Hash256 rootsToTest in rootsToTests)
                 {
                     if (!fullTrieStore.HasRoot(rootsToTest)) continue;
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    collector.TraverseState(rootsToTest, fullTrieStore.GetTrieStore(null));
                     collector.Stats.MissingNodes.Should().Be(0);
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    collector.TraverseState(rootsToTest, fullTrieStore.AsReadOnly().GetTrieStore(null));
                     collector.Stats.MissingNodes.Should().Be(0);
                 }
             }
@@ -1578,7 +1611,7 @@ namespace Nethermind.Trie.Test.Pruning
             fullTrieStore.PrunePersistedNodes();
 
             TrieStatsCollector collector = new(new MemDb(), SimpleConsoleLogManager.Instance, expectAccounts: false);
-            ptree.Accept(collector, rootHash: persistedRootHash);
+            collector.TraverseState(persistedRootHash, fullTrieStore.GetTrieStore(null));
             collector.Stats.MissingNodes.Should().Be(0);
         }
 
@@ -1624,18 +1657,17 @@ namespace Nethermind.Trie.Test.Pruning
             List<Hash256> rootsToTests = new();
             void VerifyAllTrieExceptGenesis()
             {
-                PatriciaTree readOnlyPTree = new(fullTrieStore.AsReadOnly().GetTrieStore(null), LimboLogs.Instance);
                 MemDb stubCodeDb = new();
                 for (int i = 1; i < rootsToTests.Count; i++)
                 {
                     Console.Error.WriteLine($"Verify {i}");
                     Hash256 rootsToTest = rootsToTests[i];
                     TrieStatsCollector collector = new(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    ptree.Accept(collector, rootHash: rootsToTest);
+                    collector.TraverseState(rootsToTest, fullTrieStore.GetTrieStore(null));
                     collector.Stats.MissingNodes.Should().Be(0);
 
                     collector = new TrieStatsCollector(stubCodeDb, LimboLogs.Instance, expectAccounts: false);
-                    readOnlyPTree.Accept(collector, rootHash: rootsToTest);
+                    collector.TraverseState(rootsToTest, fullTrieStore.AsReadOnly().GetTrieStore(null));
                     collector.Stats.MissingNodes.Should().Be(0);
                 }
             }

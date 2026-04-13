@@ -15,6 +15,8 @@ using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -36,7 +38,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
         ISnapTrieFactory snapTrieFactory = container.Resolve<ISnapTrieFactory>();
 
-        ProcessAccountRange(remote.StateTree, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
+        ProcessAccountRange(remote.StateTree, remote.TrieStore, snapTrieFactory, 1, rootHash, TestItem.Tree.AccountsWithPaths);
 
         SafeContext ctx = container.Resolve<SafeContext>();
         await ActivateAndWait(ctx);
@@ -145,7 +147,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             {
                 endHashIndex = startingHashIndex + 1000;
 
-                ProcessAccountRange(remote.StateTree, snapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
+                ProcessAccountRange(remote.StateTree, remote.TrieStore, snapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
                    blockAccounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
                 startingHashIndex = endHashIndex + 1;
@@ -164,7 +166,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 endHashIndex = pathPool.Length - 1;
             }
 
-            ProcessAccountRange(remote.StateTree, snapTrieFactory, blockJumps, finalRootHash,
+            ProcessAccountRange(remote.StateTree, remote.TrieStore, snapTrieFactory, blockJumps, finalRootHash,
                 accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
 
             startingHashIndex += 1000;
@@ -181,17 +183,17 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         Assert.That(data.RequestedNodesCount, Is.LessThan(accounts.Count / 2));
     }
 
-    private static void ProcessAccountRange(StateTree remoteStateTree, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
+    private static void ProcessAccountRange(StateTree remoteStateTree, ITrieStore trieStore, ISnapTrieFactory snapTrieFactory, int blockNumber, Hash256 rootHash, PathWithAccount[] accounts)
     {
         ValueHash256 startingHash = accounts.First().Path;
         ValueHash256 endHash = accounts.Last().Path;
         Hash256 limitHash = Keccak.MaxValue;
 
         AccountProofCollector accountProofCollector = new(startingHash.Bytes);
-        remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
+        accountProofCollector.TraverseState(remoteStateTree.RootHash, remoteStateTree.TrieStore);
         byte[][] firstProof = accountProofCollector.BuildResult().Proof!;
         accountProofCollector = new(endHash.Bytes);
-        remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
+        accountProofCollector.TraverseState(remoteStateTree.RootHash, remoteStateTree.TrieStore);
         byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
 
         _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));

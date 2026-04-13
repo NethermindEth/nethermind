@@ -328,7 +328,7 @@ public class RemoteDbContext
         CodeDb = new MemDb();
         Db = new MemDb();
         TrieStore = TestTrieStoreFactory.Build(Db, logManager);
-        StateTree = new StateTree(TrieStore, logManager);
+        StateTree = new StateTree(TrieStore.GetTrieStore(null), logManager);
     }
 
     public MemDb CodeDb { get; }

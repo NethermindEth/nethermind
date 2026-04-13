@@ -20,7 +20,5 @@ public class EmptyTrieNodeResolver : ITrieNodeResolver
 
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => throw new InvalidOperationException("Empty node resolver should not be called");
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException("Empty node resolver should not be called");
-
     public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.Hash;
 }

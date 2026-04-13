@@ -11,6 +11,7 @@ using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -267,10 +268,19 @@ public class FlatSnapServer(
         CancellationToken cancellationToken)
     {
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-        PatriciaTree tree = new(trieStore, logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        Hash256 effectiveRoot = rootHash.ToCommitment();
+        if (storage is not null)
+        {
+            ITrieNodeResolver resolver = trieStore.GetStorageTrieStore(storage!.Value.ToCommitment());
+            effectiveRoot = storageRoot!.Value.ToCommitment();
+            visitor.TraverseStorage(effectiveRoot, resolver, opt);
+        }
+        else
+        {
+            visitor.TraverseState(effectiveRoot, trieStore, opt);
+        }
 
         IByteArrayList proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? new ByteArrayListAdapter(visitor.GetProofs()) : EmptyByteArrayList.Instance;
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);

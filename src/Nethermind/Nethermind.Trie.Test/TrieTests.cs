@@ -68,7 +68,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
 
@@ -82,7 +82,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, _longLeaf2);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -101,7 +101,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
             patriciaTree.Set(_keyA, _longLeaf2);
@@ -122,7 +122,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyA, []);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -140,7 +140,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
             patriciaTree.Set(_keyA, []);
@@ -160,7 +160,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
             trieStore.CommitPatriciaTrie(1, patriciaTree);
             trieStore.CommitPatriciaTrie(2, patriciaTree);
@@ -195,7 +195,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -230,7 +230,7 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keysA, _longLeaf1);
             patriciaTree.Set(_keysB, _longLeaf1);
             patriciaTree.Set(_keysC, _longLeaf1);
@@ -264,7 +264,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -355,7 +355,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -387,7 +387,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -424,7 +424,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -456,7 +456,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -506,7 +506,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -528,7 +528,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -558,7 +558,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -574,7 +574,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             trieStore.CommitPatriciaTrie(0, patriciaTree);
@@ -590,7 +590,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.UpdateRootHash();
@@ -612,7 +612,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.UpdateRootHash();
@@ -646,7 +646,7 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
@@ -695,7 +695,7 @@ namespace Nethermind.Trie.Test
 
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(key1, _longLeaf1);
             patriciaTree.Set(key2, _longLeaf1);
             patriciaTree.Set(key3, _longLeaf1);
@@ -718,7 +718,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using IPruningTrieStore trieStore = CreateTrieStore(memDb);
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf1);
             patriciaTree.Set(_keyC, _longLeaf1);
@@ -824,7 +824,7 @@ namespace Nethermind.Trie.Test
             Queue<Hash256> rootQueue = new();
 
             using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
-            StateTree patriciaTree = new(trieStore, _logManager);
+            StateTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
             byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -945,7 +945,7 @@ namespace Nethermind.Trie.Test
             Stack<Hash256> rootStack = new();
 
             using TrieStore trieStore = trieStoreConfig.CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
 
             byte[][] accounts = new byte[accountsCount][];
             byte[][] randomValues = new byte[uniqueValuesCount][];
@@ -1245,7 +1245,7 @@ namespace Nethermind.Trie.Test
             );
             finalizedStateProvider.TrieStore = trieStore;
 
-            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
+            PatriciaTree tree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             using ArrayPoolList<(Hash256, Hash256)> kv = new(itemCount);
 
@@ -1284,7 +1284,7 @@ namespace Nethermind.Trie.Test
         {
             // Build a tree with extension, branch, and leaf nodes: _keyA, _keyB, _keyC, _keyD
             using IPruningTrieStore trieStore = CreateTrieStore();
-            PatriciaTree patriciaTree = new(trieStore, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), _logManager);
             patriciaTree.Set(_keyA, _longLeaf1);
             patriciaTree.Set(_keyB, _longLeaf2);
             patriciaTree.Set(_keyC, _longLeaf1);

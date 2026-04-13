@@ -30,11 +30,18 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 [TestFixture]
 public class RecreateStateFromAccountRangesTests
 {
+    private TestRawTrieStore _store;
     private StateTree _inputTree;
 
     [OneTimeSetUp]
-    public void Setup() =>
-        _inputTree = TestItem.Tree.GetStateTree();
+    public void Setup()
+    {
+        _store = new TestRawTrieStore(new MemDb());
+        _inputTree = TestItem.Tree.GetStateTree(_store);
+    }
+
+    [OneTimeTearDown]
+    public void TearDown() => ((IDisposable)_store)?.Dispose();
 
     private ContainerBuilder CreateContainerBuilder() =>
         new ContainerBuilder()
@@ -49,7 +56,7 @@ public class RecreateStateFromAccountRangesTests
     {
         AccountProofCollector accountProofCollector = new(path);
         tree ??= _inputTree;
-        tree.Accept(accountProofCollector, tree.RootHash);
+        accountProofCollector.TraverseState(tree.RootHash, tree.TrieStore);
         return accountProofCollector.BuildResult().Proof;
     }
 
@@ -353,7 +360,7 @@ public class RecreateStateFromAccountRangesTests
     [Test]
     public void CorrectlyDetermineMaxKeccakExist()
     {
-        StateTree tree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree tree = new(new TestRawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
 
         PathWithAccount ac1 = new(Keccak.Zero, Build.An.Account.WithBalance(1).TestObject);
         PathWithAccount ac2 = new(Keccak.Compute("anything"), Build.An.Account.WithBalance(2).TestObject);
@@ -402,7 +409,7 @@ public class RecreateStateFromAccountRangesTests
         // leaf proof nodes at range boundaries. With the keccak-only leaf change, these leaves
         // are referenced by hash rather than fully added to the boundary list.
         // The root hash verification inside AddAccountRange validates correctness.
-        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 100);
         Hash256 rootHash = inputTree.RootHash;
 
@@ -446,7 +453,7 @@ public class RecreateStateFromAccountRangesTests
     {
         // Build tree with accounts in different nibble-prefix subtrees
         // Accounts with hashed paths give good distribution
-        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 50);
         Hash256 rootHash = inputTree.RootHash;
 
@@ -481,7 +488,7 @@ public class RecreateStateFromAccountRangesTests
     public void MultiRangeWithLeafBoundaryProofsReconstructsCorrectRoot()
     {
         // Use a richer tree to exercise leaf boundary proof handling across multiple ranges
-        StateTree inputTree = new(new TestRawTrieStore(new MemDb()), LimboLogs.Instance);
+        StateTree inputTree = new(new TestRawTrieStore(new MemDb()).GetTrieStore(null), LimboLogs.Instance);
         TestItem.Tree.FillStateTreeMultipleAccount(inputTree, 80);
         Hash256 rootHash = inputTree.RootHash;
 

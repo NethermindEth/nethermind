@@ -182,8 +182,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
             ConcurrencyController concurrency = new(1);
             StateTrieStoreAdapter trieStoreAdapter = new(snapshotBundle, concurrency);
 
-            PatriciaTree patriciaTree = new(trieStoreAdapter, LimboLogs.Instance);
-            patriciaTree.Accept(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions);
+            treeVisitor.TraverseState(stateId.StateRoot.ToCommitment(), trieStoreAdapter, visitingOptions);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

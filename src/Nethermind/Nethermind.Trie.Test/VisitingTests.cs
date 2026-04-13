@@ -29,7 +29,7 @@ public class VisitingTests
         MemDb memDb = new();
 
         using ITrieStore trieStore = TestTrieStoreFactory.Build(new NodeStorage(memDb, scheme), LimboLogs.Instance);
-        PatriciaTree patriciaTree = new(trieStore, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
         Span<byte> raw = stackalloc byte[32];
 
@@ -45,7 +45,7 @@ public class VisitingTests
 
         AppendingVisitor visitor = new(false);
 
-        patriciaTree.Accept(visitor, patriciaTree.RootHash, options);
+        visitor.TraverseState(patriciaTree.RootHash, trieStore.GetTrieStore(null), options);
 
         HashSet<int> setNibbles = new(Enumerable.Range(0, 64));
 
@@ -92,7 +92,7 @@ public class VisitingTests
         }
 
 
-        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
         for (int i = 0; i < 64; i++)
         {
@@ -108,7 +108,7 @@ public class VisitingTests
 
         AppendingVisitor visitor = new(true);
 
-        stateTree.Accept(visitor, stateTree.RootHash, options);
+        visitor.Traverse(stateTree.RootHash, trieStore, options);
 
         int totalPath = 0;
 

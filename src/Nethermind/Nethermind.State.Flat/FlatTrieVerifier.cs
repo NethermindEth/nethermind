@@ -78,15 +78,16 @@ public class FlatTrieVerifier
         using ReadOnlySnapshotBundle bundle = _flatDbManager.GatherReadOnlySnapshotBundle(stateId);
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
 
-        return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken);
+        return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken, trieStore.GetStorageTrieStore);
     }
 
     // Internal method for testing with direct components
-    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
+    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken, Func<Hash256, IScopedTrieStore>? storageFactory = null) =>
+        VerifyCore(reader, trieStore, stateRoot, cancellationToken, storageFactory);
 
-    private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
+    private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken, Func<Hash256, IScopedTrieStore>? storageFactory = null)
     {
-        HashVerifyingTrieStore verifyingTrieStore = new(trieStore, null, _logger);
+        HashVerifyingTrieStore verifyingTrieStore = new(trieStore, null, _logger, storageFactory);
         VisitorProgressTracker progressTracker = new("Verify flat", _logManager, printNodes: false);
 
         Channel<StorageVerificationJob> channel = Channel.CreateBounded<StorageVerificationJob>(
@@ -434,7 +435,7 @@ public class FlatTrieVerifier
     private async Task ProcessStorageQueue(
         ChannelReader<StorageVerificationJob> channelReader,
         IPersistence.IPersistenceReader reader,
-        IScopedTrieStore trieStore,
+        HashVerifyingTrieStore trieStore,
         CancellationToken cancellationToken)
     {
         await foreach (StorageVerificationJob job in channelReader.ReadAllAsync(cancellationToken))
@@ -467,7 +468,7 @@ public class FlatTrieVerifier
     private void VerifyStorageHashed(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
-        IScopedTrieStore trieStore,
+        HashVerifyingTrieStore trieStore,
         CancellationToken cancellationToken)
     {
         if (job.StorageRoot == Keccak.EmptyTreeHash)
@@ -477,7 +478,7 @@ public class FlatTrieVerifier
         }
 
         using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        IScopedTrieStore storageTrieStore = trieStore.ForStorage(job.TrieAccountPath);
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
 
         bool hasFlat = flatIter.MoveNext();
@@ -524,7 +525,7 @@ public class FlatTrieVerifier
     private void VerifyStoragePreimage(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
-        IScopedTrieStore trieStore,
+        HashVerifyingTrieStore trieStore,
         CancellationToken cancellationToken)
     {
         // Empty storage root — any flat entries are orphans
@@ -534,7 +535,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        IScopedTrieStore storageTrieStore = trieStore.ForStorage(job.TrieAccountPath);
         PatriciaTree storageTree = new(storageTrieStore, _logManager);
 
         HashSet<ulong> verifiedSlots = [];
@@ -837,9 +838,12 @@ public class FlatTrieVerifier
     /// <summary>
     /// Wrapper around IScopedTrieStore that verifies hashes of loaded RLP data.
     /// </summary>
-    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger) : IScopedTrieStore
+    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger, Func<Hash256, IScopedTrieStore>? storageFactory = null) : IScopedTrieStore
     {
         private long _hashMismatchCount;
+
+        public HashVerifyingTrieStore ForStorage(Hash256 storageAddress) =>
+            new(storageFactory!(storageAddress), storageAddress, logger);
 
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
@@ -883,11 +887,6 @@ public class FlatTrieVerifier
                 }
             }
         }
-
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-            address is null
-                ? this
-                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger);
 
         public INodeStorage.KeyScheme Scheme => inner.Scheme;
 

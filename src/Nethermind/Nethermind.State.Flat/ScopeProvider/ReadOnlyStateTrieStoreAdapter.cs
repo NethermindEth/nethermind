@@ -17,11 +17,6 @@ internal class ReadOnlyStateTrieStoreAdapter(ReadOnlySnapshotBundle bundle) : Ab
 
     public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => throw new InvalidOperationException("Commit not supported");
 
-    public override ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
-        address is null
-            ? this
-            : new ReadOnlyStorageTrieStoreAdapter(bundle, address); // Used in trie visitor and weird very edge case that cuts the whole thing to pieces
-
     public IScopedTrieStore GetStorageTrieStore(Hash256 address) => new ReadOnlyStorageTrieStoreAdapter(bundle, address);
 }
 

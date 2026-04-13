@@ -60,7 +60,7 @@ public class SnapServerTest
             MemDb stateDbServer = new();
             MemDb codeDbServer = new();
             _store = new TestRawTrieStore(stateDbServer);
-            _tree = new StateTree(_store, LimboLogs.Instance);
+            _tree = new StateTree(_store.GetTrieStore(null), LimboLogs.Instance);
             Server = new SnapServer(_store.AsReadOnly(), codeDbServer, LimboLogs.Instance, lastNStateRootTracker);
 
             _clientStateDb = new MemDb();

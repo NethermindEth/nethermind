@@ -17,9 +17,6 @@ public sealed class ScopedTrieStore(IScopableTrieStore fullTrieStore, Hash256? a
     public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
         fullTrieStore.TryLoadRlp(address, path, hash, flags);
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address1) =>
-        address1 == address ? this : new ScopedTrieStore(fullTrieStore, address1);
-
     public INodeStorage.KeyScheme Scheme => fullTrieStore.Scheme;
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
