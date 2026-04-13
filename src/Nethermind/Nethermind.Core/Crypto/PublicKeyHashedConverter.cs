@@ -28,7 +28,7 @@ public class PublicKeyHashedConverter : JsonConverter<PublicKey>
         else
         {
             Span<byte> span = stackalloc byte[64];
-            bytes.AsSpan().CopyTo(span.Slice(64 - bytes.Length));
+            bytes.AsSpan().CopyTo(span[(64 - bytes.Length)..]);
             return new PublicKey(span);
         }
     }

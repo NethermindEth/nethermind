@@ -105,7 +105,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         Span<byte> c = cipherOutputBuffer;
 
         int len = _cipher.ProcessBytes(input, c);
-        len += _cipher.DoFinal(c.Slice(len));
+        len += _cipher.DoFinal(c[len..]);
 
         _hash.Reset();
         ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
@@ -118,7 +118,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         _mac.Init(new KeyParameter(k2A));
 
         _mac.BlockUpdate(_iv);
-        _mac.BlockUpdate(c.Slice(0, len));
+        _mac.BlockUpdate(c[..len]);
 
         // Convert the length of the encoding vector into a byte array.
         byte[]? p2 = _iesParameters.GetEncodingV();
@@ -138,8 +138,8 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         _mac.DoFinal(T);
 
         // Output the double (C,T).
-        c.Slice(0, len).CopyTo(output);
-        T.CopyTo(output.Slice(len));
+        c[..len].CopyTo(output);
+        T.CopyTo(output[len..]);
 
         return len + macSize;
 
@@ -167,7 +167,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         int cipherInputLength = input.Length - macSize;
 
         // Verify the MAC.
-        ReadOnlySpan<byte> t1 = input.Slice(input.Length - macSize, macSize);
+        ReadOnlySpan<byte> t1 = input[^macSize..];
 
         _hash.Reset();
         ReadOnlySpan<byte> k2 = _kdfKey.AsSpan(k1.Length, _iesParameters.MacKeySize / 8);
@@ -179,7 +179,7 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
 
         _mac.Init(new KeyParameter(k2A));
         _mac.BlockUpdate(_iv);
-        _mac.BlockUpdate(input.Slice(0, cipherInputLength));
+        _mac.BlockUpdate(input[..cipherInputLength]);
 
         // Convert the length of the encoding vector into a byte array.
         byte[]? p2 = _iesParameters.GetEncodingV();
@@ -203,8 +203,8 @@ public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlock
         }
 
         // Decrypt the message
-        int len = _cipher.ProcessBytes(input.Slice(0, cipherInputLength), output);
-        len += _cipher.DoFinal(output.Slice(len));
+        int len = _cipher.ProcessBytes(input[..cipherInputLength], output);
+        len += _cipher.DoFinal(output[len..]);
 
         return len;
 

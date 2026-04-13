@@ -125,7 +125,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 if (evenLen > 0)
                 {
                     int outBytes = evenLen >> 1;
-                    Bytes.FromUtf8HexString(span.Slice(0, evenLen),
+                    Bytes.FromUtf8HexString(span[..evenLen],
                         MemoryMarshal.CreateSpan(ref Unsafe.Add(ref resultRef, outPos), outBytes));
                     outPos += outBytes;
                     sr.Advance(evenLen);
