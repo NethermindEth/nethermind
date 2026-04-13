@@ -13,7 +13,7 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
 
     private ArrayPoolList<TransactionForRpcWithTraceTypes>? _calls = calls;
 
-    public TraceCallManyRequest() :this(null){ }
+    public TraceCallManyRequest() : this(null) { }
 
     public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls => _calls ??= ArrayPoolList<TransactionForRpcWithTraceTypes>.Empty();
 
