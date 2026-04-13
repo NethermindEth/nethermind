@@ -58,27 +58,47 @@ public class BlockAccessListBasedWorldState(
 
     public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        oldBalance = GetBalanceInternal(address);
+        oldBalance = GetBalance(address);
     }
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        oldBalance = GetBalanceInternal(address);
-        return !AccountExistsInternal(address);
+        oldBalance = GetBalance(address);
+        return !AccountExists(address);
     }
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
         => _innerWorldState.BeginScope(baseBlock);
 
     public ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        => GetInternal(storageCell);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+        if (slotChanges is not null)
+        {
+            return slotChanges.Get(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public byte[] GetOriginal(in StorageCell storageCell)
-        => GetOriginalInternal(storageCell);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
+        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+        if (slotChanges is not null)
+        {
+            return slotChanges.Get(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
     {
-        oldNonce = GetNonceInternal(address);
+        oldNonce = GetNonce(address);
     }
 
     public void SetNonce(Address address, in UInt256 nonce) { }
@@ -89,23 +109,50 @@ public class BlockAccessListBasedWorldState(
     public void Set(in StorageCell storageCell, byte[] newValue) { }
 
     public UInt256 GetBalance(Address address)
-        => GetBalanceInternal(address);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+        if (accountChanges is not null)
+        {
+            return accountChanges.GetBalance(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Balance access for {address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public UInt256 GetNonce(Address address)
-        => GetNonceInternal(address);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+        if (accountChanges is not null)
+        {
+            return accountChanges.GetNonce(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Nonce access for {address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public ValueHash256 GetCodeHash(Address address)
-        => GetCodeHashInternal(address);
+        => ValueKeccak.Compute(GetCode(address));
 
     public byte[]? GetCode(Address address)
-        => GetCodeInternal(address);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+        if (accountChanges is not null)
+        {
+            return accountChanges.GetCode(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Code access for {address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public byte[]? GetCode(in ValueHash256 _)
         => null;
 
     public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
-        oldBalance = GetBalanceInternal(address);
+        oldBalance = GetBalance(address);
     }
 
     public void DeleteAccount(Address address) { }
@@ -116,8 +163,18 @@ public class BlockAccessListBasedWorldState(
 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
-        account = GetAccountInternal(address) ?? AccountStruct.TotallyEmpty;
-        return !account.IsTotallyEmpty;
+        if (AccountExists(address))
+        {
+            account = new(
+                GetNonce(address),
+                GetBalance(address),
+                Keccak.EmptyTreeHash, // never used
+                GetCodeHash(address));
+            return true;
+        }
+
+        account = AccountStruct.TotallyEmpty;
+        return false;
     }
 
     public void Restore(Snapshot snapshot) { }
@@ -126,16 +183,38 @@ public class BlockAccessListBasedWorldState(
         => Snapshot.Empty;
 
     public bool AccountExists(Address address)
-        => AccountExistsInternal(address);
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is not null)
+        {
+            // check if existed before current tx
+            return accountChanges.AccountExists(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Account {address} not found in block access list when checking existence at index {blockAccessIndex}.");
+    }
 
     public bool IsContract(Address address)
-        => IsContractInternal(address);
+        => GetCodeHash(address) != Keccak.OfAnEmptyString;
 
     public bool IsStorageEmpty(Address address)
-        => IsStorageEmptyInternal(address);
+    {
+        // see https://eips.ethereum.org/EIPS/eip-7610
+        // storage could only be non-empty for 28 old accounts
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+        if (accountChanges is not null)
+        {
+            return accountChanges.EmptyBeforeBlock;
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
+    }
 
     public bool IsDeadAccount(Address address)
-        => IsDeadAccountInternal(address);
+        => !AccountExists(address) ||
+                (GetBalance(address) == 0 &&
+                GetNonce(address) == 0 &&
+                GetCodeHash(address) == Keccak.OfAnEmptyString);
 
     public void ClearStorage(Address address) { }
 
@@ -162,112 +241,6 @@ public class BlockAccessListBasedWorldState(
 
     public void ResetTransient()
         => _transientStorageProvider.Reset();
-
-    private UInt256 GetBalanceInternal(Address address)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            return accountChanges.GetBalance(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Balance access for {address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private UInt256 GetNonceInternal(Address address)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            return accountChanges.GetNonce(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Nonce access for {address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private byte[]? GetCodeInternal(Address address)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-
-        if (accountChanges is not null)
-        {
-            return accountChanges.GetCode(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Code access for {address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private ValueHash256 GetCodeHashInternal(Address address)
-        => ValueKeccak.Compute(GetCodeInternal(address));
-
-    private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-        if (slotChanges is not null)
-        {
-            return slotChanges.Get(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private byte[] GetOriginalInternal(in StorageCell storageCell)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(storageCell.Address);
-        accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-        if (slotChanges is not null)
-        {
-            return slotChanges.Get(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private bool AccountExistsInternal(Address address)
-    {
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null)
-        {
-            // check if existed before current tx
-            return accountChanges.AccountExists(blockAccessIndex);
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Account {address} not found in block access list when checking existence at index {blockAccessIndex}.");
-    }
-
-    private bool IsDeadAccountInternal(Address address)
-        => !AccountExistsInternal(address) ||
-                (GetBalanceInternal(address) == 0 &&
-                GetNonceInternal(address) == 0 &&
-                GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
-
-    private bool IsContractInternal(Address address)
-        => GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
-
-    private bool IsStorageEmptyInternal(Address address)
-    {
-        // see https://eips.ethereum.org/EIPS/eip-7610
-        // storage could only be non-empty for 28 old accounts
-        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null)
-        {
-            return accountChanges.EmptyBeforeBlock;
-        }
-
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
-    }
-
-    private AccountStruct? GetAccountInternal(Address address)
-        => AccountExistsInternal(address) ? new(
-                GetNonceInternal(address),
-                GetBalanceInternal(address),
-                Keccak.EmptyTreeHash, // never used
-                GetCodeHashInternal(address)) : null;
 
     // for testing
     internal IWorldState Inner => _innerWorldState;
