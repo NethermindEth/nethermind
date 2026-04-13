@@ -252,10 +252,7 @@ internal class VotesManager(
         List<Signature> signatures = new();
         foreach (Vote vote in votes)
         {
-            if (vote.Signer is null)
-            {
-                vote.Signer = _ethereumEcdsa.RecoverVoteSigner(vote);
-            }
+            vote.Signer ??= _ethereumEcdsa.RecoverVoteSigner(vote);
 
             if (masternodeSet.Contains(vote.Signer))
             {
