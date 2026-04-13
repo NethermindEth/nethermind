@@ -12,11 +12,9 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
-using Nethermind.StateComposition.Diff;
 using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Service;

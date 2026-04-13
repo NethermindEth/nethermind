@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Logging;
-using Nethermind.Trie;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
+using Nethermind.Trie;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Visitors;
 

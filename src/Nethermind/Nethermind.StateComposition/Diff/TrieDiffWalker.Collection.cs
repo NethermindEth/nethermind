@@ -145,7 +145,7 @@ internal sealed partial class TrieDiffWalker
         if (account.HasStorage)
         {
             Hash256 addressHash = GetAddressHash(leaf, ref path);
-            ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(addressHash);
+            ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
 

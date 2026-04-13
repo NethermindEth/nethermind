@@ -34,7 +34,7 @@ public class StateCompositionSnapshotStore(
         Span<byte> key = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(key, snapshot.BlockNumber);
 
-        int length = Decoder.GetLength(snapshot, RlpBehaviors.None);
+        int length = Decoder.GetLength(snapshot);
         byte[] buffer = ArrayPool<byte>.Shared.Rent(length);
         try
         {

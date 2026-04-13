@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Crypto;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Visitors;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Visitors;
 

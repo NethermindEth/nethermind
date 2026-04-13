@@ -4,13 +4,13 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
 using Nethermind.StateComposition.Visitors;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Visitors;
 
 /// <summary>
-/// Multi-threaded MergeFrom test — verify ThreadLocal counter pattern
+/// Multithreaded MergeFrom test — verify ThreadLocal counter pattern
 /// produces correct aggregated totals when merging from multiple threads.
 /// </summary>
 [TestFixture]

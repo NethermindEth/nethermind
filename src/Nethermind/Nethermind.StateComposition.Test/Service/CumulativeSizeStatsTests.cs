@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Immutable;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Service;
 
@@ -49,7 +48,7 @@ public class CumulativeSizeStatsTests
     [Test]
     public void FromScanStats_SeedsCodeBytesAndSlotHistogram()
     {
-        ImmutableArray<long> hist = ImmutableArray.Create<long>(0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ImmutableArray<long> hist = [0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         StateCompositionStats scan = BuildScanStats(codeBytes: 9_000, slotHistogram: hist);
 
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan);
@@ -67,7 +66,7 @@ public class CumulativeSizeStatsTests
     {
         // Freeze pattern: incremental diffs do not touch CodeBytesTotal or SlotCountHistogram.
         // They remain at last-scan values until the next full scan.
-        ImmutableArray<long> hist = ImmutableArray.Create<long>(0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ImmutableArray<long> hist = [0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         CumulativeSizeStats baseline = CumulativeSizeStats.FromScanStats(
             BuildScanStats(codeBytes: 12_345, slotHistogram: hist));
 
@@ -107,7 +106,7 @@ public class CumulativeSizeStatsTests
     [Test]
     public void ApplyDiff_Chained_StillPreservesFreezeFields()
     {
-        ImmutableArray<long> hist = ImmutableArray.Create<long>(7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ImmutableArray<long> hist = [7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         CumulativeSizeStats stats = CumulativeSizeStats.FromScanStats(
             BuildScanStats(codeBytes: 1_000_000, slotHistogram: hist));
 

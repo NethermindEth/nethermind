@@ -60,14 +60,6 @@ public readonly record struct TrieDiff(
     public int NetContractsWithStorage => ContractsWithStorageAdded - ContractsWithStorageRemoved;
     public int NetEmptyAccounts => EmptyAccountsAdded - EmptyAccountsRemoved;
 
-    public int NetAccountTrieNodes =>
-        (AccountTrieBranchesAdded + AccountTrieExtensionsAdded + AccountTrieLeavesAdded) -
-        (AccountTrieBranchesRemoved + AccountTrieExtensionsRemoved + AccountTrieLeavesRemoved);
-
-    public int NetStorageTrieNodes =>
-        (StorageTrieBranchesAdded + StorageTrieExtensionsAdded + StorageTrieLeavesAdded) -
-        (StorageTrieBranchesRemoved + StorageTrieExtensionsRemoved + StorageTrieLeavesRemoved);
-
     public long NetAccountTrieBytes => AccountTrieBytesAdded - AccountTrieBytesRemoved;
     public long NetStorageTrieBytes => StorageTrieBytesAdded - StorageTrieBytesRemoved;
 }

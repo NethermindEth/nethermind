@@ -1,17 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Trie;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
+using Nethermind.Trie;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Visitors;
 
@@ -48,14 +45,9 @@ public class CodeBytesTests
         };
 
         int lookupCalls = 0;
-        Func<ValueHash256, int> lookup = hash =>
-        {
-            lookupCalls++;
-            return sizes.TryGetValue(hash, out int size) ? size : 0;
-        };
 
         using StateCompositionVisitor visitor =
-            new(LimboLogs.Instance, codeSizeLookup: lookup);
+            new(LimboLogs.Instance, codeSizeLookup: Lookup);
 
         AccountStruct accA = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, hashA);
         AccountStruct accB = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, hashB);
@@ -78,20 +70,23 @@ public class CodeBytesTests
             Assert.That(stats.ContractsTotal, Is.EqualTo(4),
                 "ContractsTotal still counts every contract (not deduped)");
         }
+
+        return;
+
+        int Lookup(ValueHash256 hash)
+        {
+            lookupCalls++;
+            return sizes.TryGetValue(hash, out int size) ? size : 0;
+        }
     }
 
     [Test]
     public void CodeBytesTotal_SkipsEmptyCodeHash_ForEoas()
     {
         bool lookupCalled = false;
-        Func<ValueHash256, int> lookup = _ =>
-        {
-            lookupCalled = true;
-            return 999;
-        };
 
         using StateCompositionVisitor visitor =
-            new(LimboLogs.Instance, codeSizeLookup: lookup);
+            new(LimboLogs.Instance, codeSizeLookup: Lookup);
 
         // Two EOAs — empty code hash, HasCode == false.
         AccountStruct eoa = new(0, 100, Keccak.EmptyTreeHash.ValueHash256, EmptyCodeHash);
@@ -105,6 +100,14 @@ public class CodeBytesTests
             Assert.That(stats.CodeBytesTotal, Is.Zero, "EOAs contribute no bytes");
             Assert.That(stats.ContractsTotal, Is.Zero, "EOAs are not contracts");
             Assert.That(lookupCalled, Is.False, "lookup must not fire for EOAs");
+        }
+
+        return;
+
+        int Lookup(ValueHash256 _)
+        {
+            lookupCalled = true;
+            return 999;
         }
     }
 

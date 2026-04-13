@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Immutable;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
 
@@ -22,7 +21,7 @@ public class MetricsCodeAndSlotsTests
     [SetUp]
     public void ClearHistogram() => Metrics.StateCompSlotCountHistogram.Clear();
 
-    private static ImmutableArray<long> ZeroHistogram() => ImmutableArray.Create(new long[16]);
+    private static ImmutableArray<long> ZeroHistogram() => [..new long[16]];
 
     private static CumulativeSizeStats BuildStats(long codeBytes, ImmutableArray<long> hist) =>
         new(
@@ -58,7 +57,7 @@ public class MetricsCodeAndSlotsTests
         // Each bucket gets a distinct value so we detect index swaps.
         long[] vals = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160];
 
-        Metrics.UpdateFromCumulativeStats(BuildStats(codeBytes: 0, hist: ImmutableArray.Create(vals)));
+        Metrics.UpdateFromCumulativeStats(BuildStats(codeBytes: 0, hist: [..vals]));
 
         using (Assert.EnterMultipleScope())
         {

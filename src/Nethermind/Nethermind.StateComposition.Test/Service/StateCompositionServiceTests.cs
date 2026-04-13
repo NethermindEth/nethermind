@@ -6,20 +6,19 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Blockchain;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
-using NSubstitute;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
-using Nethermind.StateComposition.Visitors;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
+using Nethermind.StateComposition.Visitors;
+using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Service;
 
@@ -326,13 +325,13 @@ public class StateCompositionServiceTests
     }
 
     /// <summary>
-    /// When the CancellationToken passed to AnalyzeAsync is cancelled while the
+    /// When the CancellationToken passed to AnalyzeAsync is canceled while the
     /// visitor is in-flight, the task must complete (not hang) and must NOT mark
     /// the baseline as initialized.
     ///
     /// The mock visitor throws OperationCanceledException when the scan token is
-    /// cancelled — this is the cooperative cancellation contract any real visitor
-    /// must honour. The service propagates the exception; no Result.Success is produced.
+    /// canceled — this is the cooperative cancellation contract any real visitor
+    /// must honor. The service propagates the exception; no Result.Success is produced.
     /// </summary>
     [Test]
     [CancelAfter(5_000)]
@@ -340,29 +339,19 @@ public class StateCompositionServiceTests
     {
         IStateReader stateReader = Substitute.For<IStateReader>();
         ManualResetEventSlim visitorEntered = new(false);
-        // Capture the linked token so the mock can throw when it's cancelled.
-        CancellationToken capturedToken = default;
-
-        stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(null!, null))
-            .Do(ci =>
-            {
-                // The visitor passed in is the StateCompositionVisitor; grab its token
-                // via the captured CTS token set before the call.
-                visitorEntered.Set();
-                // Block until cancelled — respects cooperative cancellation
-                capturedToken.WaitHandle.WaitOne();
-                capturedToken.ThrowIfCancellationRequested();
-            });
-
         StateCompositionStateHolder stateHolder = new();
         using CancellationTokenSource cts = new();
 
-        // We need to capture the linked token. Intercept it by wrapping: since
-        // AnalyzeAsync creates the linked CTS internally, the simplest approach is
-        // to cancel cts (passed in) which cancels the linked token too.
-        // The mock above waits on capturedToken — set it to cts.Token directly.
-        capturedToken = cts.Token;
+        // cts is captured by reference; cts.Token.WaitHandle is the live handle that
+        // await cts.CancelAsync() below signals, so the mock unblocks cooperatively.
+        stateReader.WhenForAnyArgs(x =>
+                x.RunTreeVisitor<StateCompositionContext>(null!, null))
+            .Do(_ =>
+            {
+                visitorEntered.Set();
+                cts.Token.WaitHandle.WaitOne();
+                cts.Token.ThrowIfCancellationRequested();
+            });
 
         StateCompositionService service = new(
             stateReader, Substitute.For<IWorldStateManager>(), Substitute.For<IBlockTree>(),
@@ -376,7 +365,7 @@ public class StateCompositionServiceTests
         Assert.That(visitorEntered.Wait(TimeSpan.FromSeconds(3)), Is.True, "Visitor did not enter RunTreeVisitor");
 
         // Cancel — the mock will unblock and throw OperationCanceledException
-        cts.Cancel();
+        await cts.CancelAsync();
 
         // Task must complete without hanging; the cancellation propagates as exception
         try
@@ -413,7 +402,7 @@ public class StateCompositionServiceTests
             .Do(_ =>
             {
                 scanEntered.Set();
-                releaseScan.Wait();
+                releaseScan.Wait(testCt);
             });
 
         // InspectContractAsync will call TryGetAccount first — return null account so it exits early

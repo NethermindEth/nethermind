@@ -31,7 +31,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item, rlpBehaviors);
+        int contentLength = GetContentLength(item);
         stream.StartSequence(contentLength);
 
         stream.Encode(item.Stats.AccountsTotal);
@@ -86,7 +86,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             stream.Encode(hist.IsDefault ? 0L : hist[i]);
     }
 
-    private static int GetContentLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    private static int GetContentLength(StateCompositionSnapshot item)
     {
         int contentLength = 0;
 
@@ -160,7 +160,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        return Rlp.LengthOfSequence(GetContentLength(item));
     }
 
     protected override StateCompositionSnapshot DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

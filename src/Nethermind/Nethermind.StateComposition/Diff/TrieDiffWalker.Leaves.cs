@@ -17,7 +17,7 @@ internal sealed partial class TrieDiffWalker
     /// For account trie: decode accounts to detect contract/storage changes.
     /// For storage trie: each leaf is one storage slot.
     /// </summary>
-    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
+    private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, bool isStorage, int depth)
     {
         // Record both leaf nodes (old removed, new added)
         RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
@@ -66,7 +66,7 @@ internal sealed partial class TrieDiffWalker
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
         Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
-        ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(addressHash);
+        ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
         TreePath storagePath = TreePath.Empty;
         // Storage tries always start at depth 0 (independent trie)
         DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);

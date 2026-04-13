@@ -13,12 +13,11 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Diff;
+using Nethermind.StateComposition.Visitors;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
-
-using Nethermind.StateComposition.Data;
-using Nethermind.StateComposition.Visitors;
-using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Test.Diff;
 
@@ -66,7 +65,7 @@ public class TrieDiffWalkerTests
 
         TrieDiff diff = walker.ComputeDiff(null, null);
 
-        Assert.That(diff, Is.EqualTo(default(TrieDiff)));
+        Assert.That(diff, Is.Default);
     }
 
     [Test]
@@ -78,7 +77,7 @@ public class TrieDiffWalkerTests
 
         TrieDiff diff = walker.ComputeDiff(Keccak.EmptyTreeHash, Keccak.EmptyTreeHash);
 
-        Assert.That(diff, Is.EqualTo(default(TrieDiff)));
+        Assert.That(diff, Is.Default);
     }
 
     [Test]
@@ -86,7 +85,7 @@ public class TrieDiffWalkerTests
     {
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root = tree.RootHash;
@@ -94,7 +93,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root, root);
 
-        Assert.That(diff, Is.EqualTo(default(TrieDiff)));
+        Assert.That(diff, Is.Default);
     }
 
     #endregion
@@ -109,7 +108,7 @@ public class TrieDiffWalkerTests
 
         Hash256 emptyRoot = Keccak.EmptyTreeHash;
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -117,12 +116,15 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(1));
-        Assert.That(diff.AccountsRemoved, Is.EqualTo(0));
-        Assert.That(diff.NetAccounts, Is.EqualTo(1));
-        Assert.That(diff.ContractsAdded, Is.EqualTo(0));
-        Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(1));
-        Assert.That(diff.AccountTrieLeavesRemoved, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.EqualTo(1));
+            Assert.That(diff.AccountsRemoved, Is.Zero);
+            Assert.That(diff.NetAccounts, Is.EqualTo(1));
+            Assert.That(diff.ContractsAdded, Is.Zero);
+            Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(1));
+            Assert.That(diff.AccountTrieLeavesRemoved, Is.Zero);
+        }
     }
 
     [Test]
@@ -131,7 +133,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContractNoStorage());
         tree.Commit();
@@ -141,11 +143,14 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(Keccak.EmptyTreeHash, root);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(3));
-        Assert.That(diff.AccountsRemoved, Is.EqualTo(0));
-        Assert.That(diff.ContractsAdded, Is.EqualTo(1));
-        Assert.That(diff.ContractsRemoved, Is.EqualTo(0));
-        Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.EqualTo(3));
+            Assert.That(diff.AccountsRemoved, Is.Zero);
+            Assert.That(diff.ContractsAdded, Is.EqualTo(1));
+            Assert.That(diff.ContractsRemoved, Is.Zero);
+            Assert.That(diff.AccountTrieLeavesAdded, Is.EqualTo(3));
+        }
     }
 
     #endregion
@@ -158,7 +163,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -166,10 +171,13 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, Keccak.EmptyTreeHash);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(0));
-        Assert.That(diff.AccountsRemoved, Is.EqualTo(1));
-        Assert.That(diff.NetAccounts, Is.EqualTo(-1));
-        Assert.That(diff.AccountTrieLeavesRemoved, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.Zero);
+            Assert.That(diff.AccountsRemoved, Is.EqualTo(1));
+            Assert.That(diff.NetAccounts, Is.EqualTo(-1));
+            Assert.That(diff.AccountTrieLeavesRemoved, Is.EqualTo(1));
+        }
     }
 
     #endregion
@@ -182,7 +190,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -195,11 +203,14 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(1));
-        Assert.That(diff.AccountsRemoved, Is.EqualTo(0));
-        Assert.That(diff.NetAccounts, Is.EqualTo(1));
-        // Adding second account to a single-leaf trie creates a branch
-        Assert.That(diff.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.EqualTo(1));
+            Assert.That(diff.AccountsRemoved, Is.Zero);
+            Assert.That(diff.NetAccounts, Is.EqualTo(1));
+            // Adding second account to a single-leaf trie creates a branch
+            Assert.That(diff.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(1));
+        }
     }
 
     #endregion
@@ -212,7 +223,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -226,10 +237,13 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.NetAccounts, Is.EqualTo(0));
-        Assert.That(diff.NetContracts, Is.EqualTo(0));
-        Assert.That(diff.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(1));
-        Assert.That(diff.AccountTrieLeavesRemoved, Is.GreaterThanOrEqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.NetAccounts, Is.Zero);
+            Assert.That(diff.NetContracts, Is.Zero);
+            Assert.That(diff.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(1));
+            Assert.That(diff.AccountTrieLeavesRemoved, Is.GreaterThanOrEqualTo(1));
+        }
     }
 
     #endregion
@@ -242,7 +256,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -269,7 +283,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -282,9 +296,12 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(1));
-        Assert.That(diff.ContractsAdded, Is.EqualTo(1));
-        Assert.That(diff.ContractsRemoved, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.EqualTo(1));
+            Assert.That(diff.ContractsAdded, Is.EqualTo(1));
+            Assert.That(diff.ContractsRemoved, Is.Zero);
+        }
     }
 
     [Test]
@@ -293,7 +310,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateContractNoStorage());
         tree.Commit();
         tree.UpdateRootHash();
@@ -307,8 +324,11 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.AccountsRemoved, Is.EqualTo(1));
-        Assert.That(diff.ContractsRemoved, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsRemoved, Is.EqualTo(1));
+            Assert.That(diff.ContractsRemoved, Is.EqualTo(1));
+        }
     }
 
     #endregion
@@ -328,7 +348,7 @@ public class TrieDiffWalkerTests
         );
 
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -341,14 +361,17 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.AccountsAdded, Is.EqualTo(1));
-        Assert.That(diff.ContractsAdded, Is.EqualTo(1));
-        Assert.That(diff.StorageSlotsAdded, Is.EqualTo(3));
-        Assert.That(diff.StorageSlotsRemoved, Is.EqualTo(0));
-        Assert.That(diff.NetStorageSlots, Is.EqualTo(3));
-        // Storage trie nodes should be counted
-        Assert.That(diff.StorageTrieLeavesAdded, Is.EqualTo(3));
-        Assert.That(diff.StorageTrieBytesAdded, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountsAdded, Is.EqualTo(1));
+            Assert.That(diff.ContractsAdded, Is.EqualTo(1));
+            Assert.That(diff.StorageSlotsAdded, Is.EqualTo(3));
+            Assert.That(diff.StorageSlotsRemoved, Is.Zero);
+            Assert.That(diff.NetStorageSlots, Is.EqualTo(3));
+            // Storage trie nodes should be counted
+            Assert.That(diff.StorageTrieLeavesAdded, Is.EqualTo(3));
+            Assert.That(diff.StorageTrieBytesAdded, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -385,7 +408,7 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
         // Same slot modified → net zero (leaf at same path means update, not add/remove)
-        Assert.That(diff.NetStorageSlots, Is.EqualTo(0));
+        Assert.That(diff.NetStorageSlots, Is.Zero);
     }
 
     [Test]
@@ -420,8 +443,11 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.StorageSlotsAdded, Is.EqualTo(1));
-        Assert.That(diff.NetStorageSlots, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.StorageSlotsAdded, Is.EqualTo(1));
+            Assert.That(diff.NetStorageSlots, Is.EqualTo(1));
+        }
     }
 
     #endregion
@@ -434,7 +460,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -447,8 +473,11 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.AccountTrieBytesAdded, Is.GreaterThan(0));
-        Assert.That(diff.AccountTrieBytesRemoved, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diff.AccountTrieBytesAdded, Is.GreaterThan(0));
+            Assert.That(diff.AccountTrieBytesRemoved, Is.GreaterThan(0));
+        }
     }
 
     #endregion
@@ -461,7 +490,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -476,15 +505,18 @@ public class TrieDiffWalkerTests
         TrieDiff forward = walker.ComputeDiff(root1, root2);
         TrieDiff reverse = walker.ComputeDiff(root2, root1);
 
-        // Forward adds = reverse removes and vice versa
-        Assert.That(forward.AccountsAdded, Is.EqualTo(reverse.AccountsRemoved));
-        Assert.That(forward.AccountsRemoved, Is.EqualTo(reverse.AccountsAdded));
-        Assert.That(forward.ContractsAdded, Is.EqualTo(reverse.ContractsRemoved));
-        Assert.That(forward.ContractsRemoved, Is.EqualTo(reverse.ContractsAdded));
-        Assert.That(forward.AccountTrieBranchesAdded, Is.EqualTo(reverse.AccountTrieBranchesRemoved));
-        Assert.That(forward.AccountTrieExtensionsAdded, Is.EqualTo(reverse.AccountTrieExtensionsRemoved));
-        Assert.That(forward.AccountTrieLeavesAdded, Is.EqualTo(reverse.AccountTrieLeavesRemoved));
-        Assert.That(forward.AccountTrieBytesAdded, Is.EqualTo(reverse.AccountTrieBytesRemoved));
+        using (Assert.EnterMultipleScope())
+        {
+            // Forward adds = reverse removes and vice versa
+            Assert.That(forward.AccountsAdded, Is.EqualTo(reverse.AccountsRemoved));
+            Assert.That(forward.AccountsRemoved, Is.EqualTo(reverse.AccountsAdded));
+            Assert.That(forward.ContractsAdded, Is.EqualTo(reverse.ContractsRemoved));
+            Assert.That(forward.ContractsRemoved, Is.EqualTo(reverse.ContractsAdded));
+            Assert.That(forward.AccountTrieBranchesAdded, Is.EqualTo(reverse.AccountTrieBranchesRemoved));
+            Assert.That(forward.AccountTrieExtensionsAdded, Is.EqualTo(reverse.AccountTrieExtensionsRemoved));
+            Assert.That(forward.AccountTrieLeavesAdded, Is.EqualTo(reverse.AccountTrieLeavesRemoved));
+            Assert.That(forward.AccountTrieBytesAdded, Is.EqualTo(reverse.AccountTrieBytesRemoved));
+        }
     }
 
     #endregion
@@ -497,7 +529,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateContractNoStorage());
         tree.Commit();
         tree.UpdateRootHash();
@@ -529,13 +561,16 @@ public class TrieDiffWalkerTests
         StateCompositionStats scan2 = v2.GetStats(2, root2);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(scan2);
 
-        // The cumulative stats after applying diff must match a fresh full scan
-        Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal mismatch");
-        Assert.That(updated.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal mismatch");
-        Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches mismatch");
-        Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions mismatch");
-        Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves mismatch");
-        Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes mismatch");
+        using (Assert.EnterMultipleScope())
+        {
+            // The cumulative stats after applying diff must match a fresh full scan
+            Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal mismatch");
+            Assert.That(updated.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal mismatch");
+            Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches mismatch");
+            Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions mismatch");
+            Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves mismatch");
+            Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes mismatch");
+        }
     }
 
     #endregion
@@ -549,7 +584,7 @@ public class TrieDiffWalkerTests
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
         // Block 1: 2 accounts
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -592,12 +627,15 @@ public class TrieDiffWalkerTests
         tree.Accept(v4, root4);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v4.GetStats(4, root4));
 
-        Assert.That(cumulative.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal after 4 blocks");
-        Assert.That(cumulative.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal after 4 blocks");
-        Assert.That(cumulative.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches after 4 blocks");
-        Assert.That(cumulative.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions after 4 blocks");
-        Assert.That(cumulative.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves after 4 blocks");
-        Assert.That(cumulative.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes after 4 blocks");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cumulative.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal after 4 blocks");
+            Assert.That(cumulative.ContractsTotal, Is.EqualTo(expected.ContractsTotal), "ContractsTotal after 4 blocks");
+            Assert.That(cumulative.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches after 4 blocks");
+            Assert.That(cumulative.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions after 4 blocks");
+            Assert.That(cumulative.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves after 4 blocks");
+            Assert.That(cumulative.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes after 4 blocks");
+        }
     }
 
     #endregion
@@ -648,11 +686,14 @@ public class TrieDiffWalkerTests
         tree.Accept(v2, root2);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
 
-        Assert.That(updated.StorageSlotsTotal, Is.EqualTo(expected.StorageSlotsTotal), "StorageSlotsTotal");
-        Assert.That(updated.StorageTrieBranches, Is.EqualTo(expected.StorageTrieBranches), "StorageTrieBranches");
-        Assert.That(updated.StorageTrieExtensions, Is.EqualTo(expected.StorageTrieExtensions), "StorageTrieExtensions");
-        Assert.That(updated.StorageTrieLeaves, Is.EqualTo(expected.StorageTrieLeaves), "StorageTrieLeaves");
-        Assert.That(updated.StorageTrieBytes, Is.EqualTo(expected.StorageTrieBytes), "StorageTrieBytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.StorageSlotsTotal, Is.EqualTo(expected.StorageSlotsTotal), "StorageSlotsTotal");
+            Assert.That(updated.StorageTrieBranches, Is.EqualTo(expected.StorageTrieBranches), "StorageTrieBranches");
+            Assert.That(updated.StorageTrieExtensions, Is.EqualTo(expected.StorageTrieExtensions), "StorageTrieExtensions");
+            Assert.That(updated.StorageTrieLeaves, Is.EqualTo(expected.StorageTrieLeaves), "StorageTrieLeaves");
+            Assert.That(updated.StorageTrieBytes, Is.EqualTo(expected.StorageTrieBytes), "StorageTrieBytes");
+        }
     }
 
     #endregion
@@ -705,11 +746,14 @@ public class TrieDiffWalkerTests
         tree.Accept(v2, root2);
         CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(v2.GetStats(2, root2));
 
-        Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal");
-        Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches");
-        Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions");
-        Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves");
-        Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated.AccountsTotal, Is.EqualTo(expected.AccountsTotal), "AccountsTotal");
+            Assert.That(updated.AccountTrieBranches, Is.EqualTo(expected.AccountTrieBranches), "AccountTrieBranches");
+            Assert.That(updated.AccountTrieExtensions, Is.EqualTo(expected.AccountTrieExtensions), "AccountTrieExtensions");
+            Assert.That(updated.AccountTrieLeaves, Is.EqualTo(expected.AccountTrieLeaves), "AccountTrieLeaves");
+            Assert.That(updated.AccountTrieBytes, Is.EqualTo(expected.AccountTrieBytes), "AccountTrieBytes");
+        }
     }
 
     #endregion
@@ -722,7 +766,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -734,18 +778,21 @@ public class TrieDiffWalkerTests
 
         CumulativeSizeStats cumulative = CumulativeSizeStats.FromScanStats(scan);
 
-        // Verify mapping: FullNodes→Branches, (ShortNodes-ValueNodes)→Extensions, ValueNodes→Leaves
-        Assert.That(cumulative.AccountsTotal, Is.EqualTo(scan.AccountsTotal));
-        Assert.That(cumulative.ContractsTotal, Is.EqualTo(scan.ContractsTotal));
-        Assert.That(cumulative.StorageSlotsTotal, Is.EqualTo(scan.StorageSlotsTotal));
-        Assert.That(cumulative.AccountTrieBranches, Is.EqualTo(scan.AccountTrieFullNodes));
-        Assert.That(cumulative.AccountTrieExtensions, Is.EqualTo(scan.AccountTrieShortNodes - scan.AccountTrieValueNodes));
-        Assert.That(cumulative.AccountTrieLeaves, Is.EqualTo(scan.AccountTrieValueNodes));
-        Assert.That(cumulative.AccountTrieBytes, Is.EqualTo(scan.AccountTrieNodeBytes));
-        Assert.That(cumulative.StorageTrieBranches, Is.EqualTo(scan.StorageTrieFullNodes));
-        Assert.That(cumulative.StorageTrieExtensions, Is.EqualTo(scan.StorageTrieShortNodes - scan.StorageTrieValueNodes));
-        Assert.That(cumulative.StorageTrieLeaves, Is.EqualTo(scan.StorageTrieValueNodes));
-        Assert.That(cumulative.StorageTrieBytes, Is.EqualTo(scan.StorageTrieNodeBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            // Verify mapping: FullNodes→Branches, (ShortNodes-ValueNodes)→Extensions, ValueNodes→Leaves
+            Assert.That(cumulative.AccountsTotal, Is.EqualTo(scan.AccountsTotal));
+            Assert.That(cumulative.ContractsTotal, Is.EqualTo(scan.ContractsTotal));
+            Assert.That(cumulative.StorageSlotsTotal, Is.EqualTo(scan.StorageSlotsTotal));
+            Assert.That(cumulative.AccountTrieBranches, Is.EqualTo(scan.AccountTrieFullNodes));
+            Assert.That(cumulative.AccountTrieExtensions, Is.EqualTo(scan.AccountTrieShortNodes - scan.AccountTrieValueNodes));
+            Assert.That(cumulative.AccountTrieLeaves, Is.EqualTo(scan.AccountTrieValueNodes));
+            Assert.That(cumulative.AccountTrieBytes, Is.EqualTo(scan.AccountTrieNodeBytes));
+            Assert.That(cumulative.StorageTrieBranches, Is.EqualTo(scan.StorageTrieFullNodes));
+            Assert.That(cumulative.StorageTrieExtensions, Is.EqualTo(scan.StorageTrieShortNodes - scan.StorageTrieValueNodes));
+            Assert.That(cumulative.StorageTrieLeaves, Is.EqualTo(scan.StorageTrieValueNodes));
+            Assert.That(cumulative.StorageTrieBytes, Is.EqualTo(scan.StorageTrieNodeBytes));
+        }
     }
 
     #endregion
@@ -758,7 +805,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -778,12 +825,15 @@ public class TrieDiffWalkerTests
         TrieDiff diff1 = walker.ComputeDiff(root1, root2);
         TrieDiff diff2 = walker.ComputeDiff(root2, root3);
 
-        // Each diff is independent
-        Assert.That(diff1.AccountsAdded, Is.EqualTo(1));
-        Assert.That(diff2.AccountsAdded, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            // Each diff is independent
+            Assert.That(diff1.AccountsAdded, Is.EqualTo(1));
+            Assert.That(diff2.AccountsAdded, Is.EqualTo(1));
 
-        // Counters reset between calls — diff2 should not accumulate diff1's values
-        Assert.That(diff2.AccountsRemoved, Is.EqualTo(0));
+            // Counters reset between calls — diff2 should not accumulate diff1's values
+            Assert.That(diff2.AccountsRemoved, Is.Zero);
+        }
     }
 
     #endregion
@@ -811,8 +861,8 @@ public class TrieDiffWalkerTests
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
         Hash256[] roots = new Hash256[totalBlocks];
-        List<Address> eoaAddresses = new();
-        List<Address> contractAddresses = new();
+        List<Address> eoaAddresses = [];
+        List<Address> contractAddresses = [];
         Dictionary<Address, Hash256> contractStorageRoots = new();
         Random rng = new(42); // deterministic seed
         int addressSeed = 0;
@@ -988,7 +1038,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1010,7 +1060,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1035,7 +1085,7 @@ public class TrieDiffWalkerTests
 
         Hash256 emptyRoot = Keccak.EmptyTreeHash;
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1059,7 +1109,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1083,7 +1133,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1098,10 +1148,6 @@ public class TrieDiffWalkerTests
 
         Assert.That(diff.DepthDelta, Is.Not.Null);
         DepthDelta d = diff.DepthDelta!;
-
-        // Net FullNodes added must be ≥ 0 (branches may be restructured, so old are removed)
-        long totalFullDelta = 0;
-        for (int i = 0; i < 16; i++) totalFullDelta += d.AccountFullNodes[i];
 
         // Adding a second account requires at least one branch net-new or restructured
         // The important invariant: TotalBranchNodesDelta tracks the occupancy histogram change
@@ -1120,7 +1166,7 @@ public class TrieDiffWalkerTests
 
         Hash256 emptyRoot = Keccak.EmptyTreeHash;
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
@@ -1147,7 +1193,7 @@ public class TrieDiffWalkerTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -1189,12 +1235,16 @@ public class TrieDiffWalkerTests
             incValueTotal += cumDepth.AccountValueNodes[i];
             expValueTotal += expected.AccountValueNodes[i];
         }
-        Assert.That(incValueTotal, Is.EqualTo(expValueTotal),
-            "Total account leaf count (incremental) must match fresh scan");
 
-        // Total branch nodes must match
-        Assert.That(cumDepth.TotalBranchNodes, Is.EqualTo(expected.TotalBranchNodes),
-            "TotalBranchNodes (incremental) must match fresh scan");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(incValueTotal, Is.EqualTo(expValueTotal),
+                    "Total account leaf count (incremental) must match fresh scan");
+
+            // Total branch nodes must match
+            Assert.That(cumDepth.TotalBranchNodes, Is.EqualTo(expected.TotalBranchNodes),
+                "TotalBranchNodes (incremental) must match fresh scan");
+        }
     }
 
     #endregion
@@ -1213,7 +1263,7 @@ public class TrieDiffWalkerTests
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
         // root1: two EOAs + one contract
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContractNoStorage());
         tree.Commit();

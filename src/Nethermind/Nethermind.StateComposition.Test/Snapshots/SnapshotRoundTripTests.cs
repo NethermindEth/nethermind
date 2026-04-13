@@ -4,10 +4,9 @@
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Snapshots;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Snapshots;
 
@@ -57,7 +56,7 @@ public class SnapshotRoundTripTests
     [Test]
     public void RoundTrip_PreservesCodeBytesTotal()
     {
-        ImmutableArray<long> hist = ImmutableArray.Create<long>(0, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        ImmutableArray<long> hist = [0, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         CumulativeSizeStats stats = BuildStats(codeBytes: 987_654, slotHist: hist);
         StateCompositionSnapshot original = new(stats, BlockNumber: 1_000_000,
             StateRoot: Keccak.Compute("root"), DiffsSinceBaseline: 42, ScanBlockNumber: 999_000);
@@ -70,7 +69,7 @@ public class SnapshotRoundTripTests
     [Test]
     public void RoundTrip_PreservesSlotCountHistogram()
     {
-        ImmutableArray<long> hist = ImmutableArray.Create<long>(1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768);
+        ImmutableArray<long> hist = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
         CumulativeSizeStats stats = BuildStats(codeBytes: 1, slotHist: hist);
         StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0);
 

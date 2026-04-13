@@ -3,10 +3,9 @@
 
 using System;
 using Nethermind.Core.Crypto;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
 

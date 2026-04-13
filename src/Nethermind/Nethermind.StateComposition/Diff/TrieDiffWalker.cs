@@ -14,7 +14,7 @@ namespace Nethermind.StateComposition.Diff;
 /// Content-addressed property: if hash(old) == hash(new), entire subtree identical → skip.
 /// Read-only — uses only <see cref="ITrieNodeResolver.FindCachedOrUnknown"/>.
 /// </summary>
-internal sealed partial class TrieDiffWalker(ITrieNodeResolver resolver, bool trackDepth = false)
+internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, bool trackDepth = false)
 {
     private readonly DepthDelta _depthDelta = new();
 
@@ -47,7 +47,7 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver resolver, bool tr
         if (oldHash == newHash) return default;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, resolver, isStorage: false, depth: 0);
+        DiffSubtree(oldHash, newHash, ref path, rootResolver, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
@@ -128,7 +128,7 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver resolver, bool tr
                 DiffExtensions(oldNode, newNode, ref path, resolver, isStorage, depth);
                 break;
             case NodeType.Leaf:
-                DiffLeaves(oldNode, newNode, ref path, resolver, isStorage, depth);
+                DiffLeaves(oldNode, newNode, ref path, isStorage, depth);
                 break;
         }
     }
