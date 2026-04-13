@@ -26,10 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, IStaticProtocolInfo
     {
-        private static readonly TrieNodesMessage EmptyTrieNodesMessage = new(EmptyByteArrayList.Instance);
-
-        private ISnapServer? SyncServer { get; }
-        private bool ServingEnabled { get; }
+        private ISnapServer SyncServer { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -39,8 +36,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override byte ProtocolVersion => Version;
         public override string ProtocolCode => Code;
         public override int MessageIdSpaceSize => 8;
-
-        private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
 
         private readonly MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageDictionary<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
@@ -54,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager,
             ISyncConfig syncConfig,
-            ISnapServer? snapServer = null)
+            ISnapServer snapServer)
             : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
         {
             _getAccountRangeRequests = new(Send);
@@ -62,7 +57,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
-            ServingEnabled = SyncServer is not null;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
@@ -91,11 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
-                    if (ShouldServeSnap(nameof(GetAccountRangeMessage)))
-                    {
-                        HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
-                    }
-
+                    HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
@@ -103,11 +93,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
-                    if (ShouldServeSnap(nameof(GetStorageRangeMessage)))
-                    {
-                        HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
-                    }
-
+                    HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
@@ -115,11 +101,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
-                    if (ShouldServeSnap(nameof(GetByteCodesMessage)))
-                    {
-                        HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
-                    }
-
+                    HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
@@ -127,11 +109,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    if (ShouldServeSnap(nameof(GetTrieNodes)))
-                    {
-                        HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
-                    }
-
+                    HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
@@ -139,19 +117,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(trieNodesMessage, size);
                     break;
             }
-        }
-
-        private bool ShouldServeSnap(string messageName)
-        {
-            if (!ServingEnabled)
-            {
-                Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-                if (Logger.IsDebug)
-                    Logger.Debug($"Peer disconnected because of requesting Snap data ({messageName}). Peer: {Session.Node.ClientId}");
-                return false;
-            }
-
-            return true;
         }
 
         private void Handle(AccountRangeMessage msg, long size)
@@ -213,42 +178,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return EmptyTrieNodesMessage;
             IByteArrayList? trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
         private AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return new AccountRangeMessage
-            {
-                Proofs = EmptyByteArrayList.Instance,
-                PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
-            };
             AccountRange? accountRange = getAccountRangeMessage.AccountRange;
             (IOwnedReadOnlyList<PathWithAccount>? ranges, IByteArrayList? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
                 accountRange.LimitHash, getAccountRangeMessage.ResponseBytes, cancellationToken);
-            AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
-            return response;
+            return new AccountRangeMessage { Proofs = proofs, PathsWithAccounts = ranges };
         }
 
         private StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return new StorageRangeMessage()
-            {
-                Proofs = EmptyByteArrayList.Instance,
-                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
-            };
             StorageRange? storageRange = getStorageRangeMessage.StorageRange;
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IByteArrayList? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
-            StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
-            return response;
+            return new StorageRangeMessage { Proofs = proofs, Slots = ranges };
         }
 
         private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return new ByteCodesMessage(EmptyByteArrayList.Instance);
             IByteArrayList byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
             return new ByteCodesMessage(byteCodes);
         }

@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -75,7 +76,8 @@ public class SnapProtocolHandlerTests
                 MessageSerializationService,
                 RunImmediatelyScheduler.Instance,
                 LimboLogs.Instance,
-                new SyncConfig());
+                new SyncConfig(),
+                NoopSnapServer.Instance);
             set
             {
                 _snapProtocolHandler = value;
