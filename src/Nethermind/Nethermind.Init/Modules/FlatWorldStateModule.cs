@@ -49,6 +49,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             .AddSingleton<IPruningTrieStateAdminRpcModule, PruningTrieStateAdminRpcModuleStub>()
             .AddSingleton<MainPruningTrieStoreFactory>(_ => throw new NotSupportedException($"{nameof(MainPruningTrieStoreFactory)} disabled."))
             .AddSingleton<PruningTrieStateFactory>(_ => throw new NotSupportedException($"{nameof(PruningTrieStateFactory)} disabled."))
+            .AddSingleton<CompositePruningTrigger>(_ => throw new NotSupportedException($"{nameof(CompositePruningTrigger)} disabled."))
+            .AddSingleton<IFullPrunerFactory>(_ => throw new NotSupportedException($"{nameof(IFullPrunerFactory)} disabled."))
 
             // The actual flatDb components
             .AddSingleton<IFlatDbManager>((ctx) => new FlatDbManager(

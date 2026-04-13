@@ -76,7 +76,7 @@ internal class TransactionProcessorEip4844Tests
             .WithBaseFeePerGas(1)
             .TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.CallAndRestore(blobTx, blkCtx, NullTxTracer.Instance);
         UInt256 deltaBalance = balance - _stateProvider.GetBalance(TestItem.PrivateKeyA.Address);
         Assert.That(deltaBalance, Is.EqualTo(UInt256.Zero));

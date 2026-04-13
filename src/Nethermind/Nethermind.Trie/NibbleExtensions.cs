@@ -87,7 +87,7 @@ namespace Nethermind.Trie
             }
 
             // Calculate the length to process using SIMD operations.
-            var length = (bytes.Length - processed) / Vector128<byte>.Count;
+            int length = (bytes.Length - processed) / Vector128<byte>.Count;
             // Check if SIMD hardware acceleration is available and if there is data to process.
             // This will be branch eliminated the asm if not supported.
             if (Vector128.IsHardwareAccelerated && length > 0)

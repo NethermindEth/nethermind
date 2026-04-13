@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,8 @@ public class SnapProtocolHandlerTests
                 NodeStatsManager,
                 MessageSerializationService,
                 RunImmediatelyScheduler.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new SyncConfig());
             set
             {
                 _snapProtocolHandler = value;
@@ -102,7 +104,7 @@ public class SnapProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type

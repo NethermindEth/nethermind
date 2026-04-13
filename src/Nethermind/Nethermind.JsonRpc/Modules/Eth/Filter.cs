@@ -30,7 +30,13 @@ public class Filter : IJsonRpcParam
         {
             if (filter.ValueKind == JsonValueKind.String)
             {
-                doc = JsonDocument.Parse(filter.GetString());
+                string filterString = filter.GetString()!;
+                if (filterString.Length > 1_000_000)
+                {
+                    throw new ArgumentException($"filter string length {filterString.Length} exceeds maximum allowed length of 1000000");
+                }
+
+                doc = JsonDocument.Parse(filterString);
                 filter = doc.RootElement;
             }
 
@@ -84,6 +90,9 @@ public class Filter : IJsonRpcParam
         }
     }
 
+    private const int MaxAddressCount = 1000;
+    private const int MaxTopicValuesPerSlot = 1000;
+
     private static HashSet<AddressAsKey>? GetAddress(JsonElement token, JsonSerializerOptions options)
     {
         switch (token.ValueKind)
@@ -93,7 +102,13 @@ public class Filter : IJsonRpcParam
             case JsonValueKind.String:
                 return [new AddressAsKey(new Address(token.ToString()))];
             case JsonValueKind.Array:
-                HashSet<AddressAsKey> result = new(token.GetArrayLength());
+                int addressCount = token.GetArrayLength();
+                if (addressCount > MaxAddressCount)
+                {
+                    throw new JsonException($"Too many addresses ({addressCount}). Max is {MaxAddressCount}.");
+                }
+
+                HashSet<AddressAsKey> result = new(addressCount);
                 foreach (JsonElement element in token.EnumerateArray())
                 {
                     result.Add(new(new Address(element.ToString())));
@@ -123,7 +138,13 @@ public class Filter : IJsonRpcParam
                     yield return [new Hash256(token.GetString()!)];
                     break;
                 case JsonValueKind.Array:
-                    Hash256[] result = new Hash256[token.GetArrayLength()];
+                    int topicCount = token.GetArrayLength();
+                    if (topicCount > MaxTopicValuesPerSlot)
+                    {
+                        throw new JsonException($"Too many topic values ({topicCount}). Max is {MaxTopicValuesPerSlot}.");
+                    }
+
+                    Hash256[] result = new Hash256[topicCount];
                     int i = 0;
                     foreach (JsonElement element in token.EnumerateArray())
                     {

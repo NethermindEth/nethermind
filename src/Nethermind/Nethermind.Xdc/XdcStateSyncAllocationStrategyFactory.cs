@@ -19,12 +19,8 @@ public class XdcStateSyncAllocationStrategyFactory : StaticPeerAllocationStrateg
     {
     }
 
-    internal class AllocationStrategy : FilterPeerAllocationStrategy
+    internal class AllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
     {
-        public AllocationStrategy(IPeerAllocationStrategy strategy) : base(strategy)
-        {
-        }
-
         protected override bool Filter(PeerInfo peerInfo)
         {
             return peerInfo.CanGetSnapData() || peerInfo.SyncPeer.ProtocolVersion == 100;

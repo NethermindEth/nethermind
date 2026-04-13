@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -269,7 +270,7 @@ public partial class DebugRpcModuleTests
             Always.Valid,
             blockchain.LogManager);
 
-        using var scope = statelessEnv.WorldState.BeginScope(parent!);
+        using IDisposable scope = statelessEnv.WorldState.BeginScope(parent!);
         (Block processed, _) = statelessEnv.BlockProcessor.ProcessOne(
             expectedBlock,
             ProcessingOptions.ReadOnlyChain,

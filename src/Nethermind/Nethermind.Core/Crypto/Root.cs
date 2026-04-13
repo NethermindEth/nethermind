@@ -80,7 +80,7 @@ public class Root : IEquatable<Root>, IComparable<Root>
         return left.Equals(right);
     }
 
-    public static explicit operator Root(ReadOnlySpan<byte> span) => new Root(span);
+    public static explicit operator Root(ReadOnlySpan<byte> span) => new(span);
 
     public static explicit operator ReadOnlySpan<byte>(Root value) => value.AsSpan();
 

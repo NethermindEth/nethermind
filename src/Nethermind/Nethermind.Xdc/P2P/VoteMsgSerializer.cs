@@ -10,7 +10,7 @@ namespace Nethermind.Xdc.P2P;
 
 internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
 {
-    private static readonly VoteDecoder _voteDecoder = new VoteDecoder();
+    private static readonly VoteDecoder _voteDecoder = new();
 
     public void Serialize(IByteBuffer byteBuffer, VoteMsg message)
     {

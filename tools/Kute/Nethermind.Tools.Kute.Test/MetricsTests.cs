@@ -13,13 +13,13 @@ public class MetricsTests
 {
     private static JsonRpc.Request.Single Single(int id, string method = "test")
     {
-        var json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
+        string json = $$"""{ "id": {{id}}, "method": "{{method}}", "params": [] }""";
         return new JsonRpc.Request.Single(JsonNode.Parse(json)!);
     }
 
     private static JsonRpc.Request.Batch Batch(params JsonRpc.Request.Single[] singles)
     {
-        var json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
+        string json = $$"""[{{string.Join(", ", singles.Select(s => s.ToJsonString()))}}]""";
         return new JsonRpc.Request.Batch(JsonNode.Parse(json)!);
     }
 

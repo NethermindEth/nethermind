@@ -381,7 +381,7 @@ public class SyncServerTests
             new ChainSpec(),
             LimboLogs.Instance);
         MergeSealer mergeSealer = new(new NethDevSealEngine(), poSSwitcher);
-        MergeSealValidator mergeSealValidator = new MergeSealValidator(poSSwitcher, Always.Valid);
+        MergeSealValidator mergeSealValidator = new(poSSwitcher, Always.Valid);
         SealEngine sealEngine = new(mergeSealer, mergeSealValidator);
         HeaderValidator headerValidator = new(
             localBlockTree,
@@ -580,7 +580,7 @@ public class SyncServerTests
         ctx.PeerPool.PeerCount.Returns(peers.Length);
 
         const int blocksCount = 100;
-        var startBlock = (int)localBlockTree.Head!.Number;
+        int startBlock = (int)localBlockTree.Head!.Number;
         localBlockTree.AddBranch(blocksCount / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount * 2 / 3, splitBlockNumber: startBlock, splitVariant: 0);
         localBlockTree.AddBranch(blocksCount, splitBlockNumber: startBlock, splitVariant: 0);
@@ -595,7 +595,7 @@ public class SyncServerTests
             Assert.That(
                 () =>
                 {
-                    var arr = peerInfo.SyncPeer.ReceivedCalls()
+                    (long earliest, long latest)[] arr = peerInfo.SyncPeer.ReceivedCalls()
                         .Where(c => c.GetMethodInfo().Name == nameof(ISyncPeer.NotifyOfNewRange))
                         .Select(c => c.GetArguments().Cast<BlockHeader>().Select(b => b.Number).ToArray())
                         .Select(a => (earliest: a[0], latest: a[1])).ToArray();

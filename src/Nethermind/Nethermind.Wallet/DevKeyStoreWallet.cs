@@ -20,7 +20,7 @@ namespace Nethermind.Wallet
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
 
-        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new Dictionary<Address, PrivateKey>();
+        private readonly Dictionary<Address, PrivateKey> _unlockedAccounts = new();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -100,7 +100,7 @@ namespace Nethermind.Wallet
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }
 
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Wallet
                 throw new SecurityException("Can only sign without passphrase when account is unlocked.");
             }
 
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

@@ -24,7 +24,7 @@ public class GetBlobsHandler(ITxPool txPool, IChainHeadSpecProvider chainHeadSpe
 
         if (request.Length > MaxRequest)
         {
-            var error = $"The number of requested blobs must not exceed {MaxRequest}";
+            string error = $"The number of requested blobs must not exceed {MaxRequest}";
             return ResultWrapper<IEnumerable<BlobAndProofV1?>>.Fail(error, MergeErrorCodes.TooLargeRequest);
         }
 

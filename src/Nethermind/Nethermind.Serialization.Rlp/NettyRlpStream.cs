@@ -9,17 +9,11 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class NettyRlpStream : RlpStream, IDisposable
+    public sealed class NettyRlpStream(IByteBuffer buffer) : RlpStream, IDisposable
     {
-        private readonly IByteBuffer _buffer;
+        private readonly IByteBuffer _buffer = buffer;
 
-        private readonly int _initialPosition;
-
-        public NettyRlpStream(IByteBuffer buffer)
-        {
-            _buffer = buffer;
-            _initialPosition = buffer.ReaderIndex;
-        }
+        private readonly int _initialPosition = buffer.ReaderIndex;
 
         public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {

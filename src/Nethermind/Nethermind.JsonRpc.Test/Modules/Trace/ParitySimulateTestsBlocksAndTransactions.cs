@@ -62,7 +62,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
             ]
         };
 
-        var result = chain.TraceRpcModule.trace_simulateV1(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = chain.TraceRpcModule.trace_simulateV1(payload, BlockParameter.Latest);
         Assert.That((bool)result.Result, Is.True, result.Result.ToString());
 
         ParityLikeTxTrace trace = result.Data.First().Traces.First();
@@ -77,7 +77,7 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
         SimulatePayload<TransactionForRpc> payload = EthSimulateTestsBlocksAndTransactions.CreateTransferLogsAddressPayload();
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
-        var result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> result = chain.TraceRpcModule.trace_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Data.First().Traces.First().BlockHash, Is.EqualTo(new Core.Crypto.Hash256("0x45635998c509d5571fcc391772c5af77f3f202b70ea9fafb48ea8eb475288b59")));
     }
 

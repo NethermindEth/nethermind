@@ -39,7 +39,7 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
-        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+        ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
     }
@@ -94,7 +94,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new List<byte[]>(requestSize);
+        List<byte[]> request = new(requestSize);
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -201,7 +201,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -247,7 +247,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)

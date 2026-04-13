@@ -132,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
                 return 0;
             }
 
-            var contentLength = Rlp.LengthOf(item.Nonce);
+            int contentLength = Rlp.LengthOf(item.Nonce);
             contentLength += Rlp.LengthOf(item.Balance);
 
             if (_slimFormat && !item.HasStorage)

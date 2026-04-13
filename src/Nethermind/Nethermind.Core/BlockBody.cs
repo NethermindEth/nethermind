@@ -5,7 +5,7 @@ namespace Nethermind.Core
 {
     public class BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null)
     {
-        public BlockBody() : this(null, null) { }
+        public BlockBody() : this(null, null, null) { }
 
         public BlockBody WithChangedTransactions(Transaction[] transactions) => new(transactions, Uncles, Withdrawals);
 

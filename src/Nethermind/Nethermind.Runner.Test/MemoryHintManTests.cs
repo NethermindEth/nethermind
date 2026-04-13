@@ -91,7 +91,7 @@ namespace Nethermind.Runner.Test
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(cpuCount);
 
-            SyncConfig syncConfig = new SyncConfig();
+            SyncConfig syncConfig = new();
             syncConfig.FastSync = fastSync;
 
             _memoryHintMan.DbMemory.Should().BeGreaterThan((long)((memoryHint - 100.MB) * 0.5));

@@ -151,7 +151,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
@@ -177,8 +177,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
-            var components = scope.Component;
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
@@ -213,8 +213,8 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
-            var components = scope.Component;
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
@@ -259,25 +259,15 @@ namespace Nethermind.Facade
             //Ignore nonce on all CallAndRestore calls
             transaction.Nonce = components.StateReader.GetNonce(blockHeader, transaction.SenderAddress);
 
-            BlockHeader callHeader = treatBlockHeaderAsParentBlock
-                ? new(
-                    blockHeader.Hash!,
-                    Keccak.OfAnEmptySequenceRlp,
-                    Address.Zero,
-                    UInt256.Zero,
-                    blockHeader.Number + 1,
-                    blockHeader.GasLimit,
-                    Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds),
-                    [])
-                : new(
-                    blockHeader.ParentHash!,
-                    blockHeader.UnclesHash!,
-                    blockHeader.Beneficiary!,
-                    blockHeader.Difficulty,
-                    blockHeader.Number,
-                    blockHeader.GasLimit,
-                    blockHeader.Timestamp,
-                    blockHeader.ExtraData);
+            BlockHeader callHeader = blockHeader.Clone();
+            if (treatBlockHeaderAsParentBlock)
+            {
+                callHeader.Number += 1;
+                callHeader.UnclesHash = Keccak.OfAnEmptySequenceRlp;
+                callHeader.Beneficiary = Address.Zero;
+                callHeader.Difficulty = UInt256.Zero;
+                callHeader.Timestamp = Math.Max(blockHeader.Timestamp + blocksConfig.SecondsPerSlot, timestamper.UnixTime.Seconds);
+            }
 
             IReleaseSpec releaseSpec = specProvider.GetSpec(callHeader);
             callHeader.BaseFeePerGas = treatBlockHeaderAsParentBlock
@@ -436,7 +426,7 @@ namespace Nethermind.Facade
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
-            var error = txResult switch
+            string error = txResult switch
             {
                 { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,

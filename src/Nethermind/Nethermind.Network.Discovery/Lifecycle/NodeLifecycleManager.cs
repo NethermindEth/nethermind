@@ -240,7 +240,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         RefreshNodeContactTime();
 
         // 12 otherwise the payload may become too big, which is out of spec.
-        var closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
+        NodeTable.ClosestNodesFromNodeEnumerator closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
         Node[] nodes = new Node[closestNodes.Count];
         int count = 0;
         foreach (Node node in closestNodes)

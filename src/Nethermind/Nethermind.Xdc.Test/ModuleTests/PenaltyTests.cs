@@ -198,10 +198,10 @@ internal class PenaltyTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         int chainSize = (int)(targetEpoch + 1);
 
-        var blockHeaders = new XdcBlockHeader[chainSize];
-        var hashToHeader = new Dictionary<Hash256, XdcBlockHeader>();
-        var hashToBlock = new Dictionary<Hash256, Block>();
-        var blocks = new Block[chainSize];
+        XdcBlockHeader[] blockHeaders = new XdcBlockHeader[chainSize];
+        Dictionary<Hash256, XdcBlockHeader> hashToHeader = new();
+        Dictionary<Hash256, Block> hashToBlock = new();
+        Block[] blocks = new Block[chainSize];
 
         for (int i = 0; i < chainSize; i++)
         {

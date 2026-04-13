@@ -223,7 +223,7 @@ public abstract class MerkleTree : IMerkleList
     [MethodImpl(MethodImplOptions.Synchronized)]
     public void Insert(Bytes32 leaf)
     {
-        Index index = new Index(LeafRow, Count);
+        Index index = new(LeafRow, Count);
         Index siblingIndex = index.Sibling();
         byte[] hash = leaf.Unwrap();
         Bytes32 siblingHash = LoadValue(siblingIndex);
@@ -274,7 +274,7 @@ public abstract class MerkleTree : IMerkleList
     /// </summary>
     public bool VerifyProof(Bytes32 leaf, IReadOnlyList<Bytes32> proof, in uint leafIndex)
     {
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         byte[] value = leaf.Unwrap();
 
         for (int testDepth = 0; testDepth < TreeHeight; testDepth++)
@@ -304,7 +304,7 @@ public abstract class MerkleTree : IMerkleList
             throw new InvalidOperationException("Unexpected query for a proof for a value beyond Count");
         }
 
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         Bytes32[] proof = new Bytes32[TreeHeight + 1];
 
         int i = 0;
@@ -325,7 +325,7 @@ public abstract class MerkleTree : IMerkleList
 
     public MerkleTreeNode GetLeaf(in uint leafIndex)
     {
-        Index index = new Index(LeafRow, leafIndex);
+        Index index = new(LeafRow, leafIndex);
         Bytes32 value = LoadValue(index);
         return new MerkleTreeNode(value, index.NodeIndex);
     }

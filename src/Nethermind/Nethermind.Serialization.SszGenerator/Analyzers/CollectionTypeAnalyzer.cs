@@ -64,13 +64,13 @@ public class CollectionTypeAnalyzer : DiagnosticAnalyzer
                 .SelectMany(attrList => attrList.Attributes)
                 .Any(attr =>
                 {
-                    var name = attr.Name.ToString();
+                    string name = attr.Name.ToString();
                     return name == "SszList" || name == "SszVector" || name == "SszListAttribute" || name == "SszVectorAttribute" || name == "BitArray";
                 });
 
             if (!hasRequiredAttribute)
             {
-                var diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
+                Diagnostic diagnostic = Diagnostic.Create(Rule, propertyDeclaration.GetLocation(), propertyDeclaration.Identifier.Text);
                 context.ReportDiagnostic(diagnostic);
             }
         }

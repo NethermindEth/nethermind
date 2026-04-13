@@ -273,7 +273,7 @@ public partial class BlockProcessor(
         }
         else
         {
-            for (var i = 0; i < rewards.Length; i++)
+            for (int i = 0; i < rewards.Length; i++)
             {
                 ApplyMinerReward(block, rewards[i], spec);
             }

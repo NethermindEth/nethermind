@@ -125,7 +125,7 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
-        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+        ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
@@ -253,7 +253,7 @@ public partial class EngineModuleTests
                             """;
         JsonRpcRequest request = RpcTest.BuildJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3), requestStr, "[]", "0x169630f535b4a41330164c6e5c92b1224c0c407f582d407d0ac3d206cd32fd52");
 
-        var rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
+        JsonRpcResponse rpcResponse = await jsonRpcService.SendRequestAsync(request, context);
         JsonRpcErrorResponse? response = (rpcResponse) as JsonRpcErrorResponse;
         Assert.That(response?.Error, Is.Not.Null);
         Assert.That(response!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
@@ -512,7 +512,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        for (var i = 1; i < BlockCount; i++)
+        for (int i = 1; i < BlockCount; i++)
         {
             await AddNewBlockV3(rpcModule, chain, 1);
         }
@@ -535,7 +535,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new List<byte[]>(requestSize);
+        List<byte[]> request = new(requestSize);
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -639,7 +639,7 @@ public partial class EngineModuleTests
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
         List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
 
         int actualIndex = 0;
@@ -734,8 +734,8 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payloadResultB2 = await AddNewBlockV3(rpcModuleB, chainB, 2);
         ExecutionPayloadV3 payloadResultB3 = await AddNewBlockV3(rpcModuleB, chainB, 1);
 
-        SyncPeerMock chainAPeer = new SyncPeerMock(chainA.BlockTree);
-        SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(chainAPeer), AllocationContexts.All);
+        SyncPeerMock chainAPeer = new(chainA.BlockTree);
+        SyncPeerAllocation alloc = new(new PeerInfo(chainAPeer), AllocationContexts.All);
         chainC.SyncPeerPool!.Allocate(
             Arg.Any<IPeerAllocationStrategy>(),
             Arg.Any<AllocationContexts>(),

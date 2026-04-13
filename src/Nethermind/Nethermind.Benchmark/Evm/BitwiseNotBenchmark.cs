@@ -31,8 +31,8 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            ref var refA = ref MemoryMarshal.AsRef<ulong>(a.AsSpan());
-            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c.AsSpan());
+            ref ulong refA = ref MemoryMarshal.AsRef<ulong>(a.AsSpan());
+            ref ulong refBuffer = ref MemoryMarshal.AsRef<ulong>(c.AsSpan());
 
             refBuffer = ~refA;
             Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
@@ -43,7 +43,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public void Improved()
         {
-            Vector<byte> aVec = new Vector<byte>(a);
+            Vector<byte> aVec = new(a);
             Vector.Xor(aVec, new Vector<byte>(BytesMax32)).CopyTo(c);
         }
     }

@@ -13,7 +13,7 @@ class SszProperty
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
-        SszProperty result = new SszProperty { Name = prop.Name, Type = type };
+        SszProperty result = new() { Name = prop.Name, Type = type };
 
         if (itemType is not null || prop.Type.Name == "BitArray")
         {

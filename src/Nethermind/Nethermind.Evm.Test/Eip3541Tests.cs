@@ -83,7 +83,7 @@ namespace Nethermind.Evm.Test
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
-            var createContract = context switch
+            byte[] createContract = context switch
             {
                 ContractDeployment.CREATE => Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done,
                 ContractDeployment.CREATE2 => Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done,

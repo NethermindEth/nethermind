@@ -21,14 +21,9 @@ namespace Nethermind.Sockets.Test;
 
 public class WebSocketExtensionsTests
 {
-    private class WebSocketMock : WebSocket
+    private class WebSocketMock(Queue<WebSocketReceiveResult> receiveResults) : WebSocket
     {
-        private readonly Queue<WebSocketReceiveResult> _receiveResults;
-
-        public WebSocketMock(Queue<WebSocketReceiveResult> receiveResults)
-        {
-            _receiveResults = receiveResults;
-        }
+        private readonly Queue<WebSocketReceiveResult> _receiveResults = receiveResults;
 
         public override void Abort()
         {
@@ -57,7 +52,7 @@ public class WebSocketExtensionsTests
 
             if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
             {
-                Task<WebSocketReceiveResult> a = new Task<WebSocketReceiveResult>(static () => throw new Exception());
+                Task<WebSocketReceiveResult> a = new(static () => throw new Exception());
                 a.Start();
                 return a;
             }
@@ -85,7 +80,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Can_receive_whole_message()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(4096, WebSocketMessageType.Text, false));
         receiveResult.Enqueue(new WebSocketReceiveResult(4096, WebSocketMessageType.Text, false));
         receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
@@ -113,12 +108,12 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Updates_Metrics_And_Stats_Successfully()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, true));
         receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
         WebSocketMock mock = new(receiveResult);
 
-        var processor = Substitute.For<IJsonRpcProcessor>();
+        IJsonRpcProcessor processor = Substitute.For<IJsonRpcProcessor>();
         processor.ProcessAsync(default, default).ReturnsForAnyArgs(static (x) => new List<JsonRpcResult>()
         {
             (JsonRpcResult.Single((new JsonRpcResponse()), new RpcReport())),
@@ -131,11 +126,11 @@ public class WebSocketExtensionsTests
             }.ToAsyncEnumerable().GetAsyncEnumerator(c))))
         }.ToAsyncEnumerable());
 
-        var service = Substitute.For<IJsonRpcService>();
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
 
-        var localStats = Substitute.For<IJsonRpcLocalStats>();
+        IJsonRpcLocalStats localStats = Substitute.For<IJsonRpcLocalStats>();
 
-        var webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
+        JsonRpcSocketsClient<WebSocketMessageStream> webSocketsClient = Substitute.ForPartsOf<JsonRpcSocketsClient<WebSocketMessageStream>>(
             "TestClient",
             new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
             RpcEndpoint.Ws,
@@ -148,7 +143,7 @@ public class WebSocketExtensionsTests
 
         webSocketsClient.Configure().SendJsonRpcResult(default).ReturnsForAnyArgs(static async x =>
         {
-            var par = x.Arg<JsonRpcResult>();
+            JsonRpcResult par = x.Arg<JsonRpcResult>();
             return await Task.FromResult(par.IsCollection ? par.BatchedResponses.ToListAsync().Result.Count * 100 : 100);
         });
 
@@ -164,7 +159,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Can_receive_many_messages()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 1000; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1234, WebSocketMessageType.Text, true));
@@ -187,7 +182,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Can_receive_whole_message_non_buffer_sizes()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 6; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(2000, WebSocketMessageType.Text, false));
@@ -212,7 +207,7 @@ public class WebSocketExtensionsTests
     [Test]
     public async Task Throws_on_too_long_message()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         for (int i = 0; i < 2 * 1024; i++)
         {
             receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
@@ -236,7 +231,7 @@ public class WebSocketExtensionsTests
     [Test, MaxTime(5000)]
     public async Task Stops_on_dirty_disconnect()
     {
-        Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
+        Queue<WebSocketReceiveResult> receiveResult = new();
         receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));
         WebSocketMock mock = new(receiveResult);
         mock.ReturnTaskWithFaultOnEmptyQueue = true;
