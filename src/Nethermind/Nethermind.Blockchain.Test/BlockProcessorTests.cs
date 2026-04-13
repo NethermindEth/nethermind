@@ -219,7 +219,8 @@ public class BlockProcessorTests
         bool shouldValidateBlockAccessList)
     {
         Block suggested = Build.A.Block.WithBlockAccessList(new()).WithGasUsed(37_568).TestObject;
-        BlockAccessListBasedWorldState balStateProvider = new(TestWorldStateFactory.CreateForTest(), 0, suggested, LimboLogs.Instance);
+        BlockAccessListBasedWorldState balStateProvider = new(TestWorldStateFactory.CreateForTest(), 0, LimboLogs.Instance);
+        balStateProvider.Setup(suggested);
         TracedAccessWorldState stateProvider = new(balStateProvider, true);
 
         ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
