@@ -562,10 +562,10 @@ namespace Nethermind.Core.Extensions
                 int prefixLen = bytes.Length - 8;
 
                 // Vectorised in modern runtimes for byte spans.
-                if (bytes[..prefixLen].IndexOfAnyExcept((byte)0) >= 0)
+                if (bytes.Slice(0, prefixLen).IndexOfAnyExcept((byte)0) >= 0)
                     ThrowExceedsMaxValue(bytes);
 
-                ReadOnlySpan<byte> tail = bytes[prefixLen..]; // exactly 8 bytes
+                ReadOnlySpan<byte> tail = bytes.Slice(prefixLen); // exactly 8 bytes
 
                 ulong value = BinaryPrimitives.ReadUInt64BigEndian(tail);
                 if (value > long.MaxValue)

@@ -350,7 +350,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
             return null;
 
         if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
-            s = s[2..];
+            s = s.Substring(2);
 
         static int Nibble(char c)
         {

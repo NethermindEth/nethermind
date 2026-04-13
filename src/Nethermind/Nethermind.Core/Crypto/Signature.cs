@@ -49,7 +49,7 @@ namespace Nethermind.Core.Crypto
             ArgumentOutOfRangeException.ThrowIfLessThan(v, (ulong)VOffset);
 
             Span<byte> span = Bytes;
-            r.ToBigEndian(span[..32]);
+            r.ToBigEndian(span.Slice(0, 32));
             s.ToBigEndian(span.Slice(32, 32));
 
             V = v;
@@ -71,9 +71,9 @@ namespace Nethermind.Core.Crypto
 
         public static byte GetRecoveryId(ulong v) => v <= VOffset + 1 ? (byte)(v - VOffset) : (byte)(1 - v % 2);
 
-        public Memory<byte> R => Memory[..32];
+        public Memory<byte> R => Memory.Slice(0, 32);
         [JsonIgnore]
-        public ReadOnlySpan<byte> RAsSpan => Bytes[..32];
+        public ReadOnlySpan<byte> RAsSpan => Bytes.Slice(0, 32);
         public Memory<byte> S => Memory.Slice(32, 32);
         [JsonIgnore]
         public ReadOnlySpan<byte> SAsSpan => Bytes.Slice(32, 32);

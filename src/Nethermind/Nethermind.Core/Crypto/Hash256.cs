@@ -167,7 +167,7 @@ namespace Nethermind.Core.Crypto
             if (bytes.Length != 32)
             {
                 Span<byte> bytes32 = stackalloc byte[32];
-                bytes.CopyTo(bytes32[(32 - bytes.Length)..]);
+                bytes.CopyTo(bytes32.Slice(32 - bytes.Length));
                 return new Hash256(bytes32);
             }
 
