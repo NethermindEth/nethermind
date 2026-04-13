@@ -59,12 +59,6 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<GcStats> debug_gcStats();
 
-    [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<byte[]> debug_getBlockRlp(long number);
-
-    [JsonRpcMethod(Description = "Retrieves a block in the RLP-serialized form.", IsImplemented = true, IsSharable = true)]
-    ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash);
-
     [JsonRpcMethod(Description = "", IsImplemented = false, IsSharable = true)]
     ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
 

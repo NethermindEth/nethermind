@@ -70,10 +70,10 @@ public class BlockForRpc
                 SlotNumber = block.SlotNumber;
             }
 
-            // Set TD only if network is not merged
+            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded.
             if (specProvider.MergeBlockNumber is null)
             {
-                TotalDifficulty = block.Difficulty.IsZero ? null : block.TotalDifficulty ?? UInt256.Zero;
+                TotalDifficulty = block.TotalDifficulty;
             }
         }
 

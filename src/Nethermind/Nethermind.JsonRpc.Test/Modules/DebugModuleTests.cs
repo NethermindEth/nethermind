@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -36,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public class DebugModuleTests
 {
     private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
-    private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
+    private readonly ISpecProvider _specProvider = SpecProviderSubstitute.Create();
     private readonly IDebugBridge _debugBridge = Substitute.For<IDebugBridge>();
     private readonly IBlockFinder _blockFinder = Substitute.For<IBlockFinder>();
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
@@ -90,24 +91,15 @@ public class DebugModuleTests
         using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
         ChainLevelForRpc? chainLevel = response?.Result as ChainLevelForRpc;
         Assert.That(chainLevel, Is.Not.Null);
-        Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
-        Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainLevel?.HasBlockOnMainChain, Is.True);
+            Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
+        }
     }
 
     [Test]
-    public async Task Get_block_rlp_by_hash()
-    {
-        BlockDecoder decoder = new();
-        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
-
-        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcSuccessResponse;
-        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
-    }
-
-    [Test]
-    public async Task Get_raw_Header()
+    public async Task Get_raw_header()
     {
         HeaderDecoder decoder = new();
         Block blk = Build.A.Block.WithNumber(0).TestObject;
@@ -119,9 +111,8 @@ public class DebugModuleTests
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase("debug_getBlockRlp", 1)]
-    [TestCase("debug_getRawBlock", "0x1")]
-    public async Task Get_block_rlp(string method, object parameter)
+    [Test]
+    public async Task Get_raw_block_by_number()
     {
         BlockDecoder decoder = new();
         IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
@@ -129,13 +120,25 @@ public class DebugModuleTests
         localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(localDebugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, method, parameter) as JsonRpcSuccessResponse;
+        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "0x1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
     [Test]
-    public async Task Get_rawblock_named()
+    public async Task Get_raw_block_by_hash()
+    {
+        BlockDecoder decoder = new();
+        Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+        _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
+
+        DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
+        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcSuccessResponse;
+        Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
+    }
+
+    [Test]
+    public async Task Get_raw_block_by_name()
     {
         BlockDecoder decoder = new();
         IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
@@ -148,7 +151,6 @@ public class DebugModuleTests
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase("debug_getBlockRlp", 1)]
     [TestCase("debug_getRawBlock", "0x1")]
     public async Task Get_block_rlp_when_missing(string method, object parameter)
     {
@@ -161,12 +163,12 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_block_rlp_by_hash_when_missing()
+    public async Task Get_raw_block_by_hash_when_missing()
     {
         _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
+        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }
@@ -181,7 +183,7 @@ public class DebugModuleTests
     [Test]
     public void Debug_getBadBlocks_test()
     {
-        IBadBlockStore badBlocksStore = null!;
+        BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
 
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -206,9 +208,12 @@ public class DebugModuleTests
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
-        Assert.That(blocks.Data.Count, Is.EqualTo(1));
-        Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-        Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
+            Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+        }
     }
 
     [Test]
@@ -233,8 +238,10 @@ public class DebugModuleTests
             Depth = 1
         };
 
-        GethLikeTxTrace trace = new();
-        trace.ReturnValue = Bytes.FromHexString("a2");
+        GethLikeTxTrace trace = new()
+        {
+            ReturnValue = Bytes.FromHexString("a2")
+        };
         trace.Entries.Add(entry);
 
         GethTraceOptions gtOptions = new();
