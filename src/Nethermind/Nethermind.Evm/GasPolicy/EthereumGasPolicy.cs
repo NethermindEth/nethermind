@@ -54,12 +54,13 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         }
 
         long spillAmount = stateGasCost - gas.StateReservoir;
-        gas.StateReservoir = 0;
-        if (!UpdateGas(ref gas, spillAmount))
+        if (GetRemainingGas(in gas) < spillAmount)
         {
             return false;
         }
 
+        gas.StateReservoir = 0;
+        Consume(ref gas, spillAmount);
         gas.StateGasUsed += stateGasCost;
         gas.StateGasSpill += spillAmount;
         return true;
@@ -91,11 +92,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RestoreChildStateGas(ref EthereumGasPolicy parentGas, in EthereumGasPolicy childGas, long initialStateReservoir)
     {
-        // On halt/revert, restore the full initial reservoir that was transferred to the child.
-        // Also restore the spill amount: state gas that spilled from gas_left is returned to the
-        // reservoir because the child's state operations are being reverted.
+        // On halt/revert, restore the full initial reservoir that was transferred to the child,
+        // but keep the child's consumed state gas in block accounting. The state changes unwind,
+        // not the gas already spent to attempt them.
         parentGas.StateReservoir += initialStateReservoir + childGas.StateGasSpill;
-        // Propagate spills — gas_left was consumed for state ops even though they're being reverted.
+        parentGas.StateGasUsed += childGas.StateGasUsed;
         parentGas.StateGasSpill += childGas.StateGasSpill;
     }
 

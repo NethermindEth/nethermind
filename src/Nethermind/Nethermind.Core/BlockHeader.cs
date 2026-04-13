@@ -83,6 +83,8 @@ public class BlockHeader
     [JsonIgnore]
     public long RegularGasUsed { get; set; }
     [JsonIgnore]
+    public long StateGasUsed { get; set; }
+    [JsonIgnore]
     public long ReceiptGasUsed { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)

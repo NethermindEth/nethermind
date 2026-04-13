@@ -96,7 +96,7 @@ public class Eip8037Tests
         Assert.That((child.Value, child.StateReservoir), Is.EqualTo((0L, 300L)));
 
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 500);
-        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 10L)));
+        Assert.That((parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((500L, 210L)));
     }
 
     [Test]
@@ -111,7 +111,7 @@ public class Eip8037Tests
         EthereumGasPolicy.UpdateGasUp(ref parent, EthereumGasPolicy.GetRemainingGas(in child));
         EthereumGasPolicy.RestoreChildStateGas(ref parent, in child, 400);
 
-        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((900L, 400L, 20L)));
+        Assert.That((parent.Value, parent.StateReservoir, parent.StateGasUsed), Is.EqualTo((900L, 400L, 170L)));
     }
 
     [TestCase(ExpectedResult = 5_000L)]

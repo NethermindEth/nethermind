@@ -388,7 +388,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-        bool discardCreateStateCharge = invalidCode || (spec.LimitCodeSize && callResult.Output.Length > spec.MaxCodeSize);
+        bool discardCreateStateCharge = false;
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
             regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
     }

@@ -113,19 +113,6 @@ internal static partial class EvmInstructions
 
         // EIP-3860: Limit the maximum size of the initialization code.
         bool isEip3860 = spec.IsEip3860Enabled;
-        if (isEip3860)
-        {
-            if (initCodeLength > spec.MaxInitCodeSize)
-            {
-                if (TEip8037.IsActive)
-                {
-                    if (!TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateState))
-                        goto OutOfGas;
-                }
-                goto OutOfGas;
-            }
-        }
-
         bool outOfGas = false;
         long initCodeWords = EvmCalculations.Div32Ceiling(in initCodeLength, out outOfGas);
         if (outOfGas)
@@ -137,7 +124,7 @@ internal static partial class EvmInstructions
 
         bool createOutOfGas = TEip8037.IsActive switch
         {
-            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost) || !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState),
+            true => !TGasPolicy.UpdateGas(ref gas, GasCostOf.CreateRegular + extraCost),
             false => !TGasPolicy.UpdateGas(ref gas, GasCostOf.Create + extraCost),
         };
 
@@ -145,6 +132,12 @@ internal static partial class EvmInstructions
 
         // Update memory gas cost based on the required memory expansion for the init code.
         if (!TGasPolicy.UpdateMemoryCost(ref gas, in memoryPositionOfInitCode, in initCodeLength, vm.VmState))
+            goto OutOfGas;
+
+        if (isEip3860 && initCodeLength > spec.MaxInitCodeSize)
+            goto OutOfGas;
+
+        if (TEip8037.IsActive && !TGasPolicy.ConsumeStateGas(ref gas, GasCostOf.CreateState))
             goto OutOfGas;
 
         // Verify call depth does not exceed the maximum allowed. If exceeded, return early with empty data.

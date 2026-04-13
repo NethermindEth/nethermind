@@ -88,6 +88,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _cumulativeBlockGasPerTx.Add((cumulativeBlockGas, cumulativeBlockStateGas));
 
         Block.Header.RegularGasUsed = cumulativeBlockGas;
+        Block.Header.StateGasUsed = cumulativeBlockStateGas;
         // EIP-8037: block gasUsed = max(sum_regular, sum_state). Override header accumulation.
         Block.Header.GasUsed = Math.Max(cumulativeBlockGas, cumulativeBlockStateGas);
 
@@ -255,6 +256,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         // Restore block gas from tracking: max(cumulative_regular, cumulative_state) for EIP-8037
         (long cumulativeRegular, long cumulativeState) = _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1] : (0, 0);
         Block.Header.RegularGasUsed = cumulativeRegular;
+        Block.Header.StateGasUsed = cumulativeState;
         Block.Header.GasUsed = Math.Max(cumulativeRegular, cumulativeState);
 
         // Restore receipt gas from remaining receipts (post-refund)
@@ -273,6 +275,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         _cumulativeBlockGasPerTx.Clear();
         _cumulativeReceiptGas = 0;
         Block.Header.RegularGasUsed = 0;
+        Block.Header.StateGasUsed = 0;
         Block.Header.ReceiptGasUsed = 0;
 
         _otherTracer.StartNewBlockTrace(block);

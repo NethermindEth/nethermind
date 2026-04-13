@@ -951,6 +951,74 @@ internal class TransactionProcessorEip7702Tests
         Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
     }
 
+    [Test]
+    public void Execute_DelegationToContractCreatedInSameTransaction_UsesCreatedCode()
+    {
+        PrivateKey authority = TestItem.PrivateKeyA;
+        Address beneficiary = TestItem.AddressC;
+        Address factory = TestItem.AddressD;
+        PrivateKey anotherAuthority = TestItem.PrivateKeyB;
+
+        _stateProvider.CreateAccount(authority.Address, 10.Ether, 6);
+        _stateProvider.Set(new StorageCell(authority.Address, 1), [1]);
+        _stateProvider.Set(new StorageCell(authority.Address, 2), [2]);
+        _stateProvider.CreateAccount(anotherAuthority.Address, 1.Ether);
+        _stateProvider.CreateAccount(beneficiary, 0);
+        _stateProvider.CreateAccount(factory, 0, 1);
+
+        byte[] runtimeCode = Prepare.EvmCode
+            .PushData(5)
+            .PushData(5)
+            .Op(Instruction.SSTORE)
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        byte[] initCode = Prepare.EvmCode
+            .ForInitOf(runtimeCode)
+            .Done;
+        Address createdAddress = ContractAddress.From(factory, 1);
+        byte[] factoryCode = Prepare.EvmCode
+            .Create(initCode, 0)
+            .PushData(1)
+            .Op(Instruction.SSTORE)
+            .Call(authority.Address, 150_000)
+            .PushData(1)
+            .Op(Instruction.SLOAD)
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SWAP5)
+            .PushData(150_000)
+            .Op(Instruction.CALL)
+            .Call(anotherAuthority.Address, 150_000)
+            .Done;
+        DeployCode(factory, factoryCode);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithTo(factory)
+            .WithNonce(6)
+            .WithGasLimit(500_000)
+            .WithValue(1000)
+            .WithAuthorizationCode([
+                _ethereumEcdsa.Sign(authority, _specProvider.ChainId, createdAddress, 7),
+                _ethereumEcdsa.Sign(anotherAuthority, _specProvider.ChainId, createdAddress, 0)
+            ])
+            .SignedAndResolved(_ethereumEcdsa, authority, true)
+            .TestObject;
+        Block block = Build.A.Block.WithNumber(long.MaxValue)
+            .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
+            .WithTransactions(tx)
+            .WithGasLimit(10_000_000).TestObject;
+
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+
+        Assert.That(_stateProvider.Get(new StorageCell(authority.Address, 5)).ToArray(), Is.EquivalentTo(new byte[] { 5 }));
+        Assert.That(_stateProvider.GetBalance(beneficiary), Is.GreaterThan(UInt256.Zero));
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public void Execute_EXTCODESIZEOnDelegatedThatTriggersOptimization_ReturnsZeroIfDelegated(bool isDelegated)

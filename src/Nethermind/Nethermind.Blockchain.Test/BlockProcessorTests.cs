@@ -213,20 +213,22 @@ public class BlockProcessorTests
         ProcessingOptions processingOptions,
         bool shouldValidateBlockAccessList)
     {
+        const long gasLimit = 100_000L;
+        const long txBlockGasUsed = 37_568L;
         TrackingBlockAccessListWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), 37_568);
+        stateProvider.LoadSuggestedBlockAccessList(new BlockAccessList(), txBlockGasUsed);
 
         ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
         transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
         {
             Transaction transaction = callInfo.Arg<Transaction>();
             transaction.SpentGas = 63_586;
-            transaction.BlockGasUsed = 37_568;
+            transaction.BlockGasUsed = txBlockGasUsed;
             return TransactionResult.Ok;
         });
 
         BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        Block block = Build.A.Block.WithGasLimit(gasLimit).WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
         BlockReceiptsTracer receiptsTracer = new();
         receiptsTracer.StartNewBlockTrace(block);
 
@@ -234,7 +236,7 @@ public class BlockProcessorTests
 
         if (shouldValidateBlockAccessList)
         {
-            Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { 37_568L, 0L }));
+            Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { gasLimit, gasLimit - txBlockGasUsed }));
         }
         else
         {

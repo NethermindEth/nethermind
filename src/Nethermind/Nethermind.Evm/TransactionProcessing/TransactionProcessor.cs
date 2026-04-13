@@ -217,6 +217,14 @@ namespace Nethermind.Evm.TransactionProcessing
             int delegationRefunds = (!spec.IsEip7702Enabled || !tx.HasAuthorizationList) ? 0 : ProcessDelegations(tx, spec, accessTracker);
 
             if (!(result = CalculateAvailableGas(tx, spec, in intrinsicGas, out TGasPolicy gasAvailable))) return result;
+            if (spec.IsEip8037Enabled && delegationRefunds > 0)
+            {
+                TGasPolicy intrinsicStandardGas = intrinsicGas.Standard;
+                long stateGasFloor = TGasPolicy.GetStateReservoir(in intrinsicStandardGas);
+                TGasPolicy.ApplyCodeInsertRefunds(ref gasAvailable, delegationRefunds, spec, stateGasFloor);
+                delegationRefunds = 0;
+            }
+
             if (!(result = BuildExecutionEnvironment(tx, spec, _codeInfoRepository, accessTracker, out ExecutionEnvironment e))) return result;
             using ExecutionEnvironment env = e;
 
@@ -716,6 +724,7 @@ namespace Nethermind.Evm.TransactionProcessing
             substate = default;
             gasConsumed = tx.GasLimit;
             byte statusCode = StatusCode.Failure;
+            bool failedBeforeExecution = false;
 
             Snapshot snapshot = WorldState.TakeSnapshot();
 
@@ -728,6 +737,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     if (!PrepareDeployment(env.ExecutingAccount))
                     {
+                        failedBeforeExecution = true;
                         goto FailContractCreate;
                     }
                 }
@@ -813,21 +823,49 @@ namespace Nethermind.Evm.TransactionProcessing
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
             WorldState.Restore(snapshot);
-            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts, in gasAvailable);
+            gasConsumed = RefundOnFailContractCreation(tx, header, spec, opts, in gas, in gasAvailable, failedBeforeExecution);
         Complete:
             if (!opts.HasFlag(ExecutionOptions.SkipValidation))
             {
-                header.GasUsed += gasConsumed.EffectiveBlockGas;
+                if (spec.IsEip8037Enabled)
+                {
+                    header.RegularGasUsed += gasConsumed.EffectiveBlockGas;
+                    header.StateGasUsed += gasConsumed.BlockStateGas;
+                    header.GasUsed = Math.Max(header.RegularGasUsed, header.StateGasUsed);
+                }
+                else
+                {
+                    header.GasUsed += gasConsumed.EffectiveBlockGas;
+                }
             }
 
             return statusCode;
         }
 
 
-        protected virtual GasConsumed RefundOnFailContractCreation(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts, in TGasPolicy gasAfterExecution)
+        protected virtual GasConsumed RefundOnFailContractCreation(
+            Transaction tx,
+            BlockHeader header,
+            IReleaseSpec spec,
+            ExecutionOptions opts,
+            in IntrinsicGas<TGasPolicy> intrinsicGas,
+            in TGasPolicy gasAfterExecution,
+            bool failedBeforeExecution)
         {
             if (!spec.IsEip8037Enabled)
                 return tx.GasLimit;
+
+            if (failedBeforeExecution)
+            {
+                TGasPolicy standardGas = intrinsicGas.Standard;
+                TGasPolicy floorGas = intrinsicGas.FloorGas;
+                long blockRegularGas = Math.Max(
+                    TGasPolicy.GetRemainingGas(in standardGas),
+                    TGasPolicy.GetRemainingGas(in floorGas));
+                long intrinsicStateGas = TGasPolicy.GetStateReservoir(in standardGas);
+
+                return new GasConsumed(tx.GasLimit, tx.GasLimit, blockRegularGas, intrinsicStateGas, tx.GasLimit);
+            }
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
 
@@ -998,8 +1036,10 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (substate.IsError)
                 {
                     spentGas -= TGasPolicy.GetStateReservoir(in gasAfterExecution);
+                    long stateGasSpill = TGasPolicy.GetStateGasSpill(in gasAfterExecution);
+                    long nonSpilledStateGas = Math.Max(0, txStateGas - stateGasSpill);
                     operationGas = spentGas;
-                    blockGas = spentGas - txStateGas;
+                    blockGas = spentGas - nonSpilledStateGas;
                     blockStateGas = txStateGas;
                 }
                 else if (substate.ShouldRevert)
