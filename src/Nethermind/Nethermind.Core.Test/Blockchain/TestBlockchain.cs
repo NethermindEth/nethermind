@@ -509,12 +509,10 @@ public class TestBlockchain : IDisposable
 
 public static class ContainerBuilderExtensions
 {
-    public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer)
-    {
-        return builder.AddDecorator<TestBlockchain.Configuration>((_, conf) =>
+    public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer) =>
+        builder.AddDecorator<TestBlockchain.Configuration>((_, conf) =>
         {
             configurer(conf);
             return conf;
         });
-    }
 }
