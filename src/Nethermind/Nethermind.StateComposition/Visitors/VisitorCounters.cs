@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 
@@ -41,6 +42,21 @@ public sealed class VisitorCounters(int topN = 20)
 
     public long TotalBranchChildren;
     public long TotalBranchNodes;
+
+    /// <summary>
+    /// Aggregate bytecode size attributed to this worker, deduplicated by codeHash
+    /// at the visitor level (shared map across all workers). Each unique codeHash
+    /// contributes its bytecode length exactly once across the full scan.
+    /// </summary>
+    public long CodeBytes;
+
+    /// <summary>
+    /// Log-bucketed per-contract slot-count histogram.
+    /// Bucket = min(Length-1, floor(log2(slotCount+1))).
+    /// Length is bound to <see cref="CumulativeSizeStats.SlotHistogramLength"/>
+    /// so the producer and the snapshot decoder agree on wire length.
+    /// </summary>
+    public readonly long[] SlotCountHistogram = new long[CumulativeSizeStats.SlotHistogramLength];
 
     public readonly DepthCounter[] AccountDepths = new DepthCounter[MaxTrackedDepth];
     public readonly DepthCounter[] StorageDepths = new DepthCounter[MaxTrackedDepth];
@@ -129,6 +145,10 @@ public sealed class VisitorCounters(int topN = 20)
         // Update histogram using Geth-compatible depth
         int depthBucket = Math.Min(gethMaxDepth, MaxTrackedDepth - 1);
         StorageMaxDepthHistogram[depthBucket]++;
+
+        // Log-bucketed slot-count histogram: bucket = min(15, floor(log2(slotCount + 1))).
+        int slotBucket = ComputeSlotBucket(_currentStorageValueNodes);
+        SlotCountHistogram[slotBucket]++;
 
         // Build per-depth Levels[16] summary into a reusable scratch array.
         // The scratch array is allocated once per VisitorCounters instance (lazily)
@@ -227,6 +247,8 @@ public sealed class VisitorCounters(int topN = 20)
         TotalBranchChildren += other.TotalBranchChildren;
         TotalBranchNodes += other.TotalBranchNodes;
 
+        CodeBytes += other.CodeBytes;
+
         for (int i = 0; i < MaxTrackedDepth; i++)
         {
             AccountDepths[i].FullNodes += other.AccountDepths[i].FullNodes;
@@ -243,6 +265,24 @@ public sealed class VisitorCounters(int topN = 20)
             BranchOccupancyHistogram[i] += other.BranchOccupancyHistogram[i];
         }
 
+        // Slot-count histogram length is bound to CumulativeSizeStats.SlotHistogramLength,
+        // not MaxTrackedDepth, so it needs its own loop.
+        for (int i = 0; i < SlotCountHistogram.Length; i++)
+            SlotCountHistogram[i] += other.SlotCountHistogram[i];
+
         TopN.MergeFrom(other.TopN);
+    }
+
+    /// <summary>
+    /// Compute the log2 bucket index for a given slot count.
+    /// <c>bucket = min(SlotHistogramLength-1, floor(log2(slotCount + 1)))</c>.
+    /// <para>slotCount = 0 maps to bucket 0.</para>
+    /// </summary>
+    public static int ComputeSlotBucket(long slotCount)
+    {
+        if (slotCount <= 0) return 0;
+        // BitOperations.Log2(n) == floor(log2(n)) for n >= 1.
+        int log = BitOperations.Log2((ulong)(slotCount + 1));
+        return Math.Min(CumulativeSizeStats.SlotHistogramLength - 1, log);
     }
 }

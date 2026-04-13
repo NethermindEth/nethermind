@@ -24,6 +24,22 @@ public readonly record struct StateCompositionStats
     public long StorageTrieShortNodes { get; init; }
     public long StorageTrieValueNodes { get; init; }
 
+    /// <summary>
+    /// Aggregate on-chain contract bytecode size, deduplicated by codeHash.
+    /// A contract that shares bytecode with another contract (proxy, clone)
+    /// contributes 0 bytes on the second observation.
+    /// </summary>
+    public long CodeBytesTotal { get; init; }
+
+    /// <summary>
+    /// Log-bucketed histogram of per-contract storage slot counts.
+    /// Bucket index i holds the number of contracts where
+    /// <c>min(15, floor(log2(slotCount + 1))) == i</c>.
+    /// Invariant: <c>sum(SlotCountHistogram) == ContractsWithStorage</c>.
+    /// Always length 16 when set.
+    /// </summary>
+    public ImmutableArray<long> SlotCountHistogram { get; init; }
+
     public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
