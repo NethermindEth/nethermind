@@ -37,7 +37,7 @@ public class L2Api(
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
-            Hash = block.Hash,
+            Hash = block.Hash!,
             ParentHash = block.ParentHash,
             StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
@@ -97,7 +97,7 @@ public class L2Api(
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
-            Hash = block.Hash,
+            Hash = block.Hash!,
             ParentHash = block.ParentHash,
             StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
@@ -114,7 +114,7 @@ public class L2Api(
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
-            Hash = block.Hash,
+            Hash = block.Hash!,
             ParentHash = block.ParentHash,
             StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
@@ -131,7 +131,7 @@ public class L2Api(
         PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
-            Hash = block.Hash,
+            Hash = block.Hash!,
             ParentHash = block.ParentHash,
             StateRoot = block.StateRoot,
             PayloadAttributesRef = payloadAttributes
