@@ -15,6 +15,7 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Int256;
 
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.State.Test")]
 
 namespace Nethermind.State;
 
@@ -22,6 +23,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
 {
     protected IWorldState _innerWorldState = innerWorldState;
     private readonly BlockAccessList _generatingBlockAccessList = new();
+
+    internal BlockAccessList GetGeneratingBlockAccessList() => _generatingBlockAccessList;
     public PreBlockCaches Caches => (_innerWorldState as IPreBlockCaches).Caches;
     public bool IsWarmWorldState => (_innerWorldState as IPreBlockCaches)?.IsWarmWorldState ?? false;
 
@@ -367,5 +370,4 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             GetBalanceInternal(address),
             Keccak.EmptyTreeHash, // never used
             _innerWorldState.GetCodeHash(address)) : null;
-
 }

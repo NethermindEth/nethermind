@@ -27,6 +27,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
 
+/// <summary>
+/// Tests for EIP-7928 Block Access Lists.
+/// Verifies that executing EVM code correctly records state accesses into a
+/// <see cref="BlockAccessList"/> via <see cref="TracedAccessWorldState"/>.
+/// </summary>
 [TestFixture]
 public class Eip7928Tests() : VirtualMachineTestsBase
 {
@@ -46,6 +51,21 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         .Op(Instruction.SLOAD)
         .Done;
 
+    /// <summary>
+    /// Creates a fresh <see cref="TracedAccessWorldState"/> wrapping <see cref="VirtualMachineTestsBase.TestState"/>
+    /// and a matching <see cref="EthereumTransactionProcessor"/> wired to it.
+    /// </summary>
+    private (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) CreateTracedProcessor()
+    {
+        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        ILogManager logManager = LimboLogs.Instance;
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
+        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager);
+        return (tracedState, processor);
+    }
+
     [TestCaseSource(nameof(CodeTestSource))]
     public async Task Constructs_BAL_when_processing_code(
         IEnumerable<AccountChanges> expected,
@@ -54,8 +74,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         bool revert)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+
+        (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) = CreateTracedProcessor();
 
         UInt256 value = _testAccountBalance;
 
@@ -73,10 +93,10 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
-        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        TransactionResult res = processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         UInt256 newBalance = _accountBalance - gasUsed;
@@ -114,8 +134,8 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         EvmExceptionType expectedException)
     {
         InitWorldState(TestState, extraCode);
-        ParallelWorldState worldState = TestState as ParallelWorldState;
-        worldState.TracingEnabled = true;
+
+        (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) = CreateTracedProcessor();
 
         Transaction templateTx = Build.A.Transaction
             .WithCode(code)
@@ -132,10 +152,10 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             .SignedAndResolved(_ecdsa, TestItem.PrivateKeyA).TestObject;
         Block block = Build.A.Block.TestObject;
 
-        _processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
+        processor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, Amsterdam.Instance));
         CallOutputTracer callOutputTracer = new();
-        TransactionResult res = _processor.Execute(createTx, callOutputTracer);
-        BlockAccessList bal = worldState.GeneratedBlockAccessList;
+        TransactionResult res = processor.Execute(createTx, callOutputTracer);
+        BlockAccessList bal = tracedState.GetGeneratingBlockAccessList();
         UInt256 gasUsed = new((ulong)callOutputTracer.GasSpent);
 
         AccountChanges accountChangesA = Build.An.AccountChanges
@@ -945,14 +965,13 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
-        ParallelWorldState worldState = (ParallelWorldState)TestState;
-        worldState.TracingEnabled = true;
+        TracedAccessWorldState tracedState = new(TestState, parallel: false);
 
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
+        CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
-        repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+        repo.GetCachedCodeInfo(new(address), false, Amsterdam.Instance, out Address? delegationAddress);
 
-        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(new(address));
+        AccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(new(address));
 
         using (Assert.EnterMultipleScope())
         {
@@ -981,56 +1000,18 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
         TestState.CommitTree(0);
 
-        ParallelWorldState worldState = (ParallelWorldState)TestState;
-        worldState.TracingEnabled = true;
+        TracedAccessWorldState tracedState = new(TestState, parallel: false);
 
-        CodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+        CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(delegationAddress, Is.EqualTo(delegationTarget));
             Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(targetCode));
             // Both the delegated account and the delegation target are traced as account reads in the BAL
-            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegatedAccount), Is.Not.Null);
-            Assert.That(worldState.GeneratedBlockAccessList.GetAccountChanges(delegationTarget), Is.Not.Null);
-        }
-    }
-
-    [Test]
-    public void CodeInfoRepository_parallel_world_state_uses_address_based_code_lookup()
-    {
-        byte[] code = [(byte)Instruction.STOP];
-        Address testAddress = TestItem.AddressB;
-
-        IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
-        using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
-
-        ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
-        pws.Inner.CreateAccount(testAddress, 0);
-        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
-        pws.Inner.Commit(SpecProvider.GenesisSpec);
-        pws.Inner.CommitTree(0);
-
-        pws.TracingEnabled = true;
-        pws.IsGenesis = false;
-
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(testAddress);
-        pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
-        pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
-
-        CodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
-
-        pws.MergeIntermediateBalsUpTo(0);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // Code is served from the suggested BAL via address-based lookup (not hash-based inner-state lookup)
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-            Assert.That(delegationAddress, Is.Null);
-            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
+            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegatedAccount), Is.Not.Null);
+            Assert.That(tracedState.GetGeneratingBlockAccessList().GetAccountChanges(delegationTarget), Is.Not.Null);
         }
     }
 
@@ -1040,21 +1021,19 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         CacheCodeInfoRepository.Clear();
 
         byte[] code = [(byte)Instruction.STOP];
-        ParallelWorldState worldState = (ParallelWorldState)TestState;
 
-        // Set up state via inner world state to avoid polluting the BAL before the test begins
-        IWorldState innerState = worldState.Inner;
-        innerState.CreateAccount(TestItem.AddressB, 0);
-        innerState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
-        innerState.Commit(SpecProvider.GenesisSpec);
-        innerState.CommitTree(0);
+        // Set up state directly on TestState (the inner world state)
+        TestState.CreateAccount(TestItem.AddressB, 0);
+        TestState.InsertCode(TestItem.AddressB, code, SpecProvider.GenesisSpec);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
 
-        worldState.TracingEnabled = true;
+        TracedAccessWorldState tracedState = new(TestState, parallel: false);
 
-        CacheCodeInfoRepository repo = new(TestState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
+        CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
+        CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);
 
-        AccountChanges? accountChanges = worldState.GeneratedBlockAccessList.GetAccountChanges(TestItem.AddressB);
+        AccountChanges? accountChanges = tracedState.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressB);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1068,47 +1047,4 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         }
     }
 
-    [Test]
-    public void CacheCodeInfoRepository_parallel_execution_retrieves_code_from_suggested_bal()
-    {
-        CacheCodeInfoRepository.Clear();
-
-        byte[] code = [(byte)Instruction.STOP];
-        Address testAddress = TestItem.AddressB;
-
-        IWorldState parallelWorldState = TestWorldStateFactory.CreateForTest(parallel: true);
-        using IDisposable scope = parallelWorldState.BeginScope(IWorldState.PreGenesis);
-
-        // Commit code into the inner world state
-        ParallelWorldState pws = (ParallelWorldState)parallelWorldState;
-        pws.Inner.CreateAccount(testAddress, 0);
-        pws.Inner.InsertCode(testAddress, code, SpecProvider.GenesisSpec);
-        pws.Inner.Commit(SpecProvider.GenesisSpec);
-        pws.Inner.CommitTree(0);
-
-        // Enable parallel execution: tracing on, mark as non-genesis
-        pws.TracingEnabled = true;
-        pws.IsGenesis = false;
-
-        // Load suggested BAL — LoadPreBlockState reads code from inner state into the BAL entry
-        BlockAccessList suggestedBal = new();
-        suggestedBal.AddAccountRead(testAddress);
-        pws.SetupGeneratedAccessLists(LimboLogs.Instance, 1);
-        pws.LoadSuggestedBlockAccessList(Build.A.Block.WithBlockAccessList(suggestedBal).TestObject, 0);
-
-        CacheCodeInfoRepository repo = new(parallelWorldState, new EthereumPrecompileProvider());
-        CodeInfo result = repo.GetCachedCodeInfo(testAddress, false, Amsterdam.Instance, out Address? delegationAddress, blockAccessIndex: 0);
-
-        // Merge the intermediate BAL for index 0 so the account read is visible in GeneratedBlockAccessList
-        pws.MergeIntermediateBalsUpTo(0);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // Code is served from the suggested BAL via address-based lookup through the cache layer
-            Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(code));
-            Assert.That(delegationAddress, Is.Null);
-            // The address-based code access is traced in the BAL even when the cache is involved
-            Assert.That(pws.GeneratedBlockAccessList.GetAccountChanges(testAddress), Is.Not.Null);
-        }
-    }
 }
