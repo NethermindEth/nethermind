@@ -674,7 +674,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException();
+        static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)

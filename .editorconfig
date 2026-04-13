@@ -105,4 +105,5 @@ dotnet_diagnostic.IDE0290.severity = error
 csharp_style_implicit_object_creation_when_type_is_apparent = true
 dotnet_diagnostic.CA1507.severity = warning
 dotnet_diagnostic.CA1510.severity = warning
+dotnet_diagnostic.CA2208.severity = suggestion
 

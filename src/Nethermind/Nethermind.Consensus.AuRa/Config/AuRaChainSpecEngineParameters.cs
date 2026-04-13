@@ -111,7 +111,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     .ToImmutableSortedDictionary();
                 break;
             default:
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(validatorJson), validatorType, "Unknown validator type.");
         }
 
         return validator;
