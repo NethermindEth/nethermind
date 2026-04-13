@@ -5,6 +5,9 @@ using System;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
+using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Visitors;
+
 namespace Nethermind.StateComposition.Test;
 
 [TestFixture]

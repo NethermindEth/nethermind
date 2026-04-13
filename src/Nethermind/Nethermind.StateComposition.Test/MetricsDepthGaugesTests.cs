@@ -4,6 +4,8 @@
 using System.Collections.Immutable;
 using NUnit.Framework;
 
+using Nethermind.StateComposition.Data;
+
 namespace Nethermind.StateComposition.Test;
 
 /// <summary>
@@ -40,25 +42,25 @@ public class MetricsDepthGaugesTests
         using (Assert.EnterMultipleScope())
         {
             // Depth 3 account
-            Assert.That(Metrics.StateCompAccountTrieDepth_3_FullNodes,  Is.EqualTo(5));
+            Assert.That(Metrics.StateCompAccountTrieDepth_3_FullNodes, Is.EqualTo(5));
             Assert.That(Metrics.StateCompAccountTrieDepth_3_ShortNodes, Is.EqualTo(2));
             Assert.That(Metrics.StateCompAccountTrieDepth_3_ValueNodes, Is.EqualTo(0));
-            Assert.That(Metrics.StateCompAccountTrieDepth_3_Bytes,      Is.EqualTo(100));
+            Assert.That(Metrics.StateCompAccountTrieDepth_3_Bytes, Is.EqualTo(100));
 
             // Depth 7 account
-            Assert.That(Metrics.StateCompAccountTrieDepth_7_FullNodes,  Is.EqualTo(0));
+            Assert.That(Metrics.StateCompAccountTrieDepth_7_FullNodes, Is.EqualTo(0));
             Assert.That(Metrics.StateCompAccountTrieDepth_7_ShortNodes, Is.EqualTo(10));
             Assert.That(Metrics.StateCompAccountTrieDepth_7_ValueNodes, Is.EqualTo(3));
-            Assert.That(Metrics.StateCompAccountTrieDepth_7_Bytes,      Is.EqualTo(200));
+            Assert.That(Metrics.StateCompAccountTrieDepth_7_Bytes, Is.EqualTo(200));
 
             // An unrelated depth must remain 0
             Assert.That(Metrics.StateCompAccountTrieDepth_5_FullNodes, Is.EqualTo(0));
-            Assert.That(Metrics.StateCompAccountTrieDepth_5_Bytes,     Is.EqualTo(0));
+            Assert.That(Metrics.StateCompAccountTrieDepth_5_Bytes, Is.EqualTo(0));
 
             // Scalars
             Assert.That(Metrics.StateCompAvgAccountPathDepth, Is.EqualTo(3.5));
-            Assert.That(Metrics.StateCompMaxAccountDepth,     Is.EqualTo(8));
-            Assert.That(Metrics.StateCompAvgBranchOccupancy,  Is.EqualTo(4.2));
+            Assert.That(Metrics.StateCompMaxAccountDepth, Is.EqualTo(8));
+            Assert.That(Metrics.StateCompAvgBranchOccupancy, Is.EqualTo(4.2));
 
             // Branch occupancy bucket 4 (index 3 = 4 children)
             Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_4_Children, Is.EqualTo(42));
@@ -87,17 +89,17 @@ public class MetricsDepthGaugesTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.StateCompStorageTrieDepth_2_FullNodes,  Is.EqualTo(7));
+            Assert.That(Metrics.StateCompStorageTrieDepth_2_FullNodes, Is.EqualTo(7));
             Assert.That(Metrics.StateCompStorageTrieDepth_2_ShortNodes, Is.EqualTo(3));
             Assert.That(Metrics.StateCompStorageTrieDepth_2_ValueNodes, Is.EqualTo(1));
-            Assert.That(Metrics.StateCompStorageTrieDepth_2_Bytes,      Is.EqualTo(300));
+            Assert.That(Metrics.StateCompStorageTrieDepth_2_Bytes, Is.EqualTo(300));
 
             // Other storage depths remain 0
             Assert.That(Metrics.StateCompStorageTrieDepth_0_FullNodes, Is.EqualTo(0));
             Assert.That(Metrics.StateCompStorageTrieDepth_5_FullNodes, Is.EqualTo(0));
 
             Assert.That(Metrics.StateCompAvgStoragePathDepth, Is.EqualTo(2.1));
-            Assert.That(Metrics.StateCompMaxStorageDepth,     Is.EqualTo(3));
+            Assert.That(Metrics.StateCompMaxStorageDepth, Is.EqualTo(3));
         }
     }
 
@@ -148,18 +150,18 @@ public class MetricsDepthGaugesTests
         using (Assert.EnterMultipleScope())
         {
             // Depth 3 must be wiped — it's absent in the second distribution
-            Assert.That(Metrics.StateCompAccountTrieDepth_3_FullNodes,  Is.EqualTo(0), "stale depth-3 full nodes must be zeroed");
+            Assert.That(Metrics.StateCompAccountTrieDepth_3_FullNodes, Is.EqualTo(0), "stale depth-3 full nodes must be zeroed");
             Assert.That(Metrics.StateCompAccountTrieDepth_3_ShortNodes, Is.EqualTo(0), "stale depth-3 short nodes must be zeroed");
-            Assert.That(Metrics.StateCompAccountTrieDepth_3_Bytes,      Is.EqualTo(0), "stale depth-3 bytes must be zeroed");
+            Assert.That(Metrics.StateCompAccountTrieDepth_3_Bytes, Is.EqualTo(0), "stale depth-3 bytes must be zeroed");
 
             // Depth 7 must now carry the second call's values
-            Assert.That(Metrics.StateCompAccountTrieDepth_7_FullNodes,  Is.EqualTo(1));
+            Assert.That(Metrics.StateCompAccountTrieDepth_7_FullNodes, Is.EqualTo(1));
             Assert.That(Metrics.StateCompAccountTrieDepth_7_ShortNodes, Is.EqualTo(2));
             Assert.That(Metrics.StateCompAccountTrieDepth_7_ValueNodes, Is.EqualTo(3));
-            Assert.That(Metrics.StateCompAccountTrieDepth_7_Bytes,      Is.EqualTo(50));
+            Assert.That(Metrics.StateCompAccountTrieDepth_7_Bytes, Is.EqualTo(50));
 
             Assert.That(Metrics.StateCompAvgAccountPathDepth, Is.EqualTo(7.0));
-            Assert.That(Metrics.StateCompMaxAccountDepth,     Is.EqualTo(8));
+            Assert.That(Metrics.StateCompMaxAccountDepth, Is.EqualTo(8));
         }
     }
 
@@ -186,9 +188,9 @@ public class MetricsDepthGaugesTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_1_Children,  Is.EqualTo(10));
-            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_4_Children,  Is.EqualTo(40));
-            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_8_Children,  Is.EqualTo(80));
+            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_1_Children, Is.EqualTo(10));
+            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_4_Children, Is.EqualTo(40));
+            Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_8_Children, Is.EqualTo(80));
             Assert.That(Metrics.StateCompAccountTrieBranchOccupancy_16_Children, Is.EqualTo(160));
         }
     }

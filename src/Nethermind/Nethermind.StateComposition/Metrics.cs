@@ -4,6 +4,8 @@
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 
+using Nethermind.StateComposition.Data;
+
 namespace Nethermind.StateComposition;
 
 public static partial class Metrics
