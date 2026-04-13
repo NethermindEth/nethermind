@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Security;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -30,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
-            var locked = wallet.LockAccount(address);
+            bool locked = wallet.LockAccount(address);
 
             return ResultWrapper<bool>.Success(locked);
         }
@@ -38,15 +39,15 @@ namespace Nethermind.JsonRpc.Modules.Personal
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<bool> personal_unlockAccount(Address address, string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
-            var unlocked = wallet.UnlockAccount(address, notSecuredHere);
+            SecureString notSecuredHere = passphrase.Secure();
+            bool unlocked = wallet.UnlockAccount(address, notSecuredHere);
             return ResultWrapper<bool>.Success(unlocked);
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
         public ResultWrapper<Address> personal_newAccount(string passphrase)
         {
-            var notSecuredHere = passphrase.Secure();
+            SecureString notSecuredHere = passphrase.Secure();
             return ResultWrapper<Address>.Success(wallet.NewAccount(notSecuredHere));
         }
 
@@ -83,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             {
                 if (passphrase is not null)
                 {
-                    var notSecuredHere = passphrase.Secure();
+                    SecureString notSecuredHere = passphrase.Secure();
                     wallet.UnlockAccount(address, notSecuredHere);
                 }
             }

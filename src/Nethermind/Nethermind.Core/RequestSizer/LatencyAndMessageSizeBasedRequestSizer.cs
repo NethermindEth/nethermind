@@ -13,34 +13,25 @@ namespace Nethermind.Core;
 /// Encapsulate pattern of auto adjusting the request size depending on latency and response size.
 /// Used for bodies and receipts where the response size affect memory usage also.
 /// </summary>
-public class LatencyAndMessageSizeBasedRequestSizer
-{
-    private readonly TimeSpan _upperLatencyWatermark;
-    private readonly TimeSpan _lowerLatencyWatermark;
-    private readonly long _maxResponseSize;
-    private readonly AdaptiveRequestSizer _requestSizer;
-    public int RequestSize => _requestSizer.RequestSize;
-
-    public LatencyAndMessageSizeBasedRequestSizer(
-        int minRequestLimit,
-        int maxRequestLimit,
-        TimeSpan lowerLatencyWatermark,
-        TimeSpan upperLatencyWatermark,
-        long maxResponseSize,
-        int? initialRequestSize,
-        double adjustmentFactor = 1.5
+public class LatencyAndMessageSizeBasedRequestSizer(
+    int minRequestLimit,
+    int maxRequestLimit,
+    TimeSpan lowerLatencyWatermark,
+    TimeSpan upperLatencyWatermark,
+    long maxResponseSize,
+    int? initialRequestSize,
+    double adjustmentFactor = 1.5
     )
-    {
-        _upperLatencyWatermark = upperLatencyWatermark;
-        _lowerLatencyWatermark = lowerLatencyWatermark;
-        _maxResponseSize = maxResponseSize;
-
-        _requestSizer = new AdaptiveRequestSizer(
+{
+    private readonly TimeSpan _upperLatencyWatermark = upperLatencyWatermark;
+    private readonly TimeSpan _lowerLatencyWatermark = lowerLatencyWatermark;
+    private readonly long _maxResponseSize = maxResponseSize;
+    private readonly AdaptiveRequestSizer _requestSizer = new(
             minRequestLimit,
             maxRequestLimit,
             initialRequestSize: initialRequestSize,
             adjustmentFactor: adjustmentFactor);
-    }
+    public int RequestSize => _requestSizer.RequestSize;
 
     /// <summary>
     /// Adjust the request size depending on the latency and response size. Accept a list as request which will be capped.

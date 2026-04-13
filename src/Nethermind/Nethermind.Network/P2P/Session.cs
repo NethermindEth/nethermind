@@ -753,7 +753,7 @@ namespace Nethermind.Network.P2P
                 ? handler!.ProtocolVersion
                 : (byte)0;
 
-            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(message.Protocol, version), message.PacketType);
+            P2PMessageKey metricKey = new(new VersionedProtocol(message.Protocol, version), message.PacketType);
             Metrics.OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
             Metrics.OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }
@@ -764,7 +764,7 @@ namespace Nethermind.Network.P2P
             byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
                 ? handler!.ProtocolVersion
                 : (byte)0;
-            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(protocol, version), packetType);
+            P2PMessageKey metricKey = new(new VersionedProtocol(protocol, version), packetType);
             Metrics.IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
             Metrics.IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }

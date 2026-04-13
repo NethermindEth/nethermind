@@ -70,8 +70,8 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
-        var taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
-        var logger = _api.Context.Resolve<ILogManager>().GetClassLogger<TaikoPlugin>();
+        TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
+        ILogger logger = _api.Context.Resolve<ILogManager>().GetClassLogger<TaikoPlugin>();
 
         if (!taikoSpec.IsRip7728Enabled)
         {
@@ -88,7 +88,7 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         if (logger.IsInfo) logger.Info($"L1SLOAD: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
 
-        var storageProvider = new JsonRpcL1StorageProvider(
+        JsonRpcL1StorageProvider storageProvider = new(
             surgeConfig.L1EthApiEndpoint,
             _api.Context.Resolve<IJsonSerializer>(),
             _api.Context.Resolve<ILogManager>());
@@ -172,7 +172,7 @@ public class TaikoModule : Module
             .AddDecorator<IGasPriceOracle>((ctx, defaultGasPriceOracle) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+                TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
 
                 if (!taikoSpec.UseSurgeGasPriceOracle)
                     return defaultGasPriceOracle;
@@ -189,7 +189,7 @@ public class TaikoModule : Module
                     throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
                 }
 
-                var l1RpcClient = new BasicJsonRpcClient(
+                BasicJsonRpcClient l1RpcClient = new(
                     new Uri(surgeConfig.L1EthApiEndpoint),
                     ctx.Resolve<IJsonSerializer>(),
                     ctx.Resolve<ILogManager>());

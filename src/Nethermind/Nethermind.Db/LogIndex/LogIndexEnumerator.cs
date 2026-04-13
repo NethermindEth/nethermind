@@ -117,7 +117,7 @@ public partial class LogIndexStorage
 
             ReadOnlySpan<byte> viewValue = _view.CurrentValue;
 
-            if (IsCompressed(viewValue, out var length))
+            if (IsCompressed(viewValue, out int length))
             {
                 // +1 fixes TurboPFor reading outside of array bounds
                 _value = new(capacity: length + 1, count: length);

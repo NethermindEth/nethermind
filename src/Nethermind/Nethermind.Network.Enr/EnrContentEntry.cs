@@ -45,17 +45,12 @@ namespace Nethermind.Network.Enr
     /// Single key, value pair entry in the ENR record content.
     /// </summary>
     [DebuggerDisplay("{Key} {Value}")]
-    public abstract class EnrContentEntry<TValue> : EnrContentEntry
+    public abstract class EnrContentEntry<TValue>(TValue value) : EnrContentEntry
     {
         /// <summary>
         /// A value of the node record entry.
         /// </summary>
-        public TValue Value { get; }
-
-        protected EnrContentEntry(TValue value)
-        {
-            Value = value;
-        }
+        public TValue Value { get; } = value;
 
         public override string ToString()
         {

@@ -15,7 +15,7 @@ namespace Nethermind.Core.Extensions
             CancellationTokenRegistration tokenRegistration = default;
             try
             {
-                var tcs = new TaskCompletionSource<bool>();
+                TaskCompletionSource<bool> tcs = new();
                 registeredHandle = ThreadPool.RegisterWaitForSingleObject(
                     handle,
                     static (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
@@ -25,7 +25,7 @@ namespace Nethermind.Core.Extensions
                 tokenRegistration = cancellationToken.Register(
                     static state =>
                     {
-                        var (tcs, ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
+                        (TaskCompletionSource<bool>? tcs, CancellationToken ct) = ((TaskCompletionSource<bool> tcs, CancellationToken ct))state!;
                         tcs.TrySetCanceled(ct);
                     },
                     (tcs, cancellationToken));

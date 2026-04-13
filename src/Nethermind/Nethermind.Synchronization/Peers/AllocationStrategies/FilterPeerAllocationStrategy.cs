@@ -9,14 +9,9 @@ using Nethermind.Stats;
 
 namespace Nethermind.Synchronization.Peers.AllocationStrategies
 {
-    public abstract class FilterPeerAllocationStrategy : IPeerAllocationStrategy
+    public abstract class FilterPeerAllocationStrategy(IPeerAllocationStrategy strategy) : IPeerAllocationStrategy
     {
-        private readonly IPeerAllocationStrategy _nextStrategy;
-
-        public FilterPeerAllocationStrategy(IPeerAllocationStrategy strategy)
-        {
-            _nextStrategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
-        }
+        private readonly IPeerAllocationStrategy _nextStrategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
 
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
         {

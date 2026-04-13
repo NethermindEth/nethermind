@@ -8,14 +8,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.RoutingTable;
 
-public class NodeDistanceCalculator : INodeDistanceCalculator
+public class NodeDistanceCalculator(IDiscoveryConfig discoveryConfig) : INodeDistanceCalculator
 {
-    private readonly int _maxDistance;
-
-    public NodeDistanceCalculator(IDiscoveryConfig discoveryConfig)
-    {
-        _maxDistance = discoveryConfig.BucketsCount;
-    }
+    private readonly int _maxDistance = discoveryConfig.BucketsCount;
 
     public int CalculateDistance(Hash256 sourceId, Hash256 destinationId)
     {

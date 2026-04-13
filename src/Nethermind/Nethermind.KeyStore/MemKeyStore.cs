@@ -19,18 +19,12 @@ namespace Nethermind.KeyStore
     /// For testing only
     /// </summary>
     [DoNotUseInSecuredContext("Untested, also uses lots of unsafe software key generation techniques")]
-    public class MemKeyStore : IKeyStore
+    public class MemKeyStore(PrivateKey[] privateKeys, string ketStoreDir) : IKeyStore
     {
-        private readonly Dictionary<Address, PrivateKey> _privateKeys;
-        private readonly string _ketStoreDir;
-
-        public MemKeyStore(PrivateKey[] privateKeys, string ketStoreDir)
-        {
-            _privateKeys =
-                new Dictionary<Address, PrivateKey>(privateKeys.Select(static pk =>
+        private readonly Dictionary<Address, PrivateKey> _privateKeys =
+                new(privateKeys.Select(static pk =>
                     new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
-            _ketStoreDir = ketStoreDir;
-        }
+        private readonly string _ketStoreDir = ketStoreDir;
 
         public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
         {

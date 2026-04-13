@@ -161,7 +161,7 @@ public class CliqueBlockProducerTests
                 _cliqueConfig,
                 nodeLogManager);
 
-            CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+            CliqueBlockProducerRunner producerRunner = new(
                 blockTree,
                 _timestamper,
                 new CryptoRandom(),
@@ -172,7 +172,7 @@ public class CliqueBlockProducerTests
 
             producerRunner.Start();
 
-            ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+            ProducedBlockSuggester suggester = new(blockTree, producerRunner);
 
             _producers.Add(privateKey, producerRunner);
 
@@ -278,7 +278,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             if (_logger.IsInfo) _logger.Info($"SUGGESTING GENESIS ON {nodeKey.Address}");
             _blockTrees[nodeKey].SuggestBlock(_genesis).Should().Be(AddBlockResult.Added);
             _blockEvents[nodeKey].WaitOne(_timeout);
@@ -287,7 +287,7 @@ public class CliqueBlockProducerTests
 
         public On ProcessGenesis3Validators(PrivateKey nodeKey)
         {
-            using var _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = _containers[nodeKey].Resolve<IMainProcessingContext>().WorldState.BeginScope(IWorldState.PreGenesis);
             _blockTrees[nodeKey].SuggestBlock(_genesis3Validators);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
@@ -496,7 +496,7 @@ public class CliqueBlockProducerTests
         public On AddTransactionWithGasLimitToHigh(PrivateKey nodeKey)
         {
             // gas limit too high
-            Transaction transaction = new Transaction();
+            Transaction transaction = new();
             transaction.Value = 1;
             transaction.To = TestItem.AddressC;
             transaction.GasLimit = 100000000;
@@ -536,7 +536,7 @@ public class CliqueBlockProducerTests
 
         public void Dispose()
         {
-            foreach (var kv in _containers)
+            foreach (KeyValuePair<PrivateKey, IContainer> kv in _containers)
             {
                 kv.Value.Dispose();
             }

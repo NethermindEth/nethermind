@@ -49,218 +49,218 @@ internal class HeaderVerificationTests
     {
         // test case needs reverification of what actually is going on (this is only a draft for now)
 
-        var invalidRoundBlock = GetLastHeader(false);
-        var invalidRoundBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidRoundBlock.ParentHash!)!;
+        XdcBlockHeader invalidRoundBlock = GetLastHeader(false);
+        XdcBlockHeader invalidRoundBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidRoundBlock.ParentHash!)!;
 
-        var proposedBlockInfo = new BlockRoundInfo(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
+        BlockRoundInfo proposedBlockInfo = new(invalidRoundBlockParent.Hash!, invalidRoundBlockParent.ExtraConsensusData!.BlockRound, invalidRoundBlockParent.Number);
 
-        var voteForSign = new Vote(proposedBlockInfo, 1);
+        Vote voteForSign = new(proposedBlockInfo, 1);
 
-        var validSigners = xdcTestBlockchain.MasterNodeCandidates
+        List<Signer> validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvKey => invalidRoundBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
             .Select(pvKey => new Signer(0, pvKey, xdcTestBlockchain.LogManager))
             .ToList();
 
         List<Signature> signatures = [];
-        foreach (var signer in validSigners)
+        foreach (Signer? signer in validSigners)
         {
             Sign(voteForSign, signer);
             signatures.Add(voteForSign.Signature!);
         }
 
-        var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
+        QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
 
-        var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
-        var extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
+        ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
+        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
 
         invalidRoundBlock.ExtraData = extraInBytes;
-        var result = xdcHeaderValidator.Validate(invalidRoundBlock, invalidRoundBlockParent);
+        bool result = xdcHeaderValidator.Validate(invalidRoundBlock, invalidRoundBlockParent);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public async Task Block_With_Illegitimate_Signer_Fails()
     {
-        var previousSigner = xdcSigner.Key;
+        PrivateKey? previousSigner = xdcSigner.Key;
 
-        var coinbaseValidatorMismatchBlock = GetLastBlock(false);
-        var coinbaseValidatorMismatchBlockParent = xdcTestBlockchain.BlockTree.FindHeader(coinbaseValidatorMismatchBlock.ParentHash!);
+        Block coinbaseValidatorMismatchBlock = GetLastBlock(false);
+        BlockHeader? coinbaseValidatorMismatchBlockParent = xdcTestBlockchain.BlockTree.FindHeader(coinbaseValidatorMismatchBlock.ParentHash!);
 
-        var notQualifiedSigner = TestItem.PrivateKeyA; // private key
+        PrivateKey notQualifiedSigner = TestItem.PrivateKeyA; // private key
         ((Signer)xdcSigner).SetSigner(notQualifiedSigner);
         await xdcTestBlockchain.SealEngine.SealBlock(coinbaseValidatorMismatchBlock, default);
 
         ((Signer)xdcSigner).SetSigner(previousSigner);
-        var result = xdcHeaderValidator.Validate(coinbaseValidatorMismatchBlock.Header, coinbaseValidatorMismatchBlockParent!);
+        bool result = xdcHeaderValidator.Validate(coinbaseValidatorMismatchBlock.Header, coinbaseValidatorMismatchBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void EpochSwitchBlock_With_NotLegit_PenaltiesSet_Fails()
     {
-        var penaltiesNotLegit = GetLastHeader(true);
-        var penaltiesNotLegitParent = xdcTestBlockchain.BlockTree.FindHeader(penaltiesNotLegit.ParentHash!);
+        XdcBlockHeader penaltiesNotLegit = GetLastHeader(true);
+        BlockHeader? penaltiesNotLegitParent = xdcTestBlockchain.BlockTree.FindHeader(penaltiesNotLegit.ParentHash!);
         penaltiesNotLegit.Penalties = [.. penaltiesNotLegit.Penalties!, .. TestItem.AddressA.Bytes];
-        var result = xdcHeaderValidator.Validate(penaltiesNotLegit, penaltiesNotLegitParent!);
+        bool result = xdcHeaderValidator.Validate(penaltiesNotLegit, penaltiesNotLegitParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void EpochSwitchBlock_With_NotLegit_ValidatorsSet_Fails()
     {
-        var validatorsNotLegit = GetLastHeader(true);
-        var validatorsNotLegitParent = xdcTestBlockchain.BlockTree.FindHeader(validatorsNotLegit.ParentHash!);
+        XdcBlockHeader validatorsNotLegit = GetLastHeader(true);
+        BlockHeader? validatorsNotLegitParent = xdcTestBlockchain.BlockTree.FindHeader(validatorsNotLegit.ParentHash!);
         validatorsNotLegit.Validators = [.. validatorsNotLegit.Validators!, .. TestItem.AddressA.Bytes];
-        var result = xdcHeaderValidator.Validate(validatorsNotLegit, validatorsNotLegitParent!);
+        bool result = xdcHeaderValidator.Validate(validatorsNotLegit, validatorsNotLegitParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void EpochSwitchBlock_With_Invalid_ValidatorsSet_Fails()
     {
-        var invalidValidatorsSignerBlock = GetLastHeader(true);
-        var invalidValidatorsSignerBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidValidatorsSignerBlock.ParentHash!);
+        XdcBlockHeader invalidValidatorsSignerBlock = GetLastHeader(true);
+        BlockHeader? invalidValidatorsSignerBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidValidatorsSignerBlock.ParentHash!);
         invalidValidatorsSignerBlock.Validators = [123];
-        var result = xdcHeaderValidator.Validate(invalidValidatorsSignerBlock, invalidValidatorsSignerBlockParent!);
+        bool result = xdcHeaderValidator.Validate(invalidValidatorsSignerBlock, invalidValidatorsSignerBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void EpochSwitchBlock_With_Invalid_Nonce_Fails()
     {
-        var invalidAuthNonceBlock = GetLastHeader(true);
-        var invalidAuthNonceBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidAuthNonceBlock.ParentHash!);
+        XdcBlockHeader invalidAuthNonceBlock = GetLastHeader(true);
+        BlockHeader? invalidAuthNonceBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidAuthNonceBlock.ParentHash!);
         invalidAuthNonceBlock.Nonce = 123;
-        var result = xdcHeaderValidator.Validate(invalidAuthNonceBlock, invalidAuthNonceBlockParent!);
+        bool result = xdcHeaderValidator.Validate(invalidAuthNonceBlock, invalidAuthNonceBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_Mined_TooFast_After_Parent_Fails()
     {
-        var tooFastMinedBlock = GetLastHeader(false);
-        var tooFastMinedBlockParent = xdcTestBlockchain.BlockTree.FindHeader(tooFastMinedBlock.ParentHash!);
+        XdcBlockHeader tooFastMinedBlock = GetLastHeader(false);
+        BlockHeader? tooFastMinedBlockParent = xdcTestBlockchain.BlockTree.FindHeader(tooFastMinedBlock.ParentHash!);
         tooFastMinedBlock.Timestamp = (ulong)(tooFastMinedBlockParent!.Timestamp + 1); // mined 1 second after parent
-        var result = xdcHeaderValidator.Validate(tooFastMinedBlock, tooFastMinedBlockParent);
+        bool result = xdcHeaderValidator.Validate(tooFastMinedBlock, tooFastMinedBlockParent);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_With_Invalid_Difficulty_Fails()
     {
-        var invalidDifficultyBlock = GetLastHeader(false);
-        var invalidDifficultyBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidDifficultyBlock.ParentHash!);
+        XdcBlockHeader invalidDifficultyBlock = GetLastHeader(false);
+        BlockHeader? invalidDifficultyBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidDifficultyBlock.ParentHash!);
         invalidDifficultyBlock.Difficulty = 2;
-        var result = xdcHeaderValidator.Validate(invalidDifficultyBlock, invalidDifficultyBlockParent!);
+        bool result = xdcHeaderValidator.Validate(invalidDifficultyBlock, invalidDifficultyBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void EpochSwitchBlock_With_Empty_ValidatorSet_Fails()
     {
-        var emptyValidatorsBlock = GetLastHeader(true);
-        var emptyValidatorsBlockParent = xdcTestBlockchain.BlockTree.FindHeader(emptyValidatorsBlock.ParentHash!);
+        XdcBlockHeader emptyValidatorsBlock = GetLastHeader(true);
+        BlockHeader? emptyValidatorsBlockParent = xdcTestBlockchain.BlockTree.FindHeader(emptyValidatorsBlock.ParentHash!);
         emptyValidatorsBlock.Validators = [];
-        var result = xdcHeaderValidator.Validate(emptyValidatorsBlock, emptyValidatorsBlockParent!);
+        bool result = xdcHeaderValidator.Validate(emptyValidatorsBlock, emptyValidatorsBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_With_InvalidParent_Fails()
     {
-        var parentNotExistBlock = GetLastHeader(true);
+        XdcBlockHeader parentNotExistBlock = GetLastHeader(true);
         parentNotExistBlock.ParentHash = TestItem.KeccakA;
-        var parentNotExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(parentNotExistBlock.ParentHash!);
+        BlockHeader? parentNotExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(parentNotExistBlock.ParentHash!);
         Assert.Throws<ArgumentNullException>(() => xdcHeaderValidator.Validate(parentNotExistBlock, parentNotExistBlockParent!));
     }
 
     [Test]
     public void NonEpochBlock_With_Penalties_Fails()
     {
-        var invalidPenaltiesExistBlock = GetLastHeader(false);
+        XdcBlockHeader invalidPenaltiesExistBlock = GetLastHeader(false);
         invalidPenaltiesExistBlock.Penalties = TestItem.AddressF.Bytes;
-        var invalidPenaltiesExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidPenaltiesExistBlock.ParentHash!);
-        var result = xdcHeaderValidator.Validate(invalidPenaltiesExistBlock, invalidPenaltiesExistBlockParent!);
+        BlockHeader? invalidPenaltiesExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidPenaltiesExistBlock.ParentHash!);
+        bool result = xdcHeaderValidator.Validate(invalidPenaltiesExistBlock, invalidPenaltiesExistBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void NonEpochBlock_Invalid_ValidatorsSet_Fails()
     {
-        var invalidValidatorsExistBlock = GetLastHeader(false);
-        var invalidValidatorsExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidValidatorsExistBlock.ParentHash!);
+        XdcBlockHeader invalidValidatorsExistBlock = GetLastHeader(false);
+        BlockHeader? invalidValidatorsExistBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidValidatorsExistBlock.ParentHash!);
         invalidValidatorsExistBlock.Validators = [123];
-        var result = xdcHeaderValidator.Validate(invalidValidatorsExistBlock, invalidValidatorsExistBlockParent!);
+        bool result = xdcHeaderValidator.Validate(invalidValidatorsExistBlock, invalidValidatorsExistBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_With_Invalid_QcExtra_Fails()
     {
-        var invalidQcBlock = GetLastHeader(false);
-        var invalidQcBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidQcBlock.ParentHash!);
+        XdcBlockHeader invalidQcBlock = GetLastHeader(false);
+        BlockHeader? invalidQcBlockParent = xdcTestBlockchain.BlockTree.FindHeader(invalidQcBlock.ParentHash!);
         invalidQcBlock.ExtraData = [(byte)Random.Shared.Next()];
-        var result = xdcHeaderValidator.Validate(invalidQcBlock, invalidQcBlockParent!);
+        bool result = xdcHeaderValidator.Validate(invalidQcBlock, invalidQcBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_From_Future_Fails()
     {
-        var blockFromFutureBlock = GetLastHeader(false);
-        var blockFromFutureBlockParent = xdcTestBlockchain.BlockTree.FindHeader(blockFromFutureBlock.ParentHash!);
+        XdcBlockHeader blockFromFutureBlock = GetLastHeader(false);
+        BlockHeader? blockFromFutureBlockParent = xdcTestBlockchain.BlockTree.FindHeader(blockFromFutureBlock.ParentHash!);
         blockFromFutureBlock.Timestamp = (ulong)DateTime.UtcNow.ToUnixTimeSeconds() + 10000;
-        var result = xdcHeaderValidator.Validate(blockFromFutureBlock, blockFromFutureBlockParent!);
+        bool result = xdcHeaderValidator.Validate(blockFromFutureBlock, blockFromFutureBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Block_Lacks_ValidatorField_Fails()
     {
-        var noValidatorBlock = GetLastHeader(false);
-        var noValidatorBlockParent = xdcTestBlockchain.BlockTree.FindHeader(noValidatorBlock.ParentHash!);
+        XdcBlockHeader noValidatorBlock = GetLastHeader(false);
+        BlockHeader? noValidatorBlockParent = xdcTestBlockchain.BlockTree.FindHeader(noValidatorBlock.ParentHash!);
         noValidatorBlock.Validator = []; // empty
-        var result = xdcHeaderValidator.Validate(noValidatorBlock, noValidatorBlockParent!);
+        bool result = xdcHeaderValidator.Validate(noValidatorBlock, noValidatorBlockParent!);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void NonEpochSwitch_Block_With_ValidatorsSet()
     {
-        var nonEpochSwitchWithValidators = GetLastHeader(false);
+        XdcBlockHeader nonEpochSwitchWithValidators = GetLastHeader(false);
         nonEpochSwitchWithValidators.Validators = xdcTestBlockchain.MasterNodeCandidates.SelectMany(addr => addr.Address.Bytes).ToArray(); // implement helper to return acc1 addr bytes
-        var nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
-        var result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
+        BlockHeader? nonEpochSwitchWithValidatorsParent = xdcTestBlockchain.BlockTree.FindHeader(nonEpochSwitchWithValidators.ParentHash!);
+        bool result = xdcHeaderValidator.Validate(nonEpochSwitchWithValidators, nonEpochSwitchWithValidatorsParent);
         Assert.That(result, Is.False);
     }
 
     [Test]
     public void Valid_EpochSwitch_Block_Passes_Validation()
     {
-        var happyPathHeader = GetLastHeader(true);
-        var happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
-        var result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
+        XdcBlockHeader happyPathHeader = GetLastHeader(true);
+        BlockHeader? happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
+        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
         Assert.That(result, Is.True);
     }
 
     [Test]
     public void Valid_NonEpochSwitch_Block_Passes_Validation()
     {
-        var happyPathHeader = GetLastHeader(false);
-        var happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
+        XdcBlockHeader happyPathHeader = GetLastHeader(false);
+        BlockHeader? happyPathParent = xdcTestBlockchain.BlockTree.FindHeader(happyPathHeader.ParentHash!);
 
-        var result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
+        bool result = xdcHeaderValidator.Validate(happyPathHeader, happyPathParent);
         Assert.That(result, Is.True);
     }
 
     [Test]
     public void Block_With_QcSignature_Below_Threshold_Fails()
     {
-        var invalidQcSignatureBlock = GetLastHeader(false);
-        var invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
-        var proposedBlockInfo = new BlockRoundInfo(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
-        var voteForSign = new Vote(proposedBlockInfo, 1);
-        var validSigners = xdcTestBlockchain.MasterNodeCandidates
+        XdcBlockHeader invalidQcSignatureBlock = GetLastHeader(false);
+        XdcBlockHeader invalidQcSignatureBlockParent = (XdcBlockHeader)xdcTestBlockchain.BlockTree.FindHeader(invalidQcSignatureBlock.ParentHash!)!;
+        BlockRoundInfo proposedBlockInfo = new(invalidQcSignatureBlockParent!.Hash!, invalidQcSignatureBlockParent.ExtraConsensusData!.BlockRound, invalidQcSignatureBlockParent.Number);
+        Vote voteForSign = new(proposedBlockInfo, 1);
+        List<Signer> validSigners = xdcTestBlockchain.MasterNodeCandidates
             .Where(pvKey => invalidQcSignatureBlockParent.ValidatorsAddress!.Value.Contains(pvKey.Address))
             .Select(pvKey => new Signer(0, pvKey, xdcTestBlockchain.LogManager))
             .ToList();
@@ -269,23 +269,23 @@ internal class HeaderVerificationTests
         double threshold = xdcTestBlockchain.SpecProvider.GetXdcSpec(invalidQcSignatureBlock).CertificateThreshold;
 
         // Sign with only half of the valid signers to be below threshold
-        foreach (var signer in validSigners.Take((int)threshold - 1))
+        foreach (Signer? signer in validSigners.Take((int)threshold - 1))
         {
             Sign(voteForSign, signer);
             signatures.Add(voteForSign.Signature!);
         }
 
-        var quorumCert = new QuorumCertificate(proposedBlockInfo, signatures.ToArray(), 1);
-        var extra = new ExtraFieldsV2(proposedBlockInfo.Round, quorumCert);
-        var extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
+        QuorumCertificate quorumCert = new(proposedBlockInfo, signatures.ToArray(), 1);
+        ExtraFieldsV2 extra = new(proposedBlockInfo.Round, quorumCert);
+        byte[] extraInBytes = extraConsensusDataDecoder.Encode(extra).Bytes;
         invalidQcSignatureBlock.ExtraData = extraInBytes;
-        var result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
+        bool result = xdcHeaderValidator.Validate(invalidQcSignatureBlock, invalidQcSignatureBlockParent);
         Assert.That(result, Is.False);
     }
 
     private void Sign(Vote vote, Consensus.ISigner signer)
     {
-        var voteEncoder = new VoteDecoder();
+        VoteDecoder voteEncoder = new();
         KeccakRlpStream stream = new();
         voteEncoder.Encode(stream, vote, RlpBehaviors.ForSealing);
         vote.Signature = signer.Sign(stream.GetValueHash());
@@ -300,7 +300,7 @@ internal class HeaderVerificationTests
         }
         else
         {
-            var currentHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header;
+            XdcBlockHeader? currentHeader = (XdcBlockHeader)xdcTestBlockchain.BlockTree.Head!.Header;
             while (currentHeader is not null)
             {
                 if (xdcTestBlockchain.EpochSwitchManager.IsEpochSwitchAtBlock(currentHeader))
@@ -321,8 +321,8 @@ internal class HeaderVerificationTests
     }
     private Block GetLastBlock(bool isEpochSwitch)
     {
-        var header = GetLastHeader(isEpochSwitch);
-        var block = xdcTestBlockchain.BlockTree.FindBlock(header.Hash!);
+        XdcBlockHeader header = GetLastHeader(isEpochSwitch);
+        Block? block = xdcTestBlockchain.BlockTree.FindBlock(header.Hash!);
         if (block is null)
         {
             throw new InvalidOperationException("Block not found in the chain.");

@@ -8,12 +8,10 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class BlockInfoDecoder : RlpValueDecoder<BlockInfo>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
+    public sealed class BlockInfoDecoder() : RlpValueDecoder<BlockInfo>
     {
         public static BlockInfoDecoder Instance { get; } = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockInfoDecoder))]
-        public BlockInfoDecoder() { }
 
         public override void Encode(RlpStream stream, BlockInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

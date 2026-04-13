@@ -35,13 +35,13 @@ public class SeqlockCacheBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
-            var address = new Address(addressBytes);
-            var index = new UInt256((ulong)i);
+            Address address = new(addressBytes);
+            UInt256 index = new((ulong)i);
 
             _keys[i] = new StorageCell(address, index);
             _values[i] = new byte[32];
@@ -53,7 +53,7 @@ public class SeqlockCacheBenchmarks
         }
 
         // Create a key that won't be in the cache
-        var missAddressBytes = new byte[20];
+        byte[] missAddressBytes = new byte[20];
         random.NextBytes(missAddressBytes);
         _missKey = new StorageCell(new Address(missAddressBytes), UInt256.MaxValue);
     }
@@ -122,14 +122,14 @@ public class SeqlockCacheBenchmarks
     public byte[]? SeqlockCache_GetOrAdd_Miss()
     {
         // Use incrementing key to always miss
-        var key = new StorageCell(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
+        StorageCell key = new(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
         return _seqlockCache.GetOrAdd(in key, static (in StorageCell _) => new byte[32]);
     }
 
     [Benchmark]
     public byte[] ConcurrentDict_GetOrAdd_Miss()
     {
-        var key = new StorageCell(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
+        StorageCell key = new(_keys[0].Address, new UInt256((ulong)(KeyCount + _missCounter++)));
         return _concurrentDict.GetOrAdd(key, static _ => new byte[32]);
     }
 }
@@ -158,13 +158,13 @@ public class SeqlockCacheMixedWorkloadBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
-            var address = new Address(addressBytes);
-            var index = new UInt256((ulong)i);
+            Address address = new(addressBytes);
+            UInt256 index = new((ulong)i);
 
             _keys[i] = new StorageCell(address, index);
             _values[i] = new byte[32];
@@ -267,10 +267,10 @@ public class SeqlockCacheHitRateBenchmarks
         _keys = new StorageCell[KeyCount];
         _values = new byte[KeyCount][];
 
-        var random = new Random(42);
+        Random random = new(42);
         for (int i = 0; i < KeyCount; i++)
         {
-            var addressBytes = new byte[20];
+            byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
             _keys[i] = new StorageCell(new Address(addressBytes), new UInt256((ulong)i));
             _values[i] = new byte[32];

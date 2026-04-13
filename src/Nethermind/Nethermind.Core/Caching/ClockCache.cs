@@ -76,7 +76,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
 
     private bool SetSlow(TKey key, TValue val)
     {
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         // Recheck under lock
         if (_cacheMap.TryGetValue(key, out LruCacheItem ov))
@@ -151,7 +153,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
             return false;
         }
 
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         if (_cacheMap.Remove(key, out LruCacheItem ov))
         {
@@ -171,7 +175,9 @@ public sealed class ClockCache<TKey, TValue>(int maxCapacity, int? lockPartition
     {
         if (MaxCapacity == 0) return;
 
+#pragma warning disable IDE0008 // Type depends on #if ZK_EVM conditional
         using var lockRelease = _lock.Acquire();
+#pragma warning restore IDE0008
 
         base.Clear();
         _cacheMap.NoResizeClear();

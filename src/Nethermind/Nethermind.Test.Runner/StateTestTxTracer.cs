@@ -118,8 +118,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
         if (IsTracingDetailedMemory)
         {
-            var length = 2;
-            var wordList = memoryTrace.ToHexWordList();
+            int length = 2;
+            string[] wordList = memoryTrace.ToHexWordList();
             for (int i = 0; i < wordList.Length; i++)
             {
                 length += wordList[i].Length;

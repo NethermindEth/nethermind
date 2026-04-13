@@ -19,41 +19,28 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
+    public class NettyHandshakeHandler(
+        IMessageSerializationService serializationService,
+        IHandshakeService handshakeService,
+        ISession session,
+        HandshakeRole role,
+        ILogManager logManager,
+        IEventExecutorGroup group,
+        TimeSpan sendLatency) : SimpleChannelInboundHandler<IByteBuffer>
     {
         private readonly EncryptionHandshake _handshake = new();
-        private readonly IMessageSerializationService _serializationService;
-        private readonly ILogManager _logManager;
-        private readonly IEventExecutorGroup _group;
-        private readonly ILogger _logger;
-        private readonly HandshakeRole _role;
+        private readonly IMessageSerializationService _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IEventExecutorGroup _group = group;
+        private readonly ILogger _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
+        private readonly HandshakeRole _role = role;
 
-        private readonly IHandshakeService _service;
-        private readonly ISession _session;
+        private readonly IHandshakeService _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
+        private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
         private PublicKey RemoteId => _session.RemoteNodeId;
-        private readonly TaskCompletionSource<object> _initCompletionSource;
+        private readonly TaskCompletionSource<object> _initCompletionSource = new();
         private IChannel _channel;
-        private readonly TimeSpan _sendLatency;
-
-        public NettyHandshakeHandler(
-            IMessageSerializationService serializationService,
-            IHandshakeService handshakeService,
-            ISession session,
-            HandshakeRole role,
-            ILogManager logManager,
-            IEventExecutorGroup group,
-            TimeSpan sendLatency)
-        {
-            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
-            _role = role;
-            _group = group;
-            _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
-            _session = session ?? throw new ArgumentNullException(nameof(session));
-            _initCompletionSource = new TaskCompletionSource<object>();
-            _sendLatency = sendLatency;
-        }
+        private readonly TimeSpan _sendLatency = sendLatency;
 
         public override void ChannelActive(IChannelHandlerContext context)
         {

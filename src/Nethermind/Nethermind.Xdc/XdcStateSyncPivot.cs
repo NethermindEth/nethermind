@@ -12,27 +12,20 @@ using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.Xdc;
 
-public class XdcStateSyncPivot : IStateSyncPivot
+public class XdcStateSyncPivot(
+    IBlockTree blockTree,
+    ISyncConfig syncConfig,
+    IStateReader stateReader,
+    XdcStateSyncSnapshotManager syncSnapshotManager) : IStateSyncPivot
 {
-    private readonly IBlockTree _blockTree;
-    private readonly ISyncConfig _syncConfig;
-    private readonly IStateReader _stateReader;
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly ISyncConfig _syncConfig = syncConfig;
+    private readonly IStateReader _stateReader = stateReader;
     private readonly Queue<XdcBlockHeader> _targets = new();
     private XdcBlockHeader? _pivotHeader;
     private bool _initialized;
 
-    private readonly XdcStateSyncSnapshotManager _syncSnapshotManager;
-    public XdcStateSyncPivot(
-        IBlockTree blockTree,
-        ISyncConfig syncConfig,
-        IStateReader stateReader,
-        XdcStateSyncSnapshotManager syncSnapshotManager)
-    {
-        _blockTree = blockTree;
-        _syncConfig = syncConfig;
-        _stateReader = stateReader;
-        _syncSnapshotManager = syncSnapshotManager;
-    }
+    private readonly XdcStateSyncSnapshotManager _syncSnapshotManager = syncSnapshotManager;
 
     public BlockHeader? GetPivotHeader()
     {

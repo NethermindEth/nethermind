@@ -6,14 +6,9 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Network.Discovery.Messages;
 
-public class NodeIdResolver : INodeIdResolver
+public class NodeIdResolver(IEcdsa ecdsa) : INodeIdResolver
 {
-    private readonly IEcdsa _ecdsa;
-
-    public NodeIdResolver(IEcdsa ecdsa)
-    {
-        _ecdsa = ecdsa;
-    }
+    private readonly IEcdsa _ecdsa = ecdsa;
 
     public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData)
     {

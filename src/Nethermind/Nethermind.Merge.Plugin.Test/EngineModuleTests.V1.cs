@@ -1531,14 +1531,14 @@ public partial class EngineModuleTests
     [Test]
     public void Should_return_expected_capabilities_for_mainnet()
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
         string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
-        var expectedMethods = new string[]
+        string[] expectedMethods = new string[]
         {
             nameof(IEngineRpcModule.engine_getClientVersionV1),
 
@@ -1571,10 +1571,10 @@ public partial class EngineModuleTests
     [Test]
     public async Task Should_warn_for_missing_capabilities()
     {
-        var loggerManager = Substitute.For<ILogManager>();
-        var iLogger = Substitute.For<InterfaceLogger>();
+        ILogManager loggerManager = Substitute.For<ILogManager>();
+        InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
-        var logger = new ILogger(iLogger);
+        ILogger logger = new(iLogger);
         loggerManager.GetClassLogger<ExchangeCapabilitiesHandler>().Returns(logger);
 
         using MergeTestBlockchain chain = await CreateBaseBlockchain()

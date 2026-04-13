@@ -41,10 +41,10 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             Span<byte> buffer = stackalloc byte[32];
-            var iterator = new KeccaksIterator(entry.TopicsRlp, buffer);
+            KeccaksIterator iterator = new(entry.TopicsRlp, buffer);
             for (int i = 0; i < expressions.Length; i++)
             {
-                if (iterator.TryGetNext(out var keccak))
+                if (iterator.TryGetNext(out Hash256StructRef keccak))
                 {
                     if (expressions[i].Accepts(ref keccak))
                     {

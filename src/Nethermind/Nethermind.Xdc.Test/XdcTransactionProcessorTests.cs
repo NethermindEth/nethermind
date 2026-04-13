@@ -131,20 +131,15 @@ internal class XdcTransactionProcessorTests
         }
     }
 
-    private class TestXdcTransactionProcessor : XdcTransactionProcessor
+    private class TestXdcTransactionProcessor(
+        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+        ISpecProvider? specProvider,
+        IWorldState? worldState,
+        IVirtualMachine? virtualMachine,
+        ICodeInfoRepository? codeInfoRepository,
+        ILogManager? logManager,
+        IMasternodeVotingContract masternodeVotingContract) : XdcTransactionProcessor(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, masternodeVotingContract)
     {
-        public TestXdcTransactionProcessor(
-            ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-            ISpecProvider? specProvider,
-            IWorldState? worldState,
-            IVirtualMachine? virtualMachine,
-            ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager,
-            IMasternodeVotingContract masternodeVotingContract)
-            : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager, masternodeVotingContract)
-        {
-        }
-
         public void TestPayFees(
             Transaction tx,
             XdcBlockHeader header,

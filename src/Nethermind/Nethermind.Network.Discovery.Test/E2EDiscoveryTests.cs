@@ -34,7 +34,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
         ConfigProvider configProvider = new();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];
 
@@ -95,7 +95,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         foreach (IContainer node in nodes)
         {
             IPeerPool pool = node.Resolve<IPeerPool>();
-            HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
+            HashSet<PublicKey> expectedKeys = new(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
             Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),

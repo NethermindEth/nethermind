@@ -171,7 +171,7 @@ public class BlockForRpc
         if (transactions.Length == 0) return Array.Empty<Hash256>();
 
         Hash256[] hashes = new Hash256[transactions.Length];
-        for (var i = 0; i < transactions.Length; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
             hashes[i] = transactions[i].Hash;
         }
@@ -184,7 +184,7 @@ public class BlockForRpc
         if (transactions.Length == 0) return Array.Empty<TransactionForRpc>();
 
         TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
-        for (var i = 0; i < transactions.Length; i++)
+        for (int i = 0; i < transactions.Length; i++)
         {
             TransactionForRpcContext extraData = new(
                 chainId: chainId,
@@ -204,7 +204,7 @@ public class BlockForRpc
         if (headers.Length == 0) return Array.Empty<Hash256>();
 
         Hash256[] hashes = new Hash256[headers.Length];
-        for (var i = 0; i < headers.Length; i++)
+        for (int i = 0; i < headers.Length; i++)
         {
             hashes[i] = headers[i].Hash;
         }

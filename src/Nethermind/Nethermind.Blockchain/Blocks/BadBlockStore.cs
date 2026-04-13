@@ -42,7 +42,7 @@ public class BadBlockStore(IDb blockDb, long maxSize) : IBadBlockStore
         int toDelete = (int)(blockDb.GatherMetric().Size - maxSize!);
         if (toDelete > 0)
         {
-            foreach (var blockToDelete in GetAll().Take(toDelete))
+            foreach (Block blockToDelete in GetAll().Take(toDelete))
             {
                 Delete(blockToDelete.Number, blockToDelete.Hash);
             }

@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected T Deserialize<T>(byte[] data) where T : P2PMessage
         {
-            var size = data.Length;
+            int size = data.Length;
             try
             {
                 return _serializer.Deserialize<T>(data);

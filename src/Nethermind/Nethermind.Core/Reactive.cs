@@ -10,18 +10,13 @@ namespace Nethermind.Core
         /// <summary>
         /// Represents an Action-based disposable.
         /// </summary>
-        public sealed class AnonymousDisposable : IDisposable
+        /// <remarks>
+        /// Constructs a new disposable with the given action used for disposal.
+        /// </remarks>
+        /// <param name="dispose">Disposal action which will be run upon calling Dispose.</param>
+        public sealed class AnonymousDisposable(Action dispose) : IDisposable
         {
-            private volatile Action? _dispose;
-
-            /// <summary>
-            /// Constructs a new disposable with the given action used for disposal.
-            /// </summary>
-            /// <param name="dispose">Disposal action which will be run upon calling Dispose.</param>
-            public AnonymousDisposable(Action dispose)
-            {
-                _dispose = dispose;
-            }
+            private volatile Action? _dispose = dispose;
 
             /// <summary>
             /// Gets a value that indicates whether the object is disposed.

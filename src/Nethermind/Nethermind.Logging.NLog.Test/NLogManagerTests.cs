@@ -16,7 +16,7 @@ namespace Nethermind.Logging.NLog.Test
         [Test]
         public void Logger_name_is_set_to_full_class_name()
         {
-            NLogManager manager = new NLogManager("test", null);
+            NLogManager manager = new("test", null);
             NLogLogger logger = (NLogLogger)manager.GetClassLogger<NLogManagerTests>().UnderlyingLogger;
             Assert.That(logger.Name, Is.EqualTo(GetType().FullName.Replace("Nethermind.", string.Empty)));
         }
@@ -53,7 +53,7 @@ namespace Nethermind.Logging.NLog.Test
         {
             _ = new NLogManager("test", null, "*:Error");
             LogManager.Configuration.LoggingRules.Should().BeEquivalentTo(
-                new LoggingRule[] { new LoggingRule("*", global::NLog.LogLevel.Error, null) },
+                new LoggingRule[] { new("*", global::NLog.LogLevel.Error, null) },
                 static c => c.Excluding(static r => r.Targets));
         }
     }

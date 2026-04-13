@@ -9,24 +9,16 @@ using Nethermind.Synchronization;
 
 namespace Nethermind.Merge.Plugin;
 
-public class MergeBetterPeerStrategy : IBetterPeerStrategy
+public class MergeBetterPeerStrategy(
+    IBetterPeerStrategy preMergeBetterPeerStrategy,
+    IPoSSwitcher poSSwitcher,
+    IBeaconPivot beaconPivot,
+    ILogManager logManager) : IBetterPeerStrategy
 {
-    private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy;
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IBeaconPivot _beaconPivot;
-    private readonly ILogger _logger;
-
-    public MergeBetterPeerStrategy(
-        IBetterPeerStrategy preMergeBetterPeerStrategy,
-        IPoSSwitcher poSSwitcher,
-        IBeaconPivot beaconPivot,
-        ILogManager logManager)
-    {
-        _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
-        _poSSwitcher = poSSwitcher;
-        _beaconPivot = beaconPivot;
-        _logger = logManager.GetClassLogger<MergeBetterPeerStrategy>();
-    }
+    private readonly IBetterPeerStrategy _preMergeBetterPeerStrategy = preMergeBetterPeerStrategy;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
+    private readonly IBeaconPivot _beaconPivot = beaconPivot;
+    private readonly ILogger _logger = logManager.GetClassLogger<MergeBetterPeerStrategy>();
 
     public int Compare(in (UInt256? TotalDifficulty, long Number) valueX, in (UInt256? TotalDifficulty, long Number) valueY) =>
         ShouldApplyPreMergeLogic(valueX.TotalDifficulty, valueY.TotalDifficulty)

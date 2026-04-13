@@ -616,7 +616,7 @@ public class TraceRpcModuleTests
             .SignedAndResolved(TestItem.PrivateKeyC)
             .WithIsServiceTransaction(true).TestObject;
         await blockchain.AddBlockMayMissTx(serviceTransaction);
-        BlockParameter blockParameter = new BlockParameter(BlockParameterType.Latest);
+        BlockParameter blockParameter = new(BlockParameterType.Latest);
         string[] traceTypes = { "trace" };
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(blockParameter, traceTypes);
         traces.Data.First().Action!.Result!.GasUsed.Should().Be(0);
@@ -922,7 +922,7 @@ public class TraceRpcModuleTests
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_replayBlockTransactions(new BlockParameter(blockchain.BlockFinder.FindLatestBlock()!.Number), traceTypes);
         traces.Data.Should().HaveCount(1);
-        var state = traces.Data.ElementAt(0).StateChanges!;
+        Dictionary<Address, ParityAccountStateChange> state = traces.Data.ElementAt(0).StateChanges!;
 
         state.Count.Should().Be(3);
         state[TestItem.AddressA].Nonce!.Before.Should().Be(accountA.Nonce);
@@ -973,8 +973,8 @@ public class TraceRpcModuleTests
     )]
     public async Task Trace_call_with_state_override(string name, string transactionJson, string traceType, string stateOverrideJson, string expectedResult)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         Context context = new();
         await context.Build(new TestSpecProvider(Prague.Instance));
@@ -997,21 +997,21 @@ public class TraceRpcModuleTests
     )]
     public async Task Trace_call_with_state_override_does_not_affect_other_calls(string transactionJson, string traceType, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         Context context = new();
         await context.Build();
 
-        var traceTypes = new[] { traceType };
+        string[] traceTypes = new[] { traceType };
 
-        var resultOverrideBefore = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultOverrideBefore = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
 
-        var resultNoOverride = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultNoOverride = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null);
 
-        var resultOverrideAfter = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
+        string resultOverrideAfter = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_call",
             transaction, traceTypes, null, stateOverride);
 
         using (new AssertionScope())
