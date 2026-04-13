@@ -31,7 +31,7 @@ public class NodeStatsTests
     [TestCase(TransferSpeedType.NodeData)]
     public void TransferSpeedCaptureTest(TransferSpeedType speedType)
     {
-        _nodeStats = new NodeStatsLight(_node, 0.5m);
+        _nodeStats = new NodeStatsLight(_node, 0.5f);
 
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 30);
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 51);
@@ -47,7 +47,7 @@ public class NodeStatsTests
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 110);
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 133);
 
-        var av = _nodeStats.GetAverageTransferSpeed(speedType);
+        long? av = _nodeStats.GetAverageTransferSpeed(speedType);
         Assert.That(av, Is.EqualTo(122));
 
         _nodeStats.AddTransferSpeedCaptureEvent(speedType, 0);
@@ -62,7 +62,7 @@ public class NodeStatsTests
     {
         _nodeStats = new NodeStatsLight(_node);
 
-        var isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
+        (bool Result, NodeStatsEventType? DelayReason) isConnDelayed = _nodeStats.IsConnectionDelayed(DateTime.UtcNow);
         Assert.That(isConnDelayed.Result, Is.False, "before disconnect");
 
         _nodeStats.AddNodeStatsDisconnectEvent(DisconnectType.Remote, DisconnectReason.Other);

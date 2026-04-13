@@ -26,7 +26,7 @@ public class NodesLocator : INodesLocator
 
     public NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryManager, IDiscoveryConfig? discoveryConfig, ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodesLocator>() ?? throw new ArgumentNullException(nameof(logManager));
         _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
@@ -57,7 +57,8 @@ public class NodesLocator : INodesLocator
         Node[] tryCandidates = new Node[_discoveryConfig.BucketSize]; // max bucket size here
         for (int i = 0; i < _discoveryConfig.MaxDiscoveryRounds; i++)
         {
-            if (ShouldThrottle) await Task.Delay(TimeSpan.FromSeconds(1));
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ShouldThrottle) await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             Array.Clear(tryCandidates, 0, tryCandidates.Length);
             int candidatesCount;
 
@@ -127,10 +128,11 @@ public class NodesLocator : INodesLocator
             int nodesTriedCount = 0;
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
                 IEnumerable<Node> nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count);
 
-                using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes).ToPooledList(count);
+                using ArrayPoolList<Task<Result>> sendFindNodeTasks = SendFindNodes(searchedNodeId, nodesToSend, alreadyTriedNodes, cancellationToken).ToPooledList(count);
                 Result[] results = await Task.WhenAll<Result>(sendFindNodeTasks.AsSpan());
 
                 if (results.Length == 0)
@@ -162,7 +164,7 @@ public class NodesLocator : INodesLocator
         }
 
         int nodesCountAfterDiscovery = 0;
-        var buckets = _nodeTable.Buckets;
+        NodeBucket[] buckets = _nodeTable.Buckets;
         for (int i = 0; i < buckets.Length; i++)
         {
             nodesCountAfterDiscovery += buckets[i].BondedItemsCount;
@@ -179,12 +181,13 @@ public class NodesLocator : INodesLocator
     private IEnumerable<Task<Result>> SendFindNodes(
         byte[]? searchedNodeId,
         IEnumerable<Node?> nodesToSend,
-        ISet<Hash256> alreadyTriedNodes)
+        ISet<Hash256> alreadyTriedNodes,
+        CancellationToken cancellationToken)
     {
         foreach (Node? node in nodesToSend.Where(static n => n is not null))
         {
             alreadyTriedNodes.Add(node!.IdHash);
-            yield return SendFindNode(node, searchedNodeId);
+            yield return SendFindNode(node, searchedNodeId, cancellationToken);
         }
     }
 
@@ -228,7 +231,7 @@ public class NodesLocator : INodesLocator
         _logger.Trace(sb.ToString());
     }
 
-    private async Task<Result> SendFindNode(Node destinationNode, byte[]? searchedNodeId)
+    private async Task<Result> SendFindNode(Node destinationNode, byte[]? searchedNodeId, CancellationToken cancellationToken)
     {
         try
         {
@@ -239,7 +242,7 @@ public class NodesLocator : INodesLocator
                 await nodeManager.SendFindNode(searchedNodeId ?? _masterNode!.Id.Bytes);
             }
 
-            return await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MsgType.Neighbors, _discoveryConfig.SendNodeTimeout)
+            return await _discoveryManager.WasMessageReceived(destinationNode.IdHash, MsgType.Neighbors, _discoveryConfig.SendNodeTimeout, cancellationToken)
                 ? Result.Success
                 : Result.Fail($"Did not receive Neighbors response in time from: {destinationNode.Host}");
         }

@@ -28,18 +28,18 @@ public class OptimismWithdrawalProcessor : IWithdrawalProcessor
     {
         _state = state;
         _specHelper = specHelper;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<OptimismWithdrawalProcessor>();
     }
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
-        var header = block.Header;
+        BlockHeader header = block.Header;
 
         if (_specHelper.IsIsthmus(header))
         {
             _state.Commit(spec, commitRoots: true);
 
-            if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out var account))
+            if (_state.TryGetAccount(PreDeploys.L2ToL1MessagePasser, out AccountStruct account))
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Setting {nameof(BlockHeader.WithdrawalsRoot)} to {account.StorageRoot}");

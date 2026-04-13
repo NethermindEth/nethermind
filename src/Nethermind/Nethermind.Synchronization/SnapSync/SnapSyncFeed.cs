@@ -30,7 +30,7 @@ namespace Nethermind.Synchronization.SnapSync
         public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
         {
             _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<SnapSyncFeed>();
         }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
@@ -145,7 +145,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 lock (_syncLock)
                 {
-                    foreach (var item in _resultLog)
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
                         if (item.result == AddRangeResult.OK)
                         {

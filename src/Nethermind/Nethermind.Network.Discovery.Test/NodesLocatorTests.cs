@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.Test
                 _nodeTable,
                 new NetworkStorage(new MemDb(), LimboLogs.Instance),
                 config,
-                null,
+                new NetworkConfig(),
                 LimboLogs.Instance);
             _nodesLocator = new NodesLocator(_nodeTable, manager, config, LimboLogs.Instance);
         }

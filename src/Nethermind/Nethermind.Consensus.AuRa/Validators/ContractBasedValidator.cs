@@ -89,7 +89,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             // but let's leave it here just in case, it does not harm
             if (Validators is null || (!isConsecutiveBlock && !isInitBlock))
             {
-                var parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                BlockHeader parentHeader = BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 Validators = isInitBlock || !isInProcessedRange ? LoadValidatorsFromContract(parentHeader) : ValidatorStore.GetValidators(block.Number);
 
                 if (isMainChainProcessing)
@@ -138,13 +138,13 @@ namespace Nethermind.Consensus.AuRa.Validators
         private PendingValidators TryGetInitChangeFromPastBlocks(Hash256 blockHash)
         {
             PendingValidators pendingValidators = null;
-            var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
-            var toBlock = Math.Max(lastFinalized, InitBlockNumber);
-            var block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+            long lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
+            long toBlock = Math.Max(lastFinalized, InitBlockNumber);
+            Block block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)
             {
-                var receipts = _receiptFinder.Get(block) ?? [];
-                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
+                TxReceipt[] receipts = _receiptFinder.Get(block) ?? [];
+                if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[] potentialValidators))
                 {
                     if (Validators.SequenceEqual(potentialValidators))
                     {
@@ -168,7 +168,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 ValidatorStore.SetValidators(block.Number, LoadValidatorsFromContract(block.Header));
             }
 
-            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out var potentialValidators))
+            if (ValidatorContract.CheckInitiateChangeEvent(block.Header, receipts, out Address[] potentialValidators))
             {
                 bool isProducingBlock = options.ContainsFlag(ProcessingOptions.ProducingBlock);
 
@@ -190,8 +190,8 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProducingBlock)
         {
-            var validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
-            var isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
+            ValidatorInfo validatorsInfo = ValidatorStore.GetValidatorsInfo(block.Number);
+            bool isInitialValidatorSet = validatorsInfo.FinalizingBlockNumber == InitBlockNumber
                                         && validatorsInfo.PreviousFinalizingBlockNumber < InitBlockNumber;
 
             if (InitBlockNumber == block.Number || (!isInitialValidatorSet && validatorsInfo.FinalizingBlockNumber == block.Number - 1))
@@ -210,7 +210,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             try
             {
-                var validators = ValidatorContract.GetValidators(parentHeader);
+                Address[] validators = ValidatorContract.GetValidators(parentHeader);
 
                 if (validators.Length == 0)
                 {

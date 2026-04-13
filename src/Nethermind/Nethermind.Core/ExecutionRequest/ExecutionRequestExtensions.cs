@@ -3,11 +3,17 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.ExecutionRequest;
+
+using SHA256 =
+#if ZK_EVM
+    ExecutionRequestExtensions.Sha256;
+#else
+    System.Security.Cryptography.SHA256;
+#endif
 
 public static class ExecutionRequestExtensions
 {
@@ -22,19 +28,14 @@ public static class ExecutionRequestExtensions
     public const int ConsolidationRequestsBytesSize = Address.Size + PublicKeySize /*source_pubkey: Bytes48*/ + PublicKeySize /*target_pubkey: Bytes48*/;
     public const int MaxRequestsCount = 3;
 
-
-
     public static readonly byte[][] EmptyRequests = [];
     public static readonly Hash256 EmptyRequestsHash = CalculateHashFromFlatEncodedRequests(EmptyRequests);
 
     [SkipLocalsInit]
     public static Hash256 CalculateHashFromFlatEncodedRequests(byte[][]? flatEncodedRequests)
     {
-        // make sure that length is 3 or less elements
-        if (flatEncodedRequests is null)
-        {
-            throw new ArgumentException("Flat encoded requests must be an array");
-        }
+        // TODO: Make sure that length <= 3
+        ArgumentNullException.ThrowIfNull(flatEncodedRequests);
 
         using ArrayPoolListRef<byte> concatenatedHashes = new(Hash256.Size * MaxRequestsCount);
         foreach (byte[] requests in flatEncodedRequests)
@@ -86,4 +87,18 @@ public static class ExecutionRequestExtensions
             return buffer.ToArray();
         }
     }
+
+#if ZK_EVM
+    internal static class Sha256
+    {
+        internal static byte[] HashData(ReadOnlySpan<byte> data)
+        {
+            byte[] output = new byte[System.Security.Cryptography.SHA256.HashSizeInBytes];
+
+            ZiskBindings.Crypto.sha256_c(data, (nuint)data.Length, output);
+
+            return output;
+        }
+    }
+#endif
 }

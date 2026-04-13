@@ -70,7 +70,7 @@ public class MultipleUnsignedOperations
     public void GlobalSetup()
     {
         _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+        _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
         _stateProvider.Commit(_spec);
 
         Console.WriteLine(MuirGlacier.Instance);

@@ -61,7 +61,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         StepDependencyException.ThrowIfNull(_api);
 
-        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new();
 
         IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
@@ -92,7 +92,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public Task Init(INethermindApi api)
     {
         _api = (OptimismNethermindApi)api;
-        _logger = _api.LogManager.GetClassLogger();
+        _logger = _api.LogManager.GetClassLogger<OptimismPlugin>();
 
         ArgumentNullException.ThrowIfNull(_api.BlockTree);
         ArgumentNullException.ThrowIfNull(_api.EthereumEcdsa);

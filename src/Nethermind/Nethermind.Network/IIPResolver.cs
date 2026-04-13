@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network
@@ -10,6 +11,6 @@ namespace Nethermind.Network
     {
         IPAddress LocalIp { get; }
         IPAddress ExternalIp { get; }
-        Task Initialize();
+        Task Initialize(CancellationToken cancellationToken = default);
     }
 }

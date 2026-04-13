@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 
@@ -24,7 +23,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> testResults = new List<EthereumTestResult>();
+            List<EthereumTestResult> testResults = new();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             foreach (GeneralStateTest test in tests)
@@ -49,7 +48,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     else
                     {
                         WriteRed("FAIL");
-                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                        NLogManager manager = new(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);

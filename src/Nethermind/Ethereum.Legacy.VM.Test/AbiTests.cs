@@ -12,7 +12,7 @@ namespace Ethereum.Legacy.VM.Test;
 
 internal class AbiTests
 {
-    private static readonly Dictionary<string, AbiType> TypesByName = new Dictionary<string, AbiType>
+    private static readonly Dictionary<string, AbiType> TypesByName = new()
     {
         {"uint256", AbiType.UInt256},
         {"uint32[]", new AbiArray(new AbiUInt(32))},
@@ -21,34 +21,27 @@ internal class AbiTests
         {"address", AbiType.Address}
     };
 
-    private static AbiType ToAbiType(string typeName)
-    {
-        return TypesByName[typeName];
-    }
+    private static AbiType ToAbiType(string typeName) => TypesByName[typeName];
 
-    private static AbiTest Convert(string name, AbiTestJson testJson)
-    {
-        AbiTest test = new();
-        test.Name = name;
-        test.Result = Bytes.FromHexString(testJson.Result);
-        test.Types = testJson.Types.Select(ToAbiType).ToArray();
-        test.Args = testJson.Args.Select(TestLoader.PrepareInput).ToArray();
-        return test;
-    }
+    private static AbiTest Convert(string name, AbiTestJson testJson) =>
+        new()
+        {
+            Name = name,
+            Result = Bytes.FromHexString(testJson.Result),
+            Types = testJson.Types.Select(ToAbiType).ToArray(),
+            Args = testJson.Args.Select(TestLoader.PrepareInput).ToArray()
+        };
 
-    private static IEnumerable<AbiTest> LoadBasicAbiTests()
-    {
-        IEnumerable<AbiTest> tests = TestLoader.LoadFromFile<Dictionary<string, AbiTestJson>, AbiTest>(
+    private static IEnumerable<AbiTest> LoadBasicAbiTests() =>
+        TestLoader.LoadFromFile<Dictionary<string, AbiTestJson>, AbiTest>(
             "basic_abi_tests.json",
             allTests => allTests.Select(namedTest => Convert(namedTest.Key, namedTest.Value)));
-        return tests;
-    }
 
     [TestCaseSource(nameof(LoadBasicAbiTests))]
     public void Test(AbiTest abiTest)
     {
-        AbiEncoder encoder = new AbiEncoder();
-        AbiSignature signature = new AbiSignature(abiTest.Name, abiTest.Types);
+        AbiEncoder encoder = new();
+        AbiSignature signature = new(abiTest.Name, abiTest.Types);
         byte[] encoded = encoder.Encode(AbiEncodingStyle.IncludeSignature, signature, abiTest.Args).Slice(4);
         Assert.That(Bytes.AreEqual(abiTest.Result, encoded), Is.True);
     }

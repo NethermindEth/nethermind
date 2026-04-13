@@ -44,15 +44,23 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("{ \"blockNumber\": \"100\" }", true)]
         public void Cant_read_block_number_when_strict_hex_format_is_enabled(string input, bool throws)
         {
-            EthereumJsonSerializer.StrictHexFormat = true;
-            IJsonSerializer serializer = new EthereumJsonSerializer();
+            bool original = EthereumJsonSerializer.StrictHexFormat;
+            try
+            {
+                EthereumJsonSerializer.StrictHexFormat = true;
+                IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
+                Func<BlockParameter> action = () => serializer.Deserialize<BlockParameter>(input);
 
-            if (throws)
-                action.Should().Throw<FormatException>();
-            else
-                action.Should().NotThrow();
+                if (throws)
+                    action.Should().Throw<FormatException>();
+                else
+                    action.Should().NotThrow();
+            }
+            finally
+            {
+                EthereumJsonSerializer.StrictHexFormat = original;
+            }
         }
 
         [TestCase("null", BlockParameterType.Latest)]
@@ -111,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }
@@ -124,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }

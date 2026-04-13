@@ -33,11 +33,12 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
         typeof(StartMonitoring),
+        typeof(StartLogIndex)
     ];
 
     protected override void Load(ContainerBuilder builder)
     {
-        foreach (var builtInStep in BuiltInSteps)
+        foreach (StepInfo builtInStep in BuiltInSteps)
         {
             builder.AddStep(builtInStep);
         }

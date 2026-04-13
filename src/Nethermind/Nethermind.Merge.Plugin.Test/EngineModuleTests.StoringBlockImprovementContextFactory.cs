@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Events;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
@@ -30,7 +31,7 @@ public partial class BaseEngineModuleTests
             _skipDuplicatedContext = skipDuplicatedContext;
         }
 
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
             if (_skipDuplicatedContext

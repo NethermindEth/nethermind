@@ -55,7 +55,7 @@ public class ValidateSubmissionHandler
         _ethereumEcdsa = ethereumEcdsa;
         _flashbotsConfig = flashbotsConfig;
         _headerValidator = headerValidator;
-        _logger = logManager!.GetClassLogger();
+        _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
         _specProvider = specProvider;
         _blockProcessorEnv = blockProcessorEnv;
     }
@@ -205,7 +205,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 
@@ -239,7 +239,7 @@ public class ValidateSubmissionHandler
             {
                 if (withdrawal.Address == feeRecipient)
                 {
-                    amtBeforeOrWithdrawn += withdrawal.AmountInGwei;
+                    amtBeforeOrWithdrawn += withdrawal.AmountInWei;
                 }
             }
         }

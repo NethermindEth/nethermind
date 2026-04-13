@@ -51,7 +51,7 @@ public class TransactionProcessorEip7623Tests
 
     public void transaction_validation_intrinsic_below_floor(long gasLimit, bool executed)
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -60,7 +60,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(gasLimit)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -77,7 +77,7 @@ public class TransactionProcessorEip7623Tests
     [Test]
     public void balance_validation_intrinsic_below_floor()
     {
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -86,7 +86,7 @@ public class TransactionProcessorEip7623Tests
             .WithGasPrice(1)
             .WithMaxFeePerGas(1)
             .WithTo(TestItem.AddressB)
-            .WithValue(100.GWei())
+            .WithValue(100.GWei)
             .WithGasLimit(21010)
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
             .TestObject;
@@ -99,6 +99,6 @@ public class TransactionProcessorEip7623Tests
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         UInt256 balance = _stateProvider.GetBalance(TestItem.AddressA);
-        Assert.That(balance, Is.EqualTo(1.Ether() - 100.GWei() - 21010));
+        Assert.That(balance, Is.EqualTo(1.Ether - 100.GWei - 21010));
     }
 }

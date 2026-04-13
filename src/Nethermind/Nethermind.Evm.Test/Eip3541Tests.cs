@@ -77,13 +77,13 @@ namespace Nethermind.Evm.Test
 
         void DeployCodeAndAssertTx(string code, bool eip3541Enabled, ContractDeployment context, bool withoutAnyInvalidCodeErrors)
         {
-            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether);
 
             byte[] salt = { 4, 5, 6 };
             byte[] byteCode = Prepare.EvmCode
                 .FromCode(code)
                 .Done;
-            var createContract = context switch
+            byte[] createContract = context switch
             {
                 ContractDeployment.CREATE => Prepare.EvmCode.Create(byteCode, UInt256.Zero).Done,
                 ContractDeployment.CREATE2 => Prepare.EvmCode.Create2(byteCode, salt, UInt256.Zero).Done,
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
             long blockNumber = eip3541Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, createContract);
 
-            transaction.GasPrice = 20.GWei();
+            transaction.GasPrice = 20.GWei;
             transaction.To = null;
             transaction.Data = createContract;
             TestAllTracerWithOutput tracer = CreateTracer();

@@ -41,16 +41,18 @@ namespace Nethermind.Network.Rlpx.Handshake
             return contentLength;
         }
 
-        public AuthEip8Message Deserialize(IByteBuffer msgBytes)
+        public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
+            msgBytes.DeserializeRlp(Deserialize);
+
+        private static AuthEip8Message Deserialize(ref Rlp.ValueDecoderContext ctx)
         {
-            NettyRlpStream rlpStream = new(msgBytes);
             AuthEip8Message authMessage = new();
-            rlpStream.ReadSequenceLength();
-            ReadOnlySpan<byte> sigAllBytes = rlpStream.DecodeByteArraySpan(RlpLimit.L65);
+            ctx.ReadSequenceLength();
+            ReadOnlySpan<byte> sigAllBytes = ctx.DecodeByteArraySpan(RlpLimit.L65);
             Signature signature = new(sigAllBytes[..64], sigAllBytes[64]); // since Signature class is Ethereum style it expects V as the 65th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;
-            authMessage.PublicKey = new PublicKey(rlpStream.DecodeByteArraySpan(RlpLimit.L64));
-            authMessage.Nonce = rlpStream.DecodeByteArray();
+            authMessage.PublicKey = new PublicKey(ctx.DecodeByteArraySpan(RlpLimit.L64));
+            authMessage.Nonce = ctx.DecodeByteArray();
             return authMessage;
         }
     }

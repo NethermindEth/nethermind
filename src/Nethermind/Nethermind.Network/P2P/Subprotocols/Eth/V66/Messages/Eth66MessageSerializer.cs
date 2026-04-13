@@ -30,10 +30,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public TEth66Message Deserialize(IByteBuffer byteBuffer)
         {
-            NettyRlpStream rlpStream = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = byteBuffer.AsRlpContext();
             TEth66Message eth66Message = new();
-            rlpStream.ReadSequenceLength();
-            eth66Message.RequestId = rlpStream.DecodeLong();
+            ctx.ReadSequenceLength();
+            eth66Message.RequestId = ctx.DecodeLong();
+            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
             eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
             return eth66Message;
         }

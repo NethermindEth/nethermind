@@ -25,6 +25,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Db.LogIndex;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Benchmark
@@ -43,7 +44,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 .Build();
 
             IWorldState stateProvider = _container.Resolve<IMainProcessingContext>().WorldState;
-            stateProvider.CreateAccount(Address.Zero, 1000.Ether());
+            stateProvider.CreateAccount(Address.Zero, 1000.Ether);
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
@@ -80,6 +81,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 feeHistoryOracle,
                 _container.Resolve<IProtocolsManager>(),
                 _container.Resolve<IForkInfo>(),
+                new LogIndexConfig(),
                 new BlocksConfig().SecondsPerSlot);
         }
 

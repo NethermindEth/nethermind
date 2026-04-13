@@ -77,7 +77,7 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+    public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }
@@ -92,17 +92,17 @@ public class BaseSyncPeerMock : ISyncPeer, ISnapSyncPeer
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+    public virtual Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+    public virtual Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }
 
-    public virtual Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+    public virtual Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
     {
         throw new System.NotImplementedException();
     }

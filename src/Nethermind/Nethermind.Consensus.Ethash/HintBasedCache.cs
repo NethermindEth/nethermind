@@ -80,7 +80,7 @@ namespace Nethermind.Consensus.Ethash
                 if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
                 {
                     epochForGuid.Remove(alreadyCachedEpoch);
-                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out var epochValue))
+                    if (!_epochRefs.TryGetValue(alreadyCachedEpoch, out int epochValue))
                     {
                         throw new InvalidAsynchronousStateException("Epoch ref missing");
                     }
@@ -103,7 +103,7 @@ namespace Nethermind.Consensus.Ethash
                     uint epoch = (uint)i;
                     if (epochForGuid.Add(epoch))
                     {
-                        if (!_epochRefs.TryGetValue(epoch, out var epochValue))
+                        if (!_epochRefs.TryGetValue(epoch, out int epochValue))
                         {
                             epochValue = 0;
                             _epochRefs[epoch] = epochValue;

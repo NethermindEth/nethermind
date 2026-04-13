@@ -24,7 +24,7 @@ public class NodeTable : INodeTable
         INetworkConfig? networkConfig,
         ILogManager? logManager)
     {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger<NodeTable>() ?? throw new ArgumentNullException(nameof(logManager));
         _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
         _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
         _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator));
@@ -172,26 +172,7 @@ public class NodeTable : INodeTable
                 }
             }
 
-            _sortedNodes.Sort((Node a, Node b) =>
-            {
-                const int Closer = int.MinValue;
-                const int Further = int.MaxValue;
-
-                if (Nullable.Equals(a.ValidatedProtocol, b.ValidatedProtocol))
-                {
-                    return calculator.CalculateDistance(a.Id.Hash, idHash).CompareTo(calculator.CalculateDistance(b.Id.Hash, idHash));
-                }
-                else if (a.ValidatedProtocol.HasValue)
-                {
-                    // Prefer nodes validated on same protocol, network and fork
-                    return a.ValidatedProtocol == true ? Closer : Further;
-                }
-                else
-                {
-                    // b must have value; swap high and low from a
-                    return b.ValidatedProtocol == true ? Further : Closer;
-                }
-            });
+            _sortedNodes.Sort(new NodeDistanceComparer(calculator, idHash));
 
             if (_sortedNodes.Count > bucketSize)
             {
@@ -227,6 +208,30 @@ public class NodeTable : INodeTable
         readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
 
         readonly IEnumerator IEnumerable.GetEnumerator() => this;
+
+        private readonly struct NodeDistanceComparer(INodeDistanceCalculator calculator, Hash256 idHash) : IComparer<Node>
+        {
+            public int Compare(Node? a, Node? b)
+            {
+                const int Closer = int.MinValue;
+                const int Further = int.MaxValue;
+
+                if (Nullable.Equals(a!.ValidatedProtocol, b!.ValidatedProtocol))
+                {
+                    return calculator.CalculateDistance(a.Id.Hash, idHash).CompareTo(calculator.CalculateDistance(b.Id.Hash, idHash));
+                }
+                else if (a.ValidatedProtocol.HasValue)
+                {
+                    // Prefer nodes validated on same protocol, network and fork
+                    return a.ValidatedProtocol == true ? Closer : Further;
+                }
+                else
+                {
+                    // b must have value; swap high and low from a
+                    return b.ValidatedProtocol == true ? Further : Closer;
+                }
+            }
+        }
     }
 
     public void Initialize(PublicKey masterNodeKey)

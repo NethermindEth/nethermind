@@ -19,6 +19,7 @@ namespace Nethermind.Db
     public interface IColumnsWriteBatch<in TKey> : IDisposable
     {
         IWriteBatch GetColumnBatch(TKey key);
+        void Clear();
     }
 
 

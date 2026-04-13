@@ -87,13 +87,13 @@ namespace Nethermind.Trie
             }
 
             // Calculate the length to process using SIMD operations.
-            var length = (bytes.Length - processed) / Vector128<byte>.Count;
+            int length = (bytes.Length - processed) / Vector128<byte>.Count;
             // Check if SIMD hardware acceleration is available and if there is data to process.
             // This will be branch eliminated the asm if not supported.
             if (Vector128.IsHardwareAccelerated && length > 0)
             {
                 // Cast the byte span to a span of Vector128<byte> for SIMD processing.
-                ReadOnlySpan<Vector128<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector128<byte>>(ref MemoryMarshal.GetReference(bytes)), length);
+                ReadOnlySpan<Vector128<byte>> input = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.As<byte, Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(bytes), processed)), length);
                 length *= Vector128<byte>.Count;
                 // Cast the nibble span to a reference to first element of Vector128<ushort> as input doubles.
                 ref Vector128<ushort> output = ref Unsafe.As<byte, Vector128<ushort>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(nibbles), processed * 2));

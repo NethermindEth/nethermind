@@ -44,7 +44,7 @@ namespace Nethermind.Network.Discovery.Test
         public async Task ForwardsSentMessageToChannel()
         {
             byte[] data = [1, 2, 3];
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
             await _handler.SendAsync(data, to);
 
@@ -58,15 +58,15 @@ namespace Nethermind.Network.Discovery.Test
         public async Task ForwardsReceivedMessageToReader()
         {
             byte[] data = [1, 2, 3];
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            using var cancellationSource = new CancellationTokenSource(10_000);
+            using CancellationTokenSource cancellationSource = new(10_000);
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
 
-            var ctx = Substitute.For<IChannelHandlerContext>();
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
 
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));
 
@@ -84,15 +84,15 @@ namespace Nethermind.Network.Discovery.Test
         {
             byte[] data = [1, 2, 3];
             byte[] invalidData = Enumerable.Repeat((byte)1, size).ToArray();
-            var from = IPEndPoint.Parse("127.0.0.1:10000");
-            var to = IPEndPoint.Parse("127.0.0.1:10001");
+            IPEndPoint from = IPEndPoint.Parse("127.0.0.1:10000");
+            IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
 
-            using var cancellationSource = new CancellationTokenSource(10_000);
+            using CancellationTokenSource cancellationSource = new(10_000);
             IAsyncEnumerator<UdpReceiveResult> enumerator = _handler
                 .ReadMessagesAsync(cancellationSource.Token)
                 .GetAsyncEnumerator(cancellationSource.Token);
 
-            var ctx = Substitute.For<IChannelHandlerContext>();
+            IChannelHandlerContext ctx = Substitute.For<IChannelHandlerContext>();
 
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer((byte[])invalidData.Clone()), from, to));
             _handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), from, to));

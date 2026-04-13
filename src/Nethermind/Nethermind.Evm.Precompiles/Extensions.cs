@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles.Bls;
 using System.Collections.Generic;
 
 namespace Nethermind.Evm.Precompiles;
@@ -14,7 +13,7 @@ public static class Extensions
     {
         OrderedDictionary<string, Address> precompiles = [];
 
-        AddPrecompile<EcRecoverPrecompile>();
+        AddPrecompile<ECRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
         AddPrecompile<Ripemd160Precompile>();
         AddPrecompile<IdentityPrecompile>();
@@ -38,23 +37,23 @@ public static class Extensions
 
         if (spec.IsEip4844Enabled)
         {
-            AddPrecompile<PointEvaluationPrecompile>();
+            AddPrecompile<KzgPointEvaluationPrecompile>();
         }
 
-        if (spec.Bls381Enabled)
+        if (spec.Bls12381Enabled)
         {
-            AddPrecompile<G1AddPrecompile>();
-            AddPrecompile<G1MSMPrecompile>();
-            AddPrecompile<G2AddPrecompile>();
-            AddPrecompile<G2MSMPrecompile>();
-            AddPrecompile<PairingCheckPrecompile>();
-            AddPrecompile<MapFpToG1Precompile>();
-            AddPrecompile<MapFp2ToG2Precompile>();
+            AddPrecompile<Bls12381G1AddPrecompile>();
+            AddPrecompile<Bls12381G1MsmPrecompile>();
+            AddPrecompile<Bls12381G2AddPrecompile>();
+            AddPrecompile<Bls12381G2MsmPrecompile>();
+            AddPrecompile<Bls12381PairingCheckPrecompile>();
+            AddPrecompile<Bls12381FpToG1Precompile>();
+            AddPrecompile<Bls12381Fp2ToG2Precompile>();
         }
 
         if (spec.IsEip7951Enabled)
         {
-            AddPrecompile<Secp256r1Precompile>();
+            AddPrecompile<SecP256r1Precompile>();
         }
 
         if (spec.IsRip7728Enabled)

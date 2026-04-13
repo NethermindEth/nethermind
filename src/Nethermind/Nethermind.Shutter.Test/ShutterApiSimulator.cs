@@ -70,12 +70,12 @@ public class ShutterApiSimulator(
 
     public void InsertShutterReceipts(Block block, in LogEntry[] logs)
     {
-        var receipts = new TxReceipt[logs.Length];
+        TxReceipt[] receipts = new TxReceipt[logs.Length];
         block.Header.Bloom = new(logs);
         // one log per receipt
         for (int i = 0; i < logs.Length; i++)
         {
-            var h = new byte[32];
+            byte[] h = new byte[32];
             _rnd.NextBytes(h);
             receipts[i] = Build.A.Receipt
                 .WithLogs([logs[i]])

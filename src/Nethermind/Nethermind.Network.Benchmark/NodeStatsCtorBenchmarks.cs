@@ -29,13 +29,13 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public void Light()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node);
+            _ = new NodeStatsLight(_node);
         }
 
         [Benchmark]
         public long LightRep()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node);
+            NodeStatsLight stats = new(_node);
             return stats.CurrentNodeReputation(_now);
         }
     }

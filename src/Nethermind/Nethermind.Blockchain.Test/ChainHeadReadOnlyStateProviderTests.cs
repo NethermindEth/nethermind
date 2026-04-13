@@ -9,6 +9,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test;
 
+[Parallelizable(ParallelScope.All)]
 public class ChainHeadReadOnlyStateProviderTests
 {
     [Test, MaxTime(Timeout.MaxTestTime)]

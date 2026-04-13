@@ -4,6 +4,7 @@
 using Lantern.Discv5.Enr;
 using Lantern.Discv5.Enr.Entries;
 using Lantern.Discv5.Enr.Identity.V4;
+using NSubstitute;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -13,6 +14,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 using System.Collections.Generic;
 using System.Net;
@@ -41,12 +43,17 @@ public class DiscoveryV5AppTests
         _discoveryDb = new MemDb();
         _legacyDiscoveryDb = new MemDb();
         _identityVerifier = new IdentityVerifierV4();
+        _discoveryV5App = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"));
+    }
+
+    private DiscoveryV5App CreateDiscoveryV5App(IPAddress externalIp)
+    {
         NetworkConfig networkConfig = new()
         {
             Bootnodes = [],
-            ExternalIp = IPAddress.Loopback.ToString()
+            ExternalIp = externalIp.ToString()
         };
-        _discoveryV5App = new DiscoveryV5App(
+        return new DiscoveryV5App(
             new InsecureProtectedPrivateKey(TestItem.PrivateKeyF),
             new FixedIpResolver(networkConfig),
             networkConfig,
@@ -64,17 +71,17 @@ public class DiscoveryV5AppTests
         _legacyDiscoveryDb.Dispose();
     }
 
-    private ENR CreateTestEnrBytes(Nethermind.Crypto.PrivateKey privateKey)
+    private ENR CreateTestEnrBytes(Nethermind.Crypto.PrivateKey privateKey, IPAddress? ipAddress = null, int port = 30303)
     {
         IdentitySignerV4 signer = new(privateKey.KeyBytes);
 
         ENR enr = new EnrBuilder()
             .WithIdentityScheme(_identityVerifier, signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Ip, new EntryIp(IPAddress.Loopback))
+            .WithEntry(EnrEntryKey.Ip, new EntryIp(ipAddress ?? IPAddress.Loopback))
             .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(signer.PublicKey))
-            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(30303))
-            .WithEntry(EnrEntryKey.Udp, new EntryUdp(30303))
+            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(port))
+            .WithEntry(EnrEntryKey.Udp, new EntryUdp(port))
             .Build();
 
         return enr;
@@ -118,5 +125,86 @@ public class DiscoveryV5AppTests
             Assert.That(_legacyDiscoveryDb, Has.Count.EqualTo(2), "Legacy DB should not be changed");
             Assert.That(_discoveryDb, Has.Count.EqualTo(0), "DB should not load any records");
         }
+    }
+
+    [Test]
+    public void Should_Reject_Private_Ip_Enr()
+    {
+        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Loopback);
+
+        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.False);
+        Assert.That(node, Is.Null);
+    }
+
+    [Test]
+    public void Should_Accept_Private_Ip_Enr_On_Private_Deployment()
+    {
+        DiscoveryV5App privateDiscoveryApp = CreateDiscoveryV5App(IPAddress.Loopback);
+        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Loopback);
+
+        bool result = privateDiscoveryApp.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Host, Is.EqualTo(IPAddress.Loopback.ToString()));
+    }
+
+    [Test]
+    public void Should_Accept_Public_Ip_Enr()
+    {
+        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+
+        bool result = _discoveryV5App.TryGetNodeFromEnr(enr, out Node? node);
+
+        Assert.That(result, Is.True);
+        Assert.That(node, Is.Not.Null);
+        Assert.That(node!.Host, Is.EqualTo("8.8.8.8"));
+    }
+
+    [Test]
+    public void TryEnqueueNewEnr_Should_Deduplicate()
+    {
+        Queue<IEnr> queue = new();
+        HashSet<IEnr> seenNodes = [];
+        ENR enr = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+
+        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, enr), Is.True);
+        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, enr), Is.False);
+        Assert.That(queue.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void TryEnqueueNewEnr_Should_Respect_Tracked_Cap()
+    {
+        Queue<IEnr> queue = new();
+        HashSet<IEnr> seenNodes = [];
+        for (int i = 0; i < DiscoveryV5App.MaxTrackedEnrsPerWalk; i++)
+        {
+            seenNodes.Add(Substitute.For<IEnr>());
+        }
+
+        ENR candidate = CreateTestEnrBytes(TestItem.PrivateKeyB, IPAddress.Parse("1.1.1.1"), port: 30304);
+
+        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, candidate), Is.False);
+        Assert.That(queue.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void TryEnqueueNewEnr_Should_Respect_Pending_Cap()
+    {
+        Queue<IEnr> queue = new();
+        ENR existing = CreateTestEnrBytes(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"));
+        for (int i = 0; i < DiscoveryV5App.MaxPendingEnrsPerWalk; i++)
+        {
+            queue.Enqueue(existing);
+        }
+
+        HashSet<IEnr> seenNodes = [];
+        ENR candidate = CreateTestEnrBytes(TestItem.PrivateKeyB, IPAddress.Parse("1.1.1.1"), port: 30304);
+
+        Assert.That(DiscoveryV5App.TryEnqueueNewEnr(queue, seenNodes, candidate), Is.False);
+        Assert.That(queue.Count, Is.EqualTo(DiscoveryV5App.MaxPendingEnrsPerWalk));
     }
 }

@@ -3,7 +3,8 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
@@ -17,8 +18,6 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public UInt256? MaxFeePerBlobGas { get; set; }
 
-    // TODO: Each item should be a 32 byte array
-    // Currently we don't enforce this (hashes can have any length)
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonDiscriminator]
     public byte[][]? BlobVersionedHashes { get; set; }
@@ -29,23 +28,47 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     [JsonConstructor]
     public BlobTransactionForRpc() { }
 
-    public BlobTransactionForRpc(Transaction transaction, int? txIndex = null, Hash256? blockHash = null, long? blockNumber = null, UInt256? baseFee = null, ulong? chainId = null)
-        : base(transaction, txIndex, blockHash, blockNumber, baseFee, chainId)
+    public BlobTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+        : base(transaction, extraData)
     {
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
-    public override Transaction ToTransaction()
+    public override Result<Transaction> ToTransaction(bool validateUserInput = false, IReleaseSpec? spec = null)
     {
-        var tx = base.ToTransaction();
+        if (BlobVersionedHashes is null || BlobVersionedHashes.Length == 0)
+            return RpcTransactionErrors.AtLeastOneBlobInBlobTransaction;
 
-        tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
-        tx.BlobVersionedHashes = BlobVersionedHashes;
+        foreach (byte[]? hash in BlobVersionedHashes)
+        {
+            if (hash is null || hash.Length != Eip4844Constants.BytesPerBlobVersionedHash)
+                return RpcTransactionErrors.InvalidBlobVersionedHashSize;
+
+            if (hash[0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                return RpcTransactionErrors.InvalidBlobVersionedHashVersion;
+        }
+
+        if (To is null)
+            return RpcTransactionErrors.MissingToInBlobTx;
+
+        if (validateUserInput && MaxFeePerBlobGas?.IsZero == true)
+            return RpcTransactionErrors.ZeroMaxFeePerBlobGas;
+
+        Result<Transaction> baseResult = base.ToTransaction(validateUserInput, spec);
+        if (!baseResult) return baseResult;
+
+        Transaction tx = baseResult.Data;
+
+        if (tx.SupportsBlobs)
+        {
+            tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
 
         return tx;
     }
 
-    public new static BlobTransactionForRpc FromTransaction(Transaction tx, TransactionConverterExtraData extraData)
-        => new(tx, txIndex: extraData.TxIndex, blockHash: extraData.BlockHash, blockNumber: extraData.BlockNumber, baseFee: extraData.BaseFee, chainId: extraData.ChainId);
+    public new static BlobTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
+        => new(tx, extraData);
 }

@@ -13,8 +13,11 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
 {
     protected TResult DecodeBase<TResult>(ref Rlp.ValueDecoderContext decoderContext, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
             return null;
+        }
 
         decoderContext.ReadSequenceLength();
         long number = decoderContext.DecodeLong();
@@ -24,7 +27,7 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     }
     public static Address[] DecodeAddressArray(ref Rlp.ValueDecoderContext decoderContext)
     {
-        if (decoderContext.IsNextItemNull())
+        if (decoderContext.IsNextItemEmptyList())
         {
             _ = decoderContext.ReadByte();
             return [];
@@ -47,25 +50,11 @@ internal abstract class BaseSnapshotDecoder<T> : RlpValueDecoder<T> where T : Sn
     public Rlp Encode(T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
-            return Rlp.OfEmptySequence;
+            return Rlp.OfEmptyList;
 
         RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
-    }
-
-    protected TResult DecodeBase<TResult>(RlpStream rlpStream, Func<long, Hash256, Address[], TResult> createSnapshot, RlpBehaviors rlpBehaviors = RlpBehaviors.None) where TResult : Snapshot
-    {
-        if (rlpStream.IsNextItemNull())
-            return null;
-
-        rlpStream.ReadSequenceLength();
-
-        long number = rlpStream.DecodeLong();
-        Hash256 hash256 = rlpStream.DecodeKeccak();
-        Address[] candidate = rlpStream.DecodeArray<Address>(s => s.DecodeAddress()) ?? [];
-
-        return createSnapshot(number, hash256, candidate);
     }
 
     public override void Encode(RlpStream stream, T item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

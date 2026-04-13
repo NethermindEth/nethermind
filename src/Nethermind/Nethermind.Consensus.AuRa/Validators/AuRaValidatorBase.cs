@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AuRaValidatorBase>() ?? throw new ArgumentNullException(nameof(logManager));
             InitBlockNumber = startBlockNumber;
             ForSealing = forSealing;
         }
@@ -48,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             if (!options.ContainsFlag(ProcessingOptions.ProducingBlock) && !block.IsGenesis)
             {
-                var auRaStep = block.Header.AuRaStep.Value;
+                long auRaStep = block.Header.AuRaStep.Value;
                 if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep, out Address expectedAddress))
                 {
                     string reason = $"Incorrect proposer at step {auRaStep}, expected {expectedAddress}, but found {block.Beneficiary}";

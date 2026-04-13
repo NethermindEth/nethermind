@@ -65,18 +65,20 @@ namespace Nethermind.Synchronization.Test
             report.WriteFullReport();
         }
 
-        [Test]
-        public void Can_write_report_update()
+        [TestCase(false, TestName = "Can_write_report_update")]
+        [TestCase(true, TestName = "Can_write_report_update_with_allocations")]
+        public void Can_write_report_update(bool withAllocations)
         {
             ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
 
             (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
             PeerInfo syncPeer2 = BuildPeer(true);
 
+            if (withAllocations)
+                syncPeer.TryAllocate(AllocationContexts.All);
+
             PeerInfo[] peers = { syncPeer, syncPeer2 };
-
             syncPeerPool.PeerCount.Returns(peers.Length);
-
             syncPeerPool.AllPeers.Returns(peers);
 
             SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
@@ -118,32 +120,12 @@ namespace Nethermind.Synchronization.Test
             IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+            StubSyncPeer syncPeer = new(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
             syncPeer.HeadNumber = head;
 
             PeerInfo peer = new(syncPeer);
             return (peer, syncPeer);
-        }
-
-        [Test]
-        public void Can_write_report_update_with_allocations()
-        {
-            ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-            (PeerInfo syncPeer, StubSyncPeer syncPeerSyncPeer) = BuildPeerWithStubSyncPeer(false);
-            PeerInfo syncPeer2 = BuildPeer(true);
-
-            PeerInfo[] peers = { syncPeer, syncPeer2 };
-            syncPeerPool.PeerCount.Returns(peers.Length);
-            syncPeerPool.AllPeers.Returns(peers);
-
-            SyncPeersReport report = new(syncPeerPool, Substitute.For<INodeStatsManager>(), NoErrorLimboLogs.Instance);
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
-
-            syncPeerSyncPeer.IsInitialized = true;
-            report.WriteAllocatedReport();
-            report.WriteFullReport();
         }
 
         [Test]

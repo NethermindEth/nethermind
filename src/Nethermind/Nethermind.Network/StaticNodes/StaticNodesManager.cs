@@ -16,7 +16,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.StaticNodes;
 
-public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger()), IStaticNodesManager
+public class StaticNodesManager(string staticNodesPath, ILogManager logManager) : NodesManager(staticNodesPath, logManager.GetClassLogger<StaticNodesManager>()), IStaticNodesManager
 {
     public IEnumerable<NetworkNode> Nodes => _nodes.Values;
 
@@ -40,7 +40,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
         if (_logger.IsInfo) _logger.Info($"Static node added: {enode}");
 
-        Node node = new(networkNode);
+        Node node = new(networkNode, isStatic: true);
         NodeAdded?.Invoke(this, new NodeEventArgs(node));
 
         if (updateFile)

@@ -101,18 +101,18 @@ namespace Nethermind.KeyStore
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            var serializedKey = ReadKey(address);
+            string serializedKey = ReadKey(address);
             if (serializedKey is null)
             {
                 return (null, Result.Fail("Cannot find key"));
             }
-            var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
+            KeyStoreItem keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
             if (keyStoreItem?.Crypto is null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
             }
 
-            var validationResult = Validate(keyStoreItem);
+            Result validationResult = Validate(keyStoreItem);
             if (validationResult.ResultType != ResultType.Success)
             {
                 return (null, validationResult);
@@ -123,11 +123,11 @@ namespace Nethermind.KeyStore
             byte[] cipher = Bytes.FromHexString(keyStoreItem.Crypto.CipherText);
             byte[] salt = Bytes.FromHexString(keyStoreItem.Crypto.KDFParams.Salt);
 
-            var kdfParams = keyStoreItem.Crypto.KDFParams;
-            var passBytes = password.ToByteArray(_keyStoreEncoding);
+            KdfParams kdfParams = keyStoreItem.Crypto.KDFParams;
+            byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
             byte[] derivedKey;
-            var kdf = keyStoreItem.Crypto.KDF.Trim();
+            string kdf = keyStoreItem.Crypto.KDF.Trim();
             switch (kdf)
             {
                 case "scrypt":
@@ -146,13 +146,13 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
 
-            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
+            Span<byte> restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
             if (!Bytes.AreEqual(mac, restoredMac))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
 
-            var cipherType = keyStoreItem.Crypto.Cipher.Trim();
+            string cipherType = keyStoreItem.Crypto.Cipher.Trim();
             byte[] decryptKey;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
@@ -175,7 +175,7 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
-            var geyKeyResult = GetKeyBytes(address, password);
+            (byte[] Key, Result Result) geyKeyResult = GetKeyBytes(address, password);
             if (geyKeyResult.Result.ResultType == ResultType.Failure)
             {
                 return (null, geyKeyResult.Result);
@@ -186,7 +186,7 @@ namespace Nethermind.KeyStore
         public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
         {
             (PrivateKey privateKey, Result result) = GetKey(address, password);
-            using var key = privateKey;
+            using PrivateKey key = privateKey;
             return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
@@ -203,15 +203,15 @@ namespace Nethermind.KeyStore
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            var privateKey = _privateKeyGenerator.Generate();
-            var result = StoreKey(privateKey, password);
+            PrivateKey privateKey = _privateKeyGenerator.Generate();
+            Result result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
 
         public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
         {
             (PrivateKey privateKey, Result result) = GenerateKey(password);
-            using var key = privateKey;
+            using PrivateKey key = privateKey;
             return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
@@ -227,14 +227,14 @@ namespace Nethermind.KeyStore
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            var salt = _cryptoRandom.GenerateRandomBytes(32);
-            var passBytes = password.ToByteArray(_keyStoreEncoding);
+            byte[] salt = _cryptoRandom.GenerateRandomBytes(32);
+            byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
-            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
+            byte[] derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
 
             byte[] encryptKey;
-            var kdf = _config.Kdf;
-            var cipherType = _config.Cipher;
+            string kdf = _config.Kdf;
+            string cipherType = _config.Cipher;
             if (kdf == "scrypt" && cipherType == "aes-128-cbc")
             {
                 encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes[..16].ToArray();
@@ -244,19 +244,19 @@ namespace Nethermind.KeyStore
                 encryptKey = derivedKey.Take(16).ToArray();
             }
 
-            var encryptContent = keyContent;
-            var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
+            byte[] encryptContent = keyContent;
+            byte[] iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
-            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
+            byte[] cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
             if (cipher is null)
             {
                 return Result.Fail("Error during encryption");
             }
 
-            var mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
+            Span<byte> mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
             string addressString = address.ToString(false, false);
-            var keyStoreItem = new KeyStoreItem
+            KeyStoreItem keyStoreItem = new()
             {
                 Address = addressString,
                 Crypto = new Crypto
@@ -294,13 +294,13 @@ namespace Nethermind.KeyStore
         {
             try
             {
-                var files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
-                var addresses = files.Select(Path.GetFileName).Select(static fn => fn.Split("--").LastOrDefault()).Where(static x => Address.IsValidAddress(x, false)).Select(static x => new Address(x)).ToArray();
+                string[] files = Directory.GetFiles(_keyStoreIOSettingsProvider.StoreDirectory, "UTC--*--*");
+                Address[] addresses = files.Select(Path.GetFileName).Select(static fn => fn.Split("--").LastOrDefault()).Where(static x => Address.IsValidAddress(x, false)).Select(static x => new Address(x)).ToArray();
                 return (addresses, Result.Success);
             }
             catch (Exception e)
             {
-                var msg = "Error during getting addresses";
+                string msg = "Error during getting addresses";
                 if (_logger.IsError) _logger.Error(msg, e);
                 return (null, Result.Fail(msg));
             }
@@ -323,19 +323,19 @@ namespace Nethermind.KeyStore
 
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
-            var serializedKey = _jsonSerializer.Serialize(keyData);
+            string serializedKey = _jsonSerializer.Serialize(keyData);
 
             try
             {
-                var keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
-                var storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
-                var path = Path.Combine(storeDirectory, keyFileName);
+                string keyFileName = _keyStoreIOSettingsProvider.GetFileName(address);
+                string storeDirectory = _keyStoreIOSettingsProvider.StoreDirectory;
+                string path = Path.Combine(storeDirectory, keyFileName);
                 File.WriteAllText(path, serializedKey, _keyStoreEncoding);
                 return Result.Success;
             }
             catch (Exception e)
             {
-                var msg = $"Error during persisting key for address: {address}";
+                string msg = $"Error during persisting key for address: {address}";
                 if (_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
@@ -345,7 +345,7 @@ namespace Nethermind.KeyStore
         {
             try
             {
-                var files = FindKeyFiles(address);
+                string[] files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
                     if (_logger.IsError) _logger.Error("Trying to internally delete key which does not exist");
@@ -361,7 +361,7 @@ namespace Nethermind.KeyStore
             }
             catch (Exception e)
             {
-                var msg = $"Error during deleting key for address: {address}";
+                string msg = $"Error during deleting key for address: {address}";
                 if (_logger.IsError) _logger.Error(msg, e);
                 return Result.Fail(msg);
             }
@@ -376,7 +376,7 @@ namespace Nethermind.KeyStore
 
             try
             {
-                var files = FindKeyFiles(address);
+                string[] files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
                     if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");

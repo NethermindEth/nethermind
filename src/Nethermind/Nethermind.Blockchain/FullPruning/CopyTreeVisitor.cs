@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(CopyTreeVisitor<>));
             _stopwatch = new Stopwatch();
             _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
             _progressTracker = new VisitorProgressTracker("Full Pruning", logManager);
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.Span, _writeFlags);
+                _concurrentWriteBatcher.Set(storage, path, node.Keccak, node.FullRlp.AsSpan(), _writeFlags);
                 _progressTracker.OnNodeVisited(path, isStorage: storage is not null, isLeaf);
             }
         }

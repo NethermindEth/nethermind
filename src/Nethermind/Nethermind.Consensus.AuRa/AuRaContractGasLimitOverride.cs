@@ -82,7 +82,7 @@ namespace Nethermind.Consensus.AuRa
         {
             try
             {
-                var contractGasLimit = contract.BlockGasLimit(parent);
+                UInt256? contractGasLimit = contract.BlockGasLimit(parent);
                 return contractGasLimit.HasValue && _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract && contractGasLimit < MinimalContractGasLimit
                     ? MinimalContractGasLimit
                     : contractGasLimit;

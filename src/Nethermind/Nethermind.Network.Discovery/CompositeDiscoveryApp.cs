@@ -3,6 +3,7 @@
 
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -23,10 +24,8 @@ public class CompositeDiscoveryApp : IDiscoveryApp
     private readonly INetworkConfig _networkConfig;
     private readonly IConnectionsPool _connections;
     private readonly IChannelFactory? _channelFactory;
-
-    private IDiscoveryApp? _v4;
-    private IDiscoveryApp? _v5;
-    private INodeSource _compositeNodeSource = null!;
+    private readonly IDiscoveryApp[] _discoveryApps;
+    private readonly CompositeNodeSource _compositeNodeSource;
 
     public CompositeDiscoveryApp(
         INetworkConfig networkConfig,
@@ -41,32 +40,28 @@ public class CompositeDiscoveryApp : IDiscoveryApp
         _connections = new DiscoveryConnectionsPool(logManager.GetClassLogger<DiscoveryConnectionsPool>(), _networkConfig, discoveryConfig);
         _channelFactory = channelFactory;
 
-        List<INodeSource> allNodeSources = new();
+        List<IDiscoveryApp> discoveryApps = new(2);
 
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V4) != 0)
         {
-            _v4 = discoveryV4Factory();
-            allNodeSources.Add(_v4!);
+            discoveryApps.Add(discoveryV4Factory());
         }
 
         if ((discoveryConfig.DiscoveryVersion & DiscoveryVersion.V5) != 0)
         {
-            _v5 = discoveryV5Factory();
-            allNodeSources.Add(_v5!);
+            discoveryApps.Add(discoveryV5Factory());
         }
 
-        _compositeNodeSource = new CompositeNodeSource(allNodeSources.ToArray());
+        _discoveryApps = discoveryApps.ToArray();
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
     }
 
     public void InitializeChannel(IChannel channel)
-    {
-        _v4?.InitializeChannel(channel);
-        _v5?.InitializeChannel(channel);
-    }
+        => ForEachDiscoveryApp(static (discoveryApp, state) => discoveryApp.InitializeChannel(state), channel);
 
     public async Task StartAsync()
     {
-        if (_v4 == null && _v5 == null) return;
+        if (_discoveryApps.Length == 0) return;
 
         Bootstrap bootstrap = new Bootstrap()
             .Group(new MultithreadEventLoopGroup(1))
@@ -85,22 +80,54 @@ public class CompositeDiscoveryApp : IDiscoveryApp
 
         await _connections.BindAsync(bootstrap, _networkConfig.DiscoveryPort);
 
-        await Task.WhenAll(
-            _v4?.StartAsync() ?? Task.CompletedTask,
-            _v5?.StartAsync() ?? Task.CompletedTask
-        );
+        await WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StartAsync());
     }
 
-    public Task StopAsync() => Task.WhenAll(
-        _connections.StopAsync()
-    );
+    public async Task StopAsync()
+    {
+        try
+        {
+            await Task.WhenAll(_connections.StopAsync(), WhenAllDiscoveryApps(static discoveryApp => discoveryApp.StopAsync()));
+        }
+        finally
+        {
+            _compositeNodeSource.Dispose();
+        }
+    }
 
     string IStoppableService.Description => "discovery connection";
 
     public void AddNodeToDiscovery(Node node)
     {
-        _v4?.AddNodeToDiscovery(node);
-        _v5?.AddNodeToDiscovery(node);
+        ForEachDiscoveryApp(static (discoveryApp, discoveredNode) => discoveryApp.AddNodeToDiscovery(discoveredNode), node);
+    }
+
+    private void ForEachDiscoveryApp<TState>(Action<IDiscoveryApp, TState> action, TState state)
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            action(discoveryApps[i], state);
+        }
+    }
+
+    private Task WhenAllDiscoveryApps(Func<IDiscoveryApp, Task> action)
+    {
+        IDiscoveryApp[] discoveryApps = _discoveryApps;
+        if (discoveryApps.Length == 0)
+        {
+            return Task.CompletedTask;
+        }
+
+        ArrayPoolListRef<Task> tasks = new(discoveryApps.Length);
+        for (int i = 0; i < discoveryApps.Length; i++)
+        {
+            tasks.Add(action(discoveryApps[i]));
+        }
+
+        Task result = Task.WhenAll(tasks.AsSpan());
+        tasks.Dispose();
+        return result;
     }
 
     public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)

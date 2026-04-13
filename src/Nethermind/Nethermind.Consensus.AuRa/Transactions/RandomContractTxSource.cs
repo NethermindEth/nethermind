@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {
-            if (_contracts.TryGetForBlock(parent.Number + 1, out var contract))
+            if (_contracts.TryGetForBlock(parent.Number + 1, out IRandomContract contract))
             {
                 Transaction? tx = GetTransaction(contract, parent);
                 if (tx is not null)
@@ -66,18 +66,18 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             try
             {
-                var (phase, round) = contract.GetPhase(parent);
+                (IRandomContract.Phase phase, UInt256 round) = contract.GetPhase(parent);
                 switch (phase)
                 {
                     case IRandomContract.Phase.BeforeCommit:
                         {
                             byte[] bytes = new byte[32];
                             _random.GenerateRandomBytes(bytes);
-                            var hash = Keccak.Compute(bytes);
+                            Hash256 hash = Keccak.Compute(bytes);
                             PrivateKey? privateKey = _signer.Key;
                             if (privateKey is not null)
                             {
-                                var cipher = _eciesCipher.Encrypt(privateKey.PublicKey, bytes);
+                                byte[] cipher = _eciesCipher.Encrypt(privateKey.PublicKey, bytes);
                                 Metrics.CommitHashTransaction++;
                                 return contract.CommitHash(hash, cipher);
                             }
@@ -86,7 +86,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                         }
                     case IRandomContract.Phase.Reveal:
                         {
-                            var (hash, cipher) = contract.GetCommitAndCipher(parent, round);
+                            (Hash256 hash, byte[] cipher) = contract.GetCommitAndCipher(parent, round);
                             byte[] bytes;
                             try
                             {
@@ -118,13 +118,13 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                 throw new AuRaException("Decrypted random number has the wrong length.");
                             }
 
-                            var computedHash = ValueKeccak.Compute(bytes);
+                            ValueHash256 computedHash = ValueKeccak.Compute(bytes);
                             if (!Bytes.AreEqual(hash.Bytes, computedHash.BytesAsSpan))
                             {
                                 throw new AuRaException("Decrypted random number doesn't agree with the hash.");
                             }
 
-                            UInt256 number = new UInt256(bytes, true);
+                            UInt256 number = new(bytes, true);
 
                             Metrics.RevealNumber++;
                             return contract.RevealNumber(number);

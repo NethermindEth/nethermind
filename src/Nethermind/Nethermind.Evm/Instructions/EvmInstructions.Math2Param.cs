@@ -12,7 +12,7 @@ namespace Nethermind.Evm;
 
 using Int256;
 
-internal static partial class EvmInstructions
+public static partial class EvmInstructions
 {
     /// <summary>
     /// Interface for two-parameter mathematical operations on 256-bit unsigned integers.
@@ -67,7 +67,7 @@ internal static partial class EvmInstructions
         stack.PushUInt256<TTracingInst>(in result);
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }
@@ -296,7 +296,7 @@ internal static partial class EvmInstructions
         {
             int expSize = 32 - leadingZeros;
             // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-            TGasPolicy.Consume(ref gas, vm.Spec.GetExpByteCost() * expSize);
+            TGasPolicy.Consume(ref gas, vm.Spec.GasCosts.ExpByteCost * expSize);
 
             if (a.IsZero)
             {
@@ -315,7 +315,7 @@ internal static partial class EvmInstructions
         }
 
         return EvmExceptionType.None;
-    // Jump forward to be unpredicted by the branch predictor.
+        // Jump forward to be unpredicted by the branch predictor.
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
     }

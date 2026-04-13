@@ -25,17 +25,12 @@ namespace Ethereum.PoW.Test
     public class EthashTests
     {
         [OneTimeSetUp]
-        public void SetUp()
-        {
-            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-        }
+        public void SetUp() => Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
 
-        private static IEnumerable<EthashTest> LoadTests()
-        {
-            return TestLoader.LoadFromFile<Dictionary<string, EthashTestJson>, EthashTest>(
+        private static IEnumerable<EthashTest> LoadTests() =>
+            TestLoader.LoadFromFile<Dictionary<string, EthashTestJson>, EthashTest>(
                 "keyaddrtest.json",
                 c => c.Select(p => Convert(p.Key, p.Value)));
-        }
 
         private static EthashTest Convert(string name, EthashTestJson testJson)
         {
@@ -66,7 +61,6 @@ namespace Ethereum.PoW.Test
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct
-            Ethash ethash = new Ethash(LimboLogs.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
             Assert.That(Ethash.GetSeedHash(epoch), Is.EqualTo(test.Seed), "seed");
 

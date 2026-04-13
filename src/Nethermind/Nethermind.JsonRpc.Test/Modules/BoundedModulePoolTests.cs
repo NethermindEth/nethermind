@@ -6,6 +6,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db.LogIndex;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -56,7 +57,8 @@ public class BoundedModulePoolTests
             Substitute.For<IFeeHistoryOracle>(),
             Substitute.For<IProtocolsManager>(),
             new BlocksConfig(),
-            Substitute.For<IForkInfo>()),
+            Substitute.For<IForkInfo>(),
+            Substitute.For<ILogIndexConfig>()),
              1, 1000);
 
         return Task.CompletedTask;

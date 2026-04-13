@@ -51,9 +51,9 @@ namespace Ethereum.KeyAddress.Test
         public void Recovered_address_as_expected(string addressHex, string message, string sigHex)
         {
             Hash256 messageHash = Keccak.Compute(message);
-            Signature sig = new Signature(sigHex);
+            Signature sig = new(sigHex);
             Address recovered = _ecdsa.RecoverAddress(sig, messageHash);
-            Address address = new Address(addressHex);
+            Address address = new(addressHex);
 
             // TODO: check - at the moment they are failing when running in the test mode but not in Debug
             Assert.That(recovered, Is.EqualTo(address));
@@ -66,14 +66,14 @@ namespace Ethereum.KeyAddress.Test
             // what is the format of the JSON input file?
             // what is the sig_of_emptystring in JSON file? is it Keccak.OfAnEmptyString as assumed?
 
-            PrivateKey privateKey = new PrivateKey(test.Key);
+            PrivateKey privateKey = new(test.Key);
             Address actualAddress = privateKey.Address;
             Signature actualSig = _ecdsa.Sign(privateKey, Keccak.OfAnEmptyString);
             string actualSigHex = actualSig.ToString();
 
-            Signature expectedSig = new Signature(test.R, test.S, test.V);
+            Signature expectedSig = new(test.R, test.S, test.V);
             string expectedSigHex = expectedSig.ToString();
-            Address expectedAddress = new Address(test.Address);
+            Address expectedAddress = new(test.Address);
 
             Assert.That(actualAddress, Is.EqualTo(expectedAddress), "address vs address from private key");
 
@@ -104,25 +104,15 @@ namespace Ethereum.KeyAddress.Test
             public string Addr { get; set; }
         }
 
-        public class KeyAddressTest
+        public class KeyAddressTest(string seed, string key, string address, UInt256 r, UInt256 s, byte v)
         {
-            public KeyAddressTest(string seed, string key, string address, UInt256 r, UInt256 s, byte v)
-            {
-                Seed = seed;
-                Key = key;
-                Address = address;
-                V = v;
-                R = r;
-                S = s;
-            }
+            public string Seed { get; } = seed;
+            public string Key { get; } = key;
+            public string Address { get; } = address;
+            public byte V { get; } = v;
 
-            public string Seed { get; }
-            public string Key { get; }
-            public string Address { get; }
-            public byte V { get; }
-
-            public UInt256 R { get; }
-            public UInt256 S { get; }
+            public UInt256 R { get; } = r;
+            public UInt256 S { get; } = s;
 
             public override string ToString()
             {

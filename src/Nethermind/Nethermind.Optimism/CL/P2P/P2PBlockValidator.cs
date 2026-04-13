@@ -29,7 +29,7 @@ public class P2PBlockValidator : IP2PBlockValidator
         _chainId = chainId.ToBigEndian();
         _sequencerP2PAddress = sequencerP2PAddress;
         _timestamper = timestamper;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<P2PBlockValidator>();
     }
 
     public ValidityStatus Validate(ExecutionPayloadV3 payload, P2PTopic topic)
@@ -48,7 +48,7 @@ public class P2PBlockValidator : IP2PBlockValidator
     public ValidityStatus IsBlockNumberPerHeightLimitReached(ExecutionPayloadV3 payload)
     {
         // [REJECT] if more than 5 different blocks have been seen with the same block height
-        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out var currentCount);
+        _numberOfBlocksSeen.TryGetValue(payload.BlockNumber, out long currentCount);
         _numberOfBlocksSeen[payload.BlockNumber] = currentCount + 1;
         return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }

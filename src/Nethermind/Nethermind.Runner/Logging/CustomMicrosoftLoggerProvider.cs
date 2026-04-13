@@ -19,8 +19,8 @@ namespace Nethermind.Runner.Logging
 
         public ILogger CreateLogger(string categoryName)
         {
-            var coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
-            var customLogger = new CustomMicrosoftLogger(coreLogger);
+            Nethermind.Logging.ILogger coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
+            CustomMicrosoftLogger customLogger = new(coreLogger);
             return customLogger;
         }
 

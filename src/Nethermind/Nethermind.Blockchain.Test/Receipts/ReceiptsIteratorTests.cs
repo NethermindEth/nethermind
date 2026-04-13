@@ -14,9 +14,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class ReceiptsIteratorTests
 {
-    readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
+    private readonly ReceiptArrayStorageDecoder _decoder = ReceiptArrayStorageDecoder.Instance;
 
     [Test]
     public void SmokeTestWithRecovery()
@@ -104,14 +105,14 @@ public class ReceiptsIteratorTests
     {
         using NettyRlpStream stream = _decoder.EncodeToNewNettyStream(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream.AsSpan();
-        TestMemDb blockDb = new TestMemDb();
-        ReceiptsRecovery recovery = new ReceiptsRecovery(
+        TestMemDb blockDb = new();
+        ReceiptsRecovery recovery = new(
             new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
             MainnetSpecProvider.Instance,
             false
         );
 
-        ReceiptsIterator iterator = new ReceiptsIterator(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
+        ReceiptsIterator iterator = new(span, blockDb, () => recovery.CreateRecoveryContext(new ReceiptRecoveryBlock(block)), _decoder.GetRefDecoder(span));
         return iterator;
     }
 }

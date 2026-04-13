@@ -27,14 +27,14 @@ namespace Nethermind.Consensus.AuRa.Contracts
             _versionSelectorContract = versions.Values.Last();
             Activation = activation;
             _versionsCache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger(typeof(VersionedContract<>));
         }
 
         public T? ResolveVersion(BlockHeader blockHeader)
         {
             this.BlockActivationCheck(blockHeader);
 
-            if (!_versionsCache.TryGet(blockHeader.Hash, out var versionNumber))
+            if (!_versionsCache.TryGet(blockHeader.Hash, out UInt256 versionNumber))
             {
                 try
                 {
@@ -52,7 +52,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return ResolveVersion(versionNumber);
         }
 
-        private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out var contract) ? contract : default;
+        private T? ResolveVersion(in UInt256 versionNumber) => _versions.TryGetValue(versionNumber, out T contract) ? contract : default;
 
         public long Activation { get; }
     }

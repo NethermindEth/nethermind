@@ -30,18 +30,10 @@ namespace Nethermind.Blockchain.Test.FullPruning;
 [TestFixture(0, 4)]
 [TestFixture(1, 1)]
 [TestFixture(1, 4)]
-[Parallelizable(ParallelScope.Children)]
-public class FullPrunerTests
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
+public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
 {
-    private readonly int _fullPrunerMemoryBudgetMb;
-    private readonly int _degreeOfParallelism;
-
-    public FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParallelism)
-    {
-        _fullPrunerMemoryBudgetMb = fullPrunerMemoryBudgetMb;
-        _degreeOfParallelism = degreeOfParallelism;
-    }
-
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task can_prune()
     {
@@ -61,8 +53,8 @@ public class FullPrunerTests
             true,
             false,
             FullPruningCompletionBehavior.None,
-            _fullPrunerMemoryBudgetMb,
-            _degreeOfParallelism,
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism,
             currentKeyScheme: currentKeyScheme,
             preferredKeyScheme: newKeyScheme);
 
@@ -192,8 +184,8 @@ public class FullPrunerTests
             successfulPruning,
             clearPrunedDb,
             completionBehavior,
-            _fullPrunerMemoryBudgetMb,
-            _degreeOfParallelism);
+            fullPrunerMemoryBudgetMb,
+            degreeOfParallelism);
 
     private class TestContext
     {
@@ -229,15 +221,15 @@ public class FullPrunerTests
             IDbFactory dbFactory = Substitute.For<IDbFactory>();
             dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-            NodeStorage storageForWrite = new NodeStorage(TrieDb, currentKeyScheme);
+            NodeStorage storageForWrite = new(TrieDb, currentKeyScheme);
             PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
             _stateRoot = trie.RootHash;
             FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
-            NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+            NodeStorageFactory nodeStorageFactory = new(preferredKeyScheme, LimboLogs.Instance);
             nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
             NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
 
-            var trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
+            TestRawTrieStore trieStore = TestTrieStoreFactory.Build(NodeStorage, LimboLogs.Instance);
             StateReader = new StateReader(trieStore, new TestMemDb(), LimboLogs.Instance);
 
             Pruner = new(
@@ -284,7 +276,7 @@ public class FullPrunerTests
         public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
         {
             TriggerPruningViaEvent();
-            using CancellationTokenSource cts = new CancellationTokenSource();
+            using CancellationTokenSource cts = new();
             Task addBlockTasks = Task.Run(() =>
             {
                 while (!cts.IsCancellationRequested)
@@ -323,8 +315,8 @@ public class FullPrunerTests
 
         public void ShouldCopyAllValuesWhenVisitingTrie()
         {
-            PatriciaTree trie = new PatriciaTree(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
-            TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
+            PatriciaTree trie = new(new RawScopedTrieStore(new NodeStorage(TrieDb)), LimboLogs.Instance);
+            TrieCopiedNodeVisitor visitor = new(new NodeStorage(CopyDb));
             trie.Accept(visitor, BlockTree.Head!.StateRoot!);
         }
 

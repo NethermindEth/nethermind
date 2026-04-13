@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Blocks
         private static readonly IPeerAllocationStrategy EstimatedAllocationStrategy =
             BlocksSyncPeerAllocationStrategyFactory.AllocationStrategy;
 
-        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>() ?? throw new InvalidOperationException();
+        private static readonly IRlpStreamEncoder<TxReceipt> _receiptEncoder = Rlp.GetStreamEncoder<TxReceipt>() ?? throw new InvalidOperationException();
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Blocks
             _fullStateFinder = fullStateFinder;
             _forwardHeaderProvider = forwardHeaderProvider;
             _syncPeerPool = syncPeerPool;
-            _logger = logManager.GetClassLogger();
+            _logger = logManager.GetClassLogger<BlockDownloader>();
             // Assume that each tx cost about 1kb.
             _maxTxInBuffer = (int)(syncConfig.ForwardSyncDownloadBufferMemoryBudget / 1000);
             _maxTxInInProcessingQueue = (int)(syncConfig.ForwardSyncBlockProcessingQueueMemoryBudget / 1000);
@@ -128,11 +128,7 @@ namespace Nethermind.Synchronization.Blocks
             catch (Exception ex)
             {
                 if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Unhandled exception in {nameof(BlockDownloader)}: {ex}");
-#if DEBUG
-                throw;
-#else
                 return null;
-#endif
             }
             finally
             {
@@ -190,7 +186,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 (bool shouldProcess, bool downloadReceipts) = ReceiptEdgeCase(bestProcessedBlock, headers[1].Number, originalShouldProcess, originalDownloadReceiptOpts);
 
-                using var satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
+                using ArrayPoolList<BlockEntry> satisfiedEntry = AssembleSatisfiedEntries(headers, downloadReceipts);
 
                 if (satisfiedEntry.Count == 0)
                 {
@@ -267,7 +263,7 @@ namespace Nethermind.Synchronization.Blocks
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
             HashSet<Hash256> currentHeaderHashes = currentHeaders.Select(h => h.Hash).ToHashSet();
-            foreach (var kv in _downloadRequests)
+            foreach (KeyValuePair<Hash256, BlockEntry> kv in _downloadRequests)
             {
                 if (!currentHeaderHashes.Contains(kv.Key))
                 {
@@ -280,8 +276,8 @@ namespace Nethermind.Synchronization.Blocks
         {
             bool? bodiesOnly = null; // Otherwise receipts only
 
-            ArrayPoolList<BlockHeader> receiptsToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
-            ArrayPoolList<BlockHeader> bodiesToDownload = new ArrayPoolList<BlockHeader>(headers.Count);
+            ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -291,7 +287,7 @@ namespace Nethermind.Synchronization.Blocks
                 ?? GethSyncLimits.MaxReceiptFetch;
 
             BlockHeader parentHeader = headers[0];
-            foreach (var blockHeader in headers.Skip(1))
+            foreach (BlockHeader blockHeader in headers.Skip(1))
             {
                 if (parentHeader.Hash != blockHeader.ParentHash)
                 {
@@ -355,7 +351,7 @@ namespace Nethermind.Synchronization.Blocks
             try
             {
                 satisfiedEntry = new ArrayPoolList<BlockEntry>(headers.Count);
-                foreach (var blockHeader in headers.Skip(1))
+                foreach (BlockHeader blockHeader in headers.Skip(1))
                 {
                     if (blockHeader is null) break;
                     if (!_downloadRequests.TryGetValue(blockHeader.Hash, out BlockEntry blockEntry)) break;
@@ -377,7 +373,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
-            using var _ = response;
+            using BlocksRequest _ = response;
             BlockBody[]? bodies = response.OwnedBodies?.Bodies;
             response.OwnedBodies?.Disown();
 
@@ -417,7 +413,7 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
-                Block block = new Block(entry.Header, body);
+                Block block = new(entry.Header, body);
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
                 entry.Block = block;
@@ -431,7 +427,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (bodiesCount > 0)
                 {
                     long txCount = 0;
-                    foreach (var block in blocks)
+                    foreach (Block block in blocks)
                     {
                         txCount += block.Transactions?.Length ?? 0;
                     }
@@ -511,7 +507,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private bool ValidateReceiptsRoot(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptDecoder);
+            Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, _receiptEncoder);
             return receiptsRoot == block.ReceiptsRoot;
         }
 

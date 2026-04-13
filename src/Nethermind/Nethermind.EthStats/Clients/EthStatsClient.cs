@@ -32,7 +32,7 @@ namespace Nethermind.EthStats.Clients
             _urlFromConfig = urlFromConfig ?? throw new ArgumentNullException(nameof(urlFromConfig));
             _reconnectionInterval = reconnectionInterval;
             _messageSender = messageSender ?? throw new ArgumentNullException(nameof(messageSender));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<EthStatsClient>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         internal string BuildUrl()
@@ -76,7 +76,7 @@ namespace Nethermind.EthStats.Clients
         {
             if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_urlFromConfig}]...");
             string websocketUrl = BuildUrl();
-            Uri url = new Uri(websocketUrl);
+            Uri url = new(websocketUrl);
             _client = new WebsocketClient(url)
             {
                 ErrorReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval),

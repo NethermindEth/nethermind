@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Xdc.Errors;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
@@ -40,7 +41,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private ILogger _logger;
 
     private ISpecProvider _specProvider { get; }
-    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -53,9 +54,9 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
         }
 
-        var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
-            throw new InvalidBlockException(proposedBlockHeader, "Proposed block header not found in chain");
+            throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader, _context.CurrentRound);
 
@@ -72,7 +73,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
                 _context.LockQC = parentQc;
             }
 
-            if (!CommitBlock(_blockTree, proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc, out string error))
+            if (!CommitBlock(proposedBlockHeader, proposedBlockHeader.ExtraConsensusData.BlockRound, qc, out string error))
             {
                 if (_logger.IsWarn) _logger.Warn($"Could not commit block ({proposedBlockHeader.Hash}). {error}");
             }
@@ -85,7 +86,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
     }
 
-    private bool CommitBlock(IBlockTree chain, XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert, [NotNullWhen(false)] out string? error)
+    private bool CommitBlock(XdcBlockHeader proposedBlockHeader, ulong proposedRound, QuorumCertificate proposedQuorumCert, [NotNullWhen(false)] out string? error)
     {
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(proposedBlockHeader);
         //Can only commit a QC if the proposed block is at least 2 blocks after the switch block, since we want to check grandparent of proposed QC
@@ -96,7 +97,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader parentHeader = (XdcBlockHeader)_blockTree.FindHeader(proposedBlockHeader.ParentHash);
+        if (_blockTree.FindHeader(proposedBlockHeader.ParentHash!) is not XdcBlockHeader parentHeader)
+        {
+            error = $"Parent header {proposedBlockHeader.ParentHash} is missing.";
+            return false;
+        }
 
         if (parentHeader.ExtraConsensusData is null)
         {
@@ -110,11 +115,14 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        XdcBlockHeader grandParentHeader = (XdcBlockHeader)_blockTree.FindHeader(parentHeader.ParentHash);
+        if (_blockTree.FindHeader(parentHeader.ParentHash!) is not XdcBlockHeader grandParentHeader)
+        {
+            error = $"Grandparent header {parentHeader.ParentHash} is missing.";
+            return false;
+        }
 
         if (grandParentHeader.ExtraConsensusData is null)
         {
-
             error = $"QC grand parent ({grandParentHeader.ToString(BlockHeader.Format.FullHashAndNumber)}) does not have a QC.";
             return false;
         }
@@ -125,26 +133,43 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             return false;
         }
 
-        if (_context.HighestCommitBlock is not null && (_context.HighestCommitBlock.Round >= parentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
+        //We will normally commit twice - once when QC vote finished and once when we receive new block containing the same QC most likely 
+        if (_context.HighestCommitBlock is not null && grandParentHeader.Hash == _context.HighestCommitBlock.Hash)
         {
-            error = $"Committed block ({_context.HighestCommitBlock.Hash}) has higher round or block number.";
+            error = null;
+            return true;
+        }
+
+        if (_context.HighestCommitBlock is not null
+            && (_context.HighestCommitBlock.Round >= grandParentHeader.ExtraConsensusData.BlockRound || _context.HighestCommitBlock.BlockNumber > grandParentHeader.Number))
+        {
+            error = $"Committed block (round={_context.HighestCommitBlock.Round} #{_context.HighestCommitBlock.BlockNumber} hash={_context.HighestCommitBlock.Hash}) has higher round or block number than proposed header grandparent #{grandParentHeader.Number} round={grandParentHeader.ExtraConsensusData.BlockRound} hash={grandParentHeader.Hash}.";
             return false;
         }
 
-        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, parentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-
+        _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
+        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;
         return true;
     }
 
-    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, out string error)
+    public bool VerifyCertificate(QuorumCertificate qc, [NotNullWhen(false)] out string error)
     {
-        if (qc is null)
-            throw new ArgumentNullException(nameof(qc));
+        XdcBlockHeader certificateTarget = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (certificateTarget is null)
-            throw new ArgumentNullException(nameof(certificateTarget));
+        {
+            error = $"Certificate target block not found hash={qc.ProposedBlockInfo.Hash}";
+            return false;
+        }
+        return VerifyCertificate(qc, certificateTarget, out error);
+    }
+
+    public bool VerifyCertificate(QuorumCertificate qc, XdcBlockHeader certificateTarget, [NotNullWhen(false)] out string error)
+    {
+        ArgumentNullException.ThrowIfNull(qc);
+        ArgumentNullException.ThrowIfNull(certificateTarget);
         if (qc.Signatures is null)
             throw new ArgumentException("QC must contain vote signatures.", nameof(qc));
 
@@ -160,11 +185,11 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
 
         ulong qcRound = qc.ProposedBlockInfo.Round;
         IXdcReleaseSpec spec = _specProvider.GetXdcSpec(certificateTarget, qcRound);
-        double certThreshold = spec.CertThreshold;
-        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certThreshold);
+        double certificateThreshold = spec.CertificateThreshold;
+        double required = Math.Ceiling(epochSwitchInfo.Masternodes.Length * certificateThreshold);
         if ((qcRound > 0) && (uniqueSignatures.Length < required))
         {
-            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certThreshold}";
+            error = $"Number of votes ({uniqueSignatures.Length}/{epochSwitchInfo.Masternodes.Length}) does not meet threshold of {certificateThreshold}";
             return false;
         }
 

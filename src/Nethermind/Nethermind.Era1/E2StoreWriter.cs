@@ -69,7 +69,11 @@ public class E2StoreWriter : IDisposable
         return _stream.FlushAsync(cancellation);
     }
 
-    public void Dispose() => _stream.Dispose();
+    public void Dispose()
+    {
+        _checksumCalculator.Dispose();
+        _stream.Dispose();
+    }
 
     public ValueHash256 FinalizeChecksum()
     {

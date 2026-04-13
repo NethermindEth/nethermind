@@ -14,7 +14,7 @@ public class SizeExtensionsTests
     [TestCase(9223372036)] // Int64.MaxValue / 1_000_000_000
     public void CheckOverflow_long(long testCase)
     {
-        Assert.That(testCase.GB() >= 0, Is.True);
+        Assert.That(testCase.GB >= 0, Is.True);
     }
 
     [TestCase(0)]
@@ -22,6 +22,6 @@ public class SizeExtensionsTests
     [TestCase(2147483647)] // Int32.MaxValue
     public void CheckOverflow_int(int testCase)
     {
-        Assert.That(testCase.GB() >= 0, Is.True);
+        Assert.That(testCase.GB >= 0, Is.True);
     }
 }

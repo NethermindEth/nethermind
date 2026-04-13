@@ -31,7 +31,7 @@ namespace Nethermind.Wallet
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
             _timestamper = timestamper ?? Timestamper.Default;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<ProtectedKeyStoreWallet>() ?? throw new ArgumentNullException(nameof(logManager));
             // maxCapacity - 100, is just an estimate here
             _unlockedAccounts = new LruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
         }
@@ -95,9 +95,9 @@ namespace Nethermind.Wallet
 
         private Signature SignCore(Hash256 message, Address address, Func<PrivateKey> getPrivateKeyWhenNotFound)
         {
-            var protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
+            ProtectedPrivateKey protectedPrivateKey = (ProtectedPrivateKey)_unlockedAccounts.Get(address.ToString());
             using PrivateKey key = protectedPrivateKey is not null ? protectedPrivateKey.Unprotect() : getPrivateKeyWhenNotFound();
-            var rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

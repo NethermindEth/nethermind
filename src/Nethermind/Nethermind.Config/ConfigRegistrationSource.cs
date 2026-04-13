@@ -27,7 +27,7 @@ public class ConfigRegistrationSource : IRegistrationSource
         }
 
         // Dynamically resolve IConfig
-        ComponentRegistration registration = new ComponentRegistration(
+        ComponentRegistration registration = new(
             Guid.NewGuid(),
             new DelegateActivator(swt.ServiceType, (c, p) =>
             {

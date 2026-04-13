@@ -8,6 +8,10 @@ on:
   push:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build
@@ -21,10 +25,11 @@ jobs:
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - HiveConsensusWorkflowGenerator/HiveConsensusWorkflowGenerator.slnx
+          - JitAsm/JitAsm.slnx
           - Kute/Kute.slnx
           # - SchemaGenerator/SchemaGenerator.slnx
           - SendBlobs/SendBlobs.slnx
-          - StatelessExecution/StatelessExecution.slnx
+          - StatelessInputGen/StatelessInputGen.slnx
           - TxParser/TxParser.slnx
     steps:
       - name: Check out repository

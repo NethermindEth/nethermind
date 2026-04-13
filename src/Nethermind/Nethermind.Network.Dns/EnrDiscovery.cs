@@ -24,7 +24,7 @@ public class EnrDiscovery : INodeSource
     public EnrDiscovery(IEnrRecordParser parser, INetworkConfig networkConfig, ILogManager logManager)
     {
         _parser = parser;
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<EnrDiscovery>();
         _crawler = new EnrTreeCrawler(_logger);
         _domain = networkConfig.DiscoveryDns!;
     }
@@ -87,7 +87,7 @@ public class EnrDiscovery : INodeSource
 
     private static Node? CreateNode(NodeRecord nodeRecord)
     {
-        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
+        CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);
         int? port = nodeRecord.GetValue<int>(EnrContentKey.Tcp) ?? nodeRecord.GetValue<int>(EnrContentKey.Udp);
         return compressedPublicKey is not null && ipAddress is not null && port is not null

@@ -36,7 +36,7 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -44,7 +44,7 @@ namespace Nethermind.Core.Caching
 
         public TValue Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -73,7 +73,7 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key, TValue val)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (val is null)
             {
@@ -103,7 +103,7 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return DeleteNoLock(key);
         }
@@ -122,17 +122,17 @@ namespace Nethermind.Core.Caching
 
         public bool Contains(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             return _cacheMap.ContainsKey(key);
         }
 
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             int i = 0;
-            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -145,7 +145,7 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            var array = new TValue[_cacheMap.Count];
+            TValue[] array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;

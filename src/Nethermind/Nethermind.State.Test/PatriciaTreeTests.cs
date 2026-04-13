@@ -26,7 +26,7 @@ namespace Nethermind.Store.Test
         {
             Account account = new(1);
             using ITrieStore trieStore = CreateTrieStore();
-            using var _ = trieStore.BeginBlockCommit(0);
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit();
@@ -47,7 +47,7 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
 
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Set(TestItem.AddressB, account);
                 stateTree.Commit();
@@ -71,7 +71,7 @@ namespace Nethermind.Store.Test
             using ITrieStore trieStore = CreateTrieStore(db);
 
             {
-                using var _ = trieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore.GetTrieStore(null), LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.Commit();
@@ -99,7 +99,7 @@ namespace Nethermind.Store.Test
 
             Hash256 stateRoot;
             {
-                using var _ = fullTrieStore.BeginBlockCommit(0);
+                using IBlockCommitter _ = fullTrieStore.BeginBlockCommit(0);
                 StateTree stateTree = new(trieStore, LimboLogs.Instance);
                 stateTree.Set(TestItem.AddressA, account);
                 stateTree.UpdateRootHash();

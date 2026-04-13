@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -32,6 +32,6 @@ public class BoostBlockImprovementContextFactory : IBlockImprovementContextFacto
         PayloadAttributes payloadAttributes,
         DateTimeOffset startDateTime,
         UInt256 currentBlockFees,
-        CancellationTokenSource cts) =>
+        SharedCancellationTokenSource cts) =>
         new BoostBlockImprovementContext(currentBestBlock, _blockProducer, _timeout, parentHeader, payloadAttributes, _boostRelay, _stateReader, startDateTime, cts);
 }

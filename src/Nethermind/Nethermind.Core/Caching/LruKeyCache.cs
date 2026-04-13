@@ -33,7 +33,7 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -41,7 +41,7 @@ namespace Nethermind.Core.Caching
 
         public bool Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
@@ -54,7 +54,7 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {
@@ -80,7 +80,7 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            using McsLock.Disposable lockRelease = _lock.Acquire();
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<TKey>? node))
             {

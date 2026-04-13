@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Ssz;
@@ -47,14 +48,40 @@ public static partial class Ssz
 
     public static BitArray DecodeBitvector(ReadOnlySpan<byte> span, int vectorLength)
     {
-        BitArray value = new BitArray(span.ToArray());
+        int expectedBytes = (vectorLength + 7) / 8;
+        if (span.Length != expectedBytes)
+        {
+            throw new InvalidDataException(
+                $"Invalid bitvector: expected {expectedBytes} bytes for Bitvector[{vectorLength}] but got {span.Length}");
+        }
+
+        if (vectorLength % 8 != 0)
+        {
+            byte mask = (byte)(0xFF << (vectorLength % 8));
+            if ((span[^1] & mask) != 0)
+            {
+                throw new InvalidDataException("Invalid bitvector: unused high bits are set");
+            }
+        }
+
+        BitArray value = new(span.ToArray());
         value.Length = vectorLength;
         return value;
     }
 
     public static BitArray DecodeBitlist(ReadOnlySpan<byte> span)
     {
-        BitArray value = new BitArray(span.ToArray());
+        if (span.Length == 0)
+        {
+            throw new InvalidDataException("Invalid bitlist: empty data (missing sentinel bit)");
+        }
+
+        if (span[^1] == 0)
+        {
+            throw new InvalidDataException("Invalid bitlist: last byte is zero (missing sentinel bit)");
+        }
+
+        BitArray value = new(span.ToArray());
         int length = value.Length - 1;
         int lastByte = span[^1];
         int mask = 0x80;

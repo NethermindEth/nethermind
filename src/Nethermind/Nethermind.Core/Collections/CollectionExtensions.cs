@@ -49,6 +49,14 @@ namespace Nethermind.Core.Collections
             }
         }
 
+        public static void AddOrUpdateRange<TKey, TValue>(this IDictionary<TKey, TValue> dict, IEnumerable<KeyValuePair<TKey, TValue>> items)
+        {
+            foreach (KeyValuePair<TKey, TValue> kv in items)
+            {
+                dict[kv.Key] = kv.Value;
+            }
+        }
+
         [OverloadResolutionPriority(1)]
         public static void AddRange<T>(this ICollection<T> list, IReadOnlyList<T> items)
         {
@@ -76,7 +84,7 @@ namespace Nethermind.Core.Collections
                 return false;
             }
 
-            using var handle = dictionary.AcquireLock();
+            using ConcurrentDictionaryLock<TKey, TValue>.Lock handle = dictionary.AcquireLock();
 
             // Recheck under lock, so not to over clear which is expensive.
             // May have cleared while waiting for lock.
@@ -96,35 +104,35 @@ namespace Nethermind.Core.Collections
             private static Action<ConcurrentDictionary<TKey, TValue>> CreateNoResizeClearExpression()
             {
                 // Parameters
-                var dictionaryParam = Expression.Parameter(typeof(ConcurrentDictionary<TKey, TValue>), "dictionary");
+                ParameterExpression dictionaryParam = Expression.Parameter(typeof(ConcurrentDictionary<TKey, TValue>), "dictionary");
 
                 // Access _tables field
-                var tablesField = typeof(ConcurrentDictionary<TKey, TValue>).GetField("_tables", BindingFlags.NonPublic | BindingFlags.Instance);
-                var tablesAccess = Expression.Field(dictionaryParam, tablesField!);
+                FieldInfo? tablesField = typeof(ConcurrentDictionary<TKey, TValue>).GetField("_tables", BindingFlags.NonPublic | BindingFlags.Instance);
+                MemberExpression tablesAccess = Expression.Field(dictionaryParam, tablesField!);
 
                 // Access _buckets and _countPerLock fields
-                var tablesType = tablesField!.FieldType;
-                var bucketsField = tablesType.GetField("_buckets", BindingFlags.NonPublic | BindingFlags.Instance);
-                var countPerLockField = tablesType.GetField("_countPerLock", BindingFlags.NonPublic | BindingFlags.Instance);
+                Type tablesType = tablesField!.FieldType;
+                FieldInfo? bucketsField = tablesType.GetField("_buckets", BindingFlags.NonPublic | BindingFlags.Instance);
+                FieldInfo? countPerLockField = tablesType.GetField("_countPerLock", BindingFlags.NonPublic | BindingFlags.Instance);
 
-                var bucketsAccess = Expression.Field(tablesAccess, bucketsField!);
-                var countPerLockAccess = Expression.Field(tablesAccess, countPerLockField!);
+                MemberExpression bucketsAccess = Expression.Field(tablesAccess, bucketsField!);
+                MemberExpression countPerLockAccess = Expression.Field(tablesAccess, countPerLockField!);
 
                 // Clear arrays using Array.Clear
-                var clearMethod = typeof(Array).GetMethod("Clear", new[] { typeof(Array), typeof(int), typeof(int) });
+                MethodInfo? clearMethod = typeof(Array).GetMethod("Clear", new[] { typeof(Array), typeof(int), typeof(int) });
 
-                var clearBuckets = Expression.Call(clearMethod!,
+                MethodCallExpression clearBuckets = Expression.Call(clearMethod!,
                     bucketsAccess,
                     Expression.Constant(0),
                     Expression.ArrayLength(bucketsAccess));
 
-                var clearCountPerLock = Expression.Call(clearMethod!,
+                MethodCallExpression clearCountPerLock = Expression.Call(clearMethod!,
                     countPerLockAccess,
                     Expression.Constant(0),
                     Expression.ArrayLength(countPerLockAccess));
 
                 // Block to execute both clears
-                var block = Expression.Block(clearBuckets, clearCountPerLock);
+                BlockExpression block = Expression.Block(clearBuckets, clearCountPerLock);
 
                 // Compile the expression into a lambda
                 return Expression.Lambda<Action<ConcurrentDictionary<TKey, TValue>>>(block, name: "ConcurrentDictionary_FastClear", new ParameterExpression[] { dictionaryParam }).Compile();

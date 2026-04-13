@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
@@ -21,9 +20,9 @@ namespace Nethermind.Blockchain.Test.Runner
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> results = new List<EthereumTestResult>();
+            List<EthereumTestResult> results = new();
             Console.WriteLine("RUNNING tests");
-            Stopwatch stopwatch = new Stopwatch();
+            Stopwatch stopwatch = new();
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             bool isNewLine = true;
             foreach (GeneralStateTest test in tests)

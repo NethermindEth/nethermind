@@ -34,7 +34,7 @@ namespace Nethermind.Init.Steps.Migrations
         public async Task Run(CancellationToken cancellationToken)
         {
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
-            ILogger logger = _api.LogManager.GetClassLogger();
+            ILogger logger = _api.LogManager.GetClassLogger<ReceiptFixMigration>();
             if (syncConfig.FixReceipts && _api.BlockTree is not null)
             {
                 MissingReceiptsFixVisitor visitor = new(
@@ -116,7 +116,7 @@ namespace Nethermind.Init.Steps.Migrations
                     throw new ArgumentException("Cannot download receipts for a block without a known hash.");
                 }
 
-                FastBlocksAllocationStrategy strategy = new FastBlocksAllocationStrategy(TransferSpeedType.Receipts, block.Number, true);
+                FastBlocksAllocationStrategy strategy = new(TransferSpeedType.Receipts, block.Number, true);
                 SyncPeerAllocation peer = await _syncPeerPool.Allocate(strategy, AllocationContexts.Receipts);
                 ISyncPeer? currentSyncPeer = peer.Current?.SyncPeer;
                 if (currentSyncPeer is not null)

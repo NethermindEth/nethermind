@@ -33,8 +33,8 @@ namespace Nethermind.Config
 
         public (bool IsSet, string Value) GetRawValue(string category, string name)
         {
-            var variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
-            var variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
+            string variableName = string.IsNullOrEmpty(category) ? $"NETHERMIND_{name.ToUpperInvariant()}" : $"NETHERMIND_{category.ToUpperInvariant()}_{name.ToUpperInvariant()}";
+            string variableValueString = _environmentWrapper.GetEnvironmentVariable(variableName);
             return (variableValueString is not null, variableValueString);
         }
 
