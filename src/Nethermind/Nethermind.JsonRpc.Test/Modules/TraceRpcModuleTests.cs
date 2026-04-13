@@ -718,7 +718,7 @@ public class TraceRpcModuleTests
             .TestObject;
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            new() { Calls = new(1) { new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes } } },
+            new(new(1) { new() { Transaction = TransactionForRpc.FromTransaction(transaction), TraceTypes = traceTypes } }),
             new(lastBlockHash)
         );
 
@@ -818,7 +818,7 @@ public class TraceRpcModuleTests
         tr2.Transaction = txForRpc2;
         tr2.TraceTypes = traceTypes2;
 
-        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(new() { Calls = new(2) { tr1, tr2 } }, numberOrTag);
+        ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> tr = context.TraceRpcModule.trace_callMany(new(new(2) { tr1, tr2 }), numberOrTag);
         tr.Data.Should().HaveCount(2);
     }
 
@@ -1051,22 +1051,19 @@ public class TraceRpcModuleTests
         config.GasCap = gasCap;
 
         ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> traces = context.TraceRpcModule.trace_callMany(
-            new()
+            new(new(1)
             {
-                Calls = new(1)
+                new()
                 {
-                    new()
+                    Transaction = new LegacyTransactionForRpc
                     {
-                        Transaction = new LegacyTransactionForRpc
-                        {
-                            From = TestItem.AddressA,
-                            To = TestItem.AddressC,
-                            Gas = 100_000
-                        },
-                        TraceTypes = ["trace"]
-                    }
+                        From = TestItem.AddressA,
+                        To = TestItem.AddressC,
+                        Gas = 100_000
+                    },
+                    TraceTypes = ["trace"]
                 }
-            });
+            }));
 
         traces.Data.Single().Action!.Gas.Should().BeLessThan(gasCap);
     }
