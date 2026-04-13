@@ -22,21 +22,21 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Empty_when_disabled()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = false };
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = false };
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(urlCollection, Is.Empty);
     }
 
     [Test]
     public void Contains_single_default_url()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) }
@@ -46,14 +46,14 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Contains_multiple_default_urls_with_different_ws_port()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             WebSocketsPort = 1234,
             EnabledModules = _enabledModules
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
@@ -64,14 +64,14 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Contains_single_default_http_url_when_ws_disabled()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             WebSocketsPort = 1234,
             EnabledModules = _enabledModules
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, false);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false,_enabledModules) },
@@ -81,14 +81,14 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Contains_additional_urls()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
             AdditionalRpcUrls = ["https://localhost:1234|https;wss|admin;debug"]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
@@ -99,14 +99,14 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Skips_additional_ws_only_urls_when_ws_disabled()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
             AdditionalRpcUrls = ["http://localhost:1234|ws|admin;debug"]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, false);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545,  RpcEndpoint.Http, false, _enabledModules) }
@@ -116,14 +116,14 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Clears_flag_on_additional_ws_urls_when_ws_disabled()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
             AdditionalRpcUrls = ["http://localhost:1234|http;ws|admin;debug"]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, false);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
@@ -134,7 +134,7 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Skips_additional_urls_with_port_conflicts()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
@@ -148,7 +148,7 @@ public class JsonRpcUrlCollectionTests
             ]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },
@@ -160,7 +160,7 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Skips_additional_urls_when_invalid()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
@@ -172,7 +172,7 @@ public class JsonRpcUrlCollectionTests
             ]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
@@ -183,7 +183,7 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void EngineHost_and_EnginePort_specified()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
@@ -196,7 +196,7 @@ public class JsonRpcUrlCollectionTests
             EngineEnabledModules = ["eth"]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, true);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, true);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http | RpcEndpoint.Ws, false, _enabledModules) },
@@ -207,7 +207,7 @@ public class JsonRpcUrlCollectionTests
     [Test]
     public void Skips_AdditionalUrl_with_engine_module_enabled_when_EngineUrl_specified()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = true,
             EnabledModules = _enabledModules,
@@ -221,7 +221,7 @@ public class JsonRpcUrlCollectionTests
             EngineEnabledModules = ["eth"]
         };
 
-        JsonRpcUrlCollection urlCollection = new JsonRpcUrlCollection(Substitute.For<ILogManager>(), jsonRpcConfig, false);
+        JsonRpcUrlCollection urlCollection = new(Substitute.For<ILogManager>(), jsonRpcConfig, false);
         Assert.That(new Dictionary<int, JsonRpcUrl>()
         {
             { 8545, new JsonRpcUrl("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, _enabledModules) },

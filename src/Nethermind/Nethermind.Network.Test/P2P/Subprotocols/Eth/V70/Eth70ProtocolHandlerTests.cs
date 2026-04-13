@@ -117,7 +117,7 @@ public class Eth70ProtocolHandlerTests
         Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = (ulong)1.MB;
 
         const int receiptCount = 20000;
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         TxReceipt[] hugeBlock = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, receiptCount).ToArray();
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(hugeBlock);
 
@@ -131,7 +131,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_return_empty_receipts_block_when_local_block_has_no_receipts()
     {
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
 
         HandleIncomingStatusMessage();
@@ -151,7 +151,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
@@ -175,7 +175,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, receipts.Length - 1, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, receipts.Length - 1, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
@@ -197,7 +197,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, receipts.Length, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, receipts.Length, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
@@ -216,7 +216,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction * 2, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, receipts.Length + 1, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, receipts.Length + 1, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
         HandleIncomingStatusMessage();
@@ -299,6 +299,33 @@ public class Eth70ProtocolHandlerTests
         result[0].Should().BeEquivalentTo(block1);
         result[1].Should().BeEquivalentTo(block2);
         seenOffsets.AsSpan().ToArray().Should().Equal(0, 2);
+    }
+
+    [Test]
+    public async Task Should_accept_empty_receipts_block_when_requesting_from_peer()
+    {
+        TxReceipt[] block2Receipts =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            TxReceipt[][] payload = [[], block2Receipts];
+
+            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        Assert.That(result.Count, Is.EqualTo(2));
+        Assert.That(result[0], Is.Empty);
+        Assert.That(result[1].Length, Is.EqualTo(block2Receipts.Length));
+        Assert.That(result[1][0].GasUsedTotal, Is.EqualTo(block2Receipts[0].GasUsedTotal));
+        Assert.That(result[1][0].Logs, Is.Empty);
     }
 
     [Test]
@@ -425,7 +452,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA, TestItem.KeccakB }.ToPooledList()));
 
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(Array.Empty<TxReceipt>());
@@ -450,7 +477,7 @@ public class Eth70ProtocolHandlerTests
             new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         _syncManager.GetReceipts(Keccak.Zero).Returns(Array.Empty<TxReceipt>());
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
@@ -468,7 +495,7 @@ public class Eth70ProtocolHandlerTests
     [Test]
     public void Should_disconnect_when_first_block_receipt_index_nonzero_for_empty_block()
     {
-        using var request = new GetReceiptsMessage70(1111, 5, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 5, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
 
         HandleIncomingStatusMessage();
@@ -490,7 +517,7 @@ public class Eth70ProtocolHandlerTests
                 new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [new LogEntry(TestItem.AddressA, new byte[100], [])] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
 
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
 
@@ -523,7 +550,7 @@ public class Eth70ProtocolHandlerTests
         _syncManager.GetReceipts(Keccak.Zero).Returns(block1Receipts);
         _syncManager.GetReceipts(TestItem.KeccakA).Returns(block2Receipts);
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
@@ -546,7 +573,7 @@ public class Eth70ProtocolHandlerTests
                 new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [new LogEntry(TestItem.AddressA, new byte[400], [])] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(largeBlockReceipts);
 
         HandleIncomingStatusMessage();
@@ -570,7 +597,7 @@ public class Eth70ProtocolHandlerTests
                 new() { GasUsedTotal = GasCostOf.Transaction * 3, Logs = [] }
         ];
 
-        using var request = new GetReceiptsMessage70(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
+        using GetReceiptsMessage70 request = new(1111, 0, new(new[] { Keccak.Zero }.ToPooledList()));
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(smallBlockReceipts);
 
         HandleIncomingStatusMessage();
@@ -603,7 +630,7 @@ public class Eth70ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        using var statusMsg = new StatusMessage69 { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
+        using StatusMessage69 statusMsg = new() { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();

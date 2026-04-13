@@ -8,7 +8,7 @@ using System.Globalization;
 
 namespace Nethermind.Core.Cpu;
 
-public readonly struct TimeInterval
+public readonly struct TimeInterval(double nanoseconds)
 {
     public static readonly TimeInterval Nanosecond = TimeUnit.Nanosecond.ToInterval(1L);
 
@@ -24,12 +24,7 @@ public readonly struct TimeInterval
 
     public static readonly TimeInterval Day = TimeUnit.Day.ToInterval(1L);
 
-    public double Nanoseconds { get; }
-
-    public TimeInterval(double nanoseconds)
-    {
-        Nanoseconds = nanoseconds;
-    }
+    public double Nanoseconds { get; } = nanoseconds;
 
     public TimeInterval(double value, TimeUnit unit)
         : this(value * (double)unit.NanosecondAmount)

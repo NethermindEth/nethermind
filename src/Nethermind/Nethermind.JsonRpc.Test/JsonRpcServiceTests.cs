@@ -54,7 +54,7 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequest<T>(T module, string method, params object?[]? parameters) where T : IRpcModule
     {
-        var pool = new SingletonModulePool<T>(new SingletonFactory<T>(module), true);
+        SingletonModulePool<T> pool = new(new SingletonFactory<T>(module), true);
 
         return TestRequestWithPool(pool, method, parameters);
     }

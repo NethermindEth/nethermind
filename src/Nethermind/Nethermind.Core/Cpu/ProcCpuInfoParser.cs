@@ -14,16 +14,16 @@ internal static partial class ProcCpuInfoParser
 {
     internal static CpuInfo ParseOutput(string? content)
     {
-        var logicalCores = SectionsHelper.ParseSections(content, ':');
-        var processorModelNames = new HashSet<string>();
-        var processorsToPhysicalCoreCount = new Dictionary<string, int>();
+        List<Dictionary<string, string>> logicalCores = SectionsHelper.ParseSections(content, ':');
+        HashSet<string> processorModelNames = new();
+        Dictionary<string, int> processorsToPhysicalCoreCount = new();
 
         int logicalCoreCount = 0;
-        var nominalFrequency = Frequency.Zero;
-        var minFrequency = Frequency.Zero;
-        var maxFrequency = Frequency.Zero;
+        Frequency nominalFrequency = Frequency.Zero;
+        Frequency minFrequency = Frequency.Zero;
+        Frequency maxFrequency = Frequency.Zero;
 
-        foreach (var logicalCore in logicalCores)
+        foreach (Dictionary<string, string> logicalCore in logicalCores)
         {
             if (logicalCore.TryGetValue(ProcCpuInfoKeyNames.PhysicalId, out string? physicalId) &&
                 logicalCore.TryGetValue(ProcCpuInfoKeyNames.CpuCores, out string? cpuCoresValue) &&
@@ -39,13 +39,13 @@ internal static partial class ProcCpuInfoParser
             }
 
             if (logicalCore.TryGetValue(ProcCpuInfoKeyNames.MinFrequency, out string? minCpuFreqValue)
-                && Frequency.TryParseMHz(minCpuFreqValue, out var minCpuFreq))
+                && Frequency.TryParseMHz(minCpuFreqValue, out Frequency minCpuFreq))
             {
                 minFrequency = minCpuFreq;
             }
 
             if (logicalCore.TryGetValue(ProcCpuInfoKeyNames.MaxFrequency, out string? maxCpuFreqValue)
-                 && Frequency.TryParseMHz(maxCpuFreqValue, out var maxCpuFreq))
+                 && Frequency.TryParseMHz(maxCpuFreqValue, out Frequency maxCpuFreq))
             {
                 maxFrequency = maxCpuFreq;
             }
@@ -63,11 +63,11 @@ internal static partial class ProcCpuInfoParser
 
     internal static Frequency ParseFrequencyFromBrandString(string brandString)
     {
-        var matches = MatchRegex().Matches(brandString);
+        MatchCollection matches = MatchRegex().Matches(brandString);
         if (matches.Count > 0 && matches[0].Groups.Count > 1)
         {
             string match = GHzRegex().Matches(brandString)[0].Groups[1].ToString();
-            return Frequency.TryParseGHz(match, out var result) ? result : Frequency.Zero;
+            return Frequency.TryParseGHz(match, out Frequency result) ? result : Frequency.Zero;
         }
 
         return 0d;

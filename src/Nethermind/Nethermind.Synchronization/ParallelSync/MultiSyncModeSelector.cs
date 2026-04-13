@@ -679,7 +679,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         // during the beacon header sync our realTotalDifficulty could be 0. We're using peer.TotalDifficulty in this case
                         realTotalDifficulty = realTotalDifficulty == 0 ? peerTD : realTotalDifficulty;
 
-                        var isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty, peer.HeadNumber)) < 0;
+                        bool isRealPeerBetterThanCurrentMax = _betterPeerStrategy.Compare(((currentMax, currentMaxNumber)), (realTotalDifficulty, peer.HeadNumber)) < 0;
 
                         if (isRealPeerBetterThanCurrentMax)
                         {

@@ -110,16 +110,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         base.ApplyOptions(options);
     }
 
-    private class RocksColumnsWriteBatch : IColumnsWriteBatch<T>
+    private class RocksColumnsWriteBatch(ColumnsDb<T> columnsDb) : IColumnsWriteBatch<T>
     {
-        internal readonly RocksDbWriteBatch WriteBatch;
-        private readonly ColumnsDb<T> _columnsDb;
-
-        public RocksColumnsWriteBatch(ColumnsDb<T> columnsDb)
-        {
-            WriteBatch = new RocksDbWriteBatch(columnsDb);
-            _columnsDb = columnsDb;
-        }
+        internal readonly RocksDbWriteBatch WriteBatch = new(columnsDb);
+        private readonly ColumnsDb<T> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(T key) => new RocksColumnWriteBatch(_columnsDb._columnDbs[key], this);
 
@@ -127,16 +121,10 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         public void Dispose() => WriteBatch.Dispose();
     }
 
-    private class RocksColumnWriteBatch : IWriteBatch
+    private class RocksColumnWriteBatch(ColumnDb column, ColumnsDb<T>.RocksColumnsWriteBatch writeBatch) : IWriteBatch
     {
-        private readonly ColumnDb _column;
-        private readonly RocksColumnsWriteBatch _writeBatch;
-
-        public RocksColumnWriteBatch(ColumnDb column, RocksColumnsWriteBatch writeBatch)
-        {
-            _column = column;
-            _writeBatch = writeBatch;
-        }
+        private readonly ColumnDb _column = column;
+        private readonly RocksColumnsWriteBatch _writeBatch = writeBatch;
 
         public void Dispose()
         {
@@ -199,7 +187,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
             {
-                ReadOptions options = new ReadOptions();
+                ReadOptions options = new();
                 options.SetVerifyChecksums(columnsDb.VerifyChecksum);
                 options.SetSnapshot(snapshot);
                 return options;

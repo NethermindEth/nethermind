@@ -9,18 +9,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie;
 
-public class NodeStorageFactory : INodeStorageFactory
+public class NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager) : INodeStorageFactory
 {
-    private readonly INodeStorage.KeyScheme _preferredKeyScheme;
-    private INodeStorage.KeyScheme? _currentKeyScheme;
-    private readonly ILogger _logger;
-
-    public NodeStorageFactory(INodeStorage.KeyScheme preferredKeyScheme, ILogManager logManager)
-    {
-        _logger = logManager.GetClassLogger<NodeStorageFactory>();
-        _preferredKeyScheme = preferredKeyScheme;
-        _currentKeyScheme = null;
-    }
+    private readonly INodeStorage.KeyScheme _preferredKeyScheme = preferredKeyScheme;
+    private INodeStorage.KeyScheme? _currentKeyScheme = null;
+    private readonly ILogger _logger = logManager.GetClassLogger<NodeStorageFactory>();
 
     public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
 

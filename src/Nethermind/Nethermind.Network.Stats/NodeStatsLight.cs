@@ -17,16 +17,16 @@ namespace Nethermind.Stats;
 /// <summary>
 /// Initial version of Reputation calculation mostly based on EthereumJ impl
 /// </summary>
-public class NodeStatsLight : INodeStats
+public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f) : INodeStats
 {
-    private readonly StatsParameters _statsParameters;
+    private readonly StatsParameters _statsParameters = StatsParameters.Instance;
 
     // How much weight to put on latest speed.
     // 1.0 means that the reported speed will always replaced with latest speed.
     // 0.5 means that the reported speed will be (oldSpeed + newSpeed)/2;
     // 0.25 here means that the latest weight affect the stored weight a bit for every report, resulting in a smoother
     // modification to account for jitter.
-    private readonly float _latestSpeedWeight;
+    private readonly float _latestSpeedWeight = latestSpeedWeight;
 
     // NaN signals "no value yet" (replaces nullable decimal)
     private float _averageNodesTransferSpeed = float.NaN;
@@ -36,7 +36,7 @@ public class NodeStatsLight : INodeStats
     private float _averageSnapRangesTransferSpeed = float.NaN;
     private float _averageLatency = float.NaN;
 
-    private readonly int[] _statCountersArray;
+    private readonly int[] _statCountersArray = new int[_statsLength];
 
     private DisconnectReason? _lastLocalDisconnect;
     private DisconnectReason? _lastRemoteDisconnect;
@@ -91,14 +91,6 @@ public class NodeStatsLight : INodeStats
         upperWatermark: TimeSpan.FromMilliseconds(3500)
     );
 
-    public NodeStatsLight(Node node, float latestSpeedWeight = 0.25f)
-    {
-        _statCountersArray = new int[_statsLength];
-        _statsParameters = StatsParameters.Instance;
-        _latestSpeedWeight = latestSpeedWeight;
-        Node = node;
-    }
-
     public long CurrentNodeReputation(DateTime nowUTC) => CalculateCurrentReputation(nowUTC);
 
     public long CurrentPersistedNodeReputation { get; set; }
@@ -113,7 +105,7 @@ public class NodeStatsLight : INodeStats
 
     public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
-    public Node Node { get; }
+    public Node Node { get; } = node;
 
     private void Increment(NodeStatsEventType nodeStatsEventType)
     {

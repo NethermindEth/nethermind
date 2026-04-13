@@ -104,7 +104,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [Test]
         public void Can_roundtrip_uint128_asymmetric()
         {
-            UInt128 value = new UInt128(0x0000000000000001, 0x0000000000000002);
+            UInt128 value = new(0x0000000000000001, 0x0000000000000002);
             Span<byte> output = stackalloc byte[16];
             Ssz.Encode(output, value);
             Assert.That(output.ToHexString(), Is.EqualTo("02000000000000000100000000000000"));

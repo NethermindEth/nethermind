@@ -28,8 +28,8 @@ public class Eip7778Tests : VirtualMachineTestsBase
     private static TestSpecProvider CreateSpecProvider()
     {
         // Use OverridableReleaseSpec to extend London with EIP-7778 enabled
-        var eip7778Spec = new OverridableReleaseSpec(London.Instance) { IsEip7778Enabled = true };
-        var provider = new TestSpecProvider(London.Instance)
+        OverridableReleaseSpec eip7778Spec = new(London.Instance) { IsEip7778Enabled = true };
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778Spec,
             ForkOnBlockNumber = 1
@@ -213,13 +213,13 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Block_gas_uses_calldata_floor_when_execution_gas_is_lower()
     {
         // Use a spec with both EIP-7778 and EIP-7623 enabled
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
             IsEip2028Enabled = true
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -247,7 +247,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.CreateAccount(TestItem.AddressA, 1.Ether);
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         Transaction tx = Build.A.Transaction
             .WithData(calldata)
@@ -286,14 +286,14 @@ public class Eip7778Tests : VirtualMachineTestsBase
     public void Block_gas_uses_execution_gas_when_it_exceeds_calldata_floor()
     {
         // Use a spec with both EIP-7778 and EIP-7623 enabled
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
             IsEip2028Enabled = true,
             IsEip2200Enabled = true
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -316,7 +316,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         // Code that does an SSTORE operation (expensive - uses way more than floor gas)
         byte[] code = Prepare.EvmCode
@@ -366,7 +366,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         // Test the scenario where there's a refund but floor gas still applies
         // Formula: blockGas = max(preRefundGas, floorGas)
         //          receiptGas = max(postRefundGas, floorGas)
-        var eip7778And7623Spec = new OverridableReleaseSpec(London.Instance)
+        OverridableReleaseSpec eip7778And7623Spec = new(London.Instance)
         {
             IsEip7778Enabled = true,
             IsEip7623Enabled = true,
@@ -374,7 +374,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
             IsEip2200Enabled = true,
             IsEip3529Enabled = true // London refund rules
         };
-        var provider = new TestSpecProvider(London.Instance)
+        TestSpecProvider provider = new(London.Instance)
         {
             NextForkSpec = eip7778And7623Spec,
             ForkOnBlockNumber = 1
@@ -386,7 +386,7 @@ public class Eip7778Tests : VirtualMachineTestsBase
         TestState.Set(new StorageCell(Recipient, 0), new byte[] { 1 });
         TestState.Commit(provider.GetSpec((1, 0)));
 
-        var processor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
 
         // Code that clears storage (triggers refund)
         byte[] code = Prepare.EvmCode

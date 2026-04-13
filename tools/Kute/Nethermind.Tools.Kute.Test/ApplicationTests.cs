@@ -142,7 +142,7 @@ public class ApplicationTests
     [TestCaseSource(nameof(Processors))]
     public async Task WithFiltering_InvalidResponses(IAsyncProcessor processor)
     {
-        var lines = """
+        string lines = """
         {"method": "engine_exchangeTransitionConfigurationV1"}
         {"method": "eth_chainId"}
         [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]
@@ -176,7 +176,7 @@ public class ApplicationTests
     [TestCaseSource(nameof(Processors))]
     public async Task WithFiltering_UnwrapBatches_InvalidResponses(IAsyncProcessor processor)
     {
-        var lines = """
+        string lines = """
         {"method": "engine_exchangeTransitionConfigurationV1"}
         {"method": "eth_chainId"}
         [{"method": "eth_getBlockByNumber"}, {"method": "engine_exchangeCapabilities"}]

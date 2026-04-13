@@ -388,8 +388,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         }
 
         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
+        bool discardCreateStateCharge = invalidCode || (spec.LimitCodeSize && callResult.Output.Length > spec.MaxCodeSize);
         TryChargeAndDepositCode(previousState, gasAvailableForCodeDeposit, ref previousStateSucceeded,
-            regularDepositCost, stateDepositCost, invalidCode, callResult.Output);
+            regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
     }
 
     protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
@@ -412,6 +413,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         long regularDepositCost,
         long stateDepositCost,
         bool invalidCode,
+        bool discardCreateStateCharge,
         ReadOnlyMemory<byte> code)
     {
         IReleaseSpec spec = BlockExecutionContext.Spec;
@@ -445,6 +447,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // but halt semantics require restoring the full initial state reservoir and discarding
             // the child's stateGasUsed (since the child's state changes are being reverted).
             TGasPolicy.RevertRefundToHalt(ref _currentState.Gas, in previousState.Gas, previousState.InitialStateReservoir);
+            if (spec.IsEip8037Enabled && discardCreateStateCharge)
+            {
+                TGasPolicy.DiscardStateGas(ref _currentState.Gas, GasCostOf.CreateState, stateGasFloor: 0);
+            }
             _worldState.Restore(previousState.Snapshot);
             if (!previousState.IsCreateOnPreExistingAccount)
             {
@@ -1116,7 +1122,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
-        var opcodeArray = _opcodeMethods;
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
             int opCodeCount = 0;
@@ -1154,7 +1160,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 else
                 {
                     // Retrieve the opcode function pointer corresponding to the current instruction.
-                    var opcodeMethod = opcodeMethods[(int)instruction];
+                    delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType> opcodeMethod = opcodeMethods[(int)instruction];
                     // Invoke the opcode method, which may modify the stack, gas, and program counter.
                     // Is executed using fast delegate* via calli (see: C# function pointers https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/unsafe-code#function-pointers)
                     exceptionType = opcodeMethod(this, ref stack, ref gas, ref programCounter);
@@ -1367,7 +1373,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
+    public void AddTransferLog<TEip7708>(Address from, Address to, in UInt256 value)
         where TEip7708 : struct, IFlag
     {
         if (TEip7708.IsActive && !value.IsZero && from != to)

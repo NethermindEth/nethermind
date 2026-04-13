@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
@@ -15,7 +16,7 @@ public class FrameDecoderTests
     [Test]
     public void DecodeSingleFrame()
     {
-        var frame = new Frame
+        Frame frame = new()
         {
             ChannelId = 1,
             FrameNumber = 1,
@@ -23,12 +24,12 @@ public class FrameDecoderTests
             IsLast = false,
         };
 
-        var buffer = new byte[frame.Size];
+        byte[] buffer = new byte[frame.Size];
 
         int written = frame.WriteTo(buffer);
         written.Should().Be(frame.Size);
 
-        int read = Frame.FromBytes(buffer, out var decoded);
+        int read = Frame.FromBytes(buffer, out Frame decoded);
         read.Should().Be(written);
         decoded.Should().Be(frame);
     }
@@ -36,7 +37,7 @@ public class FrameDecoderTests
     [Test]
     public void DecodeMultipleFrames()
     {
-        var frame1 = new Frame
+        Frame frame1 = new()
         {
             ChannelId = 1,
             FrameNumber = 1,
@@ -45,7 +46,7 @@ public class FrameDecoderTests
         };
 
 
-        var frame2 = new Frame
+        Frame frame2 = new()
         {
             ChannelId = 1,
             FrameNumber = 2,
@@ -66,7 +67,7 @@ public class FrameDecoderTests
             span.TakeAndMove(written);
         }
 
-        var decoded = FrameDecoder.DecodeFrames(buffer).ToList();
+        List<Frame> decoded = FrameDecoder.DecodeFrames(buffer).ToList();
 
         decoded.Count.Should().Be(2);
         decoded[0].Should().Be(frame1);

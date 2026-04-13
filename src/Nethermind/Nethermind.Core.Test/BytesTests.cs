@@ -124,7 +124,7 @@ namespace Nethermind.Core.Test
 
             try
             {
-                using (var ms = new MemoryStream())
+                using (MemoryStream ms = new())
                 {
                     sw = new StreamWriter(ms);
                     sr = new StreamReader(ms);
@@ -328,7 +328,7 @@ namespace Nethermind.Core.Test
         [TestCase]
         public void Can_roundtrip_utf8_hex_conversion()
         {
-            for (var i = 0; i < 2048; i++)
+            for (int i = 0; i < 2048; i++)
             {
                 byte[] input = new byte[i];
                 byte[] hex = new byte[i * 2];
@@ -360,7 +360,7 @@ namespace Nethermind.Core.Test
 
             Bytes.OutputBytesToByteHex(input, hex, extraNibble: false);
 
-            for (var i = 0; i < hex.Length; i++)
+            for (int i = 0; i < hex.Length; i++)
             {
                 byte b = hex[i];
 
@@ -456,7 +456,7 @@ namespace Nethermind.Core.Test
             {
                 byte[] GenerateRandom(int length)
                 {
-                    var bytes = new byte[length];
+                    byte[] bytes = new byte[length];
                     TestContext.CurrentContext.Random.NextBytes(bytes);
                     return bytes;
                 }
@@ -739,7 +739,7 @@ namespace Nethermind.Core.Test
             }
 
             int expected = 0;
-            foreach (var t in data)
+            foreach (byte t in data)
             {
                 if (t == 0) expected++;
             }

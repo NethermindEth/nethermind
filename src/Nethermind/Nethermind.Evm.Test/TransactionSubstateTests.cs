@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be("0x0506070809");
         }
 
         [Test]
@@ -47,7 +47,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be("0x0506070809");
         }
 
         [Test]
@@ -82,6 +82,23 @@ namespace Nethermind.Evm.Test
                 true,
                 true);
             transactionSubstate.Error.Should().Be("0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
+        }
+
+        [Test]
+        public void should_hex_encode_custom_error_selector_with_control_characters()
+        {
+            // keccak4("ActionFailed()") = 0x080a1c27 — the bytes happen to be valid UTF-8
+            // but contain control characters (\b, \n, FS) so must be hex-encoded, not returned raw.
+            byte[] data = { 0x08, 0x0a, 0x1c, 0x27 };
+            ReadOnlyMemory<byte> readOnlyMemory = new(data);
+            TransactionSubstate transactionSubstate = new(
+                readOnlyMemory,
+                0,
+                new JournalSet<Address>(Address.EqualityComparer),
+                new JournalCollection<LogEntry>(),
+                true,
+                true);
+            transactionSubstate.Error.Should().Be("0x080a1c27");
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()

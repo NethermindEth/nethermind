@@ -14,33 +14,25 @@ namespace Nethermind.Network.Discovery
     /// Manages persistence operations for the discovery process, including loading nodes from storage
     /// and periodic saving of discovered nodes.
     /// </summary>
-    public class DiscoveryPersistenceManager
+    /// <remarks>
+    /// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
+    /// </remarks>
+    /// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
+    /// <param name="nodeStatsManager">Manager for node statistics.</param>
+    /// <param name="discv4Adapter">Adapter for Discv4 protocol communication.</param>
+    /// <param name="discoveryConfig">Configuration for the discovery process.</param>
+    /// <param name="logManager">Log manager for logging events.</param>
+    /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
+    public class DiscoveryPersistenceManager(
+        [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
+        IDiscoveryManager discoveryManager,
+        IDiscoveryConfig discoveryConfig,
+        ILogManager logManager)
     {
-        private readonly INetworkStorage _discoveryStorage;
-        private readonly IDiscoveryManager _discoveryManager;
-        private readonly ILogger _logger;
-        private readonly int _persistenceInterval;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
-        /// </summary>
-        /// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
-        /// <param name="nodeStatsManager">Manager for node statistics.</param>
-        /// <param name="discv4Adapter">Adapter for Discv4 protocol communication.</param>
-        /// <param name="discoveryConfig">Configuration for the discovery process.</param>
-        /// <param name="logManager">Log manager for logging events.</param>
-        /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
-        public DiscoveryPersistenceManager(
-            [KeyFilter(DbNames.DiscoveryNodes)] INetworkStorage discoveryStorage,
-            IDiscoveryManager discoveryManager,
-            IDiscoveryConfig discoveryConfig,
-            ILogManager logManager)
-        {
-            _discoveryStorage = discoveryStorage;
-            _discoveryManager = discoveryManager;
-            _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
-            _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
-        }
+        private readonly INetworkStorage _discoveryStorage = discoveryStorage;
+        private readonly IDiscoveryManager _discoveryManager = discoveryManager;
+        private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
+        private readonly int _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
 
         /// <summary>
         /// Loads persisted nodes from storage and pings them to verify their availability.
@@ -106,7 +98,7 @@ namespace Nethermind.Network.Discovery
         public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-            using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_persistenceInterval));
 
             while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
             {

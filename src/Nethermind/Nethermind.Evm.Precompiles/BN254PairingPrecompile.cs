@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,8 +7,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles;
 
+/// <summary>
 /// <see href="https://eips.ethereum.org/EIPS/eip-197" />
-public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
+/// </summary>
+public partial class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
 {
     private const int PairingMaxInputSizeGranite = 112_687;
 
@@ -25,19 +27,9 @@ public class BN254PairingPrecompile : IPrecompile<BN254PairingPrecompile>
     public long DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
         (releaseSpec.IsEip1108Enabled ? 34_000L : 80_000L) * (inputData.Length / BN254.PairSize);
 
-    public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
-    {
-        Metrics.Bn254PairingPrecompile++;
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec);
 
-        if (releaseSpec.IsOpGraniteEnabled && inputData.Length > PairingMaxInputSizeGranite ||
-            inputData.Length % BN254.PairSize > 0)
-        {
-            return Errors.InvalidInputLength;
-        }
-
-        byte[] output = new byte[32];
-        bool result = BN254.CheckPairing(output, inputData.Span);
-
-        return result ? output : Errors.Failed;
-    }
+    private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec) =>
+        (!releaseSpec.IsOpGraniteEnabled || inputData.Length <= PairingMaxInputSizeGranite) &&
+            inputData.Length % BN254.PairSize == 0;
 }

@@ -79,7 +79,7 @@ public class TdxRpcModuleTests
         BlockHeader header = Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject;
         _blockFinder.FindHeader(Arg.Any<long>(), Arg.Any<BlockTreeLookupOptions>()).Returns(header);
 
-        var signature = new TdxBlockHeaderSignature
+        TdxBlockHeaderSignature signature = new()
         {
             Signature = new byte[Signature.Size],
             BlockHash = header.Hash!,
@@ -138,7 +138,7 @@ public class TdxRpcModuleTests
     public async Task GetTdxGuestInfo_returns_info_when_available()
     {
         _config.TdxEnabled.Returns(true);
-        var info = new TdxGuestInfo
+        TdxGuestInfo info = new()
         {
             IssuerType = "test",
             PublicKey = "0x1234",
@@ -169,7 +169,7 @@ public class TdxRpcModuleTests
     public async Task TdxBootstrap_returns_info_when_successful()
     {
         _config.TdxEnabled.Returns(true);
-        var info = new TdxGuestInfo
+        TdxGuestInfo info = new()
         {
             IssuerType = "azure",
             PublicKey = "0xabcd",

@@ -13,7 +13,7 @@ public class PropertyRequiredInSszTypeAnalyzer : SszDiagnosticAnalyzer
     private static readonly LocalizableString Description = "A class or struct marked with SszContainer or SszCompatibleUnion should have at least one public property with both a public getter and setter.";
     private const string Category = "Design";
 
-    private static readonly DiagnosticDescriptor Rule = new DiagnosticDescriptor(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
+    private static readonly DiagnosticDescriptor Rule = new(DiagnosticId, Title, MessageFormat, Category, DiagnosticSeverity.Error, isEnabledByDefault: true, description: Description);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get { return [Rule]; } }
 

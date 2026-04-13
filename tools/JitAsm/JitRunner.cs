@@ -10,14 +10,14 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
 {
     public async Task<JitResult> RunSinglePassAsync(IReadOnlyList<string>? cctorsToInit = null)
     {
-        var result = await RunJitProcessAsync(cctorsToInit);
+        JitResult result = await RunJitProcessAsync(cctorsToInit);
         return result;
     }
 
     public async Task<JitResult> RunTwoPassAsync()
     {
         // Pass 1: Run without cctor initialization to detect static constructor calls
-        var pass1Result = await RunJitProcessAsync(null);
+        JitResult pass1Result = await RunJitProcessAsync(null);
 
         if (!pass1Result.Success)
         {
@@ -25,7 +25,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         }
 
         // Detect static constructors in the output
-        var detectedCctors = StaticCtorDetector.DetectStaticCtors(pass1Result.Output ?? string.Empty);
+        IReadOnlyList<string> detectedCctors = StaticCtorDetector.DetectStaticCtors(pass1Result.Output ?? string.Empty);
 
         if (detectedCctors.Count == 0)
         {
@@ -34,7 +34,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
         }
 
         // Pass 2: Run with cctor initialization
-        var pass2Result = await RunJitProcessAsync(detectedCctors);
+        JitResult pass2Result = await RunJitProcessAsync(detectedCctors);
 
         return new JitResult
         {
@@ -49,7 +49,7 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
     private async Task<JitResult> RunJitProcessAsync(IReadOnlyList<string>? cctorsToInit)
     {
         // Get the path to the JitAsm executable
-        var (executablePath, argumentPrefix) = GetExecutablePath();
+        (string? executablePath, string? argumentPrefix) = GetExecutablePath();
 
         // Build the method pattern for JitDisasm
         var methodPattern = BuildMethodPattern();
@@ -141,8 +141,8 @@ internal sealed class JitRunner(string assemblyPath, string? typeName, string me
                 return new JitResult { Success = false, Error = "Failed to start process" };
             }
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
+            Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
+            Task<string> stderrTask = process.StandardError.ReadToEndAsync();
 
             await process.WaitForExitAsync();
 

@@ -40,8 +40,8 @@ internal class XdcProtocolHandler(
     private readonly ITimeoutCertificateManager _timeoutCertificateManager = timeoutCertificateManager;
     private readonly IVotesManager _votesManager = votesManager;
     private readonly IBlockTree _blockTree = blockTree;
-    private ClockKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
-    private ClockKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
+    private AssociativeKeyCache<ValueHash256> _notifiedVotes = new(MemoryAllowance.MemPoolSize / 2);
+    private AssociativeKeyCache<ValueHash256> _notifiedTimeouts = new(MemoryAllowance.MemPoolSize / 2);
 
     public override string Name => "xdpos2";
 
@@ -54,7 +54,7 @@ internal class XdcProtocolHandler(
 
     public override void HandleMessage(ZeroPacket message)
     {
-        var size = message.Content.ReadableBytes;
+        int size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
 

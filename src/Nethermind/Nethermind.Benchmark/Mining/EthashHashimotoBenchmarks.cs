@@ -12,7 +12,7 @@ namespace Nethermind.Benchmarks.Mining
 {
     public class EthashHashimotoBenchmarks
     {
-        private Ethash _ethash = new Ethash(LimboLogs.Instance);
+        private Ethash _ethash = new(LimboLogs.Instance);
 
         private BlockHeader _header;
 

@@ -6,16 +6,10 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merkleization;
 
-public readonly struct MerkleTreeNode
+public readonly struct MerkleTreeNode(Bytes32 hash, ulong index)
 {
-    public MerkleTreeNode(Bytes32 hash, ulong index)
-    {
-        Hash = hash;
-        Index = index;
-    }
-
-    public Bytes32 Hash { get; }
-    public ulong Index { get; } // 32bit index for 32 depth of a tree
+    public Bytes32 Hash { get; } = hash;
+    public ulong Index { get; } = index;
 
     public override string ToString()
     {

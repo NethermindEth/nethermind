@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Jumpdest_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x5b, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
@@ -112,7 +112,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Push1_Over10k()
         {
-            var code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
+            byte[] code = Enumerable.Repeat((byte)0x60, 10_001).ToArray();
 
             CodeInfo codeInfo = new(code);
 
@@ -180,7 +180,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 //
             }
-            var triggerPushes = false;
+            bool triggerPushes = false;
             for (; i < code.Length; i++)
             {
                 if (i % (n + 1) == 0)
@@ -230,7 +230,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             get
             {
                 byte[] code = new byte[1024];
-                TestCaseData test = new TestCaseData(code);
+                TestCaseData test = new(code);
                 test.TestName = "Code_All_0x00";
                 yield return test;
 
@@ -242,9 +242,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
                 code = new byte[1024];
 
-                for (var start = 0; start <= 1; start++)
+                for (int start = 0; start <= 1; start++)
                 {
-                    for (var push = 0x60; push <= 0x7f; push++)
+                    for (int push = 0x60; push <= 0x7f; push++)
                     {
                         for (int i = 0; i < code.Length; i++)
                         {

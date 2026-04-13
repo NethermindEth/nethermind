@@ -1092,7 +1092,7 @@ public partial class SszEncoding
         string[] lines = input.Split('\n');
         int lineNumberWidth = lines.Length.ToString().Length;
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder sb = new();
         for (int i = 0; i < lines.Length; i++)
         {
             string lineNumber = (i + 1).ToString().PadLeft(lineNumberWidth);

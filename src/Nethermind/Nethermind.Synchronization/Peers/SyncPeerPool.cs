@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Peers
 
         public void WakeUpAll()
         {
-            foreach (var peer in _peers)
+            foreach (KeyValuePair<PublicKey, PeerInfo> peer in _peers)
             {
                 peer.Value.TryToWakeUp(DateTime.UtcNow, TimeSpan.Zero);
             }

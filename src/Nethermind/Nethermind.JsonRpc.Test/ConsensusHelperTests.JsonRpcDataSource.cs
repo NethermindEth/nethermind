@@ -14,18 +14,11 @@ namespace Nethermind.JsonRpc.Test;
 
 public partial class ConsensusHelperTests
 {
-    private abstract class JsonRpcDataSource<T2> : IConsensusDataSource<T2>
+    private abstract class JsonRpcDataSource<T2>(Uri uri, IJsonSerializer serializer) : IConsensusDataSource<T2>
     {
-        private readonly Uri _uri;
-        protected readonly IJsonSerializer _serializer;
-        private readonly HttpClient _httpClient;
-
-        protected JsonRpcDataSource(Uri uri, IJsonSerializer serializer)
-        {
-            _uri = uri;
-            _serializer = serializer;
-            _httpClient = new HttpClient();
-        }
+        private readonly Uri _uri = uri;
+        protected readonly IJsonSerializer _serializer = serializer;
+        private readonly HttpClient _httpClient = new();
 
         protected async Task<string> SendRequest(JsonRpcRequest request)
         {

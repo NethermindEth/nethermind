@@ -7,16 +7,11 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core.Caching;
 
-internal sealed class LinkedListNode<T>
+internal sealed class LinkedListNode<T>(T value)
 {
     internal LinkedListNode<T>? Next;
     internal LinkedListNode<T>? Prev;
-    internal T Value;
-
-    public LinkedListNode(T value)
-    {
-        Value = value;
-    }
+    internal T Value = value;
 
     public static void MoveToMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {

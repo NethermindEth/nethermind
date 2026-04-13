@@ -265,17 +265,12 @@ namespace Nethermind.Blockchain.Filters
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp);
         }
 
-        private sealed class Option<T>
+        private sealed class Option<T>(T value)
         {
             private bool _isRemoved;
 
-            public T Value { get; }
+            public T Value { get; } = value;
             public bool IsRemoved => Volatile.Read(ref _isRemoved);
-
-            public Option(T value)
-            {
-                Value = value;
-            }
 
             public void MarkRemoved() => Volatile.Write(ref _isRemoved, true);
         }

@@ -17,7 +17,7 @@ class SszProperty
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
-        SszProperty result = new SszProperty { Name = prop.Name, Type = type };
+        SszProperty result = new() { Name = prop.Name, Type = type };
 
         AttributeData? fieldAttr = GetAttribute(attributes, nameof(SszFieldAttribute));
         if (fieldAttr is not null)

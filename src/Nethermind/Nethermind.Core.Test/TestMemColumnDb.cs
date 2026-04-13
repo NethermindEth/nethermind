@@ -24,7 +24,7 @@ public class TestMemColumnsDb<TKey> : IColumnsDb<TKey>
         }
     }
 
-    public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new TestMemDb() : db;
+    public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out TestMemDb? db) ? _columnDbs[key] = new TestMemDb() : db;
     public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
     public IColumnsWriteBatch<TKey> StartWriteBatch()

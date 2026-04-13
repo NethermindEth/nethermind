@@ -38,10 +38,10 @@ public class TrieWarmerTests
     [Test]
     public async Task PushAddressJob_CallsWarmUpStateTrie()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IAddressWarmer addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        Address address = new Address("0x1234567890123456789012345678901234567890");
+        Address address = new("0x1234567890123456789012345678901234567890");
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 1);
 
@@ -56,7 +56,7 @@ public class TrieWarmerTests
     [Test]
     public async Task PushSlotJob_CallsWarmUpStorageTrie()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IStorageWarmer storageWarmer = Substitute.For<ITrieWarmer.IStorageWarmer>();
         UInt256 index = 42;
@@ -74,10 +74,10 @@ public class TrieWarmerTests
     [Test]
     public async Task PushAddressJob_PassesCorrectSequenceId()
     {
-        TrieWarmer warmer = new TrieWarmer(_processExitSource, _logManager, _config);
+        TrieWarmer warmer = new(_processExitSource, _logManager, _config);
 
         ITrieWarmer.IAddressWarmer addressWarmer = Substitute.For<ITrieWarmer.IAddressWarmer>();
-        Address address = new Address("0x1111111111111111111111111111111111111111");
+        Address address = new("0x1111111111111111111111111111111111111111");
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 999);
 

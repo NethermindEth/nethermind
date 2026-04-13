@@ -23,8 +23,8 @@ public class JsonConfigSource : IConfigSource
     {
         try
         {
-            using var json = JsonDocument.Parse(jsonContent);
-            foreach (var moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
+            using JsonDocument json = JsonDocument.Parse(jsonContent);
+            foreach (JsonProperty moduleEntry in json.RootElement.EnumerateObject().Where(o => o.Name != SchemaKey))
             {
                 LoadModule(moduleEntry.Name, moduleEntry.Value);
             }
@@ -72,14 +72,14 @@ public class JsonConfigSource : IConfigSource
 
     private void LoadModule(string moduleName, JsonElement configItems)
     {
-        var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
+        Dictionary<string, string> itemsDict = new(StringComparer.InvariantCultureIgnoreCase);
 
-        foreach (var configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
+        foreach (JsonProperty configItem in configItems.EnumerateObject().Where(o => o.Name != SchemaKey))
         {
-            var key = configItem.Name;
+            string key = configItem.Name;
             if (!itemsDict.ContainsKey(key))
             {
-                var value = configItem.Value;
+                JsonElement value = configItem.Value;
                 if (value.ValueKind == JsonValueKind.Number)
                 {
                     itemsDict[key] = value.GetInt64().ToString();

@@ -30,7 +30,7 @@ public class EncodingTest
                 Selector = CompatibleNumberUnionSelector.CurrentValue,
                 CurrentValue = (ulong)i,
             }).ToArray(),
-            BitVec = new BitArray(10),
+            BitVec = new(10),
         };
 
         byte[] encoded = SszEncoding.Encode(test);
@@ -61,7 +61,11 @@ public class EncodingTest
     [Test]
     public void Decode_bitvector_preserves_declared_length()
     {
-        BitVectorContainer container = new() { Bits = new BitArray(10) };
+        BitArray bits = new(10);
+        bits[0] = true;
+        bits[3] = true;
+        bits[9] = true;
+        BitVectorContainer container = new() { Bits = bits };
 
         byte[] encoded = SszEncoding.Encode(container);
         SszEncoding.Decode(encoded, out BitVectorContainer decoded);
@@ -69,6 +73,10 @@ public class EncodingTest
         Assert.That(decoded.Bits, Is.Not.Null);
         Assert.That(decoded.Bits!.Length, Is.EqualTo(10));
         Assert.That(decoded.Bits.Cast<bool>(), Is.EqualTo(container.Bits!.Cast<bool>()));
+        Assert.That(decoded.Bits[0], Is.True);
+        Assert.That(decoded.Bits[3], Is.True);
+        Assert.That(decoded.Bits[9], Is.True);
+        Assert.That(decoded.Bits[1], Is.False);
     }
 
     [Test]
@@ -202,7 +210,7 @@ public class EncodingTest
     [Test]
     public void Encode_and_decode_progressive_bitlist_round_trip()
     {
-        BitArray bits = new BitArray(10);
+        BitArray bits = new(10);
         bits[0] = true;
         bits[3] = true;
         bits[9] = true;
@@ -219,7 +227,7 @@ public class EncodingTest
     [Test]
     public void Merkleize_progressive_bitlist_uses_progressive_merkleization()
     {
-        BitArray bits = new BitArray(10);
+        BitArray bits = new(10);
         bits[0] = true;
         bits[3] = true;
         bits[9] = true;

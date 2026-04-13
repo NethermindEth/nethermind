@@ -34,7 +34,7 @@ public abstract class NodesManager(string path, ILogger logger)
 
             if (File.Exists(oldPath))
             {
-                var moved = true;
+                bool moved = true;
 
                 try
                 {
@@ -82,7 +82,7 @@ public abstract class NodesManager(string path, ILogger logger)
     {
         if (_logger.IsDebug && nodes.Count != 0)
         {
-            var separator = $"{Environment.NewLine}  ";
+            string separator = $"{Environment.NewLine}  ";
 
             _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
         }

@@ -489,7 +489,7 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        var fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
+                        byte[] fullRlp = tree.TryLoadRlp(path, keccak, readFlags);
 
                         if (fullRlp is null)
                         {
@@ -715,7 +715,7 @@ namespace Nethermind.Trie
             }
 
             CappedArray<byte> rlp = ReadRlp();
-            ref var data = ref _nodeData[i];
+            ref object data = ref _nodeData[i];
             if (rlp.IsNotNull && data is null)
             {
                 ValueRlpStream rlpStream = new(rlp);
@@ -740,7 +740,7 @@ namespace Nethermind.Trie
                 i++;
             }
 
-            ref var data = ref _nodeData[i];
+            ref object data = ref _nodeData[i];
             if (data is null)
             {
                 dirtyChild = null;
@@ -901,7 +901,7 @@ namespace Nethermind.Trie
             {
                 for (int i = 0; i < data.Length; i++)
                 {
-                    var child = data[i];
+                    object child = data[i];
                     dataSize += child switch
                     {
                         null => 0,
@@ -1012,7 +1012,7 @@ namespace Nethermind.Trie
 
             if (_nodeData is BranchData branchData)
             {
-                ref readonly var data = ref branchData.Branches;
+                ref readonly BranchArray data = ref branchData.Branches;
                 int previousLength = AppendChildPath(ref currentPath, 0);
                 for (int i = 0; i < BranchArray.Length; i++)
                 {
@@ -1201,7 +1201,7 @@ namespace Nethermind.Trie
             {
                 if (_nodeData is BranchData branchData)
                 {
-                    ref readonly var data = ref branchData.Branches;
+                    ref readonly BranchArray data = ref branchData.Branches;
                     for (int i = 0; i < BranchArray.Length; i++)
                     {
                         object o = data[i];
@@ -1318,7 +1318,7 @@ namespace Nethermind.Trie
         {
             object? childOrRef;
             CappedArray<byte> rlp = ReadRlp();
-            ref var data = ref _nodeData[i];
+            ref object data = ref _nodeData[i];
             if (rlp.IsNull)
             {
                 childOrRef = data;
@@ -1329,7 +1329,7 @@ namespace Nethermind.Trie
                 if (childOrRef is null)
                 {
                     // Allows to load children in parallel
-                    ValueRlpStream rlpStream = new ValueRlpStream(rlp);
+                    ValueRlpStream rlpStream = new(rlp);
                     SeekChild(ref rlpStream, i);
                     int prefix = rlpStream.ReadByte();
 
@@ -1383,7 +1383,7 @@ namespace Nethermind.Trie
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
-                    var n = GetChildWithChildPath(tree, ref path, i);
+                    TrieNode n = GetChildWithChildPath(tree, ref path, i);
                     if (n is not null) chCount++;
                     output[i] = n;
                 }
@@ -1439,7 +1439,7 @@ namespace Nethermind.Trie
 
         internal void UnresolveChild(int i)
         {
-            ref var data = ref _nodeData[i];
+            ref object data = ref _nodeData[i];
             if (IsPersisted)
             {
                 data = null;
@@ -1481,7 +1481,7 @@ namespace Nethermind.Trie
             {
                 object? childOrRef;
                 CappedArray<byte> rlp = node.ReadRlp();
-                ref var data = ref node._nodeData[i];
+                ref object data = ref node._nodeData[i];
                 if (rlp.IsNull)
                 {
                     childOrRef = data;

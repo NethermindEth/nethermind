@@ -59,10 +59,10 @@ public class BlobDecoderTests
     [TestCaseSource(nameof(HexEncodedBlobs))]
     public void DecodeBlob(string hexEncodedBlob, string hexExpected)
     {
-        var hexEncoded = Bytes.FromHexString(hexEncodedBlob);
-        var expected = Bytes.FromHexString(hexExpected);
+        byte[] hexEncoded = Bytes.FromHexString(hexEncodedBlob);
+        byte[] expected = Bytes.FromHexString(hexExpected);
 
-        var decoded = DecodeBlob(hexEncoded);
+        byte[] decoded = DecodeBlob(hexEncoded);
         decoded.Should().BeEquivalentTo(expected);
     }
 
@@ -70,32 +70,32 @@ public class BlobDecoderTests
     {
         byte[] ValidEncodedBlob()
         {
-            var hexBlob = "0x2c000000277468697320697320612074657374206f6620696e76616c69642062106f62206465636f64696e67" + new string('0', 262056);
+            string hexBlob = "0x2c000000277468697320697320612074657374206f6620696e76616c69642062106f62206465636f64696e67" + new string('0', 262056);
             return Bytes.FromHexString(hexBlob);
         }
 
         {
-            var bytes = ValidEncodedBlob();
+            byte[] bytes = ValidEncodedBlob();
             bytes[32] = 0b10000000;
             yield return new TestCaseData(bytes).SetName("Highest order bit set");
         }
         {
-            var bytes = ValidEncodedBlob();
+            byte[] bytes = ValidEncodedBlob();
             bytes[32] = 0b010000000;
             yield return new TestCaseData(bytes).SetName("Second highest order bit set");
         }
         {
-            var bytes = ValidEncodedBlob();
+            byte[] bytes = ValidEncodedBlob();
             bytes[1] = 0x01;
             yield return new TestCaseData(bytes).SetName("Invalid encoding version");
         }
         {
-            var bytes = ValidEncodedBlob();
+            byte[] bytes = ValidEncodedBlob();
             bytes[2] = 0xFF;
             yield return new TestCaseData(bytes).SetName("Too long length prefix");
         }
         {
-            var bytes = ValidEncodedBlob();
+            byte[] bytes = ValidEncodedBlob();
             bytes[2] = 0x01;
             bytes[3] = 0xFB;
             bytes[3] = 0xFD;
@@ -106,7 +106,7 @@ public class BlobDecoderTests
     [TestCaseSource(nameof(InvalidEncodedBlobs))]
     public void DecodeBlob_InvalidEncodedBlob(byte[] encoded)
     {
-        var tryDecode = () => DecodeBlob(encoded);
+        Func<byte[]> tryDecode = () => DecodeBlob(encoded);
         tryDecode.Should().Throw<FormatException>();
     }
 

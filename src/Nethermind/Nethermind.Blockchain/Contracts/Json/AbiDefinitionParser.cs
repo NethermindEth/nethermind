@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public AbiDefinition Parse(Type type)
         {
-            using var reader = LoadResource(type);
+            using Stream reader = LoadResource(type);
             AbiDefinition definition = JsonSerializer.Deserialize<AbiDefinition>(reader, SourceGenerationContext.Default.AbiDefinition);
             definition.Name = type.Name;
             return definition;
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         public static string LoadContract(Type type)
         {
-            using var reader = new StreamReader(LoadResource(type));
+            using StreamReader reader = new(LoadResource(type));
             return reader.ReadToEnd();
         }
 
@@ -52,11 +52,11 @@ namespace Nethermind.Blockchain.Contracts.Json
 
         private static Stream LoadResource(Type type)
         {
-            var jsonResource = type.FullName.Replace("+", ".") + ".json";
+            string jsonResource = type.FullName.Replace("+", ".") + ".json";
 #if DEBUG
-            var names = type.Assembly.GetManifestResourceNames();
+            string[] names = type.Assembly.GetManifestResourceNames();
 #endif
-            var stream = type.Assembly.GetManifestResourceStream(jsonResource) ?? throw new ArgumentException($"Resource for {jsonResource} not found.");
+            Stream stream = type.Assembly.GetManifestResourceStream(jsonResource) ?? throw new ArgumentException($"Resource for {jsonResource} not found.");
             return stream;
         }
 
