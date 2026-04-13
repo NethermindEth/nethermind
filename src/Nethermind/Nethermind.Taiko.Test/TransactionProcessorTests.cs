@@ -55,10 +55,8 @@ public class TransactionProcessorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _worldStateCloser.Dispose();
-    }
 
     [TestCaseSource(nameof(FeesDistributionTests))]
     public void Fees_distributed_correctly(byte basefeeSharingPct, UInt256 goesToTreasury, UInt256 goesToBeneficiary, ulong gasPrice)

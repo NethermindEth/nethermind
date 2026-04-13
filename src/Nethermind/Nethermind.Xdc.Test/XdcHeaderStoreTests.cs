@@ -33,10 +33,8 @@ internal class XdcBlockAndHeaderStoreTests
     }
 
     [Test]
-    public void XdcHeaderStore_ShouldInheritFromHeaderStore()
-    {
+    public void XdcHeaderStore_ShouldInheritFromHeaderStore() =>
         Assert.That(_headerStore, Is.InstanceOf<HeaderStore>());
-    }
 
     [Test]
     public void XdcHeaderStore_InsertAndGetHeader_ShouldWorkCorrectly()

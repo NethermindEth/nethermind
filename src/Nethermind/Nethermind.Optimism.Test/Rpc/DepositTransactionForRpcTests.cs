@@ -37,10 +37,8 @@ public class DepositTransactionForRpcTests
     ];
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-    }
 
     [TestCaseSource(nameof(Transactions))]
     public void Always_satisfies_schema(Transaction transaction)
