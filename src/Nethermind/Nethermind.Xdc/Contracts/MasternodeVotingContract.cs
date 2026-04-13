@@ -31,13 +31,13 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     private static AbiDefinition CreateAbiDefinition()
     {
-        AbiDefinitionParser abiDefinitionParser = new AbiDefinitionParser();
+        AbiDefinitionParser abiDefinitionParser = new();
         return abiDefinitionParser.Parse(typeof(MasternodeVotingContract));
     }
 
     public UInt256 GetCandidateStake(BlockHeader blockHeader, Address candidate)
     {
-        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
+        CallInfo callInfo = new(blockHeader, "getCandidateCap", Address.SystemUser, candidate);
         IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
         object[] result = constant.Call(callInfo);
         if (result.Length != 1)
@@ -48,7 +48,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     public Address GetCandidateOwner(BlockHeader blockHeader, Address candidate)
     {
-        CallInfo callInfo = new CallInfo(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
+        CallInfo callInfo = new(blockHeader, "getCandidateOwner", Address.SystemUser, candidate);
         IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
         object[] result = constant.Call(callInfo);
         if (result.Length != 1)
@@ -89,7 +89,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
 
     public Address[] GetCandidates(BlockHeader blockHeader)
     {
-        CallInfo callInfo = new CallInfo(blockHeader, "getCandidates", Address.SystemUser);
+        CallInfo callInfo = new(blockHeader, "getCandidates", Address.SystemUser);
         IConstantContract constant = GetConstant(readOnlyTxProcessingEnvFactory.Create());
         object[] result = constant.Call(callInfo);
         return (Address[])result[0]!;
@@ -104,12 +104,12 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         CandidateContractSlots variableSlot = CandidateContractSlots.Candidates;
         Span<byte> input = [(byte)variableSlot];
-        UInt256 slot = new UInt256(Keccak.Compute(input).Bytes);
+        UInt256 slot = new(Keccak.Compute(input).Bytes);
         IReadOnlyTxProcessorSource txProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         using IReadOnlyTxProcessingScope source = txProcessorSource.Build(header);
         IWorldState worldState = source.WorldState;
         ReadOnlySpan<byte> storageCell = worldState.Get(new StorageCell(ContractAddress, slot));
-        var length = new UInt256(storageCell);
+        UInt256 length = new(storageCell);
         Address[] candidates = new Address[(ulong)length];
         for (int i = 0; i < length; i++)
         {
@@ -133,7 +133,7 @@ internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
     {
         Address[] candidates = GetCandidates(blockHeader);
 
-        using var candidatesAndStake = new ArrayPoolList<CandidateStake>(candidates.Length);
+        using ArrayPoolList<CandidateStake> candidatesAndStake = new(candidates.Length);
         foreach (Address candidate in candidates)
         {
             if (candidate == Address.Zero)

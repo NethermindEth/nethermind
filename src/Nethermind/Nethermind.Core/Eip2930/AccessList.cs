@@ -99,7 +99,7 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         {
             get
             {
-                ref readonly var addressCount = ref CollectionsMarshal.AsSpan(accessList._addresses)[_index];
+                ref readonly (Address address, int count) addressCount = ref CollectionsMarshal.AsSpan(accessList._addresses)[_index];
                 return (addressCount.address, new StorageKeysEnumerable(accessList, _keysIndex, addressCount.count));
             }
         }

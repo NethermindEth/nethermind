@@ -26,9 +26,9 @@ internal class EraReaderTests
         public static async Task<PopulatedTestFile> Create()
         {
             TempPath tmpFile = TempPath.GetTempFile();
-            using EraWriter builder = new EraWriter(tmpFile.Path, Substitute.For<ISpecProvider>());
-            List<(Block, TxReceipt[])> addedContents = new List<(Block, TxReceipt[])>();
-            HeaderDecoder headerDecoder = new HeaderDecoder();
+            using EraWriter builder = new(tmpFile.Path, Substitute.For<ISpecProvider>());
+            List<(Block, TxReceipt[])> addedContents = new();
+            HeaderDecoder headerDecoder = new();
 
             async Task AddBlock(Block block, TxReceipt[] receipts)
             {
@@ -79,7 +79,7 @@ internal class EraReaderTests
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
-        using EraReader sut = new EraReader(tmpFile.FilePath);
+        using EraReader sut = new(tmpFile.FilePath);
         Assert.That(() => sut.ReadAccumulator(), Throws.Nothing);
     }
 
@@ -90,7 +90,7 @@ internal class EraReaderTests
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
-        using EraReader sut = new EraReader(tmpFile.FilePath);
+        using EraReader sut = new(tmpFile.FilePath);
         (Block result, _) = await sut.GetBlockByNumber(number);
         Assert.That(result.Number, Is.EqualTo(number));
     }
@@ -100,7 +100,7 @@ internal class EraReaderTests
     {
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
 
-        using EraReader sut = new EraReader(tmpFile.FilePath);
+        using EraReader sut = new(tmpFile.FilePath);
         List<(Block, TxReceipt[])> reEnumerated = await sut.ToListAsync();
         reEnumerated.Should().BeEquivalentTo(tmpFile.AddedContents);
     }
@@ -110,13 +110,13 @@ internal class EraReaderTests
     {
         using AccumulatorCalculator calculator = new();
         using PopulatedTestFile tmpFile = await PopulatedTestFile.Create();
-        foreach (var tmpFileAddedContent in tmpFile.AddedContents)
+        foreach ((Block, TxReceipt[]) tmpFileAddedContent in tmpFile.AddedContents)
         {
             calculator.Add(tmpFileAddedContent.Item1.Hash!, tmpFileAddedContent.Item1.TotalDifficulty!.Value);
         }
 
         ValueHash256 root = calculator.ComputeRoot();
-        using EraReader sut = new EraReader(tmpFile.FilePath);
+        using EraReader sut = new(tmpFile.FilePath);
         ValueHash256 fileRoot = await sut.VerifyContent(Substitute.For<ISpecProvider>(), Always.Valid, default);
         root.Should().BeEquivalentTo(fileRoot);
     }

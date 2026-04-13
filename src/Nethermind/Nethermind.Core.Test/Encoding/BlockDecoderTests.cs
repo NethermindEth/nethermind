@@ -22,7 +22,7 @@ public class BlockDecoderTests
 
     private static Block[] BuildScenarios()
     {
-        var transactions = new Transaction[100];
+        Transaction[] transactions = new Transaction[100];
         for (int i = 0; i < transactions.Length; i++)
         {
             transactions[i] = Build.A.Transaction
@@ -33,9 +33,9 @@ public class BlockDecoderTests
                 .TestObject;
         }
 
-        var uncles = new BlockHeader[16];
+        BlockHeader[] uncles = new BlockHeader[16];
 
-        for (var i = 0; i < uncles.Length; i++)
+        for (int i = 0; i < uncles.Length; i++)
         {
             uncles[i] = Build.A.BlockHeader
                 .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))

@@ -238,12 +238,12 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            var enode1 = new Enode(enode1String);
+            Enode enode1 = new(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
             Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
-            var enode2 = new Enode(enode2String);
+            Enode enode2 = new(enode2String);
             Node node2 = new(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
             Session session2 = new(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
@@ -266,7 +266,7 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            PacketSender packetSender = new PacketSender(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             session1.RemoteHost = "1.2.3.4";
@@ -450,7 +450,7 @@ namespace Nethermind.Network.Test
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            var networkNode = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode networkNode = new(ctx.GenerateEnode());
             ctx.Stats.ReportFailedValidation(new Node(networkNode), CompatibilityValidationType.NetworkId);
 
             ctx.PeerPool.GetOrAdd(networkNode);
@@ -582,12 +582,12 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             const int nodesCount = 5;
-            var staticNodes = ctx.CreateNodes(nodesCount);
+            List<NetworkNode> staticNodes = ctx.CreateNodes(nodesCount);
             ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(static n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
 
-            foreach (var node in staticNodes)
+            foreach (NetworkNode node in staticNodes)
             {
                 ctx.TestNodeSource.AddNode(new Node(TestItem.PublicKeyA, node.Host, node.Port));
             }
@@ -600,8 +600,8 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             const int nodesCount = 5;
-            var disconnections = 0;
-            var staticNodes = ctx.CreateNodes(nodesCount);
+            int disconnections = 0;
+            List<NetworkNode> staticNodes = ctx.CreateNodes(nodesCount);
             ctx.StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(staticNodes.Select(n => new Node(n, true)).ToAsyncEnumerable());
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
@@ -621,10 +621,10 @@ namespace Nethermind.Network.Test
         public async Task Will_connect_and_disconnect_on_peer_management()
         {
             await using Context ctx = new();
-            var disconnections = 0;
+            int disconnections = 0;
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            var node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
             await Task.Delay(_delayLong);
 
@@ -644,7 +644,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            var node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
             ctx.PeerPool.GetOrAdd(node);
@@ -658,7 +658,7 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            var node = new NetworkNode(ctx.GenerateEnode());
+            NetworkNode node = new(ctx.GenerateEnode());
             Assert.That(() => ctx.PeerPool.TryRemove(node.NodeId, out _), Is.False.After(_delay, 10));
         }
 
@@ -745,11 +745,11 @@ namespace Nethermind.Network.Test
 
             public List<NetworkNode> CreateNodes(int count)
             {
-                var nodes = new List<NetworkNode>();
+                List<NetworkNode> nodes = new();
                 for (int i = 0; i < count; i++)
                 {
-                    var generator = new PrivateKeyGenerator();
-                    var enode = GenerateEnode(generator);
+                    PrivateKeyGenerator generator = new();
+                    string enode = GenerateEnode(generator);
                     NetworkNode node = new(enode);
                     nodes.Add(node);
                 }
@@ -820,7 +820,7 @@ namespace Nethermind.Network.Test
                     return Task.FromResult(false);
                 }
 
-                var session = new Session(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
                 lock (_sessions)
                 {

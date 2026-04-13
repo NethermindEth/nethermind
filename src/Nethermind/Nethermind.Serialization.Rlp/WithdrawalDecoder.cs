@@ -38,7 +38,7 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
             return;
         }
 
-        var contentLength = GetContentLength(item);
+        int contentLength = GetContentLength(item);
 
         stream.StartSequence(contentLength);
         stream.Encode(item.Index);
@@ -49,7 +49,7 @@ public sealed class WithdrawalDecoder : RlpValueDecoder<Withdrawal>
 
     public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        var stream = new RlpStream(GetLength(item, rlpBehaviors));
+        RlpStream stream = new(GetLength(item, rlpBehaviors));
 
         Encode(stream, item, rlpBehaviors);
 

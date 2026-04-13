@@ -76,7 +76,7 @@ namespace Nethermind.EthStats.Clients
         {
             if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_urlFromConfig}]...");
             string websocketUrl = BuildUrl();
-            Uri url = new Uri(websocketUrl);
+            Uri url = new(websocketUrl);
             _client = new WebsocketClient(url)
             {
                 ErrorReconnectTimeout = TimeSpan.FromMilliseconds(_reconnectionInterval),

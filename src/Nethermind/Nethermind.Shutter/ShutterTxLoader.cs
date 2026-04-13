@@ -124,7 +124,7 @@ public class ShutterTxLoader(
             sortedKeyIndexes[index.Index] = keyIndex++;
         }
 
-        using var decryptionKeysList = new ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)>(keyCount, decryptionKeys);
+        using ArrayPoolList<(ReadOnlyMemory<byte> IdentityPreimage, ReadOnlyMemory<byte> Key)> decryptionKeysList = new(keyCount, decryptionKeys);
 
         return sequencedTransactions
             .AsParallel()

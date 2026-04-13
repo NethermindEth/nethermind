@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test
 
         public void EnqueueRandomBytes(params byte[][] randomBytesInQueue)
         {
-            foreach (var randomBytes in randomBytesInQueue)
+            foreach (byte[] randomBytes in randomBytesInQueue)
             {
                 _nextRandomBytesQueue.Enqueue(randomBytes);
             }

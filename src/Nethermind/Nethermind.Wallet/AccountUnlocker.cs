@@ -34,7 +34,7 @@ namespace Nethermind.Wallet
                 {
                     try
                     {
-                        Address address = new Address(unlockAccount);
+                        Address address = new(unlockAccount);
                         if (_wallet.UnlockAccount(address, _passwordProvider.GetPassword(address) ?? string.Empty.Secure(), TimeSpan.FromDays(1000)))
                         {
                             if (_logger.IsInfo) _logger.Info($"Unlocked account: {unlockAccount}");

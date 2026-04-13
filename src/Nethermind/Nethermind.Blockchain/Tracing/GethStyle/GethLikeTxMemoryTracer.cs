@@ -24,7 +24,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
 
     public override GethLikeTxTrace BuildResult()
     {
-        var trace = base.BuildResult();
+        GethLikeTxTrace trace = base.BuildResult();
 
         trace.TxHash = _transaction?.Hash;
 
@@ -54,7 +54,7 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         GethTxMemoryTraceEntry previousTraceEntry = CurrentTraceEntry;
-        var previousDepth = CurrentTraceEntry?.Depth ?? 0;
+        int previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
         base.StartOperation(pc, opcode, gas, env);
 

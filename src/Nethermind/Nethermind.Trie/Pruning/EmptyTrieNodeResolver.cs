@@ -12,7 +12,7 @@ namespace Nethermind.Trie.Pruning;
 /// </summary>
 public class EmptyTrieNodeResolver : ITrieNodeResolver
 {
-    public static EmptyTrieNodeResolver Instance = new EmptyTrieNodeResolver();
+    public static EmptyTrieNodeResolver Instance = new();
 
     public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
     {

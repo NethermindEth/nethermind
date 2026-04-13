@@ -273,7 +273,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, 1, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -297,7 +297,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -333,7 +333,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -358,7 +358,7 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.MarkAsSuccess(Address.Zero, totalGas, [], []);
             IReadOnlyStateProvider stateProvider = Substitute.For<IReadOnlyStateProvider>();
             stateProvider.GetBalance(Arg.Any<Address>()).Returns(new UInt256(1));
-            GasEstimator sut = new GasEstimator(
+            GasEstimator sut = new(
                 Substitute.For<ITransactionProcessor>(),
                 stateProvider,
                 MainnetSpecProvider.Instance,
@@ -587,7 +587,7 @@ namespace Nethermind.Evm.Test.Tracing
         {
             TestEnvironment testEnvironment = new();
             Address contractAddress = TestItem.AddressB;
-            var check = 1_000_000;
+            int check = 1_000_000;
             byte[] contractCode = Bytes.FromHexString($"0x62{check:x6}5a10600f576001600055005b6000806000fd");
             testEnvironment.InsertContract(contractAddress, contractCode);
 
@@ -912,7 +912,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             // Use the existing pattern from Should_estimate_gas_for_explicit_gas_check_and_revert
             // Bytecode: PUSH3 <threshold>, GAS, LT, PUSH1 <revert_pc>, JUMPI, PUSH1 1, PUSH1 0, SSTORE, STOP, JUMPDEST, PUSH1 0, PUSH1 0, REVERT
-            var check = gasThreshold;
+            long check = gasThreshold;
             byte[] contractCode = Bytes.FromHexString($"0x62{check:x6}5a10600f576001600055005b6000806000fd");
             testEnvironment.InsertContract(contractAddress, contractCode);
 

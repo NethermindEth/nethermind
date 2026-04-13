@@ -183,7 +183,7 @@ public sealed class JsonRpcService : IJsonRpcService
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
-        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
 
@@ -332,7 +332,7 @@ public sealed class JsonRpcService : IJsonRpcService
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
             builder.Append(methodName);
             builder.Append(" with params [");
@@ -443,7 +443,7 @@ public sealed class JsonRpcService : IJsonRpcService
             reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
 
             // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
             {
                 [paramType] = reparseString
             };

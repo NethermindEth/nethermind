@@ -14,7 +14,7 @@ namespace Nethermind.Core
             get
             {
                 // Note: Should be new instance as multiple tests tend to mutate it.
-                DateTime mergeTime = new DateTime(2022, 9, 15, 13, 45, 0, DateTimeKind.Utc);
+                DateTime mergeTime = new(2022, 9, 15, 13, 45, 0, DateTimeKind.Utc);
                 return new ManualTimestamper(mergeTime.AddDays(-1));
             }
         }

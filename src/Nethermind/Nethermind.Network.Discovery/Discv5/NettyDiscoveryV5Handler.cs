@@ -48,7 +48,7 @@ public class NettyDiscoveryV5Handler : NettyDiscoveryBaseHandler, IUdpConnection
     {
         if (_nettyChannel == null) throw new("Channel for discovery v5 is not initialized");
 
-        var packet = new DatagramPacket(Unpooled.WrappedBuffer(data), destination);
+        DatagramPacket packet = new(Unpooled.WrappedBuffer(data), destination);
 
         try
         {

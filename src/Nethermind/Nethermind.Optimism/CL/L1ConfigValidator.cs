@@ -30,7 +30,7 @@ public class L1ConfigValidator : IL1ConfigValidator
 
         // TODO: `IEthApi.GetBlockByNumber` currently does not support `fullTxs = false` when deserializing,
         // so we're forced to use `fullTxs = true` despite not needing it.
-        var genesisBlock = await _ethApi.GetBlockByNumber(genesisNumber, true);
+        L1Block? genesisBlock = await _ethApi.GetBlockByNumber(genesisNumber, true);
         if (genesisBlock is null)
         {
             if (_logger.IsWarn) _logger.Warn("Failed to get L1 genesis block");

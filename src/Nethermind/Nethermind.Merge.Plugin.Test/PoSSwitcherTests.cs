@@ -38,9 +38,9 @@ namespace Nethermind.Merge.Plugin.Test
             UInt256 expectedTtd = 10;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
-            var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+            ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
@@ -252,7 +252,7 @@ namespace Nethermind.Merge.Plugin.Test
             SyncConfig syncConfig = new();
             if (pivotTotalDifficulty is not null)
                 syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
-            PoSSwitcher poSSwitcher = new PoSSwitcher(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
             if (expectedFinalTotalDifficulty is not null)
                 poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
             else

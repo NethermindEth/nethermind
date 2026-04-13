@@ -123,9 +123,9 @@ namespace Nethermind.Synchronization.Blocks
             }
             else // by last block otherwise
             {
-                var bestPeerNumber = bestDiffPeer.Info.HeadNumber;
-                var localNumber = blockTree.Head?.Number ?? 0;
-                var blockDifference = bestPeerNumber > localNumber
+                long bestPeerNumber = bestDiffPeer.Info.HeadNumber;
+                long localNumber = blockTree.Head?.Number ?? 0;
+                long blockDifference = bestPeerNumber > localNumber
                     ? bestPeerNumber - localNumber
                     : 0;
 

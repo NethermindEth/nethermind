@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using NUnit.Framework;
 
@@ -29,7 +30,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = UInt256.Zero;
         bool outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
-        var trace = memory.GetTrace();
+        TraceMemory trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));
     }
 
@@ -40,7 +41,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = EvmPooledMemory.WordSize;
         bool outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
-        var trace = memory.GetTrace();
+        TraceMemory trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
     }
 
@@ -53,7 +54,7 @@ public abstract class EvmMemoryTestsBase
         Assert.That(outOfGas, Is.EqualTo(false));
         outOfGas = !memory.TrySaveWord(in dest, new byte[EvmPooledMemory.WordSize]);
         Assert.That(outOfGas, Is.EqualTo(false));
-        var trace = memory.GetTrace();
+        TraceMemory trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(2));
     }
 
@@ -64,7 +65,7 @@ public abstract class EvmMemoryTestsBase
         UInt256 dest = EvmPooledMemory.WordSize / 2;
         bool outOfGas = !memory.TrySaveByte(in dest, 1);
         Assert.That(outOfGas, Is.EqualTo(false));
-        var trace = memory.GetTrace();
+        TraceMemory trace = memory.GetTrace();
         Assert.That(trace.ToHexWordList().Count, Is.EqualTo(1));
     }
 

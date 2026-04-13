@@ -104,7 +104,7 @@ public class GethStyleTracer(
         if (tx.Hash is null) throw new InvalidOperationException("Cannot trace transactions without tx hash set.");
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
-        using var scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(block.Header, options.StateOverrides);
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash }, scope.Component.WorldState, specProvider);
         try
         {
@@ -120,7 +120,7 @@ public class GethStyleTracer(
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
     {
-        var block = blockTree.FindBlock(blockParameter);
+        Block block = blockTree.FindBlock(blockParameter);
 
         return TraceBlockImpl(block, options, cancellationToken);
     }
@@ -140,11 +140,11 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        var parent = FindParent(block);
+        Block block = blockTree.FindBlock(blockHash) ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
+        BlockHeader parent = FindParent(block);
 
-        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        var tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -155,13 +155,13 @@ public class GethStyleTracer(
         ArgumentNullException.ThrowIfNull(blockHash);
         ArgumentNullException.ThrowIfNull(options);
 
-        var block = badBlockStore
+        Block block = badBlockStore
                         .GetAll()
                         .FirstOrDefault(b => b.Hash == blockHash)
                     ?? throw new InvalidOperationException($"No historical block found for {blockHash}");
-        var parent = FindParent(block);
-        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
-        var tracer = new GethLikeBlockFileTracer(block, options, fileSystem);
+        BlockHeader parent = FindParent(block);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        GethLikeBlockFileTracer tracer = new(block, options, fileSystem);
         scope.Component.BlockchainProcessor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken), cancellationToken);
 
         return tracer.FileNames;
@@ -213,8 +213,8 @@ public class GethStyleTracer(
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        var parent = FindParent(block);
-        using var scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
+        BlockHeader parent = FindParent(block);
+        using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(parent, options.StateOverrides);
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options, scope.Component.WorldState, specProvider);
         try

@@ -13,7 +13,7 @@ namespace Nethermind.Xdc;
 
 internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertificate>
 {
-    private readonly XdcBlockInfoDecoder _blockInfoDecoder = new XdcBlockInfoDecoder();
+    private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
     protected override QuorumCertificate DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int sequenceLength = decoderContext.ReadSequenceLength();
@@ -75,7 +75,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
                 int signatureContentLength = SignaturesLength(item);
                 stream.StartSequence(signatureContentLength);
                 Span<byte> sigBuffer = stackalloc byte[Signature.Size];
-                foreach (var sig in item.Signatures)
+                foreach (Signature sig in item.Signatures)
                 {
                     sig.WriteBytesWithRecoveryTo(sigBuffer);
                     stream.Encode(sigBuffer);

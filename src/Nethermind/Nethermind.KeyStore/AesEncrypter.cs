@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
-
+using Microsoft.IO;
 using Nethermind.Core.Resettables;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -31,20 +31,20 @@ namespace Nethermind.KeyStore
                 {
                     case "aes-128-cbc":
                         {
-                            using var aes = Aes.Create();
+                            using Aes aes = Aes.Create();
                             aes.BlockSize = _config.SymmetricEncrypterBlockSize;
                             aes.KeySize = _config.SymmetricEncrypterKeySize;
                             aes.Padding = PaddingMode.PKCS7;
                             aes.Key = key;
                             aes.IV = iv;
 
-                            using var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+                            using ICryptoTransform encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
                             return Execute(encryptor, content);
                         }
                     case "aes-128-ctr":
                         {
-                            using var outputEncryptedStream = RecyclableStream.GetStream("aes-128-ctr-encrypt");
-                            using var inputStream = new MemoryStream(content);
+                            using RecyclableMemoryStream outputEncryptedStream = RecyclableStream.GetStream("aes-128-ctr-encrypt");
+                            using MemoryStream inputStream = new(content);
                             AesCtr(key, iv, inputStream, outputEncryptedStream);
                             outputEncryptedStream.Position = 0;
                             return outputEncryptedStream.ToArray();
@@ -68,19 +68,19 @@ namespace Nethermind.KeyStore
                 {
                     case "aes-128-cbc":
                         {
-                            using var aes = Aes.Create();
+                            using Aes aes = Aes.Create();
                             aes.BlockSize = _config.SymmetricEncrypterBlockSize;
                             aes.KeySize = _config.SymmetricEncrypterKeySize;
                             aes.Padding = PaddingMode.PKCS7;
                             aes.Key = key;
                             aes.IV = iv;
-                            using var decryptor = aes.CreateDecryptor(key, aes.IV);
+                            using ICryptoTransform decryptor = aes.CreateDecryptor(key, aes.IV);
                             return Execute(decryptor, cipher);
                         }
                     case "aes-128-ctr":
                         {
-                            using var outputEncryptedStream = new MemoryStream(cipher);
-                            using var outputDecryptedStream = RecyclableStream.GetStream("aes-128-ctr-decrypt");
+                            using MemoryStream outputEncryptedStream = new(cipher);
+                            using RecyclableMemoryStream outputDecryptedStream = RecyclableStream.GetStream("aes-128-ctr-decrypt");
                             AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
                             outputDecryptedStream.Position = 0;
                             return outputDecryptedStream.ToArray();
@@ -98,8 +98,8 @@ namespace Nethermind.KeyStore
 
         private static byte[] Execute(ICryptoTransform cryptoTransform, byte[] data)
         {
-            using var memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter));
-            using var cryptoStream = new CryptoStream(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true);
+            using RecyclableMemoryStream memoryStream = RecyclableStream.GetStream(nameof(AesEncrypter));
+            using CryptoStream cryptoStream = new(memoryStream, cryptoTransform, CryptoStreamMode.Write, leaveOpen: true);
             cryptoStream.Write(data, 0, data.Length);
             cryptoStream.FlushFinalBlock();
             return memoryStream.ToArray();
@@ -107,29 +107,29 @@ namespace Nethermind.KeyStore
 
         private static void AesCtr(byte[] key, byte[] salt, Stream inputStream, Stream outputStream)
         {
-            using var aes = Aes.Create();
+            using Aes aes = Aes.Create();
             aes.Mode = CipherMode.ECB;
             aes.Padding = PaddingMode.None;
-            var blockSize = aes.BlockSize / 8;
+            int blockSize = aes.BlockSize / 8;
             if (salt.Length != blockSize)
             {
                 throw new ArgumentException($"Salt size must be same as block size ({salt.Length} != {blockSize})");
             }
 
-            var counter = (byte[])salt.Clone();
-            var xorMask = new Queue<byte>();
-            var zeroIv = new byte[blockSize];
-            using var encryptor = aes.CreateEncryptor(key, zeroIv);
+            byte[] counter = (byte[])salt.Clone();
+            Queue<byte> xorMask = new();
+            byte[] zeroIv = new byte[blockSize];
+            using ICryptoTransform encryptor = aes.CreateEncryptor(key, zeroIv);
 
             int @byte;
             while ((@byte = inputStream.ReadByte()) != -1)
             {
                 if (xorMask.Count == 0)
                 {
-                    var counterModeBlock = new byte[blockSize];
+                    byte[] counterModeBlock = new byte[blockSize];
                     encryptor.TransformBlock(counter, 0, counter.Length, counterModeBlock, 0);
 
-                    for (var i = counter.Length - 1; i >= 0; i--)
+                    for (int i = counter.Length - 1; i >= 0; i--)
                     {
                         if (++counter[i] != 0)
                         {
@@ -137,13 +137,13 @@ namespace Nethermind.KeyStore
                         }
                     }
 
-                    foreach (var block in counterModeBlock)
+                    foreach (byte block in counterModeBlock)
                     {
                         xorMask.Enqueue(block);
                     }
                 }
 
-                var mask = xorMask.Dequeue();
+                byte mask = xorMask.Dequeue();
                 outputStream.WriteByte((byte)((byte)@byte ^ mask));
             }
         }

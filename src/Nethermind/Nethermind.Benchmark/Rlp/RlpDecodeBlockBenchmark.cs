@@ -18,7 +18,7 @@ namespace Nethermind.Benchmarks.Rlp
 
         public RlpDecodeBlockBenchmark()
         {
-            var transactions = new Transaction[100];
+            Transaction[] transactions = new Transaction[100];
             for (int i = 0; i < 100; i++)
             {
                 transactions[i] = Build.A.Transaction.WithData(new byte[] { (byte)i }).WithNonce((UInt256)i).WithValue((UInt256)i).Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), TestItem.PrivateKeyA).TestObject;

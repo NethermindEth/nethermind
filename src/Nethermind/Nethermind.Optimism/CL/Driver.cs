@@ -184,7 +184,7 @@ public class Driver : IDisposable
 
         L2Block l2Parent = await _l2Api.GetBlockByNumber(firstBlockNumber - 1);
 
-        var derivedPayloadAttributes = _derivationPipeline
+        IAsyncEnumerator<PayloadAttributesRef> derivedPayloadAttributes = _derivationPipeline
             .DerivePayloadAttributes(l2Parent, decodedBatch, token)
             .GetAsyncEnumerator(token);
         BlockId? lastDerivedBlock = null;

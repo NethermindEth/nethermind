@@ -82,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
-            using var message = msg;
+            using GetNodeDataMessage message = msg;
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);

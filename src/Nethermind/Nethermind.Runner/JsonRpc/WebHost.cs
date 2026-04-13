@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
@@ -78,12 +79,12 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
     {
         Debug.Assert(_applicationServices != null, "Initialize must be called first.");
 
-        var application = BuildApplication();
+        RequestDelegate application = BuildApplication();
 
         _applicationLifetime = _applicationServices.GetRequiredService<ApplicationLifetime>();
 
-        var httpContextFactory = new HttpContextFactory(Services);
-        var hostingApp = new HostingApplication(application, _logManager, httpContextFactory);
+        HttpContextFactory httpContextFactory = new(Services);
+        HostingApplication hostingApp = new(application, _logManager, httpContextFactory);
 
         await Server.StartAsync(hostingApp, cancellationToken).ConfigureAwait(false);
         _startedServer = true;
@@ -101,8 +102,8 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         {
             EnsureServer();
 
-            var builderFactory = _applicationServices.GetRequiredService<IApplicationBuilderFactory>();
-            var builder = builderFactory.CreateBuilder(Server.Features);
+            IApplicationBuilderFactory builderFactory = _applicationServices.GetRequiredService<IApplicationBuilderFactory>();
+            IApplicationBuilder builder = builderFactory.CreateBuilder(Server.Features);
             builder.ApplicationServices = _applicationServices;
 
             Action<IApplicationBuilder> configure = _startup!.Configure;
@@ -127,16 +128,16 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         {
             Server = _applicationServices.GetRequiredService<IServer>();
 
-            var serverAddressesFeature = Server.Features?.Get<IServerAddressesFeature>();
-            var addresses = serverAddressesFeature?.Addresses;
+            IServerAddressesFeature serverAddressesFeature = Server.Features?.Get<IServerAddressesFeature>();
+            ICollection<string> addresses = serverAddressesFeature?.Addresses;
             if (addresses != null && !addresses.IsReadOnly && addresses.Count == 0)
             {
-                var urls = _config[WebHostDefaults.ServerUrlsKey];//?? _config[DeprecatedServerUrlsKey];
+                string urls = _config[WebHostDefaults.ServerUrlsKey];//?? _config[DeprecatedServerUrlsKey];
                 if (!string.IsNullOrEmpty(urls))
                 {
                     //serverAddressesFeature!.PreferHostingUrls = WebHostUtilities.ParseBool(_config[WebHostDefaults.PreferHostingUrlsKey]);
 
-                    foreach (var value in urls.Split(';', StringSplitOptions.RemoveEmptyEntries))
+                    foreach (string value in urls.Split(';', StringSplitOptions.RemoveEmptyEntries))
                     {
                         addresses.Add(value);
                     }
@@ -151,7 +152,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
             return;
         _stopped = true;
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromMinutes(1));
         cancellationToken = cts.Token;
 

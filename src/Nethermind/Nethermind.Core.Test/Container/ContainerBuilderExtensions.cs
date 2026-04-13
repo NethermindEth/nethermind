@@ -56,7 +56,7 @@ public static class ContainerBuilderExtensions
                         break;
                     }
 
-                    if (componentRegistration.Metadata.TryGetValue(metadataName, out var value) &&
+                    if (componentRegistration.Metadata.TryGetValue(metadataName, out object? value) &&
                         value is Guid guidValue && guidValue == regId)
                     {
                         wasFound = true;

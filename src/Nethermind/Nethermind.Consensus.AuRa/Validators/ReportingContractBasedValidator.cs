@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return null;
             }
 
-            var persistentReport = new PersistentReport(validator, (UInt256)blockNumber, proof);
+            PersistentReport persistentReport = new(validator, (UInt256)blockNumber, proof);
 
             if (IsPosdao(blockNumber))
             {
@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private Transaction CreateReportMaliciousTransactionCore(PersistentReport persistentReport)
         {
-            var transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
+            Transaction transaction = ValidatorContract.ReportMalicious(persistentReport.MaliciousValidator, persistentReport.BlockNumber, persistentReport.Proof);
             transaction.Nonce = _stateProvider.GetNonce(ValidatorContract.NodeAddress);
             return transaction;
         }
@@ -169,8 +169,8 @@ namespace Nethermind.Consensus.AuRa.Validators
                 return;
             }
 
-            var areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
-            var firstBlock = header.Number == 1;
+            bool areThereSkipped = header.AuRaStep > parent.AuRaStep + 1;
+            bool firstBlock = header.Number == 1;
             if (areThereSkipped && !firstBlock)
             {
                 Address[] validators = Validators;
@@ -217,7 +217,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             _contractValidator.OnBlockProcessingEnd(block, receipts, options);
             if (!_contractValidator.ForSealing)
             {
-                var parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+                BlockHeader parentHeader = _contractValidator.BlockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
                 if (parentHeader is not null)
                 {
                     ResendPersistedReports(parentHeader);

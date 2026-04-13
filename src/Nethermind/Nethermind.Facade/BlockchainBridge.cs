@@ -151,7 +151,7 @@ namespace Nethermind.Facade
 
         public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
 
             CallOutputTracer callOutputTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
@@ -177,8 +177,8 @@ namespace Nethermind.Facade
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
-            var components = scope.Component;
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
 
             EstimateGasTracer estimateGasTracer = new();
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
@@ -213,8 +213,8 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using var scope = processingEnv.BuildAndOverride(header, stateOverride);
-            var components = scope.Component;
+            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
+            BlockProcessingComponents components = scope.Component;
 
             TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
                 new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
@@ -426,7 +426,7 @@ namespace Nethermind.Facade
 
         private static string? ConstructError(TransactionResult txResult, string? tracerError)
         {
-            var error = txResult switch
+            string error = txResult switch
             {
                 { TransactionExecuted: true } when txResult.EvmExceptionType is not (EvmExceptionType.None or EvmExceptionType.Revert) => txResult.SubstateError ?? txResult.EvmExceptionType.GetEvmExceptionDescription(),
                 { TransactionExecuted: true } when tracerError is not null => tracerError,

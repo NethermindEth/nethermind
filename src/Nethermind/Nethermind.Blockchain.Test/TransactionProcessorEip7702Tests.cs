@@ -487,7 +487,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx1, tx2)
             .WithGasLimit(10000000).TestObject;
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx1, blkCtx, NullTxTracer.Instance);
         _transactionProcessor.Execute(tx2, blkCtx, NullTxTracer.Instance);
 
@@ -834,7 +834,7 @@ internal class TransactionProcessorEip7702Tests
              {
                  ethereumEcdsa.Sign(TestItem.PrivateKeyA, 1, TestItem.AddressF, 0),
                  //Bad signature
-                 new AuthorizationTuple(1, TestItem.AddressF, 0, new Signature(new byte[65]), TestItem.AddressA)
+                 new(1, TestItem.AddressF, 0, new Signature(new byte[65]), TestItem.AddressA)
              },
              new Address[]
              {
@@ -861,7 +861,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
 
-        AccessTxTracer txTracer = new AccessTxTracer();
+        AccessTxTracer txTracer = new();
         TransactionResult result = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), txTracer);
         Assert.That(txTracer.AccessList?.Select(static a => a.Address), Is.SupersetOf(shouldCountAsAccessed));
     }
@@ -924,7 +924,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
 

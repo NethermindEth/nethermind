@@ -25,7 +25,7 @@ public class ReceiptsMessageSerializerTests
     {
         using ReceiptsMessage message = new(txReceipts?.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
-        var serialized = serializer.Serialize(message);
+        byte[] serialized = serializer.Serialize(message);
         using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
         if (txReceipts is null)
@@ -84,12 +84,12 @@ public class ReceiptsMessageSerializerTests
     {
         TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled.TestObject;
 
-        var decoder = new ReceiptMessageDecoder(skipStateAndStatus: true);
+        ReceiptMessageDecoder decoder = new(skipStateAndStatus: true);
         byte[] encoded = decoder.EncodeNew(receipt);
 
-        var decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
+        TxReceipt decoded = decoder.Decode((ReadOnlySpan<byte>)encoded);
 
-        var expectedDecoded = new TxReceipt
+        TxReceipt expectedDecoded = new()
         {
             TxType = receipt.TxType,
             GasUsedTotal = receipt.GasUsedTotal,

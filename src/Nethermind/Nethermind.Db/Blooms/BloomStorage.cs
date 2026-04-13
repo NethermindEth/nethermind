@@ -100,7 +100,7 @@ namespace Nethermind.Db.Blooms
 
             void ValidateCurrentDbStructure(IList<int> sizes)
             {
-                var levelsFromDb = _bloomInfoDb.Get(LevelsKey);
+                byte[] levelsFromDb = _bloomInfoDb.Get(LevelsKey);
 
                 if (levelsFromDb is null)
                 {
@@ -120,15 +120,15 @@ namespace Nethermind.Db.Blooms
             }
 
             ValidateConfigValue();
-            var configIndexLevelBucketSizes = InsertBaseLevelIfNeeded();
+            List<int> configIndexLevelBucketSizes = InsertBaseLevelIfNeeded();
             ValidateCurrentDbStructure(configIndexLevelBucketSizes);
 
-            var lastLevelSize = 1;
+            int lastLevelSize = 1;
             return configIndexLevelBucketSizes
                 .Select((size, i) =>
                 {
                     byte level = (byte)(configIndexLevelBucketSizes.Count - i - 1);
-                    var levelElementSize = lastLevelSize * size;
+                    int levelElementSize = lastLevelSize * size;
                     lastLevelSize = levelElementSize;
                     return new BloomStorageLevel(_fileStoreFactory.Create(level.ToString()), level, levelElementSize, size, _config.MigrationStatistics);
                 })
@@ -182,7 +182,7 @@ namespace Nethermind.Db.Blooms
 
         public void Migrate(IEnumerable<BlockHeader> headers)
         {
-            var batchSize = _storageLevels.First().LevelElementSize;
+            int batchSize = _storageLevels.First().LevelElementSize;
             (BloomStorageLevel Level, Bloom Bloom)[] levelBlooms = _storageLevels.SkipLast(1).Select(static l => (l, new Bloom())).ToArray();
             BloomStorageLevel lastLevel = _storageLevels.Last();
 
@@ -464,7 +464,7 @@ namespace Nethermind.Db.Blooms
                         return null;
                     }
 
-                    var (Storage, Reader) = _storageLevels[CurrentLevel];
+                    (BloomStorageLevel Storage, IFileReader Reader) = _storageLevels[CurrentLevel];
                     return Reader.Read(Storage.GetBucket(_currentPosition), _bloom.Bytes) == Bloom.ByteLength ? _bloom : Bloom.Empty;
                 }
             }
@@ -493,7 +493,7 @@ namespace Nethermind.Db.Blooms
 
             public void Dispose()
             {
-                foreach (var (_, Reader) in _storageLevels)
+                foreach ((BloomStorageLevel _, IFileReader Reader) in _storageLevels)
                 {
                     Reader.Dispose();
                 }

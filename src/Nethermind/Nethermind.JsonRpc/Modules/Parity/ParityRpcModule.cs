@@ -84,7 +84,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<bool> parity_setEngineSignerSecret(string privateKey)
         {
-            var key = new PrivateKey(privateKey);
+            PrivateKey key = new(privateKey);
             _signerStore.SetSigner(key);
             return ResultWrapper<bool>.Success(true);
         }

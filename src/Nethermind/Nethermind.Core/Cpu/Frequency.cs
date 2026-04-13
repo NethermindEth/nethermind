@@ -10,7 +10,7 @@ namespace Nethermind.Core.Cpu;
 
 public readonly struct Frequency
 {
-    public static readonly Frequency Zero = new Frequency(0.0);
+    public static readonly Frequency Zero = new(0.0);
 
     public static readonly Frequency Hz = FrequencyUnit.Hz.ToFrequency(1L);
 

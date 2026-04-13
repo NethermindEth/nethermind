@@ -70,7 +70,7 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
 
     public IEnumerator<BlockBody?> GetEnumerator()
     {
-        foreach (var blockBody in _rawBodies)
+        foreach (BlockBody blockBody in _rawBodies)
         {
             yield return blockBody;
         }

@@ -61,8 +61,8 @@ public class LogIndexBuilderTests
 
         public virtual Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
         {
-            var min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
-            var max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
+            int min = Math.Min(aggregate.FirstBlockNum, aggregate.LastBlockNum);
+            int max = Math.Max(aggregate.FirstBlockNum, aggregate.LastBlockNum);
 
             if (_minBlockNumber is null || min < _minBlockNumber)
             {
@@ -138,7 +138,7 @@ public class LogIndexBuilderTests
     [TearDown]
     public async Task TearDownAsync()
     {
-        foreach (var disposable in _testDisposables)
+        foreach (object disposable in _testDisposables)
         {
             if (disposable is IAsyncDisposable asyncDisposable)
                 await asyncDisposable.DisposeAsync();
@@ -174,8 +174,8 @@ public class LogIndexBuilderTests
         _syncConfig.AncientReceiptsBarrier = minBarrier;
         Assert.That(_syncConfig.AncientReceiptsBarrierCalc, Is.EqualTo(minBarrier));
 
-        var expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
-        var storage = new TestLogIndexStorage
+        int expectedMin = minBarrier <= 1 ? 0 : synced[0] < 0 ? minBarrier : Math.Min(synced[0], minBarrier);
+        TestLogIndexStorage storage = new()
         {
             MinBlockNumber = synced[0] < 0 ? null : synced[0],
             MaxBlockNumber = synced[1] < 0 ? null : synced[1]
@@ -201,7 +201,7 @@ public class LogIndexBuilderTests
         [Values(0, 1, 4)] int failAfter
     )
     {
-        var exception = new Exception(nameof(Should_ForwardError));
+        Exception exception = new(nameof(Should_ForwardError));
         LogIndexBuilder builder = GetService(new FailingLogIndexStorage(failAfter, exception));
 
         await builder.StartAsync();

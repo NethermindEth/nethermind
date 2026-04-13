@@ -54,7 +54,7 @@ public class DiscoveryConnectionsPool : IConnectionsPool
 
     public async Task StopAsync()
     {
-        foreach ((var port, Task<IChannel> channel) in _byPort)
+        foreach ((int port, Task<IChannel> channel) in _byPort)
             await StopAsync(port, channel);
     }
 

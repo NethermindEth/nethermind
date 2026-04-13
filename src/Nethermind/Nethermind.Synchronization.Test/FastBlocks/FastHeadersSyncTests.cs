@@ -112,7 +112,7 @@ public class FastHeadersSyncTests
         feed.InitializeFeed();
         while (true)
         {
-            var batch = await feed.PrepareRequest();
+            HeadersSyncBatch? batch = await feed.PrepareRequest();
             if (batch is null) break;
             batch.Response = remoteBlockTree.FindHeaders(
                 remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash!, batch.RequestSize, 0,
@@ -130,7 +130,7 @@ public class FastHeadersSyncTests
         ISyncReport syncReport = new NullSyncReport();
 
         ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        PeerInfo peerInfo = new PeerInfo(Substitute.For<ISyncPeer>());
+        PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
 
         ManualResetEventSlim hangLatch = new(false);
         BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
@@ -477,9 +477,9 @@ public class FastHeadersSyncTests
     [TestCase(0, 192, 1, false, true)]
     public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
     {
-        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var pivotHeader = peerChain.FindHeader(998)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(998)!;
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -533,9 +533,9 @@ public class FastHeadersSyncTests
     [Test]
     public async Task Does_not_download_persisted_header()
     {
-        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var pivotHeader = peerChain.FindHeader(999)!;
-        var syncConfig = new TestSyncConfig { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(999)!;
+        TestSyncConfig syncConfig = new() { FastSync = true, PivotNumber = pivotHeader.Number, PivotHash = pivotHeader.Hash!.ToString(), PivotTotalDifficulty = pivotHeader.TotalDifficulty.ToString()! };
 
         IBlockTree localBlockTree = Build.A.BlockTree(peerChain.FindBlock(0, BlockTreeLookupOptions.None)!, null).WithSyncConfig(syncConfig).TestObject;
         localBlockTree.SyncPivot = (pivotHeader.Number, pivotHeader.Hash);
@@ -586,9 +586,9 @@ public class FastHeadersSyncTests
     [Test]
     public async Task Limits_persisted_headers_dependency()
     {
-        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var pivotHeader = peerChain.FindHeader(700)!;
-        var syncConfig = new TestSyncConfig
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(700)!;
+        TestSyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = pivotHeader.Number,
@@ -618,9 +618,9 @@ public class FastHeadersSyncTests
     [Test]
     public async Task Can_use_persisted_header_without_total_difficulty()
     {
-        var peerChain = CachedBlockTreeBuilder.OfLength(1000);
-        var pivotHeader = peerChain.FindHeader(700)!;
-        var syncConfig = new TestSyncConfig
+        IBlockTree peerChain = CachedBlockTreeBuilder.OfLength(1000);
+        BlockHeader pivotHeader = peerChain.FindHeader(700)!;
+        TestSyncConfig syncConfig = new()
         {
             FastSync = true,
             PivotNumber = pivotHeader.Number,
@@ -871,7 +871,7 @@ public class FastHeadersSyncTests
 
         protected override void InsertHeaders(IReadOnlyList<BlockHeader> headersToAdd)
         {
-            foreach (var header in headersToAdd)
+            foreach (BlockHeader header in headersToAdd)
             {
                 if (header.Number == _hangOnBlockNumber)
                 {
@@ -881,7 +881,7 @@ public class FastHeadersSyncTests
 
             base.InsertHeaders(headersToAdd);
 
-            foreach (var header in headersToAdd)
+            foreach (BlockHeader header in headersToAdd)
             {
                 if (header.Number == _hangOnBlockNumberAfterInsert)
                 {

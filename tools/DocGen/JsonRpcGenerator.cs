@@ -26,7 +26,7 @@ internal static class JsonRpcGenerator
     {
         path = Path.Join(path, "docs", "interacting", "json-rpc-ns");
 
-        var excluded = new[] {
+        string?[] excluded = new[] {
             typeof(IContextAwareRpcModule).FullName,
             typeof(IEvmRpcModule).FullName,
             typeof(IRpcModule).FullName,
@@ -38,7 +38,7 @@ internal static class JsonRpcGenerator
                 !excluded.Any(x => x is not null && (t.FullName?.Contains(x, StringComparison.Ordinal) ?? false)))
             .OrderBy(t => t.Name);
 
-        foreach (var file in Directory.EnumerateFiles(path))
+        foreach (string file in Directory.EnumerateFiles(path))
         {
             if (file.EndsWith(".md", StringComparison.Ordinal) &&
                 // Skip eth_subscribe.md and eth_unsubscribe.md
@@ -60,7 +60,7 @@ internal static class JsonRpcGenerator
                 continue;
             }
 
-            var ns = attr.ModuleType.ToLowerInvariant();
+            string ns = attr.ModuleType.ToLowerInvariant();
             var methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
 
             if (!methodMap.TryAdd(ns, methods))
@@ -74,7 +74,7 @@ internal static class JsonRpcGenerator
                 .Concat(typeof(ISubscribeRpcModule).GetMethods(BindingFlags.Instance | BindingFlags.Public));
         }
 
-        var i = 0;
+        int i = 0;
 
         foreach (var (ns, methods) in methodMap)
         {
@@ -86,7 +86,7 @@ internal static class JsonRpcGenerator
 
     private static void WriteMarkdown(string path, string ns, IEnumerable<MethodInfo> methods, int sidebarIndex)
     {
-        var fileName = Path.Join(path, $"{ns}.md");
+        string fileName = Path.Join(path, $"{ns}.md");
 
         using var stream = File.Open(fileName, FileMode.Create);
         using var file = new StreamWriter(stream);
@@ -161,7 +161,7 @@ internal static class JsonRpcGenerator
 
             """);
 
-        var i = 1;
+        int i = 1;
 
         foreach (var p in parameters)
         {
@@ -182,7 +182,7 @@ internal static class JsonRpcGenerator
 
     private static void WriteRequest(StreamWriter file, MethodInfo method)
     {
-        var parameters = string.Join(", ", method.GetParameters().Select(p => p.Name));
+        string parameters = string.Join(", ", method.GetParameters().Select(p => p.Name));
 
         file.WriteLine($$"""
             <TabItem value="request" label="Request" default>
@@ -250,11 +250,11 @@ internal static class JsonRpcGenerator
             return;
         }
 
-        var jsonType = GetJsonTypeName(type);
+        string jsonType = GetJsonTypeName(type);
 
         if (!jsonType.Equals(_objectTypeName, StringComparison.Ordinal))
         {
-            if (TryGetEnumerableItemType(type, out var itemType, out var isDictionary))
+            if (TryGetEnumerableItemType(type, out var itemType, out bool isDictionary))
             {
                 file.Write($"{(isDictionary ? "map" : "array")} of ");
 
@@ -273,14 +273,14 @@ internal static class JsonRpcGenerator
 
         foreach (var prop in properties)
         {
-            var propJsonType = GetJsonTypeName(prop.PropertyType);
+            string propJsonType = GetJsonTypeName(prop.PropertyType);
 
             file.WriteLine($"{Indent(indentation + 2)}- `{GetSerializedName(prop)}`: {propJsonType}");
 
             if (propJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
                 WriteExpandedType(file, prop.PropertyType, indentation + 2, true, parentTypes.Append(type.FullName));
             else if (propJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
-                TryGetEnumerableItemType(prop.PropertyType, out var itemType, out var _))
+                TryGetEnumerableItemType(prop.PropertyType, out var itemType, out bool _))
                 WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(type.FullName));
         }
     }
@@ -311,7 +311,7 @@ internal static class JsonRpcGenerator
         if (type.IsEnum)
             return "_integer_";
 
-        if (TryGetEnumerableItemType(type, out var itemType, out var isDictionary))
+        if (TryGetEnumerableItemType(type, out var itemType, out bool isDictionary))
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
         return type.Name switch

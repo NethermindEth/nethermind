@@ -73,7 +73,7 @@ namespace Nethermind.Serialization.Json
                     throw new JsonException($"JsonTokenType was of type {reader.TokenType}, only objects are supported");
                 }
 
-                var dictionary = new Dictionary<TKey, TValue>();
+                Dictionary<TKey, TValue> dictionary = new();
                 while (reader.Read())
                 {
                     if (reader.TokenType == JsonTokenType.EndObject)
@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Json
                         throw new JsonException("JsonTokenType was not PropertyName");
                     }
 
-                    var propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
 
                     if (string.IsNullOrWhiteSpace(propertyName))
                     {

@@ -76,7 +76,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private CancellationTokenSource? _internalTokenSource;
     private bool _isCompleted;
-    private readonly Lock _lockObject = new Lock();
+    private readonly Lock _lockObject = new();
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;
@@ -227,7 +227,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         // First we need to handle case where hint is smaller than minimum segment size
         sizeHint = Math.Max(_minimumBufferSize, sizeHint);
         // After that adjust it to fit into pools max buffer size
-        var adjustedToMaximumSize = Math.Min(maxBufferSize, sizeHint);
+        int adjustedToMaximumSize = Math.Min(maxBufferSize, sizeHint);
         return adjustedToMaximumSize;
     }
 

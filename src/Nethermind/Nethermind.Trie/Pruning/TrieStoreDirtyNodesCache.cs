@@ -296,8 +296,8 @@ internal class TrieStoreDirtyNodesCache
         long dirtyNode = 0;
         foreach ((Key key, NodeRecord nodeRecord) in AllNodes)
         {
-            var node = nodeRecord.Node;
-            var lastCommit = nodeRecord.LastCommit;
+            TrieNode node = nodeRecord.Node;
+            long lastCommit = nodeRecord.LastCommit;
             if (node.IsPersisted)
             {
                 // Remove persisted node based on `persistedHashes` if available.
@@ -424,7 +424,7 @@ internal class TrieStoreDirtyNodesCache
         {
             if (n.Keccak is null) return;
             if (n.NodeType == NodeType.Unknown) return;
-            Key key = new Key(address, path, n.Keccak);
+            Key key = new(address, path, n.Keccak);
             if (wasPersisted.TryAdd(key, true))
             {
                 nodeStorage.Set(address, path, n.Keccak, n.FullRlp.AsSpan());
@@ -483,7 +483,7 @@ internal class TrieStoreDirtyNodesCache
         [SkipLocalsInit]
         public override int GetHashCode()
         {
-            var addressHash = Address != default ? Address.GetHashCode() : 1;
+            int addressHash = Address != default ? Address.GetHashCode() : 1;
             return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
         }
 
@@ -510,7 +510,7 @@ internal class TrieStoreDirtyNodesCache
 
     public void CopyTo(TrieStoreDirtyNodesCache otherCache)
     {
-        foreach (var kv in AllNodes)
+        foreach (KeyValuePair<Key, NodeRecord> kv in AllNodes)
         {
             kv.Value.Node.PrunePersistedRecursively(1);
             otherCache.GetOrAdd(kv.Key, kv.Value);

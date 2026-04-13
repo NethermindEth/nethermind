@@ -17,11 +17,11 @@ namespace Nethermind.Xdc.Test.ModuleTests
         public void CustomFactory_DoesNotThrow_And_Returns_ConfigForSnapshot()
         {
             IDbConfig dbConfig = new DbConfig();
-            var pruning = Substitute.For<IPruningConfig>();
-            var hw = Substitute.For<IHardwareInfo>();
-            var logManager = Substitute.For<ILogManager>();
-            var baseFactory = new RocksDbConfigFactory(dbConfig, pruning, hw, logManager, validateConfig: true);
-            var custom = new XdcRocksDbConfigFactory(baseFactory, dbConfig);
+            IPruningConfig pruning = Substitute.For<IPruningConfig>();
+            IHardwareInfo hw = Substitute.For<IHardwareInfo>();
+            ILogManager logManager = Substitute.For<ILogManager>();
+            RocksDbConfigFactory baseFactory = new(dbConfig, pruning, hw, logManager, validateConfig: true);
+            XdcRocksDbConfigFactory custom = new(baseFactory, dbConfig);
 
             IRocksDbConfig config = custom.GetForDatabase(XdcRocksDbConfigFactory.XdcSnapshotDbName, null);
 

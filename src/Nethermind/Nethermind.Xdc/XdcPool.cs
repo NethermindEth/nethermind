@@ -20,10 +20,10 @@ public class XdcPool<T> where T : IXdcPoolItem
         if (item.Signer is null)
             throw new ArgumentException($"Signature must be recovered before adding {typeof(T).Name}.");
 
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
-            if (!_items.TryGetValue(key, out var list))
+            (ulong Round, Hash256 hash) key = item.PoolKey();
+            if (!_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
                 //128 should be enough to cover all master nodes and some extras
                 list = new Dictionary<Address, T>(128);
@@ -36,9 +36,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public void EndRound(ulong round)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            foreach (var key in _items.Keys)
+            foreach ((ulong Round, Hash256 Hash) key in _items.Keys)
             {
                 if (key.Round <= round)
                 {
@@ -50,9 +50,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public IReadOnlyCollection<T> GetItems(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
+            (ulong Round, Hash256 hash) key = item.PoolKey();
             if (_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
                 //Allocating a new array since it goes outside the lock
@@ -64,9 +64,9 @@ public class XdcPool<T> where T : IXdcPoolItem
 
     public long GetCount(T item)
     {
-        using var lockRelease = _lock.Acquire();
+        using McsLock.Disposable lockRelease = _lock.Acquire();
         {
-            var key = item.PoolKey();
+            (ulong Round, Hash256 hash) key = item.PoolKey();
             if (_items.TryGetValue(key, out Dictionary<Address, T> list))
             {
                 return list.Values.Count;

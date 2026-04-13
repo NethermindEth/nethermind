@@ -51,7 +51,7 @@ namespace Nethermind.State
         public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(KeccakCache.Compute(address.Bytes).BytesAsSpan, rootHash);
-            Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
+            Rlp.ValueDecoderContext valueDecoderContext = new(bytes);
             if (bytes.IsEmpty)
             {
                 account = AccountStruct.TotallyEmpty;
@@ -94,7 +94,7 @@ namespace Nethermind.State
 
             public void Dispose()
             {
-                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new ArrayPoolListRef<BulkSetEntry>(_bulkWrite.AsSpan());
+                using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef = new(_bulkWrite.AsSpan());
                 tree.BulkSet(asRef);
                 _bulkWrite.Dispose();
             }

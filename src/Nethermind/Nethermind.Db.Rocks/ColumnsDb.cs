@@ -199,7 +199,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 
             static ReadOptions CreateReadOptions(ColumnsDb<T> columnsDb, Snapshot snapshot)
             {
-                ReadOptions options = new ReadOptions();
+                ReadOptions options = new();
                 options.SetVerifyChecksums(columnsDb.VerifyChecksum);
                 options.SetSnapshot(snapshot);
                 return options;

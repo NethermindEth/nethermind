@@ -72,7 +72,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <returns></returns>
     public byte[] GetOriginal(in StorageCell storageCell)
     {
-        if (!_originalValues.TryGetValue(storageCell, out var value))
+        if (!_originalValues.TryGetValue(storageCell, out byte[] value))
         {
             throw new InvalidOperationException("Get original should only be called after get within the same caching round");
         }
@@ -507,7 +507,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
                 BlockChange.UnmarkClear(); // Note: Until the storage write batch is disposed, this BlockCache will pass read through the uncleared storage tree
             }
 
-            foreach (var kvp in BlockChange)
+            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
             {
                 byte[] after = kvp.Value.After;
                 if (!Bytes.AreEqual(kvp.Value.Before, after) || kvp.Value.IsInitialValue)

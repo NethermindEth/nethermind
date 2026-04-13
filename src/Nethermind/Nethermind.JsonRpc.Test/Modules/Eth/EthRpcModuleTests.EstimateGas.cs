@@ -85,7 +85,7 @@ public partial class EthRpcModuleTests
     [TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, _) = GetTestAccessList(loads);
@@ -100,12 +100,12 @@ public partial class EthRpcModuleTests
         string serializedEstimateGas =
             await test.TestEthRpc("eth_estimateGas", transaction, "0x0");
 
-        var gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
-        var gasUsedCreateAccessList =
+        string? gasUsedEstimateGas = JToken.Parse(serializedEstimateGas).Value<string>("result");
+        string? gasUsedCreateAccessList =
             JToken.Parse(serializedCreateAccessList).SelectToken("result.gasUsed")?.Value<string>();
 
-        var gasUsedAccessList = (long)Bytes.FromHexString(gasUsedCreateAccessList!).ToUInt256();
-        var gasUsedEstimate = (long)Bytes.FromHexString(gasUsedEstimateGas!).ToUInt256();
+        long gasUsedAccessList = (long)Bytes.FromHexString(gasUsedCreateAccessList!).ToUInt256();
+        long gasUsedEstimate = (long)Bytes.FromHexString(gasUsedEstimateGas!).ToUInt256();
         Assert.That(gasUsedEstimate, Is.EqualTo((double)gasUsedAccessList).Within(1.5).Percent);
     }
 
@@ -114,7 +114,7 @@ public partial class EthRpcModuleTests
     public async Task Eth_estimate_gas_with_accessList(bool senderAccessList, long gasPriceWithoutAccessList,
         long gasPriceWithAccessList)
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 })
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList(2, senderAccessList);
@@ -135,7 +135,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_estimate_gas_is_lower_with_optimized_access_list()
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList(2, true);
@@ -255,8 +255,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        var abiEncoder = new AbiEncoder();
-        var errorSignature = new AbiSignature(
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new(
             "Error",
             AbiType.String
         );
@@ -292,7 +292,7 @@ public partial class EthRpcModuleTests
             }));
 
         Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        LegacyTransactionForRpc transaction = new LegacyTransactionForRpc(
+        LegacyTransactionForRpc transaction = new(
             tx,
             new(tx.ChainId ?? BlockchainIds.Mainnet))
         {
@@ -331,8 +331,8 @@ public partial class EthRpcModuleTests
     )]
     public async Task Estimate_gas_with_state_override(string name, string transactionJson, string stateOverrideJson, string expectedResult)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         TestSpecProvider specProvider = new(Prague.Instance);
         using Context ctx = await Context.Create(specProvider);
@@ -359,16 +359,16 @@ public partial class EthRpcModuleTests
     )]
     public async Task Estimate_gas_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
-        var resultOverrideBefore = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        string resultOverrideBefore = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
-        var resultNoOverride = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
+        string resultNoOverride = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest");
 
-        var resultOverrideAfter = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        string resultOverrideAfter = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
 
         using (new AssertionScope())
         {

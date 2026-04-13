@@ -46,7 +46,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
-        var trieStoreCloser = _trieStore.BeginScope(baseBlock);
+        IDisposable trieStoreCloser = _trieStore.BeginScope(baseBlock);
         _backingStateTree ??= CreateStateTree();
         _backingStateTree.RootHash = baseBlock?.StateRoot ?? Keccak.EmptyTreeHash;
 
@@ -112,7 +112,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public void Commit(long blockNumber)
         {
-            using var blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
+            using IBlockCommitter blockCommitter = _scopeProvider._trieStore.BeginBlockCommit(blockNumber);
 
             // Note: These all runs in about 0.4ms. So the little overhead like attempting to sort the tasks
             // may make it worst. Always check on mainnet.
@@ -141,7 +141,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         internal StorageTree LookupStorageTree(Address address)
         {
-            if (_storages.TryGetValue(address, out var storageTree))
+            if (_storages.TryGetValue(address, out StorageTree storageTree))
             {
                 return storageTree;
             }
@@ -193,7 +193,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out var account))
+                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
                     account = scope.Get(key);
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
@@ -206,9 +206,9 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 if (logger.IsTrace) Trace(key, storageRoot, account);
             }
 
-            using (var stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
+            using (StateTree.StateTreeBulkSetter stateSetter = scope._backingStateTree.BeginSet(_dirtyAccounts.Count))
             {
-                foreach (var kv in _dirtyAccounts)
+                foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
                 {
                     stateSetter.Set(kv.Key, kv.Value);
                 }
@@ -241,7 +241,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 ? new(estimatedEntries)
                 : null;
 
-        private ValueHash256 _keyBuff = new ValueHash256();
+        private ValueHash256 _keyBuff = new();
 
         public void Set(in UInt256 index, byte[] value)
         {
@@ -279,7 +279,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
                 }
 
                 using ArrayPoolListRef<PatriciaTree.BulkSetEntry> asRef =
-                    new ArrayPoolListRef<PatriciaTree.BulkSetEntry>(_bulkWrite.AsSpan());
+                    new(_bulkWrite.AsSpan());
                 storageTree.BulkSet(asRef);
 
                 _bulkWrite?.Dispose();

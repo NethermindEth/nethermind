@@ -118,7 +118,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (var i = 0; i < item.Logs.Length; i++)
+            for (int i = 0; i < item.Logs.Length; i++)
             {
                 logsLength += Rlp.LengthOf(item.Logs[i]);
             }
@@ -197,7 +197,7 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
-            for (var i = 0; i < logs.Length; i++)
+            for (int i = 0; i < logs.Length; i++)
             {
                 rlpStream.Encode(logs[i]);
             }

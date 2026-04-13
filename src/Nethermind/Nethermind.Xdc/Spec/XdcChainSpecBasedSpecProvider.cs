@@ -16,7 +16,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
     protected override ReleaseSpec CreateEmptyReleaseSpec() => new XdcReleaseSpec();
     protected override ReleaseSpec CreateReleaseSpec(ChainSpec chainSpec, long releaseStartBlock, ulong? releaseStartTimestamp = null)
     {
-        var releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
+        XdcReleaseSpec releaseSpec = (XdcReleaseSpec)base.CreateReleaseSpec(chainSpec, releaseStartBlock, releaseStartTimestamp);
 
         releaseSpec.EpochLength = chainSpecEngineParameters.Epoch;
         releaseSpec.Gap = chainSpecEngineParameters.Gap;

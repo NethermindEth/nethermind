@@ -277,7 +277,7 @@ public class HeaderValidatorTests
         _block.Header.TotalDifficulty = null;
         _block.Header.Hash = _block.CalculateHash();
 
-        HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
+        HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         bool result = validator.Validate(_block.Header, _parentBlock.Header);
         Assert.That(result, Is.True);
     }
@@ -316,7 +316,7 @@ public class HeaderValidatorTests
     [Test]
     public void Validate_HashIsWrong_ErrorMessageIsSet()
     {
-        HeaderValidator sut = new HeaderValidator(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
+        HeaderValidator sut = new(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
         string? error;
         sut.Validate(_block.Header, _parentBlock.Header, false, out error);

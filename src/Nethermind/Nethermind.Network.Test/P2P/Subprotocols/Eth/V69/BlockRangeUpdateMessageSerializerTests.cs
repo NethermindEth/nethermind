@@ -37,7 +37,7 @@ public class BlockRangeUpdateMessageSerializerTests
     [TestCaseSource(nameof(_testData))]
     public void Roundtrip(BlockRangeUpdateMessage message, string expected)
     {
-        var serializer = new BlockRangeUpdateMessageSerializer();
+        BlockRangeUpdateMessageSerializer serializer = new();
 
         SerializerTester.TestZero(
             serializer,

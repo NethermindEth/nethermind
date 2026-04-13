@@ -109,7 +109,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static T Decode<T>(Span<byte> bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var valueContext = bytes.AsRlpValueContext();
+            ValueDecoderContext valueContext = bytes.AsRlpValueContext();
             return Decode<T>(ref valueContext, rlpBehaviors);
         }
 
@@ -123,7 +123,7 @@ namespace Nethermind.Serialization.Rlp
             if (span.Length == 1)
             {
                 int value = span[0];
-                var arrays = RlpStream.SingleByteArrays;
+                byte[][] arrays = RlpStream.SingleByteArrays;
                 if ((uint)value < (uint)arrays.Length)
                 {
                     return arrays[value];
@@ -143,7 +143,7 @@ namespace Nethermind.Serialization.Rlp
             if (span.Length == 1)
             {
                 int value = span[0];
-                var arrays = RlpStream.SingleByteArrays;
+                byte[][] arrays = RlpStream.SingleByteArrays;
                 if ((uint)value < (uint)arrays.Length)
                 {
                     return arrays[value].ToPooledList();
@@ -284,7 +284,7 @@ namespace Nethermind.Serialization.Rlp
         [SuppressMessage("ReSharper", "IntVariableOverflowInUncheckedContext")]
         public static Span<byte> Encode(ulong value, Span<byte> buffer)
         {
-            var minLength = LengthOf(value);
+            int minLength = LengthOf(value);
             if (buffer.Length < minLength)
             {
                 ThrowBufferTooSmall(buffer, minLength);
@@ -374,7 +374,7 @@ namespace Nethermind.Serialization.Rlp
         public static int Encode(Span<byte> buffer, int position, Hash256 hash)
         {
             Debug.Assert(hash is not null);
-            var newPosition = position + LengthOfKeccakRlp;
+            int newPosition = position + LengthOfKeccakRlp;
             if ((uint)newPosition > (uint)buffer.Length)
             {
                 ThrowArgumentOutOfRangeException();
@@ -1730,7 +1730,7 @@ namespace Nethermind.Serialization.Rlp
                 return 1;
             }
 
-            var spanString = value.AsSpan();
+            ReadOnlySpan<char> spanString = value.AsSpan();
 
             if (spanString.Length == 1 && spanString[0] < 128)
             {

@@ -42,7 +42,7 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
     {
-        foreach (var blockNumber in EnumerateBlockNumber())
+        foreach (long blockNumber in EnumerateBlockNumber())
         {
             EntryReadResult result = await ReadBlockAndReceipts(blockNumber, false, cancellation);
             yield return (result.Block, result.Receipts);
@@ -181,25 +181,25 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
             out UInt256 currentTotalDifficulty);
         header.TotalDifficulty = currentTotalDifficulty;
 
-        Block block = new Block(header, body);
+        Block block = new(header, body);
         return new EntryReadResult(block, receipts);
     }
 
     private BlockBody DecodeBody(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return _blockBodyDecoder.Decode(ref ctx)!;
     }
 
     private BlockHeader DecodeHeader(Memory<byte> buffer)
     {
-        var ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return _headerDecoder.Decode(ref ctx)!;
     }
 
     private TxReceipt[] DecodeReceipts(Memory<byte> buffer)
     {
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(buffer.Span);
+        Rlp.ValueDecoderContext ctx = new(buffer.Span);
         return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
     }
 

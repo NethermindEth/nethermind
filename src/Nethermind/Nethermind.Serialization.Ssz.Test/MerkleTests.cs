@@ -237,7 +237,7 @@ public class MerkleTests
         Merkle.MixIn(ref expectedRoot, data.Length);
 
         // Compute via Merkleizer.Feed
-        Merkleizer merkleizer = new Merkleizer(0);
+        Merkleizer merkleizer = new(0);
         merkleizer.Feed((ReadOnlySpan<byte>)data, limit);
         UInt256 actualRoot = merkleizer.CalculateRoot();
 
@@ -254,7 +254,7 @@ public class MerkleTests
     [Test]
     public void Set_check()
     {
-        Merkleizer context = new Merkleizer(1);
+        Merkleizer context = new(1);
         for (int i = 0; i < 64; i++)
         {
             context.SetKthBit(i);
@@ -267,7 +267,7 @@ public class MerkleTests
     [Test]
     public void Check_false()
     {
-        Merkleizer context = new Merkleizer(1);
+        Merkleizer context = new(1);
         for (int i = 0; i < 64; i++)
         {
             Assert.That(context.IsKthBitSet(i), Is.False, i.ToString());
@@ -282,7 +282,7 @@ public class MerkleTests
     [TestCase(64, 6)]
     public void Feed_test(int leafs, int depth)
     {
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         for (int i = 0; i < leafs; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -302,7 +302,7 @@ public class MerkleTests
         UInt256 result = UInt256.Zero;
         for (int j = 0; j < leafs; j++)
         {
-            Merkleizer merkleizer = new Merkleizer(depth);
+            Merkleizer merkleizer = new(depth);
             for (int i = j; i < leafs; i++)
             {
                 merkleizer.Feed(Merkle.ZeroHashes[0]);
@@ -317,7 +317,7 @@ public class MerkleTests
     [Test]
     public void Fill()
     {
-        Merkleizer merkleizer = new Merkleizer(6);
+        Merkleizer merkleizer = new(6);
         for (int i = 0; i < 7; i++)
         {
             merkleizer.Feed(Merkle.ZeroHashes[0]);

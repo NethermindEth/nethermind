@@ -62,7 +62,7 @@ namespace Nethermind.Network.Discovery.Test
                 new Node(TestItem.PublicKeyB, "192.168.1.2", 30303)
             ];
 
-            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
             INodeLifecycleManager[] lifecycleManagers = nodes.Select((node) =>
             {

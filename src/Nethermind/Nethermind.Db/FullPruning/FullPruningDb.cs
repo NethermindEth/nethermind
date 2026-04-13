@@ -32,7 +32,7 @@ namespace Nethermind.Db.FullPruning
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress
         private PruningContext? _pruningContext;
-        private Lock _startLock = new Lock();
+        private Lock _startLock = new();
 
         public FullPruningDb(DbSettings settings, IDbFactory dbFactory, Action? updateDuplicateWriteMetrics = null)
         {

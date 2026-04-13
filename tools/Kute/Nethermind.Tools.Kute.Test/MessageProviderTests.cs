@@ -13,7 +13,7 @@ public class MessageProviderTests
     [Test]
     public async Task CanDeserializeJSONAsync()
     {
-        var lines = """
+        string lines = """
         {"jsonrpc":"2.0","id":1,"result":"0x123"}
         {"jsonrpc":"2.0","id":2,"error":{"code":-32601,"message":"Method not found"}}
         [{"jsonrpc":"2.0","id":3,"result":"0x456"},{"jsonrpc":"2.0","id":4,"error":{"code":-32602,"message":"Invalid params"}}]
@@ -34,7 +34,7 @@ public class MessageProviderTests
     [Test]
     public async Task CanUnwrapBatches()
     {
-        var lines = """
+        string lines = """
         {"jsonrpc":"2.0","id":3,"result":"0x789"}
         [{"jsonrpc":"2.0","id":1,"result":"0x123"},{"jsonrpc":"2.0","id":2,"result":"0x456"}]
         """;

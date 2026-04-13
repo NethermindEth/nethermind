@@ -103,7 +103,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
             throw new ArgumentException("Trace depth is too high");
         }
 
-        for (var index = 0; index < action.Subtraces.Count; index++)
+        for (int index = 0; index < action.Subtraces.Count; index++)
         {
             CheckDepth(action.Subtraces[index], depth);
         }
