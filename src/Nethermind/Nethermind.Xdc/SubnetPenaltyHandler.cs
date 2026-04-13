@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -8,11 +10,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Spec;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
-using Nethermind.Core.Collections;
 using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
@@ -20,16 +17,14 @@ namespace Nethermind.Xdc;
 internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, ISigningTxCache signingTxCache) : IPenaltyHandler
 {
     private static readonly EthereumEcdsa _ethereumEcdsa = new(0);
+    private readonly XdcSubnetHeaderDecoder _xdcHeaderDecoder = new();
 
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         XdcSubnetBlockHeader header = (XdcSubnetBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
 
-        Hash256 currentHash = parentHash;
-
-        List<Address> penalties = [];
-        List<Address> prevPenalties = [];
+        HashSet<Address> penalties = new();
 
 
         List<Hash256> listBlockHash = [];
@@ -46,7 +41,12 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             XdcSubnetBlockHeader parentHeader = (XdcSubnetBlockHeader)tree.FindHeader(parentHash, parentNumber);
 
             if (parentNumber == minBlockNumber + 1)
-                prevPenalties = parentHeader.PenaltiesAddress.Value ?? [];
+            {
+                foreach (Address penalty in parentHeader.PenaltiesAddress)
+                {
+                    penalties.Add(penalty);
+                }
+            }
 
             listBlockHash.Add(parentHash);
             listBlockNumber.Add(parentNumber);
@@ -61,7 +61,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
                 Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
                 foreach (Address masternode in masternodes)
                 {
-                    if(minerStatistics.GetValueOrDefault(masternode, 0) <= XdcConstants.MinimumMinerBlockPerEpoch)
+                    if(minerStatistics.GetValueOrDefault(masternode, 0) < XdcConstants.MinimumMinerBlockPerEpoch)
                         penalties.Add(masternode);
                 }
                 minerStatistics.Clear();
@@ -74,9 +74,6 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             parentHash = parentHeader.ParentHash;
         }
 
-        penalties.AddRange(prevPenalties);
-
-        HashSet<Address> comebacks = new();
         HashSet<Hash256> blockHashes = new();
 
         long startRange = Math.Max(number - (long)currentSpec.RangeReturnSigner + 1, 0);
@@ -95,31 +92,20 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
             Transaction[] signingTxs = signingTxCache.GetSigningTransactions(blockHash, blockNumber, currentSpec);
             foreach (Transaction tx in signingTxs)
             {
-                var signedBlockHash = new Hash256(tx.Data.Span[^32..]);
+                Hash256 signedBlockHash = new(tx.Data.Span[^32..]);
                 Address fromSigner = tx.SenderAddress;
 
                 if (blockHashes.Contains(signedBlockHash))
-                    comebacks.Add(fromSigner);
+                    penalties.Remove(fromSigner);
             }
         }
-
-        HashSet<Address> finalPenaltiesSet = new();
-        List<Address> finalPenalties = [];
-
-
-        foreach (Address penalty in penalties)
-        {
-            if(finalPenaltiesSet.Contains(penalty))
-                continue;
-            if(comebacks.Contains(penalty))
-                continue;
-            finalPenaltiesSet.Add(penalty);
-            finalPenalties.Add(penalty);
-        }
-
-        // TODO use unstable one like in xdc
-        finalPenalties.Sort();
-
-        return finalPenalties.ToArray();
+        // Must use EIP-55 checksummed hex to match XDC Go node ordering (addr.Hex()).
+        // Plain lowercase comparison gives wrong order: e.g. "0xAb..." < "0xaa..." but "0xab..." > "0xaa..."
+        Address[] result = new Address[penalties.Count];
+        penalties.CopyTo(result);
+        Array.Sort(result, (a, b) => string.CompareOrdinal(
+            a.ToString(withEip55Checksum: true),
+            b.ToString(withEip55Checksum: true)));
+        return result;
     }
 }
