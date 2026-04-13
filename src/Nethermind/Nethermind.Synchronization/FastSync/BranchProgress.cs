@@ -171,7 +171,7 @@ namespace Nethermind.Synchronization.FastSync
                             builder.Append('□');
                             break;
                         default:
-                            throw new ArgumentOutOfRangeException("progressState", _syncProgress[i], "Unknown progress state.");
+                            throw new ArgumentOutOfRangeException(nameof(_syncProgress), _syncProgress[i], "Unknown progress state.");
                     }
                 }
 
