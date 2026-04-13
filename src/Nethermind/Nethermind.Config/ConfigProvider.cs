@@ -150,7 +150,7 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
-    public (string ErrorMsg, IList<(IConfigSource Source, string? Category, string? Name)> Errors) FindIncorrectSettings()
+    public (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) FindIncorrectSettings()
     {
         if (_instances.IsEmpty)
         {
@@ -163,14 +163,14 @@ public class ConfigProvider : IConfigProvider
                 .Select(p => GetKey(i.GetType().Name, p.Name)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        List<(IConfigSource Source, string? Category, string? Name)> incorrectSettings = [];
+        List<(IConfigSource Source, string? Category, string Name)> incorrectSettings = [];
 
         // Skip the validation for ArgsConfigSource items as they are already validated by the CLI parser
         foreach (IConfigSource source in _configSource.Where(s => s is not ArgsConfigSource))
         {
-            IEnumerable<(string? Category, string? Name)> configs = source.GetConfigKeys();
+            IEnumerable<(string? Category, string Name)> configs = source.GetConfigKeys();
 
-            foreach ((string? category, string? name) in configs)
+            foreach ((string? category, string name) in configs)
             {
                 if (!propertySet.Contains(GetKey(category, name)))
                 {
@@ -191,7 +191,7 @@ public class ConfigProvider : IConfigProvider
             _ => source.ToString()
         };
 
-        static string GetKey(string? category, string? name)
+        static string GetKey(string? category, string name)
         {
             if (string.IsNullOrEmpty(category))
             {

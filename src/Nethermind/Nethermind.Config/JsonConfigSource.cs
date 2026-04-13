@@ -151,5 +151,5 @@ public class JsonConfigSource : IConfigSource
         return (isSet, isSet ? _values[category][name] : null);
     }
 
-    public IEnumerable<(string? Category, string? Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, (string?)n)));
+    public IEnumerable<(string? Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => ((string?)m.Key, n)));
 }

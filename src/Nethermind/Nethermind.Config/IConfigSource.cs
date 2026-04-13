@@ -12,6 +12,6 @@ namespace Nethermind.Config
 
         (bool IsSet, string? Value) GetRawValue(string category, string name);
 
-        IEnumerable<(string? Category, string? Name)> GetConfigKeys();
+        IEnumerable<(string? Category, string Name)> GetConfigKeys();
     }
 }

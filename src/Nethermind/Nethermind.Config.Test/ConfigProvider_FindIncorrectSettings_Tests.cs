@@ -49,7 +49,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
         configProvider.AddSource(argsSource);
 
         configProvider.Initialize();
-        (_, IList<(IConfigSource Source, string? Category, string? Name)> Errors) = configProvider.FindIncorrectSettings();
+        (_, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Is.Empty);
     }
@@ -70,7 +70,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string? Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
@@ -96,7 +96,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string? Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(3));
         Assert.Multiple(() =>
@@ -121,7 +121,7 @@ public class ConfigProvider_FindIncorrectSettings_Tests
 
         configProvider.Initialize();
 
-        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string? Name)> Errors) = configProvider.FindIncorrectSettings();
+        (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
         Assert.That(Errors, Has.Count.EqualTo(1));
         Assert.Multiple(() =>

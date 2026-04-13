@@ -24,23 +24,18 @@ namespace Nethermind.Config
             return (isSet, isSet ? _args[variableName] : null);
         }
 
-        public IEnumerable<(string? Category, string? Name)> GetConfigKeys()
-        {
-            IEnumerable<(string?, string?)> argsPairs = _args.Keys.Select(static k => k.Split('.')).Select(static a =>
-            {
-                if (a.Length == 0)
+        public IEnumerable<(string? Category, string Name)> GetConfigKeys() =>
+            _args.Keys
+                .Select(static k => k.Split('.'))
+                .Where(static a => a.Length > 0)
+                .Select(static a =>
                 {
-                    return ((string?)null, (string?)null);
-                }
-                if (a.Length == 1)
-                {
-                    return ((string?)null, a[0]);
-                }
+                    if (a.Length == 1)
+                    {
+                        return ((string?)null, a[0]);
+                    }
 
-                return (a[0], a[1]);
-            });
-
-            return argsPairs;
-        }
+                    return (a[0], a[1]);
+                });
     }
 }

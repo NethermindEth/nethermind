@@ -8,7 +8,7 @@ namespace Nethermind.Config;
 [AttributeUsage(AttributeTargets.Property)]
 public class ConfigItemAttribute : Attribute
 {
-    public string? Description { get; set; }
+    public string Description { get; set; } = "";
 
     public string? DefaultValue { get; set; }
 
@@ -16,9 +16,9 @@ public class ConfigItemAttribute : Attribute
 
     public bool DisabledForCli { get; set; }
 
-    public string? EnvironmentVariable { get; set; }
+    public string EnvironmentVariable { get; set; } = "";
 
     public bool IsPortOption { get; set; }
 
-    public string? CliOptionAlias { get; set; }
+    public string CliOptionAlias { get; set; } = "";
 }
