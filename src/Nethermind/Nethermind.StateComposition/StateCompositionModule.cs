@@ -5,6 +5,9 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.StateComposition.Rpc;
+using Nethermind.StateComposition.Service;
+using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition;
 
@@ -16,11 +19,8 @@ public class StateCompositionModule : Module
 
         builder.AddDatabase(StateCompositionSnapshotStore.DbName);
 
-        builder.RegisterType<StateCompositionStateHolder>()
-            .AsSelf()
-            .SingleInstance();
-
         builder
+            .AddSingleton<StateCompositionStateHolder>()
             .AddSingleton<StateCompositionSnapshotStore>()
             .AddSingleton<StateCompositionService>()
             .RegisterSingletonJsonRpcModule<IStateCompositionRpcModule, StateCompositionRpcModule>();
