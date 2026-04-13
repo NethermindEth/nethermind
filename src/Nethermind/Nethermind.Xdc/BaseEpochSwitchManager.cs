@@ -18,8 +18,8 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
     protected ISpecProvider XdcSpecProvider { get; } = xdcSpecProvider;
     protected IBlockTree Tree { get; } = tree;
     protected ISnapshotManager SnapshotManager { get; } = snapshotManager;
-    protected LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; set; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
-    protected LruCache<ValueHash256, EpochSwitchInfo> EpochSwitches { get; set; } = new(XdcConstants.InMemoryEpochs, nameof(EpochSwitches));
+    protected LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
+    protected LruCache<ValueHash256, EpochSwitchInfo> EpochSwitches { get; } = new(XdcConstants.InMemoryEpochs, nameof(EpochSwitches));
 
     public abstract bool IsEpochSwitchAtBlock(XdcBlockHeader header);
 
@@ -37,7 +37,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
-            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash);
+            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");;
         }
 
         Address[] masterNodes;

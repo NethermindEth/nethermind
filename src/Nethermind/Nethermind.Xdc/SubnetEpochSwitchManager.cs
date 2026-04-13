@@ -16,6 +16,8 @@ internal class SubnetEpochSwitchManager(
     ISnapshotManager snapshotManager)
     : BaseEpochSwitchManager(xdcSpecProvider, tree, snapshotManager)
 {
+
+    // Subnet epoch switches are block-number-based, not round-based;
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(header);
@@ -38,17 +40,15 @@ internal class SubnetEpochSwitchManager(
 
     public override EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
     {
-        // subnet seems not to use this
-        XdcSubnetBlockHeader xdcHeader = (XdcSubnetBlockHeader)Tree.Head?.Header;
+        XdcSubnetBlockHeader? xdcHeader = Tree.Head?.Header as XdcSubnetBlockHeader;
         if (xdcHeader is null)
             return null;
-
         return GetEpochSwitchInfo(xdcHeader);
     }
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-
-        throw new NotImplementedException();
+        // Not implemented in subnet
+        return null;
     }
 }
