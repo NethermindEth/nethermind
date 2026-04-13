@@ -33,8 +33,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.State;
 using Nethermind.Config;
 
 namespace Nethermind.Blockchain.Test;
@@ -211,65 +209,6 @@ public class BlockProcessorTests
         Assert.That(externalHandlerCallCount, Is.EqualTo(1),
             "only the externally subscribed handler should fire, BranchProcessor should have unsubscribed");
     }
-
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    [TestCaseSource(nameof(BlockValidationTransactionsExecutor_bal_validation_cases))]
-    public void BlockValidationTransactionsExecutor_validates_bal_only_when_validation_enabled(
-        ProcessingOptions processingOptions,
-        bool shouldValidateBlockAccessList)
-    {
-        Block suggested = Build.A.Block.WithBlockAccessList(new()).WithGasUsed(37_568).TestObject;
-        BlockAccessListBasedWorldState balStateProvider = new(TestWorldStateFactory.CreateForTest(), 0, LimboLogs.Instance);
-        balStateProvider.Setup(suggested);
-        TracedAccessWorldState stateProvider = new(balStateProvider, true);
-
-        ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
-        transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static callInfo =>
-        {
-            Transaction transaction = callInfo.Arg<Transaction>();
-            transaction.SpentGas = 63_586;
-            transaction.BlockGasUsed = 37_568;
-            return TransactionResult.Ok;
-        });
-
-        BlockProcessor.BlockValidationTransactionsExecutor txExecutor = new(transactionProcessor, stateProvider);
-        Block block = Build.A.Block.WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
-        BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.StartNewBlockTrace(block);
-
-        txExecutor.ProcessTransactions(block, processingOptions, receiptsTracer, CancellationToken.None);
-
-        // if (shouldValidateBlockAccessList)
-        // {
-        //     Assert.That(stateProvider.ValidatedGasRemaining, Is.EqualTo(new long[] { 37_568L, 0L }));
-        // }
-        // else
-        // {
-        //     Assert.That(stateProvider.ValidatedGasRemaining, Is.Empty);
-        // }
-    }
-
-    // [TestCase(2_000, false)]
-    // [TestCase(1_999, true)]
-    // [MaxTime(Timeout.MaxTestTime)]
-    // public void ParallelWorldState_bal_read_budget_uses_eip_7928_item_cost(long gasRemaining, bool shouldThrow)
-    // {
-    //     ParallelWorldState stateProvider = new(TestWorldStateFactory.CreateForTest());
-    //     BlockAccessList suggestedBlockAccessList = new();
-    //     suggestedBlockAccessList.AddStorageRead(TestItem.AddressA, 1);
-    //     stateProvider.LoadSuggestedBlockAccessList(suggestedBlockAccessList, gasRemaining);
-
-    //     TestDelegate act = () => stateProvider.ValidateBlockAccessList(Build.A.BlockHeader.TestObject, 0, gasRemaining);
-
-    //     if (shouldThrow)
-    //     {
-    //         Assert.Throws<ParallelWorldState.InvalidBlockLevelAccessListException>(act);
-    //     }
-    //     else
-    //     {
-    //         Assert.That(act, Throws.Nothing);
-    //     }
-    // }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BranchProcessor_no_prewarmer_still_processes_successfully()

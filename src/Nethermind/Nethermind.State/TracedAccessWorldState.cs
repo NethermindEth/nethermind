@@ -173,7 +173,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public bool TryGetAccount(Address address, out AccountStruct account)
     {
         AddAccountRead(address);
-        account = GetAccountInternal(address) ?? AccountStruct.TotallyEmpty;
+        account = AccountExistsInternal(address) ? new(
+            GetNonceInternal(address),
+            GetBalanceInternal(address),
+            Keccak.EmptyTreeHash, // never used
+            _innerWorldState.GetCodeHash(address)) : AccountStruct.TotallyEmpty;
         return !account.IsTotallyEmpty;
     }
 
@@ -214,7 +218,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public bool IsContract(Address address)
     {
         AddAccountRead(address);
-        return IsContractInternal(address);
+        return GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
     }
 
     public bool IsStorageEmpty(Address address)
@@ -226,7 +230,11 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public bool IsDeadAccount(Address address)
     {
         AddAccountRead(address);
-        return IsDeadAccountInternal(address);
+        return !AccountExistsInternal(address) ||
+            (
+                GetBalanceInternal(address) == 0 &&
+                GetNonceInternal(address) == 0 &&
+                GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
     }
 
     public void ClearStorage(Address address)
@@ -310,15 +318,6 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         return code is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(code);
     }
 
-    private bool IsContractInternal(Address address)
-        => GetCodeHashInternal(address) != Keccak.OfAnEmptyString;
-
-    private bool IsDeadAccountInternal(Address address)
-        => !AccountExistsInternal(address) ||
-                (
-                    GetBalanceInternal(address) == 0 &&
-                    GetNonceInternal(address) == 0 &&
-                    GetCodeHashInternal(address) == Keccak.OfAnEmptyString);
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
         if (parallel)
@@ -363,11 +362,4 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             _generatingBlockAccessList.AddNonceChange(address, (ulong)nonce);
         }
     }
-
-    private AccountStruct? GetAccountInternal(Address address)
-        => AccountExistsInternal(address) ? new(
-            GetNonceInternal(address),
-            GetBalanceInternal(address),
-            Keccak.EmptyTreeHash, // never used
-            _innerWorldState.GetCodeHash(address)) : null;
 }

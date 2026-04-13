@@ -378,5 +378,4 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         return false;
     }
-
 }
