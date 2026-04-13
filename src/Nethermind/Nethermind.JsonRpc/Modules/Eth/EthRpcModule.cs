@@ -360,7 +360,12 @@ public partial class EthRpcModule(
     {
         if (transactionCall is LegacyTransactionForRpc legacyTx)
         {
-            legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(legacyTx.From ?? Address.Zero);
+            if (legacyTx.From is null)
+            {
+                return ResultWrapper<FillTransactionResult>.Fail("'from' is required.", ErrorCodes.InvalidInput);
+            }
+
+            legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(legacyTx.From);
 
             if (legacyTx is EIP1559TransactionForRpc eip1559Tx)
             {
@@ -377,21 +382,26 @@ public partial class EthRpcModule(
         {
             ResultWrapper<UInt256?> gasEstimate = eth_estimateGas(transactionCall, BlockParameter.Latest);
             if (gasEstimate.Result.ResultType == ResultType.Failure)
+            {
                 return ResultWrapper<FillTransactionResult>.Fail(gasEstimate.Result.Error!, gasEstimate.ErrorCode);
+            }
             if (gasEstimate.Data is null)
+            {
                 return ResultWrapper<FillTransactionResult>.Fail("Failed to estimate gas.", ErrorCodes.InternalError);
+            }
             transactionCall.Gas = (long)gasEstimate.Data.Value;
         }
 
         Result<Transaction> txResult = transactionCall.ToTransaction(validateUserInput: true);
         if (!txResult.Success(out Transaction tx, out string error))
+        {
             return ResultWrapper<FillTransactionResult>.Fail(error, ErrorCodes.InvalidInput);
+        }
 
-        ulong chainId = _specProvider.ChainId;
+        ulong chainId = _blockchainBridge.GetChainId();
         tx.ChainId = chainId;
 
-        using NettyRlpStream stream = TxDecoder.Instance.EncodeToNewNettyStream(tx, RlpBehaviors.SkipTypedWrapping);
-        byte[] raw = stream.AsSpan().ToArray();
+        byte[] raw = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
         TransactionForRpc filledTx = TransactionForRpc.FromTransaction(tx, new TransactionForRpcContext(chainId));
         return ResultWrapper<FillTransactionResult>.Success(new FillTransactionResult(raw, filledTx));
