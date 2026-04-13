@@ -341,8 +341,7 @@ public partial class EthRpcModuleTests
         // See: https://github.com/NethermindEth/nethermind/issues/11095
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        // keccak4("ActionFailed()") = 0x080a1c27
-        byte[] selector = [0x08, 0x0a, 0x1c, 0x27];
+        byte[] selector = Keccak.Compute("ActionFailed()").Bytes[..4].ToArray();
 
         byte[] code = Prepare.EvmCode
             .RevertWithCustomError(selector)
@@ -354,6 +353,33 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x080a1c27"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_with_revert_sentinel_string_as_message_still_appends_decoded_message()
+    {
+        // require(false, "revert") produces Error(string) ABI-encoded with the literal string "revert".
+        // The old sentinel-based check would have mistaken this for the Revert sentinel and emitted
+        // plain "execution reverted". The raw-byte prefix check fixes this: we see the Error(string)
+        // selector in the revert data, so we correctly emit "execution reverted: revert".
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new("Error", AbiType.String);
+        string errorMessage = "revert"; // deliberately equals the sentinel constant
+        byte[] encodedError = abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, errorSignature, errorMessage);
+        string abiEncodedErrorMessage = encodedError.ToHexString(true);
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithSolidityErrorEncoding(errorMessage)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: revert","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [TestCase(
