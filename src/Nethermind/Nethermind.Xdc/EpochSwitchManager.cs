@@ -14,12 +14,12 @@ using System.Linq;
 namespace Nethermind.Xdc;
 
 internal class EpochSwitchManager(
-    ISpecProvider xdcSpecProvider, 
-    IBlockTree tree, 
-    ISnapshotManager snapshotManager) 
+    ISpecProvider xdcSpecProvider,
+    IBlockTree tree,
+    ISnapshotManager snapshotManager)
     : BaseEpochSwitchManager(
-        xdcSpecProvider, 
-        tree, 
+        xdcSpecProvider,
+        tree,
         snapshotManager)
 {
     /**
