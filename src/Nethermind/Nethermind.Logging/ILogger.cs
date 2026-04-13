@@ -56,7 +56,7 @@ public struct ILogger : IEquatable<ILogger>
     public bool Equals(ILogger other) => _logger == other._logger;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public readonly void Error(string text, Exception ex = null)
+    public readonly void Error(string text, Exception? ex = null)
     {
         if (IsError) _logger.Error(text, ex);
     }

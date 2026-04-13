@@ -11,7 +11,7 @@ namespace Nethermind.Logging
         void Warn(string text);
         void Debug(string text);
         void Trace(string text);
-        void Error(string text, Exception ex = null);
+        void Error(string text, Exception? ex = null);
 
         /// <summary>
         /// Logs a warning tagged with a <see cref="LogEventKind"/>. Sinks that support structured
