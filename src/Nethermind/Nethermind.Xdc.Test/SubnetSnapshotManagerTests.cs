@@ -79,7 +79,7 @@ internal class SubnetSnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void NewHeadBlock_(int gapNumber)
+    public void BlockAddedToMainStoresSnapshot(int gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900);

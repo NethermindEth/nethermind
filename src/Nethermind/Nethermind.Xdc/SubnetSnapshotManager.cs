@@ -29,7 +29,7 @@ internal class SubnetSnapshotManager(
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);
-        Address[] penalties = penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+        Address[] penalties = header.IsGenesis ? [] : penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
 
         return new SubnetSnapshot(header.Number, header.Hash, candidates, penalties);
     }
