@@ -406,6 +406,13 @@ public partial class SszEncoding
     /// Wraps <paramref name="expression"/> in a <see cref="System.ReadOnlySpan{T}"/>.
     /// Both bridges return an empty span when the source is null.
     /// </summary>
+    /// <remarks>
+    /// The non-array branch emits <c>CollectionsMarshal.AsSpan(...)</c>, which only accepts
+    /// <see cref="System.Collections.Generic.List{T}"/>. Declaring an SSZ property as
+    /// <c>IList&lt;T&gt;?</c>, <c>IReadOnlyList&lt;T&gt;?</c>, or any custom collection type will
+    /// produce a generated file that fails to compile — surface a clearer contract here if that
+    /// ever becomes a real constraint.
+    /// </remarks>
     private static string SpanExpression(SszProperty property, string expression) =>
         property.IsArrayProperty ? $"{expression}.AsSpan()" : $"CollectionsMarshal.AsSpan({expression})";
 
