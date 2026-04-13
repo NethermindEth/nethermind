@@ -12,19 +12,24 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SubnetSnapshotManager : BaseSnapshotManager<SubnetSnapshot>
+internal class SubnetSnapshotManager(
+    IDb snapshotDb,
+    IBlockTree blockTree,
+    IMasternodeVotingContract votingContract,
+    ISpecProvider specProvider,
+    IPenaltyHandler penaltyHandler)
+    : BaseSnapshotManager<SubnetSnapshot>(
+        snapshotDb,
+        blockTree,
+        votingContract,
+        specProvider,
+        new SubnetSnapshotDecoder(),
+        "XDC Subnet Snapshot cache")
 {
-    private IPenaltyHandler PenaltyHandler { get; }
-    public SubnetSnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, votingContract, specProvider, new SubnetSnapshotDecoder(), "XDC Subnet Snapshot cache")
-    {
-        PenaltyHandler = penaltyHandler;
-    }
-
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);
-        Address[] penalties = PenaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
+        Address[] penalties = penaltyHandler.HandlePenalties(header.Number, header.ParentHash, candidates);
 
         return new SubnetSnapshot(header.Number, header.Hash, candidates, penalties);
     }

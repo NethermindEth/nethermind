@@ -12,13 +12,19 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SnapshotManager : BaseSnapshotManager<Snapshot>
+internal class SnapshotManager(
+    IDb snapshotDb,
+    IBlockTree blockTree,
+    IMasternodeVotingContract votingContract,
+    ISpecProvider specProvider)
+    : BaseSnapshotManager<Snapshot>(
+        snapshotDb,
+        blockTree,
+        votingContract,
+        specProvider,
+        new SnapshotDecoder(),
+        "XDC Snapshot cache")
 {
-    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, votingContract, specProvider, new SnapshotDecoder(), "XDC Snapshot cache")
-    {
-    }
-
     protected override Snapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)
     {
         Address[] candidates = header.IsGenesis ? spec.GenesisMasterNodes : VotingContract.GetCandidatesByStake(header);
