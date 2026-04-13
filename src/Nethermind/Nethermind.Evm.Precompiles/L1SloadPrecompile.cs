@@ -83,7 +83,7 @@ public class L1SloadPrecompile : IPrecompile<L1SloadPrecompile>
     {
         try
         {
-            var result = L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
+            UInt256? result = L1StorageProvider?.GetStorageValue(contractAddress, storageKey, blockNumber);
             if (Logger.IsTrace) Logger.Trace($"L1SLOAD: provider returned {(result is null ? "null" : result.Value.ToString())}");
             return result;
         }

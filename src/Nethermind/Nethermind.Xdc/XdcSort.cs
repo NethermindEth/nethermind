@@ -13,16 +13,10 @@ namespace Nethermind.Xdc;
 /// </summary>
 public static class XdcSort
 {
-    private struct LessSwap<T>
+    private struct LessSwap<T>(IList<T> data, Func<T, T, bool> less)
     {
-        public Func<T, T, bool> Less;
-        public IList<T> Data;
-
-        public LessSwap(IList<T> data, Func<T, T, bool> less)
-        {
-            Data = data;
-            Less = less;
-        }
+        public Func<T, T, bool> Less = less;
+        public IList<T> Data = data;
 
         public void Swap(int i, int j)
         {
@@ -42,7 +36,7 @@ public static class XdcSort
         ArgumentNullException.ThrowIfNull(less);
 
         int length = x.Count;
-        var data = new LessSwap<T>(x, less);
+        LessSwap<T> data = new(x, less);
         QuickSort_func(data, 0, length, MaxDepth(length));
     }
 

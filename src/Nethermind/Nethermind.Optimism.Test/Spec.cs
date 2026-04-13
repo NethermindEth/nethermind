@@ -32,11 +32,11 @@ public static class Spec
 
     public static ISpecProvider BuildFor(params BlockHeader[] headers)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
         foreach (BlockHeader header in headers)
         {
-            var spec = Substitute.For<ReleaseSpec>();
+            ReleaseSpec spec = Substitute.For<ReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
             spec.IsOpHoloceneEnabled = Instance.IsHolocene(header);
@@ -52,11 +52,11 @@ public static class Spec
 
     public static ISpecProvider BuildFor(params ulong[] timestamps)
     {
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
 
         foreach (ulong timestamp in timestamps)
         {
-            var spec = Substitute.For<ReleaseSpec>();
+            ReleaseSpec spec = Substitute.For<ReleaseSpec>();
 
             spec.IsEip4844Enabled = true;
             spec.IsOpHoloceneEnabled = timestamp >= HoloceneTimeStamp;

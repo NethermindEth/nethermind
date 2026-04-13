@@ -189,7 +189,7 @@ public class StorageProviderTests(bool useFlat)
         // block 1
         Hash256 stateRoot;
         WorldState storageProvider = BuildStorageProvider(ctx);
-        using (var _ = storageProvider.BeginScope(IWorldState.PreGenesis))
+        using (IDisposable _ = storageProvider.BeginScope(IWorldState.PreGenesis))
         {
             storageProvider.CreateAccount(ctx.Address1, 0);
             storageProvider.CreateAccount(ctx.Address2, 0);
@@ -203,14 +203,14 @@ public class StorageProviderTests(bool useFlat)
         BlockHeader newBase = Build.A.BlockHeader.WithStateRoot(stateRoot).TestObject;
 
         // block 2
-        using (var _ = storageProvider.BeginScope(newBase))
+        using (IDisposable _ = storageProvider.BeginScope(newBase))
         {
             storageProvider.Set(new StorageCell(ctx.Address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
             storageProvider.CommitTree(0);
         }
 
-        using (var _ = storageProvider.BeginScope(newBase))
+        using (IDisposable _ = storageProvider.BeginScope(newBase))
         {
             storageProvider.AccountExists(ctx.Address1).Should().BeTrue();
 
@@ -431,11 +431,11 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_clears_cache()
     {
-        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        PreBlockCaches preBlockCaches = new();
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
         WorldState provider = BuildStorageProvider(ctx);
-        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
-        StorageCell nonAccessedStorageCell = new StorageCell(TestItem.AddressA, 2);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
+        StorageCell nonAccessedStorageCell = new(TestItem.AddressA, 2);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
         provider.Get(accessedStorageCell);
         provider.Commit(Paris.Instance);
@@ -602,9 +602,9 @@ public class StorageProviderTests(bool useFlat)
     [Test]
     public void Selfdestruct_persist_between_commit()
     {
-        PreBlockCaches preBlockCaches = new PreBlockCaches();
+        PreBlockCaches preBlockCaches = new();
         using Context ctx = new(useFlat, preBlockCaches: preBlockCaches);
-        StorageCell accessedStorageCell = new StorageCell(TestItem.AddressA, 1);
+        StorageCell accessedStorageCell = new(TestItem.AddressA, 1);
         preBlockCaches.StorageCache.Set(accessedStorageCell, [1, 2, 3]);
 
         WorldState provider = BuildStorageProvider(ctx);
@@ -619,7 +619,7 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
-        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
 
         // Create an empty account (balance=0, nonce=0, no code) and set storage on it.
         // EIP-161 (via SpuriousDragon+) deletes empty accounts during commit, but the
@@ -676,7 +676,7 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
-        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(0);
@@ -690,7 +690,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(1);
 
-        var fullHash = worldState.StateRoot;
+        Hash256 fullHash = worldState.StateRoot;
         fullHash.Should().NotBe(emptyHash);
 
         for (int i = 0; i < numItems; i++)
@@ -700,7 +700,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(2);
 
-        var clearedHash = worldState.StateRoot;
+        Hash256 clearedHash = worldState.StateRoot;
 
         clearedHash.Should().Be(emptyHash);
     }
@@ -710,7 +710,7 @@ public class StorageProviderTests(bool useFlat)
     {
         using Context ctx = new(useFlat, setInitialState: false);
         IWorldState worldState = ctx.StateProvider;
-        using var disposable = worldState.BeginScope(IWorldState.PreGenesis);
+        using IDisposable disposable = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(TestItem.AddressA, 1);
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(0);
@@ -721,7 +721,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(1);
 
-        var fullHash = worldState.StateRoot;
+        Hash256 fullHash = worldState.StateRoot;
         fullHash.Should().NotBe(emptyHash);
 
         worldState.Get(new StorageCell(TestItem.AddressA, 1));
@@ -731,7 +731,7 @@ public class StorageProviderTests(bool useFlat)
         worldState.Commit(Prague.Instance);
         worldState.CommitTree(2);
 
-        var clearedHash = worldState.StateRoot;
+        Hash256 clearedHash = worldState.StateRoot;
 
         clearedHash.Should().Be(emptyHash);
     }

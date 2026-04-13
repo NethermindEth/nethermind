@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public Hash256 FindBlockHash(Hash256 txHash)
         {
-            var blockHashData = _transactionDb.Get(txHash);
+            byte[] blockHashData = _transactionDb.Get(txHash);
             if (blockHashData is null) return FindReceiptObsolete(txHash)?.BlockHash;
 
             if (blockHashData.Length == Hash256.Size) return new Hash256(blockHashData);
@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Receipts
         // Find receipt stored with old - obsolete format.
         private TxReceipt FindReceiptObsolete(Hash256 hash)
         {
-            var receiptData = _defaultColumn.GetSpan(hash);
+            Span<byte> receiptData = _defaultColumn.GetSpan(hash);
             try
             {
                 return DeserializeReceiptObsolete(hash, receiptData);
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator)
         {
-            if (_receiptsCache.TryGet(blockHash, out var receipts))
+            if (_receiptsCache.TryGet(blockHash, out TxReceipt[] receipts))
             {
                 iterator = new ReceiptsIterator(receipts);
                 return true;
@@ -272,7 +272,7 @@ namespace Nethermind.Blockchain.Receipts
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
 
-            var blockNumber = block.Number;
+            long blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
             using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))

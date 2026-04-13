@@ -10,21 +10,15 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
-public class PostMergeBlocksSyncPeerAllocationStrategy : IPeerAllocationStrategy
+public class PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, IBeaconPivot beaconPivot) : IPeerAllocationStrategy
 {
-    private readonly long? _minBlocksAhead;
-    private readonly IBeaconPivot _beaconPivot;
+    private readonly long? _minBlocksAhead = minBlocksAhead;
+    private readonly IBeaconPivot _beaconPivot = beaconPivot;
 
     private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
     private const int MinDiffForSpeedSwitch = 10;
     private readonly BySpeedStrategy _innerStrategy =
         new(TransferSpeedType.Bodies, true, MinDiffPercentageForSpeedSwitch, MinDiffForSpeedSwitch);
-
-    public PostMergeBlocksSyncPeerAllocationStrategy(long? minBlocksAhead, IBeaconPivot beaconPivot)
-    {
-        _minBlocksAhead = minBlocksAhead;
-        _beaconPivot = beaconPivot;
-    }
 
     public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager,
         IBlockTree blockTree)

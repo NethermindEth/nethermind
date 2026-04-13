@@ -25,7 +25,7 @@ public class CustomSpecProviderTests
     [Test]
     public void When_only_one_release_is_specified_then_returns_that_release()
     {
-        var specProvider = new CustomSpecProvider(((ForkActivation)0, Byzantium.Instance));
+        CustomSpecProvider specProvider = new(((ForkActivation)0, Byzantium.Instance));
         Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Byzantium>(), "0");
         Assert.That(specProvider.GetSpec((ForkActivation)1), Is.InstanceOf<Byzantium>(), "1");
     }
@@ -34,7 +34,7 @@ public class CustomSpecProviderTests
     public void Can_find_dao_block_number()
     {
         long daoBlockNumber = 100;
-        var specProvider = new CustomSpecProvider(
+        CustomSpecProvider specProvider = new(
             ((ForkActivation)0L, Frontier.Instance),
             ((ForkActivation)daoBlockNumber, Dao.Instance));
 
@@ -44,7 +44,7 @@ public class CustomSpecProviderTests
     [Test]
     public void If_no_dao_then_no_dao_block_number()
     {
-        var specProvider = new CustomSpecProvider(
+        CustomSpecProvider specProvider = new(
             ((ForkActivation)0L, Frontier.Instance),
             ((ForkActivation)1L, Homestead.Instance));
 
@@ -54,7 +54,7 @@ public class CustomSpecProviderTests
     [Test]
     public void When_more_releases_specified_then_transitions_work()
     {
-        var specProvider = new CustomSpecProvider(
+        CustomSpecProvider specProvider = new(
             ((ForkActivation)0, Frontier.Instance),
             ((ForkActivation)1, Homestead.Instance));
         Assert.That(specProvider.GetSpec((ForkActivation)0), Is.InstanceOf<Frontier>(), "2 releases, block 0");

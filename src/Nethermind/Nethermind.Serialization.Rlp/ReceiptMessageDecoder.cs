@@ -11,11 +11,12 @@ namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.Default)]
     [Rlp.Decoder(RlpDecoderKey.Trie)]
-    public sealed class ReceiptMessageDecoder : RlpValueDecoder<TxReceipt>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
+    public sealed class ReceiptMessageDecoder(bool skipStateAndStatus = false) : RlpValueDecoder<TxReceipt>
     {
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
-        private readonly bool _skipStateAndStatus;
+        private readonly bool _skipStateAndStatus = skipStateAndStatus;
         private readonly bool _skipBloom;
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptMessageDecoder))]
@@ -123,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (var i = 0; i < item.Logs.Length; i++)
+            for (int i = 0; i < item.Logs.Length; i++)
             {
                 logsLength += Rlp.LengthOf(item.Logs[i]);
             }
@@ -203,7 +204,7 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.StartSequence(logsLength);
             LogEntry[] logs = item.Logs;
-            for (var i = 0; i < logs.Length; i++)
+            for (int i = 0; i < logs.Length; i++)
             {
                 rlpStream.Encode(logs[i]);
             }

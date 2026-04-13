@@ -127,7 +127,7 @@ namespace Nethermind.Core.Test
             ValueHash256 h = ValueKeccak.Compute(bytes);
             h.Bytes.ToHexString().Should().Be(expected);
 
-            var stream = new KeccakRlpStream();
+            KeccakRlpStream stream = new();
             for (int i = 0; i < bytes.Length; i++)
             {
                 stream.Write([bytes[i]]);

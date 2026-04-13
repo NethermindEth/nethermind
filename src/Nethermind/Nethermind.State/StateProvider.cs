@@ -37,8 +37,8 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
     // Note:
     // False negatives are fine as they will just result in a overwrite set
     // False positives would be problematic as the code _must_ be persisted
-    private readonly ClockKeyCacheNonConcurrent<ValueHash256> _persistedCodeInsertFilter = new(1_024);
-    private readonly ClockKeyCacheNonConcurrent<ValueHash256> _blockCodeInsertFilter = new(256);
+    private readonly AssociativeKeyCache<ValueHash256> _persistedCodeInsertFilter = new(1_024);
+    private readonly AssociativeKeyCache<ValueHash256> _blockCodeInsertFilter = new(256);
     private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
 
     private readonly List<Change> _keptInCache = [];
@@ -626,7 +626,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
                 using (IWorldStateScopeProvider.ICodeSetter batch = codeDb.BeginCodeWrite())
                 {
                     // Insert ordered for improved performance
-                    foreach (var kvp in dict.OrderBy(static kvp => kvp.Key))
+                    foreach (KeyValuePair<Hash256AsKey, byte[]> kvp in dict.OrderBy(static kvp => kvp.Key))
                         batch.Set(kvp.Key.Value, kvp.Value);
                 }
 

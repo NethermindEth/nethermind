@@ -25,8 +25,8 @@ public class ChainSpecLoaderTests
 {
     private static ChainSpec LoadChainSpec(string path)
     {
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
-        var chainSpec = loader.LoadEmbeddedOrFromFile(path);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
         return chainSpec;
     }
 

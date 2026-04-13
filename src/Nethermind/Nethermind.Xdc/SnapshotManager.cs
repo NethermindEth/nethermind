@@ -37,7 +37,7 @@ internal class SnapshotManager : ISnapshotManager
 
     public Snapshot? GetSnapshotByGapNumber(long gapNumber)
     {
-        var gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
+        XdcBlockHeader gapBlockHeader = blockTree.FindHeader((long)gapNumber) as XdcBlockHeader;
 
         if (gapBlockHeader is null)
             return null;
@@ -63,7 +63,7 @@ internal class SnapshotManager : ISnapshotManager
 
     public Snapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
     {
-        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
         return GetSnapshotByGapNumber(gapBlockNum);
     }
 

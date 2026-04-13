@@ -9,7 +9,6 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -27,12 +26,11 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
 
     protected override async Task InitBlockchain()
     {
-        var chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         api.FinalizationManager = new AuRaBlockFinalizationManager(
             api.BlockTree!,
             api.ChainLevelInfoRepository!,
             api.ValidatorStore!,
-            new ValidSealerStrategy(),
             api.LogManager,
             chainSpecAuRa.TwoThirdsMajorityTransition);
 
@@ -55,7 +53,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
                 localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.Priorities,
                     api.BlockTree,

@@ -30,7 +30,7 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
     public ReadOnlyMemory<byte> Take(int bytes)
     {
 
-        var m = Peek(bytes);
+        ReadOnlyMemory<byte> m = Peek(bytes);
         Skip(bytes);
         return m;
     }
@@ -47,7 +47,7 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
 
     public byte TakeByte()
     {
-        var b = PeekByte();
+        byte b = PeekByte();
         SkipByte();
         return b;
     }

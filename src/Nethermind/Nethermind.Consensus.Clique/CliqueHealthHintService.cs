@@ -6,16 +6,11 @@ using Nethermind.Blockchain.Services;
 
 namespace Nethermind.Consensus.Clique
 {
-    internal class CliqueHealthHintService : IHealthHintService
+    internal class CliqueHealthHintService(ISnapshotManager snapshotManager, CliqueChainSpecEngineParameters chainSpec) : IHealthHintService
     {
-        private readonly ISnapshotManager _snapshotManager;
-        private readonly CliqueChainSpecEngineParameters _chainSpec;
+        private readonly ISnapshotManager _snapshotManager = snapshotManager;
+        private readonly CliqueChainSpecEngineParameters _chainSpec = chainSpec;
 
-        public CliqueHealthHintService(ISnapshotManager snapshotManager, CliqueChainSpecEngineParameters chainSpec)
-        {
-            _snapshotManager = snapshotManager;
-            _chainSpec = chainSpec;
-        }
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             return _chainSpec.Period * HealthHintConstants.ProcessingSafetyMultiplier;

@@ -290,7 +290,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
             {
-                NotifiedTransactions.Set(tx.Hash);
+                NotifiedTransactions.Set(tx.Hash.ValueHash256);
             }
 
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);

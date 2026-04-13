@@ -36,13 +36,13 @@ public class OptimismReceiptTests
             .TestObject;
         Transaction tx = Build.A.Transaction.TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(false);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -62,7 +62,7 @@ public class OptimismReceiptTests
         // - blobBaseFeeScalar = 3
         // - baseFee = 1000*1e6
         // - blobBaseFee = 10*1e6
-        var l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2");
+        byte[] l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2");
 
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader.TestObject)
@@ -75,13 +75,13 @@ public class OptimismReceiptTests
             .TestObject;
         Transaction tx = Build.A.Transaction.TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,
@@ -107,7 +107,7 @@ public class OptimismReceiptTests
         // - blobBaseFee = 10*1e6
         // - operatorFeeScalar = 7
         // - operatorFeeConstant = 9
-        var l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009");
+        byte[] l1Attributes = Bytes.FromHexString("098999be000000020000000300000000000004d200000000000004d200000000000004d2000000000000000000000000000000000000000000000000000000003b9aca00000000000000000000000000000000000000000000000000000000000098968000000000000000000000000000000000000000000000000000000000000004d200000000000000000000000000000000000000000000000000000000000004d2000000070000000000000009");
 
         Block block = Build.A.Block
             .WithHeader(Build.A.BlockHeader.TestObject)
@@ -120,13 +120,13 @@ public class OptimismReceiptTests
             .TestObject;
         Transaction tx = Build.A.Transaction.TestObject;
 
-        var specProvider = Substitute.For<ISpecProvider>();
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).IsEip1559Enabled.Returns(true);
-        var helper = Substitute.For<IOptimismSpecHelper>();
+        IOptimismSpecHelper helper = Substitute.For<IOptimismSpecHelper>();
         helper.IsIsthmus(Arg.Any<BlockHeader>()).Returns(true);
 
-        var blockGasInfo = new L1BlockGasInfo(block, helper);
-        var receipt = new OptimismReceiptForRpc(
+        L1BlockGasInfo blockGasInfo = new(block, helper);
+        OptimismReceiptForRpc receipt = new(
             tx.Hash!,
             new OptimismTxReceipt(),
             0,

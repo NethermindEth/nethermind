@@ -118,7 +118,7 @@ public class DataFeed
         await ctx.Response.Body.WriteAsync(JsonSerializer.SerializeToUtf8Bytes(ConsoleHelpers.GetRecentMessages(), JsonSerializerOptions.Web), ct);
         await ctx.Response.WriteAsync("\n\n", ct);
 
-        var channel = Channel.CreateUnbounded<ChannelEntry>();
+        Channel<ChannelEntry> channel = Channel.CreateUnbounded<ChannelEntry>();
 
         InitializeChannelSubscriptions(channel, ct);
 

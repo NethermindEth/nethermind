@@ -38,7 +38,7 @@ public class PerTableDbConfig : IRocksDbConfig
     private void EnsureConfigIsAvailable(string propertyName)
     {
         Type type = typeof(IDbConfig);
-        foreach (var prefix in _prefixes)
+        foreach (string prefix in _prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
             if (GetProperty(type, prefixed) is null)
@@ -96,7 +96,7 @@ public class PerTableDbConfig : IRocksDbConfig
 
         string val = (string)GetProperty(type, propertyName)!.GetValue(dbConfig)!;
 
-        foreach (var prefix in prefixes)
+        foreach (string prefix in prefixes)
         {
             string prefixed = string.Concat(prefix, propertyName);
 
@@ -122,7 +122,7 @@ public class PerTableDbConfig : IRocksDbConfig
             Type type = dbConfig.GetType();
             PropertyInfo? propertyInfo;
 
-            foreach (var prefix in prefixes)
+            foreach (string prefix in prefixes)
             {
                 string prefixed = string.Concat(prefix, propertyName);
 

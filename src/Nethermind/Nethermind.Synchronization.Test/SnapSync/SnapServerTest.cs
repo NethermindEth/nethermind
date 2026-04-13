@@ -97,13 +97,13 @@ public class SnapServerTest
             public void Dispose()
             {
                 Dictionary<Hash256, Hash256> storageRoots = new();
-                foreach (var (path, st) in _storageTrees)
+                foreach ((Hash256? path, StorageTree? st) in _storageTrees)
                 {
                     st.Commit();
                     storageRoots[path] = st.RootHash;
                 }
 
-                foreach (var (path, account) in _pendingAccounts)
+                foreach ((Hash256? path, Account? account) in _pendingAccounts)
                 {
                     Account finalAccount = storageRoots.TryGetValue(path, out Hash256? root)
                         ? account.WithChangedStorageRoot(root)
@@ -121,21 +121,21 @@ public class SnapServerTest
 
     private static void FillWithTestAccounts(ISnapServerContext context)
     {
-        using var batch = context.BeginWriteBatch();
-        foreach (var pwa in TestItem.Tree.AccountsWithPaths)
+        using IWriteBatch batch = context.BeginWriteBatch();
+        foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
             batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account);
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
     {
-        using var batch = context.BeginWriteBatch();
+        using IWriteBatch batch = context.BeginWriteBatch();
         for (int i = 0; i < count; i++)
             batch.SetAccount(Keccak.Compute(i.ToBigEndianByteArray()), Build.An.Account.WithBalance((UInt256)i).TestObject);
     }
 
     private static Hash256 FillAccountWithDefaultStorage(ISnapServerContext context)
     {
-        using (var batch = context.BeginWriteBatch())
+        using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int i = 0; i < 6; i++)
                 batch.SetSlot(TestItem.Tree.AccountAddress0, TestItem.Tree.SlotsWithPaths[i].Path, TestItem.Tree.SlotsWithPaths[i].SlotRlpValue, rlpEncode: false);
@@ -146,11 +146,11 @@ public class SnapServerTest
 
     private static Hash256 FillAccountWithStorage(ISnapServerContext context, int slotCount)
     {
-        using (var batch = context.BeginWriteBatch())
+        using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int i = 0; i < slotCount; i++)
             {
-                var key = Keccak.Compute(i.ToBigEndianByteArray());
+                Hash256 key = Keccak.Compute(i.ToBigEndianByteArray());
                 batch.SetSlot(TestItem.Tree.AccountAddress0, key, key.BytesToArray(), rlpEncode: false);
             }
             batch.SetAccount(TestItem.Tree.AccountAddress0, Build.An.Account.WithBalance(1).TestObject);
@@ -161,7 +161,7 @@ public class SnapServerTest
     [Test]
     public void TestGetAccountRange()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
@@ -179,7 +179,7 @@ public class SnapServerTest
     [Test]
     public void TestGetAccountRange_InvalidRange()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
@@ -193,7 +193,7 @@ public class SnapServerTest
     [Test]
     public void TestGetTrieNode_Root()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
@@ -210,7 +210,7 @@ public class SnapServerTest
     [Test]
     public void TestGetTrieNode_Storage_Root()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
@@ -227,7 +227,7 @@ public class SnapServerTest
     [Test]
     public void TestGetTrieNodes_RespectsHardResponseByteLimit()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillMultipleAccounts(context, 1000);
 
         int requestCount = 5000;
@@ -252,7 +252,7 @@ public class SnapServerTest
             lastNStateTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
         }
 
-        using var context = CreateContext(lastNStateRootTracker: lastNStateTracker);
+        using ISnapServerContext context = CreateContext(lastNStateRootTracker: lastNStateTracker);
 
         (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList accountProofs) =
             context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
@@ -274,7 +274,7 @@ public class SnapServerTest
     [Test]
     public void TestGetAccountRangeMultiple()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillWithTestAccounts(context);
 
         Hash256 startRange = Keccak.Zero;
@@ -310,7 +310,7 @@ public class SnapServerTest
     [TestCase(10000, 10000)]
     public void TestGetAccountRangeMultipleLarger(int stateSize, int byteLimit)
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillMultipleAccounts(context, stateSize);
 
         Hash256 startRange = Keccak.Zero;
@@ -346,11 +346,11 @@ public class SnapServerTest
     [TestCase(10000, 10000000)]
     public void TestGetAccountRangeArtificialLimit(int stateSize, int byteLimit)
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillMultipleAccounts(context, stateSize);
         Hash256 startRange = Keccak.Zero;
 
-        ValueHash256 limit = new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 limit = new("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
             (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) = context.Server
@@ -380,7 +380,7 @@ public class SnapServerTest
     [Test]
     public void TestGetStorageRange()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         Hash256 storageRoot = FillAccountWithDefaultStorage(context);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
@@ -389,7 +389,7 @@ public class SnapServerTest
 
         try
         {
-            var storageRangeRequest = new StorageRange()
+            StorageRange storageRangeRequest = new()
             {
                 StartingHash = Keccak.Zero,
                 Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
@@ -408,12 +408,12 @@ public class SnapServerTest
     [Test]
     public void TestGetStorageRange_NoSlotsForAccount()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         FillAccountWithDefaultStorage(context);
 
         ValueHash256 lastStorageHash = TestItem.Tree.SlotsWithPaths[^1].Path;
-        var asInt = lastStorageHash.ToUInt256();
-        ValueHash256 beyondLast = new ValueHash256((++asInt).ToBigEndian());
+        UInt256 asInt = lastStorageHash.ToUInt256();
+        ValueHash256 beyondLast = new((++asInt).ToBigEndian());
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, [TestItem.Tree.AccountsWithPaths[0]],
@@ -429,7 +429,7 @@ public class SnapServerTest
     [Test]
     public void TestGetStorageRangeMulti()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
         Hash256 storageRoot = FillAccountWithStorage(context, 10000);
 
         Hash256 startRange = Keccak.Zero;
@@ -441,7 +441,7 @@ public class SnapServerTest
 
             try
             {
-                var storageRangeRequest = new StorageRange()
+                StorageRange storageRangeRequest = new()
                 {
                     StartingHash = startRange,
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
@@ -467,17 +467,17 @@ public class SnapServerTest
     [Test]
     public void TestWithHugeTree()
     {
-        using var context = CreateContext();
+        using ISnapServerContext context = CreateContext();
 
         // generate Remote Tree
-        using (var batch = context.BeginWriteBatch())
+        using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int accountIndex = 0; accountIndex < 10000; accountIndex++)
                 batch.SetAccount(TestItem.GetRandomAddress(), TestItem.GenerateRandomAccount());
         }
 
         List<PathWithAccount> accountWithStorage = new();
-        using (var batch = context.BeginWriteBatch())
+        using (IWriteBatch batch = context.BeginWriteBatch())
         {
             for (int i = 1000; i < 10000; i += 1000)
             {
@@ -523,7 +523,7 @@ public class SnapServerTest
         accounts.Dispose();
         accountProofs.Dispose();
 
-        var accountWithStorageArray = accountWithStorage.ToArray();
+        PathWithAccount[] accountWithStorageArray = accountWithStorage.ToArray();
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = context.Server.GetStorageRanges(context.RootHash, accountWithStorageArray[..1], ValueKeccak.Zero, ValueKeccak.MaxValue, 10, CancellationToken.None);
         slots.Count.Should().Be(1);

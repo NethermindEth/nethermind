@@ -286,7 +286,7 @@ public class TestBlockchain : IDisposable
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {
-        IBlockProducerEnv env = BlockProducerEnvFactory.Create();
+        IBlockProducerEnv env = BlockProducerEnvFactory.CreatePersistent();
         return new TestBlockProducer(
             env.TxSource,
             env.ChainProcessor,
@@ -391,7 +391,7 @@ public class TestBlockchain : IDisposable
                 genesisPostProcessor.PostProcess(genesisBlock);
             }
 
-            state.Commit(specProvider.GenesisSpec!);
+            state.Commit(specProvider.GenesisSpec);
             state.CommitTree(0);
             genesisBlock.Header.StateRoot = state.StateRoot;
             genesisBlock.Header.Hash = genesisBlock.Header.CalculateHash();
@@ -445,15 +445,12 @@ public class TestBlockchain : IDisposable
         await BlockTree.WaitForNewBlock(CreateCancellationSource().Token);
     }
 
-    public Task WaitForNewHeadWhere(Func<Block, bool> predicate)
-    {
-        AutoCancelTokenSource cts = CreateCancellationSource();
-        return Wait.ForEventCondition<BlockReplacementEventArgs>(
+    public Task WaitForNewHeadWhere(Func<Block, bool> predicate) =>
+        Wait.ForEventCondition<BlockReplacementEventArgs>(
             CreateCancellationSource().Token,
             (h) => BlockTree.BlockAddedToMain += h,
             (h) => BlockTree.BlockAddedToMain -= h,
             (e) => predicate(e.Block));
-    }
 
     public virtual Task<Block> AddBlock(params Transaction[] transactions)
     {
@@ -500,7 +497,7 @@ public class TestBlockchain : IDisposable
 
     public virtual void Dispose()
     {
-        BlockProducerRunner?.StopAsync();
+        BlockProducerRunner.StopAsync();
         Container.Dispose();
     }
 
@@ -553,7 +550,7 @@ public static class ContainerBuilderExtensions
 {
     public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer)
     {
-        return builder.AddDecorator<TestBlockchain.Configuration>((ctx, conf) =>
+        return builder.AddDecorator<TestBlockchain.Configuration>((_, conf) =>
         {
             configurer(conf);
             return conf;

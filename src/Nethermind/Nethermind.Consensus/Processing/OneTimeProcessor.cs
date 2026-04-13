@@ -11,20 +11,14 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing
 {
-    public sealed class OneTimeChainProcessor : IBlockchainProcessor
+    public sealed class OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor) : IBlockchainProcessor
     {
         public ITracerBag Tracers => _processor.Tracers;
 
-        private readonly IBlockchainProcessor _processor;
-        private readonly IWorldState _worldState;
+        private readonly IBlockchainProcessor _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+        private readonly IWorldState _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
 
         private readonly Lock _lock = new();
-
-        public OneTimeChainProcessor(IWorldState worldState, IBlockchainProcessor processor)
-        {
-            _worldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
-            _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-        }
 
         public void Start()
         {

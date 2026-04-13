@@ -66,9 +66,9 @@ namespace Nethermind.Init.Steps
             setApi.TxSender = new TxPoolSender(txPool, nonceReservingTxSealer, nonceManager, getApi.EthereumEcdsa!);
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            var mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
+            IBranchProcessor mainBranchProcessor = setApi.MainProcessingContext.BranchProcessor;
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+            BackgroundTaskScheduler backgroundTaskScheduler = new(
                 mainBranchProcessor,
                 chainHeadInfoProvider,
                 initConfig.BackgroundTaskConcurrency,

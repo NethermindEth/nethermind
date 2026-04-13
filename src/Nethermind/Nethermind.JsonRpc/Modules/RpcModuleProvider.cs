@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules
             }
 
             _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
-            foreach (var rpcModuleInfo in rpcModules)
+            foreach (RpcModuleInfo rpcModuleInfo in rpcModules)
             {
                 RegisterNonGeneric(rpcModuleInfo.ModuleType, rpcModuleInfo.Pool);
                 if (jsonRpcConfig.PreloadRpcModules) rpcModuleInfo.Pool.Preload();
@@ -89,8 +89,8 @@ namespace Nethermind.JsonRpc.Modules
             string moduleType = attribute.ModuleType;
             lock (_updateRegistrationsLock)
             {
-                var methods = GetMethods<T>(moduleType).ToArray();
-                var poolRecord = GetPool(pool);
+                KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
+                (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolRecord = GetPool(pool);
 
                 methods
                     .ForEach((method) =>
@@ -188,7 +188,7 @@ namespace Nethermind.JsonRpc.Modules
         public IRpcModulePool? GetPoolForMethod(string methodName)
         {
             EnsureFrozenCollection();
-            return _frozenPools.TryGetValue(methodName, out var poolInfo) ? poolInfo.ModulePool : null;
+            return _frozenPools.TryGetValue(methodName, out (Func<bool, Task<IRpcModule>> RentModule, Action<IRpcModule> ReturnModule, IRpcModulePool ModulePool) poolInfo) ? poolInfo.ModulePool : null;
         }
 
         private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
@@ -271,7 +271,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 ParameterInfo[] parameters = methodInfo.GetParameters();
                 ExpectedParameter[] expectedParameters = new ExpectedParameter[parameters.Length];
-                for (var i = 0; i < parameters.Length; i++)
+                for (int i = 0; i < parameters.Length; i++)
                 {
                     ParameterInfo parameter = parameters[i];
                     ConstructorInvoker? constructor = null;

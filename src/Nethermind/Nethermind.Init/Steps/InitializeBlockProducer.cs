@@ -15,16 +15,10 @@ namespace Nethermind.Init.Steps
 {
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork),
         typeof(ReviewBlockTree))]
-    public class InitializeBlockProducer : IStep
+    public class InitializeBlockProducer(INethermindApi api, IServiceStopper serviceStopper) : IStep
     {
-        private readonly IApiWithBlockchain _api;
-        private readonly IServiceStopper _serviceStopper;
-
-        public InitializeBlockProducer(INethermindApi api, IServiceStopper serviceStopper)
-        {
-            _api = api;
-            _serviceStopper = serviceStopper;
-        }
+        private readonly IApiWithBlockchain _api = api;
+        private readonly IServiceStopper _serviceStopper = serviceStopper;
 
         public Task Execute(CancellationToken _)
         {

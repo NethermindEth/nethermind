@@ -19,7 +19,7 @@ public class ReadOnlyTxProcessingScopeTests
     {
         bool closed = false;
         IDisposable closer = new Reactive.AnonymousDisposable(() => closed = true);
-        ReadOnlyTxProcessingScope env = new ReadOnlyTxProcessingScope(
+        ReadOnlyTxProcessingScope env = new(
             Substitute.For<ITransactionProcessor>(),
             closer,
             Substitute.For<IWorldState>());

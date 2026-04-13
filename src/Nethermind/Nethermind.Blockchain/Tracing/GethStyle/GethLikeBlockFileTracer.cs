@@ -32,7 +32,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _options = options ?? throw new ArgumentNullException(nameof(options));
 
-        var hash = _block.Hash.Bytes[..4].ToHexString(true);
+        string hash = _block.Hash.Bytes[..4].ToHexString(true);
 
         _fileNameFormat = _fileSystem.Path.Combine(_fileSystem.Path.GetTempPath(), $"block_{hash}-{{0}}-{{1}}-{{2}}.jsonl");
 
@@ -93,12 +93,12 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
 
     private string GetFileName(Hash256 txHash)
     {
-        var hash = txHash.Bytes[..4].ToHexString(true);
-        var index = 0;
-        var suffix = string.Create(8, Random.Shared,
+        string hash = txHash.Bytes[..4].ToHexString(true);
+        int index = 0;
+        string suffix = string.Create(8, Random.Shared,
             static (chars, rand) =>
             {
-                for (var i = 0; i < chars.Length; i++)
+                for (int i = 0; i < chars.Length; i++)
                     chars[i] = Alphabet[rand.Next(0, Alphabet.Length)];
             });
 

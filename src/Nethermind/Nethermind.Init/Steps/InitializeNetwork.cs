@@ -46,6 +46,7 @@ public static class NettyMemoryEstimator
     typeof(ResolveIps),
     typeof(InitializePlugins),
     typeof(InitializeBlockchain))]
+#pragma warning disable IDE0290 // Primary constructor would shadow discard `_` used in fire-and-forget patterns
 public class InitializeNetwork : IStep
 {
     protected readonly IApiWithNetwork _api;

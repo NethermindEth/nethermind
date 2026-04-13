@@ -33,11 +33,13 @@ namespace Nethermind.Core.Caching
             _cacheMap?.Clear();
         }
 
+#pragma warning disable IDE0290 // name parameter is part of the API but intentionally unused
         public MemCountingCache(int maxCapacity, int startCapacity, string name)
         {
             _maxCapacity = maxCapacity;
             _cacheMap = new(startCapacity); // do not initialize it at the full capacity
         }
+#pragma warning restore IDE0290
 
         public MemCountingCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
@@ -160,16 +162,10 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private struct LruCacheItem
+        private struct LruCacheItem(ValueHash256 k, byte[] v)
         {
-            public LruCacheItem(ValueHash256 k, byte[] v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public readonly ValueHash256 Key;
-            public byte[] Value;
+            public readonly ValueHash256 Key = k;
+            public byte[] Value = v;
 
             public readonly long MemorySize => FindMemorySize(Value);
 

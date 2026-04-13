@@ -26,8 +26,8 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Setup()
         {
-            var path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
-            var logManager = LimboLogs.Instance;
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "test-static-nodes.json");
+            LimboLogs logManager = LimboLogs.Instance;
             _staticNodesManager = new StaticNodesManager(path, logManager);
         }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
-            var eventRaised = false;
+            bool eventRaised = false;
             _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
@@ -83,7 +83,7 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task init_should_load_static_nodes_from_empty_file()
         {
-            using var tempFile = TempPath.GetTempFile();
+            using TempPath tempFile = TempPath.GetTempFile();
             await File.WriteAllTextAsync(tempFile.Path, string.Empty);
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();

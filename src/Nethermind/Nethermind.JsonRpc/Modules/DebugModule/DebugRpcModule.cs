@@ -97,7 +97,7 @@ public class DebugRpcModule(
         // enforces gas cap
         call.EnsureDefaults(jsonRpcConfig.GasCap);
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true);
+        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -334,13 +334,13 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
-        var dbValue = debugBridge.GetDbValue(dbName, key);
+        byte[] dbValue = debugBridge.GetDbValue(dbName, key);
         return ResultWrapper<byte[]>.Success(dbValue);
     }
 
     public ResultWrapper<object> debug_getConfigValue(string category, string name)
     {
-        var configValue = debugBridge.GetConfigValue(category, name);
+        object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
     }
 
@@ -450,7 +450,7 @@ public class DebugRpcModule(
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
-        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
+        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
     }
 
@@ -503,7 +503,7 @@ public class DebugRpcModule(
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
-        var simulatePayload = new SimulatePayload<TransactionForRpc>
+        SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
             {
@@ -522,6 +522,7 @@ public class DebugRpcModule(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,
+                specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
                 _secondsPerSlot
             ).Execute(simulatePayload, concreteBlockParameter);

@@ -149,7 +149,7 @@ internal static class SetupCli
             return Array.Empty<(int count, int blobCount, string @break)>();
 
         ReadOnlySpan<char> chars = options.AsSpan();
-        var result = new List<(int, int, string)>();
+        List<(int, int, string)> result = new List<(int, int, string)>();
 
         ReadOnlySpan<char> nextComma;
         int offSet = 0;

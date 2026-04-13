@@ -22,8 +22,8 @@ public class SimpleFilePublicKeyDbTests
 
         SimpleFilePublicKeyDb filePublicKeyDb = new("Test", Path.GetTempPath(), LimboLogs.Instance);
 
-        Random random = new Random();
-        Dictionary<byte[], byte[]> dict = new Dictionary<byte[], byte[]>(Bytes.EqualityComparer);
+        Random random = new();
+        Dictionary<byte[], byte[]> dict = new(Bytes.EqualityComparer);
         for (int i = 0; i < 1024; i++)
         {
             byte[] key = new byte[random.Next(64, 128)];
@@ -37,7 +37,7 @@ public class SimpleFilePublicKeyDbTests
 
         using (filePublicKeyDb.StartWriteBatch())
         {
-            foreach (var kv in dict)
+            foreach (KeyValuePair<byte[], byte[]> kv in dict)
             {
                 filePublicKeyDb[kv.Key] = kv.Value;
             }
@@ -45,7 +45,7 @@ public class SimpleFilePublicKeyDbTests
 
         SimpleFilePublicKeyDb copy = new("Test", Path.GetTempPath(), LimboLogs.Instance);
         Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
-        foreach (var kv in dict)
+        foreach (KeyValuePair<byte[], byte[]> kv in dict)
         {
             Assert.That(filePublicKeyDb[kv.Key].AsSpan().SequenceEqual(kv.Value), Is.True);
         }

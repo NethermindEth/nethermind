@@ -19,9 +19,9 @@ namespace Nethermind.Wallet
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
         private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
-        private readonly Dictionary<Address, bool> _isUnlocked = new Dictionary<Address, bool>();
-        private readonly Dictionary<Address, PrivateKey> _keys = new Dictionary<Address, PrivateKey>();
-        private readonly Dictionary<Address, string> _passwords = new Dictionary<Address, string>();
+        private readonly Dictionary<Address, bool> _isUnlocked = new();
+        private readonly Dictionary<Address, PrivateKey> _keys = new();
+        private readonly Dictionary<Address, string> _passwords = new();
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -32,7 +32,7 @@ namespace Nethermind.Wallet
             _keySeed[31] = 1;
             for (int i = 0; i < walletConfig?.DevAccounts; i++)
             {
-                PrivateKey key = new PrivateKey(_keySeed);
+                PrivateKey key = new(_keySeed);
                 _keys.Add(key.Address, key);
                 _passwords.Add(key.Address, AnyPassword);
                 _isUnlocked.Add(key.Address, true);
@@ -52,7 +52,7 @@ namespace Nethermind.Wallet
 
         public Address NewAccount(SecureString passphrase)
         {
-            using var privateKeyGenerator = new PrivateKeyGenerator();
+            using PrivateKeyGenerator privateKeyGenerator = new();
             PrivateKey key = privateKeyGenerator.Generate();
             _keys.Add(key.Address, key);
             _isUnlocked.Add(key.Address, true);
@@ -101,14 +101,14 @@ namespace Nethermind.Wallet
         }
         public Signature Sign(Hash256 message, Address address, SecureString passphrase)
         {
-            if (!_isUnlocked.TryGetValue(address, out var value)) throw new SecurityException("Account does not exist.");
+            if (!_isUnlocked.TryGetValue(address, out bool value)) throw new SecurityException("Account does not exist.");
 
             if (!value && !CheckPassword(address, passphrase)) throw new SecurityException("Cannot sign without password or unlocked account.");
 
             return Sign(message, address);
         }
 
-        public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out var unlocked) && unlocked;
+        public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out bool unlocked) && unlocked;
 
         private bool CheckPassword(Address address, SecureString passphrase)
         {
@@ -117,7 +117,7 @@ namespace Nethermind.Wallet
 
         public Signature Sign(Hash256 message, Address address)
         {
-            var rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
+            byte[] rs = SecP256k1.SignCompact(message.Bytes, _keys[address].KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

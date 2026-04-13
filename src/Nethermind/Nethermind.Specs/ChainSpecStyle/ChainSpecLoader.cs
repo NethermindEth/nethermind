@@ -151,6 +151,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip3860TransitionTimestamp = chainSpecJson.Params.Eip3860TransitionTimestamp,
             Eip4895TransitionTimestamp = chainSpecJson.Params.Eip4895TransitionTimestamp,
             Eip4844TransitionTimestamp = chainSpecJson.Params.Eip4844TransitionTimestamp,
+            Eip4844Transition = chainSpecJson.Params.Eip4844Transition,
             Eip2537TransitionTimestamp = chainSpecJson.Params.Eip2537TransitionTimestamp,
             Eip5656Transition = chainSpecJson.Params.Eip5656Transition,
             Eip5656TransitionTimestamp = chainSpecJson.Params.Eip5656TransitionTimestamp,
@@ -297,7 +298,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
     private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
     {
-        var engineParameters = chainSpecJson.Engine.CustomEngineData.ToDictionary(
+        Dictionary<string, JsonElement> engineParameters = chainSpecJson.Engine.CustomEngineData.ToDictionary(
             engine => engine.Key,
             engine => engine.Value.TryGetProperty("params", out JsonElement value) ? value : engine.Value);
 
@@ -376,7 +377,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
         }
 
-        var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
+        bool requestsEnabled = depositsEnabled || withdrawalRequestsEnabled || consolidationRequestsEnabled;
         if (requestsEnabled)
         {
             genesisHeader.RequestsHash = ExecutionRequestExtensions.EmptyRequestsHash;

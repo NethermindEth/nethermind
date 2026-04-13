@@ -158,7 +158,7 @@ public class AdminRpcModule : IAdminRpcModule
 
     public ResultWrapper<PeerInfo[]> admin_peers(bool includeDetails = false)
     {
-        var validatedPeers = _peerPool.ActivePeers
+        PeerInfo[] validatedPeers = _peerPool.ActivePeers
             .Where(p => IsValidatedPeer(p.Value))
             .Select(p => new PeerInfo(p.Value, includeDetails))
             .ToArray();

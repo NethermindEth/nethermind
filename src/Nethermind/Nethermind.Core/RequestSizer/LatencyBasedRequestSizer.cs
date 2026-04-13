@@ -7,26 +7,18 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core;
 
-public class LatencyBasedRequestSizer
-{
-    private readonly TimeSpan _upperWatermark;
-    private readonly TimeSpan _lowerWatermark;
-    private readonly AdaptiveRequestSizer _requestSizer;
-    public int RequestSize => _requestSizer.RequestSize;
-
-    public LatencyBasedRequestSizer(
-        int minRequestLimit,
-        int maxRequestLimit,
-        TimeSpan lowerWatermark,
-        TimeSpan upperWatermark,
-        double adjustmentFactor = 1.5
+public class LatencyBasedRequestSizer(
+    int minRequestLimit,
+    int maxRequestLimit,
+    TimeSpan lowerWatermark,
+    TimeSpan upperWatermark,
+    double adjustmentFactor = 1.5
     )
-    {
-        _upperWatermark = upperWatermark;
-        _lowerWatermark = lowerWatermark;
-
-        _requestSizer = new AdaptiveRequestSizer(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
-    }
+{
+    private readonly TimeSpan _upperWatermark = upperWatermark;
+    private readonly TimeSpan _lowerWatermark = lowerWatermark;
+    private readonly AdaptiveRequestSizer _requestSizer = new(minRequestLimit, maxRequestLimit, adjustmentFactor: adjustmentFactor);
+    public int RequestSize => _requestSizer.RequestSize;
 
     /// <summary>
     /// Adjust the RequestSize depending on the latency of the request
