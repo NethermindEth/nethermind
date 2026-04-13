@@ -56,7 +56,7 @@ namespace Nethermind.Logging.NLog
             if (IsTrace) _logger.Trace(text);
         }
 
-        public void Error(string text, Exception ex = null)
+        public void Error(string text, Exception? ex = null)
         {
             if (IsError) _logger.Error(ex, text);
         }
