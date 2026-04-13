@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using Nethermind.Int256;
 using Nethermind.Merkleization;
+using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
 
 namespace Nethermind.Serialization.SszGenerator.Test;
@@ -239,6 +240,23 @@ public class EncodingTest
     [TestCaseSource(nameof(InvalidInputCases))]
     public void Encoding_rejects_invalid_input(Action action) =>
         Assert.That(action, Throws.InstanceOf<InvalidDataException>());
+
+    [Test]
+    public void ISszCodec_constraint_is_usable_from_generic_code()
+    {
+        FixedC fixture = new() { Fixed1 = 1, Fixed2 = 2 };
+
+        byte[] viaInterface = EncodeViaInterface(fixture);
+
+        Assert.That(viaInterface, Is.EqualTo(SszEncoding.Encode(fixture)));
+
+        static byte[] EncodeViaInterface<T>(T value) where T : ISszCodec<T>
+        {
+            byte[] buffer = new byte[T.GetLength(value)];
+            T.Encode(buffer, value);
+            return buffer;
+        }
+    }
 
     private static IEnumerable<TestCaseData> InvalidInputCases()
     {

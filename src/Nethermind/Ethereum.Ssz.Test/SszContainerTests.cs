@@ -12,18 +12,24 @@ namespace Ethereum.Ssz.Test;
 [TestFixture]
 public class SszContainerTests
 {
-    private static readonly IReadOnlyDictionary<string, IContainerHandler> Handlers =
-        new Dictionary<string, IContainerHandler>(StringComparer.Ordinal)
+    private static readonly IReadOnlyDictionary<string, IContainerHandler> Handlers = new HandlerMap()
+        .Add<SingleFieldTestStruct>()
+        .Add<SmallTestStruct>()
+        .Add<FixedTestStruct>()
+        .Add<VarTestStruct>()
+        .Add<ComplexTestStruct>()
+        .Add<BitsStruct>()
+        .Add<ProgressiveTestStruct>()
+        .Add<ProgressiveBitsStruct>();
+
+    private sealed class HandlerMap() : Dictionary<string, IContainerHandler>(StringComparer.Ordinal)
+    {
+        public HandlerMap Add<T>() where T : ISszCodec<T>
         {
-            [nameof(SingleFieldTestStruct)] = new ContainerHandler<SingleFieldTestStruct>(),
-            [nameof(SmallTestStruct)] = new ContainerHandler<SmallTestStruct>(),
-            [nameof(FixedTestStruct)] = new ContainerHandler<FixedTestStruct>(),
-            [nameof(VarTestStruct)] = new ContainerHandler<VarTestStruct>(),
-            [nameof(ComplexTestStruct)] = new ContainerHandler<ComplexTestStruct>(),
-            [nameof(BitsStruct)] = new ContainerHandler<BitsStruct>(),
-            [nameof(ProgressiveTestStruct)] = new ContainerHandler<ProgressiveTestStruct>(),
-            [nameof(ProgressiveBitsStruct)] = new ContainerHandler<ProgressiveBitsStruct>(),
-        };
+            this[typeof(T).Name] = new ContainerHandler<T>();
+            return this;
+        }
+    }
 
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
