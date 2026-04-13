@@ -20,15 +20,21 @@ namespace Nethermind.JsonRpc.TraceStore;
 /// <summary>
 /// Module for tracing using database
 /// </summary>
-public class TraceStoreRpcModule : ITraceRpcModule
+public class TraceStoreRpcModule(ITraceRpcModule traceModule,
+    IDb traceStore,
+    IBlockFinder blockFinder,
+    IReceiptFinder receiptFinder,
+    ITraceSerializer<ParityLikeTxTrace> traceSerializer,
+    ILogManager logManager,
+    int parallelization = 0) : ITraceRpcModule
 {
-    private readonly IDb _traceStore;
-    private readonly ITraceRpcModule _traceModule;
-    private readonly IBlockFinder _blockFinder;
-    private readonly IReceiptFinder _receiptFinder;
-    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer;
-    private readonly int _parallelization;
-    private readonly ILogger _logger;
+    private readonly IDb _traceStore = traceStore;
+    private readonly ITraceRpcModule _traceModule = traceModule;
+    private readonly IBlockFinder _blockFinder = blockFinder;
+    private readonly IReceiptFinder _receiptFinder = receiptFinder;
+    private readonly ITraceSerializer<ParityLikeTxTrace> _traceSerializer = traceSerializer;
+    private readonly int _parallelization = parallelization;
+    private readonly ILogger _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
 
     private static readonly IDictionary<ParityTraceTypes, Action<ParityLikeTxTrace>> _filters = new Dictionary<ParityTraceTypes, Action<ParityLikeTxTrace>>
     {
@@ -36,23 +42,6 @@ public class TraceStoreRpcModule : ITraceRpcModule
         { ParityTraceTypes.StateDiff , FilterStateDiff },
         { ParityTraceTypes.VmTrace | ParityTraceTypes.Trace, FilterStateVmTrace }
     };
-
-    public TraceStoreRpcModule(ITraceRpcModule traceModule,
-        IDb traceStore,
-        IBlockFinder blockFinder,
-        IReceiptFinder receiptFinder,
-        ITraceSerializer<ParityLikeTxTrace> traceSerializer,
-        ILogManager logManager,
-        int parallelization = 0)
-    {
-        _traceStore = traceStore;
-        _traceModule = traceModule;
-        _blockFinder = blockFinder;
-        _receiptFinder = receiptFinder;
-        _traceSerializer = traceSerializer;
-        _parallelization = parallelization;
-        _logger = logManager.GetClassLogger<TraceStoreRpcModule>();
-    }
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_call(TransactionForRpc call, string[] traceTypes, BlockParameter? blockParameter = null,
         Dictionary<Address, AccountOverride>? stateOverride = null) =>

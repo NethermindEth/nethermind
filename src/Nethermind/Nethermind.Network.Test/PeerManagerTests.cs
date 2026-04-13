@@ -793,15 +793,10 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private class RlpxMock : IRlpxHost
+        private class RlpxMock(List<Session> sessions) : IRlpxHost
         {
-            private readonly List<Session> _sessions;
+            private readonly List<Session> _sessions = sessions;
             public ISessionMonitor SessionMonitor { get; }
-
-            public RlpxMock(List<Session> sessions)
-            {
-                _sessions = sessions;
-            }
 
             public Task Init()
             {

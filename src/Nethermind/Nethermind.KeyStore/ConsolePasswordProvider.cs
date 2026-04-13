@@ -7,14 +7,9 @@ using Nethermind.KeyStore.ConsoleHelpers;
 
 namespace Nethermind.KeyStore
 {
-    public class ConsolePasswordProvider : BasePasswordProvider
+    public class ConsolePasswordProvider(IConsoleUtils consoleUtils) : BasePasswordProvider
     {
-        private readonly IConsoleUtils _consoleUtils;
-
-        public ConsolePasswordProvider(IConsoleUtils consoleUtils)
-        {
-            _consoleUtils = consoleUtils;
-        }
+        private readonly IConsoleUtils _consoleUtils = consoleUtils;
 
         public string Message { get; set; }
         public override SecureString GetPassword(Address address)

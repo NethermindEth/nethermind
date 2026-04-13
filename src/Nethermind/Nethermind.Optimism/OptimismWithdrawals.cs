@@ -18,18 +18,11 @@ namespace Nethermind.Optimism;
 /// Constructed over the world state so that it can construct the proper withdrawals hash just before commitment.
 /// https://github.com/ethereum-optimism/specs/blob/main/specs/protocol/isthmus/exec-engine.md#l2tol1messagepasser-storage-root-in-header
 /// </remarks>
-public class OptimismWithdrawalProcessor : IWithdrawalProcessor
+public class OptimismWithdrawalProcessor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper) : IWithdrawalProcessor
 {
-    private readonly IWorldState _state;
-    private readonly IOptimismSpecHelper _specHelper;
-    private readonly ILogger _logger;
-
-    public OptimismWithdrawalProcessor(IWorldState state, ILogManager logManager, IOptimismSpecHelper specHelper)
-    {
-        _state = state;
-        _specHelper = specHelper;
-        _logger = logManager.GetClassLogger<OptimismWithdrawalProcessor>();
-    }
+    private readonly IWorldState _state = state;
+    private readonly IOptimismSpecHelper _specHelper = specHelper;
+    private readonly ILogger _logger = logManager.GetClassLogger<OptimismWithdrawalProcessor>();
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {

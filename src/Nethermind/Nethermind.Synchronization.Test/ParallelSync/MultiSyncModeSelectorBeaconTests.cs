@@ -6,6 +6,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync;
 
+/// <summary>
+/// Test suite for beacon sync.
+/// </summary>
+/// <param name="needToWaitForHeaders">Do we need to wait for headers before other sync.</param>
+/// <param name="mode">Beacon mode we will be in.</param>
 [Parallelizable(ParallelScope.All)]
 [TestFixture(false, BeaconSync.None)]
 [TestFixture(false, BeaconSync.Headers)]
@@ -13,19 +18,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 [TestFixture(true, BeaconSync.None)]
 [TestFixture(true, BeaconSync.Headers)]
 [TestFixture(true, BeaconSync.ControlMode)]
-public class MultiSyncModeSelectorBeaconTests : MultiSyncModeSelectorTestsBase
+public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSyncModeSelectorTestsBase.BeaconSync mode) : MultiSyncModeSelectorTestsBase(needToWaitForHeaders)
 {
-    private readonly BeaconSync _mode;
-
-    /// <summary>
-    /// Test suite for beacon sync.
-    /// </summary>
-    /// <param name="needToWaitForHeaders">Do we need to wait for headers before other sync.</param>
-    /// <param name="mode">Beacon mode we will be in.</param>
-    public MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, BeaconSync mode) : base(needToWaitForHeaders)
-    {
-        _mode = mode;
-    }
+    private readonly BeaconSync _mode = mode;
 
     /// <summary>
     /// Change standard expectations based on beacon sync mode.

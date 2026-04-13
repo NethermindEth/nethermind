@@ -1162,16 +1162,10 @@ public partial class BlockDownloaderTests
         }
     }
 
-    private class ResponseBuilder
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
-
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
-        {
-            _blockTree = blockTree;
-            _testHeaderMapping = testHeaderMapping;
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
         public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
         {

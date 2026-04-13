@@ -16,16 +16,10 @@ namespace Nethermind.Taiko;
 /// JsonRpc-based implementation of IL1StorageProvider that uses eth_getStorageAt
 /// RPC to retrieve L1 storage values.
 /// </summary>
-public class JsonRpcL1StorageProvider : IL1StorageProvider
+public class JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager) : IL1StorageProvider
 {
-    private readonly IJsonRpcClient _rpcClient;
-    private readonly ILogger _logger;
-
-    public JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager)
-    {
-        _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
-        _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
-    }
+    private readonly IJsonRpcClient _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
+    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {

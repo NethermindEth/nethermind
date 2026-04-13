@@ -19,12 +19,12 @@ namespace Nethermind.Era1;
 /// Main reader for era file. Uses E2StoreReader which internally mmap the whole file. This reader is thread safe
 /// allowing multiple thread to read from it at the same time.
 /// </summary>
-public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
+public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 {
     private readonly ReceiptMessageDecoder _receiptDecoder = new();
     private readonly BlockBodyDecoder _blockBodyDecoder = BlockBodyDecoder.Instance;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly E2StoreReader _fileReader;
+    private readonly E2StoreReader _fileReader = e2;
 
     public long FirstBlock => _fileReader.First;
     public long LastBlock => _fileReader.LastBlock;
@@ -32,12 +32,6 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public EraReader(string fileName) : this(new E2StoreReader(fileName))
     {
-    }
-
-
-    public EraReader(E2StoreReader e2)
-    {
-        _fileReader = e2;
     }
 
     public async IAsyncEnumerator<(Block, TxReceipt[])> GetAsyncEnumerator(CancellationToken cancellation = default)
@@ -210,14 +204,9 @@ public class EraReader : IAsyncEnumerable<(Block, TxReceipt[])>, IDisposable
 
     public void Dispose() => _fileReader.Dispose();
 
-    private struct EntryReadResult
+    private struct EntryReadResult(Block block, TxReceipt[] receipts)
     {
-        public EntryReadResult(Block block, TxReceipt[] receipts)
-        {
-            Block = block;
-            Receipts = receipts;
-        }
-        public Block Block { get; }
-        public TxReceipt[] Receipts { get; }
+        public Block Block { get; } = block;
+        public TxReceipt[] Receipts { get; } = receipts;
     }
 }

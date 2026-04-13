@@ -14,21 +14,14 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class PermissionBasedTxFilter : ITxFilter
+    public class PermissionBasedTxFilter(
+        VersionedContract<ITransactionPermissionContract> contract,
+PermissionBasedTxFilter.Cache cache,
+        ILogManager logManager) : ITxFilter
     {
-        private readonly VersionedContract<ITransactionPermissionContract> _contract;
-        private readonly Cache _cache;
-        private readonly ILogger _logger;
-
-        public PermissionBasedTxFilter(
-            VersionedContract<ITransactionPermissionContract> contract,
-            Cache cache,
-            ILogManager logManager)
-        {
-            _contract = contract ?? throw new ArgumentNullException(nameof(contract));
-            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly VersionedContract<ITransactionPermissionContract> _contract = contract ?? throw new ArgumentNullException(nameof(contract));
+        private readonly Cache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        private readonly ILogger _logger = logManager?.GetClassLogger<PermissionBasedTxFilter>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public AcceptTxResult IsAllowed(Transaction tx, BlockHeader parentHeader, IReleaseSpec spec)
         {

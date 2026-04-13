@@ -454,14 +454,9 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private sealed class InboundChannelInitializer : ChannelInitializer<IChannel>
+        private sealed class InboundChannelInitializer(RlpxHost rlpxHost) : ChannelInitializer<IChannel>
         {
-            private readonly RlpxHost _rlpxHost;
-
-            public InboundChannelInitializer(RlpxHost rlpxHost)
-            {
-                _rlpxHost = rlpxHost;
-            }
+            private readonly RlpxHost _rlpxHost = rlpxHost;
 
             protected override void InitChannel(IChannel channel)
             {
@@ -473,16 +468,10 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private sealed class OutboundChannelInitializer : ChannelInitializer<IChannel>
+        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node) : ChannelInitializer<IChannel>
         {
-            private readonly RlpxHost _rlpxHost;
-            private readonly Node _node;
-
-            public OutboundChannelInitializer(RlpxHost rlpxHost, Node node)
-            {
-                _rlpxHost = rlpxHost;
-                _node = node;
-            }
+            private readonly RlpxHost _rlpxHost = rlpxHost;
+            private readonly Node _node = node;
 
             protected override void InitChannel(IChannel channel)
             {

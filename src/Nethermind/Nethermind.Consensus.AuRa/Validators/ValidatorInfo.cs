@@ -6,22 +6,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public class ValidatorInfo
+    public class ValidatorInfo(long finalizingBlockNumber, long previousFinalizingBlockNumber, Address[] validators)
     {
         static ValidatorInfo()
         {
             Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
         }
 
-        public ValidatorInfo(long finalizingBlockNumber, long previousFinalizingBlockNumber, Address[] validators)
-        {
-            FinalizingBlockNumber = finalizingBlockNumber;
-            PreviousFinalizingBlockNumber = previousFinalizingBlockNumber;
-            Validators = validators;
-        }
-
-        public long FinalizingBlockNumber { get; }
-        public long PreviousFinalizingBlockNumber { get; }
-        public Address[] Validators { get; }
+        public long FinalizingBlockNumber { get; } = finalizingBlockNumber;
+        public long PreviousFinalizingBlockNumber { get; } = previousFinalizingBlockNumber;
+        public Address[] Validators { get; } = validators;
     }
 }

@@ -8,18 +8,12 @@ using Nethermind.Evm.TransactionProcessing;
 
 namespace Nethermind.Merge.Plugin
 {
-    public class MergeRewardCalculatorSource : IRewardCalculatorSource
+    public class MergeRewardCalculatorSource(
+        IRewardCalculatorSource? beforeTheMerge,
+        IPoSSwitcher poSSwitcher) : IRewardCalculatorSource
     {
-        private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IRewardCalculatorSource _beforeTheMerge;
-
-        public MergeRewardCalculatorSource(
-            IRewardCalculatorSource? beforeTheMerge,
-            IPoSSwitcher poSSwitcher)
-        {
-            _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
-            _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        }
+        private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+        private readonly IRewardCalculatorSource _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
 
         public IRewardCalculator Get(ITransactionProcessor processor)
         {

@@ -840,28 +840,21 @@ public class FastHeadersSyncTests
         req!.RequestSize.Should().Be(5);
     }
 
-    private class ResettableHeaderSyncFeed : HeadersSyncFeed
+    private class ResettableHeaderSyncFeed(
+        IBlockTree? blockTree,
+        ISyncPeerPool? syncPeerPool,
+        ISyncConfig? syncConfig,
+        ISyncReport? syncReport,
+        ILogManager? logManager,
+        long? hangOnBlockNumber = null,
+        long? hangOnBlockNumberAfterInsert = null,
+        ManualResetEventSlim? hangLatch = null,
+        bool alwaysStartHeaderSync = false
+        ) : HeadersSyncFeed(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager, alwaysStartHeaderSync: alwaysStartHeaderSync)
     {
-        private readonly ManualResetEventSlim? _hangLatch;
-        private readonly long? _hangOnBlockNumber;
-        private readonly long? _hangOnBlockNumberAfterInsert;
-
-        public ResettableHeaderSyncFeed(
-            IBlockTree? blockTree,
-            ISyncPeerPool? syncPeerPool,
-            ISyncConfig? syncConfig,
-            ISyncReport? syncReport,
-            ILogManager? logManager,
-            long? hangOnBlockNumber = null,
-            long? hangOnBlockNumberAfterInsert = null,
-            ManualResetEventSlim? hangLatch = null,
-            bool alwaysStartHeaderSync = false
-        ) : base(blockTree, syncPeerPool, syncConfig, syncReport, Substitute.For<IPoSSwitcher>(), logManager, alwaysStartHeaderSync: alwaysStartHeaderSync)
-        {
-            _hangOnBlockNumber = hangOnBlockNumber;
-            _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
-            _hangLatch = hangLatch;
-        }
+        private readonly ManualResetEventSlim? _hangLatch = hangLatch;
+        private readonly long? _hangOnBlockNumber = hangOnBlockNumber;
+        private readonly long? _hangOnBlockNumberAfterInsert = hangOnBlockNumberAfterInsert;
 
         public void Reset()
         {

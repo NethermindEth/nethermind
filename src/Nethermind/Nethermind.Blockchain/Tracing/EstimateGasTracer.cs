@@ -59,18 +59,12 @@ public class EstimateGasTracer : TxTracer
         StatusCode = Evm.StatusCode.Failure;
     }
 
-    private class GasAndNesting
+    private class GasAndNesting(long gasOnStart, int nestingLevel)
     {
-        public GasAndNesting(long gasOnStart, int nestingLevel)
-        {
-            GasOnStart = gasOnStart;
-            NestingLevel = nestingLevel;
-        }
-
-        public long GasOnStart { get; set; }
+        public long GasOnStart { get; set; } = gasOnStart;
         public long GasUsageFromChildren { get; set; }
         public long GasLeft { get; set; }
-        public int NestingLevel { get; set; }
+        public int NestingLevel { get; set; } = nestingLevel;
 
         private long MaxGasNeeded
         {

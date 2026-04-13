@@ -9,14 +9,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfStateTest : GeneralStateTestBase, IStateTestRunner
+    public class PerfStateTest(ITestSourceLoader testsSource) : GeneralStateTestBase, IStateTestRunner
     {
-        private readonly ITestSourceLoader _testsSource;
-
-        public PerfStateTest(ITestSourceLoader testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        }
+        private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
 
         public IEnumerable<EthereumTestResult> RunTests()
         {

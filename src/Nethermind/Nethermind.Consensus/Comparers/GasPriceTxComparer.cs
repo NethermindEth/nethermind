@@ -10,16 +10,10 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.Comparers
 {
-    public class GasPriceTxComparer : IComparer<Transaction>
+    public class GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider) : IComparer<Transaction>
     {
-        private readonly IBlockFinder _blockFinder;
-        private readonly ISpecProvider _specProvider;
-
-        public GasPriceTxComparer(IBlockFinder blockFinder, ISpecProvider specProvider)
-        {
-            _blockFinder = blockFinder;
-            _specProvider = specProvider;
-        }
+        private readonly IBlockFinder _blockFinder = blockFinder;
+        private readonly ISpecProvider _specProvider = specProvider;
 
         public int Compare(Transaction? x, Transaction? y)
         {

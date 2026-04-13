@@ -9,14 +9,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Rewards
 {
-    public class StaticRewardCalculator : IRewardCalculator
+    public class StaticRewardCalculator(IDictionary<long, UInt256>? blockRewards) : IRewardCalculator
     {
-        private readonly IList<BlockRewardInfo> _blockRewards;
-
-        public StaticRewardCalculator(IDictionary<long, UInt256>? blockRewards)
-        {
-            _blockRewards = CreateBlockRewards(blockRewards);
-        }
+        private readonly IList<BlockRewardInfo> _blockRewards = CreateBlockRewards(blockRewards);
 
         public BlockReward[] CalculateRewards(Block block)
         {
@@ -45,16 +40,11 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return blockRewardInfos;
         }
 
-        private class BlockRewardInfo : IActivatedAt
+        private class BlockRewardInfo(long blockNumber, in UInt256 reward) : IActivatedAt
         {
-            public long BlockNumber { get; }
-            public UInt256 Reward { get; }
+            public long BlockNumber { get; } = blockNumber;
+            public UInt256 Reward { get; } = reward;
 
-            public BlockRewardInfo(long blockNumber, in UInt256 reward)
-            {
-                BlockNumber = blockNumber;
-                Reward = reward;
-            }
             long IActivatedAt<long>.Activation => BlockNumber;
         }
     }

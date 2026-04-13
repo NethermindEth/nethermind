@@ -18,64 +18,42 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaValidatorFactory : IAuRaValidatorFactory
+    public class AuRaValidatorFactory(IAbiEncoder abiEncoder,
+        IWorldState stateProvider,
+        ITransactionProcessor transactionProcessor,
+        IBlockTree blockTree,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+        IReceiptFinder receiptFinder,
+        IValidatorStore validatorStore,
+        IAuRaBlockFinalizationManager finalizationManager,
+        ITxSender txSender,
+        ITxPool txPool,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager,
+        ISigner signer,
+        ISpecProvider specProvider,
+        IGasPriceOracle gasPriceOracle,
+        ReportingContractBasedValidator.Cache reportingValidatorCache,
+        long posdaoTransition, bool forSealing = false) : IAuRaValidatorFactory
     {
-        private readonly IWorldState _stateProvider;
-        private readonly IAbiEncoder _abiEncoder;
-        private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private readonly IBlockTree _blockTree;
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IValidatorStore _validatorStore;
-        private readonly IAuRaBlockFinalizationManager _finalizationManager;
-        private readonly ITxSender _txSender;
-        private readonly ITxPool _txPool;
-        private readonly IBlocksConfig _blocksConfig;
-        private readonly ILogManager _logManager;
-        private readonly ISigner _signer;
-        private readonly ISpecProvider _specProvider;
-        private readonly IGasPriceOracle _gasPriceOracle;
-        private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache;
-        private readonly long _posdaoTransition;
-        private readonly bool _forSealing;
-
-        public AuRaValidatorFactory(IAbiEncoder abiEncoder,
-            IWorldState stateProvider,
-            ITransactionProcessor transactionProcessor,
-            IBlockTree blockTree,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            IReceiptFinder receiptFinder,
-            IValidatorStore validatorStore,
-            IAuRaBlockFinalizationManager finalizationManager,
-            ITxSender txSender,
-            ITxPool txPool,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            ISigner signer,
-            ISpecProvider specProvider,
-            IGasPriceOracle gasPriceOracle,
-            ReportingContractBasedValidator.Cache reportingValidatorCache,
-            long posdaoTransition, bool forSealing = false)
-        {
-            _stateProvider = stateProvider;
-            _abiEncoder = abiEncoder;
-            _transactionProcessor = transactionProcessor;
-            _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
-            _blockTree = blockTree;
-            _receiptFinder = receiptFinder;
-            _validatorStore = validatorStore;
-            _finalizationManager = finalizationManager;
-            _txSender = txSender;
-            _txPool = txPool;
-            _blocksConfig = blocksConfig;
-            _logManager = logManager;
-            _signer = signer;
-            _reportingValidatorCache = reportingValidatorCache;
-            _posdaoTransition = posdaoTransition;
-            _gasPriceOracle = gasPriceOracle;
-            _forSealing = forSealing;
-            _specProvider = specProvider;
-        }
+        private readonly IWorldState _stateProvider = stateProvider;
+        private readonly IAbiEncoder _abiEncoder = abiEncoder;
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
+        private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly IReceiptFinder _receiptFinder = receiptFinder;
+        private readonly IValidatorStore _validatorStore = validatorStore;
+        private readonly IAuRaBlockFinalizationManager _finalizationManager = finalizationManager;
+        private readonly ITxSender _txSender = txSender;
+        private readonly ITxPool _txPool = txPool;
+        private readonly IBlocksConfig _blocksConfig = blocksConfig;
+        private readonly ILogManager _logManager = logManager;
+        private readonly ISigner _signer = signer;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle;
+        private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache = reportingValidatorCache;
+        private readonly long _posdaoTransition = posdaoTransition;
+        private readonly bool _forSealing = forSealing;
 
         public IAuRaValidator CreateValidatorProcessor(AuRaParameters.Validator validator, BlockHeader parentHeader = null, long? startBlock = null)
         {

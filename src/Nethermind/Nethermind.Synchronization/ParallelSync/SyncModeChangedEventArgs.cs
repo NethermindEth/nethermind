@@ -5,16 +5,10 @@ using System;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class SyncModeChangedEventArgs : EventArgs
+    public class SyncModeChangedEventArgs(SyncMode previous, SyncMode current) : EventArgs
     {
-        public SyncModeChangedEventArgs(SyncMode previous, SyncMode current)
-        {
-            Previous = previous;
-            Current = current;
-        }
-
-        public SyncMode Previous { get; }
-        public SyncMode Current { get; }
+        public SyncMode Previous { get; } = previous;
+        public SyncMode Current { get; } = current;
 
         public bool WasModeFinished(SyncMode mode)
         {

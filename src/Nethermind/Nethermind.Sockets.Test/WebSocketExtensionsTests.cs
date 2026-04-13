@@ -21,14 +21,9 @@ namespace Nethermind.Sockets.Test;
 
 public class WebSocketExtensionsTests
 {
-    private class WebSocketMock : WebSocket
+    private class WebSocketMock(Queue<WebSocketReceiveResult> receiveResults) : WebSocket
     {
-        private readonly Queue<WebSocketReceiveResult> _receiveResults;
-
-        public WebSocketMock(Queue<WebSocketReceiveResult> receiveResults)
-        {
-            _receiveResults = receiveResults;
-        }
+        private readonly Queue<WebSocketReceiveResult> _receiveResults = receiveResults;
 
         public override void Abort()
         {

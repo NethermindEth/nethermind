@@ -6,21 +6,15 @@
 
 namespace Nethermind.Core.Cpu;
 
-public class UnitPresentation
+public class UnitPresentation(bool isVisible, int minUnitWidth)
 {
     public static readonly UnitPresentation Default = new(isVisible: true, 0);
 
     public static readonly UnitPresentation Invisible = new(isVisible: false, 0);
 
-    public bool IsVisible { get; private set; }
+    public bool IsVisible { get; private set; } = isVisible;
 
-    public int MinUnitWidth { get; private set; }
-
-    public UnitPresentation(bool isVisible, int minUnitWidth)
-    {
-        IsVisible = isVisible;
-        MinUnitWidth = minUnitWidth;
-    }
+    public int MinUnitWidth { get; private set; } = minUnitWidth;
 
     public static UnitPresentation FromVisibility(bool isVisible)
     {

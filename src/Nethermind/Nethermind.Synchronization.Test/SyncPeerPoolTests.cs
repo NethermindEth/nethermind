@@ -48,20 +48,15 @@ public class SyncPeerPoolTests
         }
     }
 
-    private class SimpleSyncPeerMock : ISyncPeer
+    private class SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock") : ISyncPeer
     {
         public string Name => "SimpleMock";
-        public SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock")
-        {
-            Node = new Node(publicKey, "127.0.0.1", 30303);
-            ClientId = description;
-        }
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
-        public Node Node { get; }
-        public string ClientId { get; }
+        public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
+        public string ClientId { get; } = description;
         public long HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }

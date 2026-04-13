@@ -11,14 +11,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class Hash256Converter : JsonConverter<Hash256>
+public class Hash256Converter(bool strictHexFormat = false) : JsonConverter<Hash256>
 {
-    private readonly bool _strictHexFormat;
-
-    public Hash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
+    private readonly bool _strictHexFormat = strictHexFormat;
 
     public override Hash256? Read(
         ref Utf8JsonReader reader,

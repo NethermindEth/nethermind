@@ -330,21 +330,14 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
-    private class TestFullPruningDb : FullPruningDb
+    private class TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false) : FullPruningDb(settings, dbFactory)
     {
-        private readonly bool _successfulPruning;
-        private readonly bool _clearPrunedDb;
+        private readonly bool _successfulPruning = successfulPruning;
+        private readonly bool _clearPrunedDb = clearPrunedDb;
 
         public TestPruningContext Context { get; set; } = null!;
         public new int PruningStarted { get; private set; }
         public ManualResetEvent WaitForClearDb { get; } = new(false);
-
-        public TestFullPruningDb(DbSettings settings, IDbFactory dbFactory, bool successfulPruning, bool clearPrunedDb = false)
-            : base(settings, dbFactory)
-        {
-            _successfulPruning = successfulPruning;
-            _clearPrunedDb = clearPrunedDb;
-        }
 
         protected override void ClearOldDb(IDb oldDb)
         {
@@ -366,19 +359,13 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             return false;
         }
 
-        internal class TestPruningContext : IPruningContext
+        internal class TestPruningContext(IPruningContext context, bool successfulPruning) : IPruningContext
         {
-            private readonly IPruningContext _context;
-            private readonly bool _successfulPruning;
+            private readonly IPruningContext _context = context;
+            private readonly bool _successfulPruning = successfulPruning;
 
             public ManualResetEvent DisposeEvent { get; } = new(false);
             public ManualResetEvent WaitForFinish { get; } = new(false);
-
-            public TestPruningContext(IPruningContext context, bool successfulPruning)
-            {
-                _context = context;
-                _successfulPruning = successfulPruning;
-            }
 
             public void Dispose()
             {
@@ -426,14 +413,9 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         }
     }
 
-    class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
+    class TrieCopiedNodeVisitor(INodeStorage nodeStorage) : ITreeVisitor<TreePathContextWithStorage>
     {
-        private readonly INodeStorage _nodeStorageToCompareTo;
-
-        public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
-        {
-            _nodeStorageToCompareTo = nodeStorage;
-        }
+        private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
         private void CheckNode(Hash256? storage, in TreePath path, TrieNode node)
         {

@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed : SyncFeed<SnapSyncBatch?>, IDisposable
+    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager) : SyncFeed<SnapSyncBatch?>, IDisposable
     {
         private readonly Lock _syncLock = new();
 
@@ -20,18 +20,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISnapProvider _snapProvider;
+        private readonly ISnapProvider _snapProvider = snapProvider;
 
-        private readonly ILogger _logger;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
         private bool _disposed = false;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
-
-        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
-        {
-            _snapProvider = snapProvider;
-            _logger = logManager.GetClassLogger<SnapSyncFeed>();
-        }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
         {

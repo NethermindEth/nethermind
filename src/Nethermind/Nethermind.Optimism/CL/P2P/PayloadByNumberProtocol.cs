@@ -14,24 +14,17 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Optimism.CL.P2P;
 
-public class PayloadByNumberProtocol : ISessionProtocol<ulong, ExecutionPayloadV3?>
+public class PayloadByNumberProtocol(
+    ulong chainId,
+    IPayloadDecoder payloadDecoder,
+    ILogManager logManager) : ISessionProtocol<ulong, ExecutionPayloadV3?>
 {
     private const int MaxResponseSizeBytes = 10000000;
-    private readonly ulong _chainId;
-    private readonly IPayloadDecoder _payloadDecoder;
-    private readonly ILogger _logger;
+    private readonly ulong _chainId = chainId;
+    private readonly IPayloadDecoder _payloadDecoder = payloadDecoder;
+    private readonly ILogger _logger = logManager.GetClassLogger<PayloadByNumberProtocol>();
 
     public string Id => $"/opstack/req/payload_by_number/{_chainId}/0";
-
-    public PayloadByNumberProtocol(
-        ulong chainId,
-        IPayloadDecoder payloadDecoder,
-        ILogManager logManager)
-    {
-        _chainId = chainId;
-        _payloadDecoder = payloadDecoder;
-        _logger = logManager.GetClassLogger<PayloadByNumberProtocol>();
-    }
 
     public async Task ListenAsync(IChannel downChannel, ISessionContext context)
     {

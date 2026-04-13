@@ -10,14 +10,9 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Json;
 
-public class ValueHash256Converter : JsonConverter<ValueHash256>
+public class ValueHash256Converter(bool strictHexFormat = false) : JsonConverter<ValueHash256>
 {
-    private readonly bool _strictHexFormat;
-
-    public ValueHash256Converter(bool strictHexFormat = false)
-    {
-        _strictHexFormat = strictHexFormat;
-    }
+    private readonly bool _strictHexFormat = strictHexFormat;
 
     public override ValueHash256 Read(
         ref Utf8JsonReader reader,

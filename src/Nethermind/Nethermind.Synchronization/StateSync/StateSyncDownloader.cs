@@ -20,14 +20,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader(ILogManager logManager) : ISyncDownloader<StateSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public StateSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger<StateSyncDownloader>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<StateSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {

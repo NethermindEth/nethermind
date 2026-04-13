@@ -18,30 +18,23 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPayloadPreparationService : PayloadPreparationService
+public class OptimismPayloadPreparationService(
+    ISpecProvider specProvider,
+    IBlockProducer blockProducer,
+    ITxPool txPool,
+    IBlockImprovementContextFactory blockImprovementContextFactory,
+    ITimerFactory timerFactory,
+    ILogManager logManager,
+    IBlocksConfig blocksConfig) : PayloadPreparationService(
+        blockProducer,
+        txPool,
+        blockImprovementContextFactory,
+        timerFactory,
+        logManager,
+        blocksConfig)
 {
-    private readonly ISpecProvider _specProvider;
-    private readonly ILogger _logger;
-
-    public OptimismPayloadPreparationService(
-        ISpecProvider specProvider,
-        IBlockProducer blockProducer,
-        ITxPool txPool,
-        IBlockImprovementContextFactory blockImprovementContextFactory,
-        ITimerFactory timerFactory,
-        ILogManager logManager,
-        IBlocksConfig blocksConfig)
-        : base(
-            blockProducer,
-            txPool,
-            blockImprovementContextFactory,
-            timerFactory,
-            logManager,
-            blocksConfig)
-    {
-        _specProvider = specProvider;
-        _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
-    }
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly ILogger _logger = logManager.GetClassLogger<OptimismPayloadPreparationService>();
 
     protected override void ImproveBlock(string payloadId, BlockHeader parentHeader,
         PayloadAttributes payloadAttributes, Block currentBestBlock, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)

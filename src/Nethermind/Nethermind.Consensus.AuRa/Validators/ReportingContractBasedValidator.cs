@@ -21,6 +21,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
+#pragma warning disable IDE0290 // Constructor has unused DI parameters (txPool, blocksConfig)
     public partial class ReportingContractBasedValidator : IAuRaValidator, IReportingValidator
     {
         private delegate Transaction CreateReportTransactionDelegate(Address validator, long block, byte[] proof);

@@ -9,11 +9,9 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
-public class Db
+public class Db(IWorldState worldState)
 {
-    public IWorldState WorldState { get; }
-
-    public Db(IWorldState worldState) => WorldState = worldState;
+    public IWorldState WorldState { get; } = worldState;
 
     public IJavaScriptObject getBalance(object address) => WorldState.GetBalance(address.ToAddress()).ToBigInteger();
 

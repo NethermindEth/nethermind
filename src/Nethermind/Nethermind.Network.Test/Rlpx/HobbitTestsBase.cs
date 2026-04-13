@@ -142,14 +142,9 @@ public abstract class HobbitTestsBase
         Zero
     }
 
-    private class ConsoleLoggerOptionsMonitor : IOptionsMonitor<ConsoleLoggerOptions>
+    private class ConsoleLoggerOptionsMonitor(ConsoleLoggerOptions currentValue) : IOptionsMonitor<ConsoleLoggerOptions>
     {
-        public ConsoleLoggerOptionsMonitor(ConsoleLoggerOptions currentValue)
-        {
-            CurrentValue = currentValue;
-        }
-
-        public ConsoleLoggerOptions CurrentValue { get; }
+        public ConsoleLoggerOptions CurrentValue { get; } = currentValue;
 
         public ConsoleLoggerOptions Get(string? name) => CurrentValue;
 

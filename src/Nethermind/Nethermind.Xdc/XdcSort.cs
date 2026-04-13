@@ -13,16 +13,10 @@ namespace Nethermind.Xdc;
 /// </summary>
 public static class XdcSort
 {
-    private struct LessSwap<T>
+    private struct LessSwap<T>(IList<T> data, Func<T, T, bool> less)
     {
-        public Func<T, T, bool> Less;
-        public IList<T> Data;
-
-        public LessSwap(IList<T> data, Func<T, T, bool> less)
-        {
-            Data = data;
-            Less = less;
-        }
+        public Func<T, T, bool> Less = less;
+        public IList<T> Data = data;
 
         public void Swap(int i, int j)
         {

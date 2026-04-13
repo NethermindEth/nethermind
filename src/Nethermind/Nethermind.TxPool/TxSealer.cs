@@ -8,16 +8,10 @@ using Nethermind.Crypto;
 
 namespace Nethermind.TxPool
 {
-    public class TxSealer : ITxSealer
+    public class TxSealer(ITxSigner txSigner, ITimestamper timestamper) : ITxSealer
     {
-        private readonly ITxSigner _txSigner;
-        private readonly ITimestamper _timestamper;
-
-        public TxSealer(ITxSigner txSigner, ITimestamper timestamper)
-        {
-            _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        }
+        private readonly ITxSigner _txSigner = txSigner ?? throw new ArgumentNullException(nameof(txSigner));
+        private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
 
         public virtual ValueTask Seal(Transaction tx, TxHandlingOptions txHandlingOptions)
         {

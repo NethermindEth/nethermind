@@ -14,23 +14,15 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
-    public class GeneratedTxSource : ITxSource
+    public class GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager) : ITxSource
     {
-        private readonly ITxSource _innerSource;
-        private readonly ITxSealer _txSealer;
-        private readonly IStateReader _stateReader;
-        private readonly ILogger _logger;
+        private readonly ITxSource _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
+        private readonly ITxSealer _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
+        private readonly IStateReader _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
+        private readonly ILogger _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IDictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>(1);
 
         public bool SupportsBlobs => _innerSource.SupportsBlobs;
-
-        public GeneratedTxSource(ITxSource innerSource, ITxSealer txSealer, IStateReader stateReader, ILogManager logManager)
-        {
-            _innerSource = innerSource ?? throw new ArgumentNullException(nameof(innerSource));
-            _txSealer = txSealer ?? throw new ArgumentNullException(nameof(txSealer));
-            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-            _logger = logManager?.GetClassLogger<GeneratedTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
         {

@@ -9,16 +9,10 @@ namespace Nethermind.Serialization.Json;
 
 #nullable enable
 
-internal struct BufferSegmentStack
+internal struct BufferSegmentStack(int size)
 {
-    private SegmentAsValueType[] _array;
-    private int _size;
-
-    public BufferSegmentStack(int size)
-    {
-        _array = new SegmentAsValueType[size];
-        _size = 0;
-    }
+    private SegmentAsValueType[] _array = new SegmentAsValueType[size];
+    private int _size = 0;
 
     public readonly int Count => _size;
 

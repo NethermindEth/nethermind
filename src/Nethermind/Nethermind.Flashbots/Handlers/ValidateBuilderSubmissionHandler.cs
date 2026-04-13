@@ -24,41 +24,29 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Flashbots.Handlers;
 
-public class ValidateSubmissionHandler
+public class ValidateSubmissionHandler(
+    IHeaderValidator headerValidator,
+    IBlockTree blockTree,
+    IBlockValidator blockValidator,
+    IOverridableEnv<ValidateSubmissionHandler.ProcessingEnv> blockProcessorEnv,
+    ILogManager logManager,
+    ISpecProvider specProvider,
+    IFlashbotsConfig flashbotsConfig,
+    IEthereumEcdsa ethereumEcdsa)
 {
     private ProcessingOptions ValidateSubmissionProcessingOptions = ProcessingOptions.ReadOnlyChain
          | ProcessingOptions.IgnoreParentNotOnMainChain
          | ProcessingOptions.ForceProcessing
          | ProcessingOptions.StoreReceipts;
 
-    private readonly IBlockTree _blockTree;
-    private readonly IHeaderValidator _headerValidator;
-    private readonly IBlockValidator _blockValidator;
-    private readonly ILogger _logger;
-    private readonly IFlashbotsConfig _flashbotsConfig;
-    private readonly ISpecProvider _specProvider;
-    private readonly IEthereumEcdsa _ethereumEcdsa;
-    private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv;
-
-    public ValidateSubmissionHandler(
-        IHeaderValidator headerValidator,
-        IBlockTree blockTree,
-        IBlockValidator blockValidator,
-        IOverridableEnv<ProcessingEnv> blockProcessorEnv,
-        ILogManager logManager,
-        ISpecProvider specProvider,
-        IFlashbotsConfig flashbotsConfig,
-        IEthereumEcdsa ethereumEcdsa)
-    {
-        _blockTree = blockTree;
-        _blockValidator = blockValidator;
-        _ethereumEcdsa = ethereumEcdsa;
-        _flashbotsConfig = flashbotsConfig;
-        _headerValidator = headerValidator;
-        _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
-        _specProvider = specProvider;
-        _blockProcessorEnv = blockProcessorEnv;
-    }
+    private readonly IBlockTree _blockTree = blockTree;
+    private readonly IHeaderValidator _headerValidator = headerValidator;
+    private readonly IBlockValidator _blockValidator = blockValidator;
+    private readonly ILogger _logger = logManager!.GetClassLogger<ValidateSubmissionHandler>();
+    private readonly IFlashbotsConfig _flashbotsConfig = flashbotsConfig;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly IEthereumEcdsa _ethereumEcdsa = ethereumEcdsa;
+    private readonly IOverridableEnv<ProcessingEnv> _blockProcessorEnv = blockProcessorEnv;
 
     public Task<ResultWrapper<FlashbotsResult>> ValidateSubmission(BuilderBlockValidationRequest request)
     {

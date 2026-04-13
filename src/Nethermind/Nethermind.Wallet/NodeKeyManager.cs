@@ -14,32 +14,22 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class NodeKeyManager : INodeKeyManager
+    public class NodeKeyManager(
+        ICryptoRandom cryptoRandom,
+        IKeyStore keyStore,
+        IKeyStoreConfig config,
+        ILogManager logManager,
+        IPasswordProvider passwordProvider,
+        IFileSystem fileSystem) : INodeKeyManager
     {
         public const string UnsecuredNodeKeyFilePath = "node.key.plain";
 
-        private readonly ICryptoRandom _cryptoRandom;
-        private readonly IKeyStore _keyStore;
-        private readonly IKeyStoreConfig _config;
-        private readonly ILogger _logger;
-        private readonly IPasswordProvider _passwordProvider;
-        private readonly IFileSystem _fileSystem;
-
-        public NodeKeyManager(
-            ICryptoRandom cryptoRandom,
-            IKeyStore keyStore,
-            IKeyStoreConfig config,
-            ILogManager logManager,
-            IPasswordProvider passwordProvider,
-            IFileSystem fileSystem)
-        {
-            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger<NodeKeyManager>() ?? throw new ArgumentNullException(nameof(logManager));
-            _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
-            _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        }
+        private readonly ICryptoRandom _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+        private readonly IKeyStore _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+        private readonly IKeyStoreConfig _config = config ?? throw new ArgumentNullException(nameof(config));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodeKeyManager>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IPasswordProvider _passwordProvider = passwordProvider ?? throw new ArgumentNullException(nameof(passwordProvider));
+        private readonly IFileSystem _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
 
         /// <summary>
         /// https://stackoverflow.com/questions/1344221/how-can-i-generate-random-alphanumeric-strings

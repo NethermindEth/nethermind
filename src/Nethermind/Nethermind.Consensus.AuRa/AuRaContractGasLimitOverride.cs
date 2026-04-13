@@ -14,7 +14,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaContractGasLimitOverride : IGasLimitCalculator
+    public class AuRaContractGasLimitOverride(
+        IList<IBlockGasLimitContract> contracts,
+AuRaContractGasLimitOverride.Cache cache,
+        bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
+        IGasLimitCalculator innerCalculator,
+        ILogManager logManager) : IGasLimitCalculator
     {
         private static UInt256? _minimalContractGasLimit;
 
@@ -26,25 +31,11 @@ namespace Nethermind.Consensus.AuRa
                 return _minimalContractGasLimit.Value;
             }
         }
-        private readonly IList<IBlockGasLimitContract> _contracts;
-        private readonly Cache _cache;
-        private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
-        private readonly IGasLimitCalculator _innerCalculator;
-        private readonly ILogger _logger;
-
-        public AuRaContractGasLimitOverride(
-            IList<IBlockGasLimitContract> contracts,
-            Cache cache,
-            bool minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract,
-            IGasLimitCalculator innerCalculator,
-            ILogManager logManager)
-        {
-            _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
-            _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
-            _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
-            _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly IList<IBlockGasLimitContract> _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
+        private readonly Cache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        private readonly bool _minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract = minimum2MlnGasPerBlockWhenUsingBlockGasLimitContract;
+        private readonly IGasLimitCalculator _innerCalculator = innerCalculator ?? throw new ArgumentNullException(nameof(innerCalculator));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaContractGasLimitOverride>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public long GetGasLimit(BlockHeader parentHeader) => GetGasLimitFromContract(parentHeader) ?? _innerCalculator.GetGasLimit(parentHeader);
 

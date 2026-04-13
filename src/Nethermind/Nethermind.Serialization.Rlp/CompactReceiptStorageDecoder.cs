@@ -13,14 +13,10 @@ using static Nethermind.Serialization.Rlp.Rlp;
 namespace Nethermind.Serialization.Rlp
 {
     [Decoder(RlpDecoderKey.Storage)]
-    public sealed class CompactReceiptStorageDecoder : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
+    public sealed class CompactReceiptStorageDecoder() : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(CompactReceiptStorageDecoder))]
-        public CompactReceiptStorageDecoder()
-        {
-        }
 
         protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)

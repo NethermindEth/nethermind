@@ -139,26 +139,16 @@ namespace Nethermind.TxPool.Test.Collections
             }
         }
 
-        private class ShrinkableDistinctPool : WithFinalizerDistinctPool
+        private class ShrinkableDistinctPool(int capacity, IComparer<DistinctValueSortedPoolTests.WithFinalizer> comparer, IEqualityComparer<DistinctValueSortedPoolTests.WithFinalizer> distinctComparer, ILogManager logManager) : WithFinalizerDistinctPool(capacity, comparer, distinctComparer, logManager)
         {
-            public ShrinkableDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
-                : base(capacity, comparer, distinctComparer, logManager)
-            {
-            }
-
             public void Shrink(int capacity)
             {
                 EnsureCapacity(capacity);
             }
         }
 
-        private class WithFinalizerDistinctPool : DistinctValueSortedPool<int, WithFinalizer, int>
+        private class WithFinalizerDistinctPool(int capacity, IComparer<DistinctValueSortedPoolTests.WithFinalizer> comparer, IEqualityComparer<DistinctValueSortedPoolTests.WithFinalizer> distinctComparer, ILogManager logManager) : DistinctValueSortedPool<int, WithFinalizer, int>(capacity, comparer, distinctComparer, logManager)
         {
-            public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
-                : base(capacity, comparer, distinctComparer, logManager)
-            {
-            }
-
             protected override IComparer<WithFinalizer> GetUniqueComparer(IComparer<WithFinalizer> comparer) => comparer;
 
             protected override IComparer<WithFinalizer> GetGroupComparer(IComparer<WithFinalizer> comparer) => comparer;

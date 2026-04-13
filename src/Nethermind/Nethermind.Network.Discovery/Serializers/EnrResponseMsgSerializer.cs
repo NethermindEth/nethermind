@@ -12,15 +12,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class EnrResponseMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<EnrResponseMsg>
+public class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<EnrResponseMsg>
 {
-    private readonly NodeRecordSigner _nodeRecordSigner;
-
-    public EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-        _nodeRecordSigner = new NodeRecordSigner(ecdsa, nodeKey.Generate());
-    }
+    private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa, nodeKey.Generate());
 
     public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg)
     {

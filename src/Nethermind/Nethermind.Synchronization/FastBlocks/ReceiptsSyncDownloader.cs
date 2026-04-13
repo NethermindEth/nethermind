@@ -14,14 +14,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncDispatcher : ISyncDownloader<ReceiptsSyncBatch>
+    public class ReceiptsSyncDispatcher(ILogManager logManager) : ISyncDownloader<ReceiptsSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public ReceiptsSyncDispatcher(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger<ReceiptsSyncDispatcher>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<ReceiptsSyncDispatcher>();
 
         public async Task Dispatch(PeerInfo peerInfo, ReceiptsSyncBatch batch, CancellationToken cancellationToken)
         {

@@ -6,14 +6,9 @@ using System.Security;
 
 namespace Nethermind.KeyStore.ConsoleHelpers
 {
-    public class ConsoleUtils : IConsoleUtils
+    public class ConsoleUtils(IConsoleWrapper consoleWrapper) : IConsoleUtils
     {
-        private readonly IConsoleWrapper _consoleWrapper;
-
-        public ConsoleUtils(IConsoleWrapper consoleWrapper)
-        {
-            _consoleWrapper = consoleWrapper;
-        }
+        private readonly IConsoleWrapper _consoleWrapper = consoleWrapper;
 
         public SecureString ReadSecret(string secretDisplayName)
         {

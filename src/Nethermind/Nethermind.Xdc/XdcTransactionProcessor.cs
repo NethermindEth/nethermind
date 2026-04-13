@@ -17,28 +17,22 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
+internal class XdcTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+    ISpecProvider? specProvider,
+    IWorldState? worldState,
+    IVirtualMachine? virtualMachine,
+    ICodeInfoRepository? codeInfoRepository,
+    ILogManager? logManager,
+    IMasternodeVotingContract masternodeVotingContract) : EthereumTransactionProcessorBase(
+        blobBaseFeeCalculator,
+        specProvider,
+        worldState,
+        virtualMachine,
+        codeInfoRepository,
+        logManager)
 {
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-
-    public XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
-        ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        IMasternodeVotingContract masternodeVotingContract)
-        : base(
-            blobBaseFeeCalculator,
-            specProvider,
-            worldState,
-            virtualMachine,
-            codeInfoRepository,
-            logManager)
-    {
-        _masternodeVotingContract = masternodeVotingContract;
-    }
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
     protected override void PayFees(
         Transaction tx,
