@@ -24,6 +24,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
         public static class Scenario
         {
             public const long FastSyncLag = 32;
+            public const long LargeDistanceBehindHead = 1024;
 
             public static BlockHeader Pivot { get; } = Build.A.Block
                 .WithDifficulty(1)
@@ -248,8 +249,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(Pivot.Number);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(Pivot.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - LargeDistanceBehindHead);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(ChainHead.TotalDifficulty ?? 0);
                             return "fully syncing";
@@ -333,8 +334,8 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                         {
                             SyncProgressResolver.FindBestHeader().Returns(ChainHead.Number);
                             SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number);
-                            SyncProgressResolver.FindBestFullState().Returns(Pivot.Number);
-                            SyncProgressResolver.FindBestProcessedBlock().Returns(Pivot.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(ChainHead.Number - LargeDistanceBehindHead);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - LargeDistanceBehindHead);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedReceipts);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "node has been offline for a long time";
@@ -512,7 +513,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 {
                     // this is a scenario when we actually have state but the lookup depth is limiting
                     // our ability to find out at what level the state is
-                    long currentBlock = Pivot.Number;
+                    long currentBlock = ChainHead.Number - LargeDistanceBehindHead;
                     _syncProgressSetups.Add(
                         () =>
                         {
