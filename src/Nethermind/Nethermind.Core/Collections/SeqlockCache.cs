@@ -425,3 +425,259 @@ public sealed class SeqlockCache<TKey, TValue>
         public TValue? Value;
     }
 }
+
+/// <summary>
+/// Provides the number of sets (as log2) for a <see cref="SeqlockCache{TKey,TValue,TSets}"/>.
+/// Implementations must return a compile-time constant so the JIT can constant-fold it.
+/// Valid range: 10..21 (1K..2M sets per way).
+/// </summary>
+public interface ICacheSets
+{
+    static abstract int SetsLog2 { get; }
+}
+
+/// <summary>Default 16K sets × 2 ways = 32K entries (~2 MB).</summary>
+public struct DefaultCacheSets : ICacheSets
+{
+    public static int SetsLog2 => 14;
+}
+
+/// <summary>64K sets × 2 ways = 128K entries (~8 MB). For cross-block caches.</summary>
+public struct LargeCacheSets : ICacheSets
+{
+    public static int SetsLog2 => 16;
+}
+
+/// <summary>
+/// Size-parameterized variant of <see cref="SeqlockCache{TKey,TValue}"/>.
+/// <typeparamref name="TSets"/> controls the number of sets; the JIT constant-folds
+/// <c>TSets.SetsLog2</c> so all derived masks compile to immediate operands — identical
+/// codegen to the const-based two-parameter version.
+/// </summary>
+public sealed class SeqlockCache<TKey, TValue, TSets>
+    where TKey : struct, IHash64bit<TKey>
+    where TValue : class?
+    where TSets : struct, ICacheSets
+{
+    // JIT constant-folded: TSets.SetsLog2 is a literal on each closed generic instantiation.
+    private static int Sets
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => 1 << TSets.SetsLog2;
+    }
+
+    private static int SetMask
+    {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get => Sets - 1;
+    }
+
+    // Header bit layout — identical to the two-parameter version.
+    // These do NOT depend on cache size and remain true const.
+    private const long LockMarker = unchecked((long)0x8000_0000_0000_0000);
+    private const int EpochShift = 37;
+    private const long EpochMask = 0x7FFF_FFE0_0000_0000;
+    private const long HashMask = 0x0000_001F_FFFE_0000;
+    private const long SeqMask = 0x0000_0000_0001_FFFE;
+    private const long SeqInc = 0x0000_0000_0000_0002;
+    private const long OccupiedBit = 1L;
+    private const long TagMask = EpochMask | HashMask | OccupiedBit;
+    private const long EpochOccMask = EpochMask | OccupiedBit;
+    private const int HashShift = 5;
+    private const int Way1Shift = 42;
+
+    private readonly Entry[] _entries;
+    private long _epoch;
+    private long _shiftedEpoch;
+
+    public SeqlockCache()
+    {
+        _entries = new Entry[Sets << 1];
+        _epoch = 0;
+        _shiftedEpoch = 0;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public unsafe bool TryGetValue(in TKey key, out TValue? value)
+    {
+        long hashCode = key.GetHashCode64();
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+
+        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long hashPart = (hashCode >> HashShift) & HashMask;
+        long expectedTag = epochTag | hashPart | OccupiedBit;
+
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+
+        if (Sse.IsSupported)
+        {
+            Sse.PrefetchNonTemporal(Unsafe.AsPointer(ref Unsafe.Add(ref entries, idx1)));
+        }
+
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
+        long h1 = Volatile.Read(ref e0.HashEpochSeqLock);
+
+        if ((h1 & (TagMask | LockMarker)) == expectedTag)
+        {
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e0.Key;
+            TValue? storedValue = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long h2 = Volatile.Read(ref e0.HashEpochSeqLock);
+            if (h1 == h2 && storedKey.Equals(in key))
+            {
+                value = storedValue;
+                return true;
+            }
+        }
+
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
+        long w1 = Volatile.Read(ref e1.HashEpochSeqLock);
+
+        if ((w1 & (TagMask | LockMarker)) == expectedTag)
+        {
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+            TKey storedKey = e1.Key;
+            TValue? storedValue = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long w2 = Volatile.Read(ref e1.HashEpochSeqLock);
+            if (w1 == w2 && storedKey.Equals(in key))
+            {
+                value = storedValue;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Set(in TKey key, TValue? value)
+    {
+        long hashCode = key.GetHashCode64();
+        int idx0 = (int)hashCode & SetMask;
+        int idx1 = Sets + ((int)(hashCode >> Way1Shift) & SetMask);
+        long hashPart = (hashCode >> HashShift) & HashMask;
+
+        SetCore(in key, value, idx0, idx1, hashPart);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void SetCore(in TKey key, TValue? value, int idx0, int idx1, long hashPart)
+    {
+        long epochTag = Volatile.Read(ref _shiftedEpoch);
+        long tagToStore = epochTag | hashPart | OccupiedBit;
+        long epochOccTag = epochTag | OccupiedBit;
+
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+        ref Entry e0 = ref Unsafe.Add(ref entries, idx0);
+
+        long h0 = Volatile.Read(ref e0.HashEpochSeqLock);
+
+        if (h0 >= 0 && (h0 & TagMask) == tagToStore)
+        {
+            TKey k0 = e0.Key;
+            TValue? v0 = e0.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long h0_2 = Volatile.Read(ref e0.HashEpochSeqLock);
+            if (h0 == h0_2 && k0.Equals(in key))
+            {
+                if (ReferenceEquals(v0, value)) return;
+                WriteEntry(ref e0, h0_2, in key, value, tagToStore);
+                return;
+            }
+            h0 = h0_2;
+        }
+
+        ref Entry e1 = ref Unsafe.Add(ref entries, idx1);
+        long h1 = Volatile.Read(ref e1.HashEpochSeqLock);
+
+        if (h1 >= 0 && (h1 & TagMask) == tagToStore)
+        {
+            TKey k1 = e1.Key;
+            TValue? v1 = e1.Value;
+            if (!Sse.IsSupported) Interlocked.MemoryBarrier();
+
+            long h1_2 = Volatile.Read(ref e1.HashEpochSeqLock);
+            if (h1 == h1_2 && k1.Equals(in key))
+            {
+                if (ReferenceEquals(v1, value)) return;
+                WriteEntry(ref e1, h1_2, in key, value, tagToStore);
+                return;
+            }
+            h1 = h1_2;
+        }
+
+        bool h0Live = h0 >= 0 && (h0 & EpochOccMask) == epochOccTag;
+        bool h1Live = h1 >= 0 && (h1 & EpochOccMask) == epochOccTag;
+
+        bool pick0;
+        if (!h0Live && h0 >= 0) pick0 = true;
+        else if (!h1Live && h1 >= 0) pick0 = false;
+        else if (h0Live && h1Live) pick0 = (hashPart & (1L << 17)) != 0;
+        else if (h0 >= 0) pick0 = true;
+        else if (h1 >= 0) pick0 = false;
+        else return;
+
+        WriteEntry(
+            ref pick0 ? ref e0 : ref e1,
+            pick0 ? h0 : h1,
+            in key, value, tagToStore);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void WriteEntry(ref Entry entry, long existing, in TKey key, TValue? value, long tagToStore)
+    {
+        if (existing < 0) return;
+
+        long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
+        long lockedHeader = tagToStore | newSeq | LockMarker;
+
+        if (Interlocked.CompareExchange(ref entry.HashEpochSeqLock, lockedHeader, existing) != existing)
+        {
+            return;
+        }
+
+        entry.Key = key;
+        entry.Value = value;
+
+        Volatile.Write(ref entry.HashEpochSeqLock, tagToStore | newSeq);
+    }
+
+    public void Clear()
+    {
+        long oldShifted = Volatile.Read(ref _shiftedEpoch);
+
+        while (true)
+        {
+            long oldEpoch = (oldShifted & EpochMask) >> EpochShift;
+            long newEpoch = oldEpoch + 1;
+            long newShifted = (newEpoch << EpochShift) & EpochMask;
+
+            long prev = Interlocked.CompareExchange(ref _shiftedEpoch, newShifted, oldShifted);
+            if (prev == oldShifted)
+            {
+                Volatile.Write(ref _epoch, newEpoch);
+                return;
+            }
+
+            oldShifted = prev;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Entry
+    {
+        public long HashEpochSeqLock;
+        public TKey Key;
+        public TValue? Value;
+    }
+}
