@@ -413,8 +413,8 @@ public class BlockAccessListManager(
             _stateProvider = stateProvider;
             _logManager = logManager;
             // pre-allocate and reuse worldstates
-            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[Eip7928Constants.MaxTxs];
-            for (int i = 0; i < Eip7928Constants.MaxTxs; i++)
+            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[16];
+            for (int i = 0; i < 16; i++)
             {
                 _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
             }
