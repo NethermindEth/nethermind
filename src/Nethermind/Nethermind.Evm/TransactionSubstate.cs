@@ -133,10 +133,10 @@ public readonly ref struct TransactionSubstate
         {
             if (span.Length < WordSize * 2) return null;
 
-            UInt256 start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            UInt256 start = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (start != WordSize) return null;
 
-            UInt256 length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            UInt256 length = new(span.TakeAndMove(WordSize), isBigEndian: true);
             if (length > span.Length) return null;
 
             ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
