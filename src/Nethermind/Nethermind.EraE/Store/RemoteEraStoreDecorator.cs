@@ -36,10 +36,9 @@ public sealed class RemoteEraStoreDecorator : IEraStore
     // Verified epoch paths — populated after successful SHA-256 check
     private readonly ConcurrentDictionary<int, string> _verifiedEpochs = new();
 
-    // Bounded reader pool — Lazy<EraReader> ensures at most one EraReader is constructed per epoch
-    // even when GetOrAdd races (the factory for the losing Lazy is never called).
-    // E2StoreReader uses RandomAccess (positional I/O), so concurrent reads on the same reader are safe.
-    private readonly ConcurrentDictionary<int, Lazy<EraReader>> _openedReaders = new();
+    // Bounded idle reader pool — readers are checked out (TryRemove) before use and returned
+    // (TryAdd) when done, so the eviction path can only dispose readers that are not in flight.
+    private readonly ConcurrentDictionary<int, EraReader> _openedReaders = new();
 
     // Setup path — sequential, sync-over-async is safe (see thread-safety model above)
     public long FirstBlock => GetFirstBlockAsync().GetAwaiter().GetResult();
@@ -75,9 +74,9 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         int epoch = (int)(number / _maxEraSize);
         string localPath = await EnsureEpochAvailableAsync(epoch, cancellation).ConfigureAwait(false);
 
-        EraReader reader = RentReader(epoch, localPath);
-        if (number > reader.LastBlock) return (null, null);
-        (Block block, TxReceipt[] receipts) = await reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
+        using EraRenter renter = RentReader(epoch, localPath);
+        if (number > renter.Reader.LastBlock) return (null, null);
+        (Block block, TxReceipt[] receipts) = await renter.Reader.GetBlockByNumber(number, cancellation).ConfigureAwait(false);
         return (block, receipts);
     }
 
@@ -101,29 +100,41 @@ public sealed class RemoteEraStoreDecorator : IEraStore
         _manifestLock.Dispose();
         foreach (Lazy<SemaphoreSlim> s in _epochLocks.Values)
             if (s.IsValueCreated) s.Value.Dispose();
-        foreach (Lazy<EraReader> lazy in _openedReaders.Values)
-            if (lazy.IsValueCreated) lazy.Value.Dispose();
+        foreach (EraReader reader in _openedReaders.Values)
+            reader.Dispose();
     }
 
-    private EraReader RentReader(int epoch, string localPath)
+    private EraRenter RentReader(int epoch, string localPath)
     {
-        if (_openedReaders.TryGetValue(epoch, out Lazy<EraReader>? existing))
-            return existing.Value;
+        // Fast path: check out an existing idle reader.
+        if (_openedReaders.TryRemove(epoch, out EraReader? existing))
+            return new EraRenter(this, existing, epoch);
 
-        // Evict the oldest (lowest-epoch) reader when the pool is at capacity.
-        // Import accesses epochs in ascending order, so the lowest epoch is always the least-recently-used.
+        // Evict the oldest (lowest-epoch) idle reader when the pool is at capacity.
+        // Import accesses epochs in ascending order, so the lowest epoch is always the
+        // least-recently-used and is safe to close.
         if (_openedReaders.Count >= _maxOpenReaders)
         {
             int oldest = int.MaxValue;
             foreach (int key in _openedReaders.Keys)
                 if (key < oldest) oldest = key;
-            if (_openedReaders.TryRemove(oldest, out Lazy<EraReader>? evicted) && evicted.IsValueCreated)
-                evicted.Value.Dispose();
+            if (_openedReaders.TryRemove(oldest, out EraReader? evicted))
+                evicted.Dispose();
         }
 
-        Lazy<EraReader> lazy = _openedReaders.GetOrAdd(
-            epoch, static (_, path) => new Lazy<EraReader>(() => new EraReader(path)), localPath);
-        return lazy.Value;
+        return new EraRenter(this, new EraReader(localPath), epoch);
+    }
+
+    private void ReturnReader(int epoch, EraReader reader)
+    {
+        if (!_openedReaders.TryAdd(epoch, reader))
+            reader.Dispose();
+    }
+
+    private readonly struct EraRenter(RemoteEraStoreDecorator store, EraReader reader, int epoch) : IDisposable
+    {
+        public EraReader Reader => reader;
+        public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
     private async Task<long> GetFirstBlockAsync(CancellationToken cancellation = default)
