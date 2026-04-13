@@ -108,7 +108,7 @@ public class CodeInfoRepositoryTests
         using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
         stateProvider.CreateAccount(TestItem.AddressA, 0);
         stateProvider.InsertCode(TestItem.AddressA, code, _releaseSpec);
-        Address delegationAddress = new Address(code.Slice(3, Address.Size));
+        Address delegationAddress = new(code.Slice(3, Address.Size));
         stateProvider.CreateAccount(delegationAddress, 0);
         byte[] delegationCode = new byte[32];
         stateProvider.InsertCode(delegationAddress, delegationCode, _releaseSpec);

@@ -18,8 +18,8 @@ public static class TestWorldStateFactory
 {
     public static IWorldState CreateForTest(IDbProvider? dbProvider = null, ILogManager? logManager = null)
     {
-        PruningConfig pruningConfig = new PruningConfig();
-        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
+        PruningConfig pruningConfig = new();
+        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
         dbProvider ??= TestMemDbProvider.Init();
         logManager ??= LimboLogs.Instance;
         TrieStore trieStore = new(
@@ -38,9 +38,9 @@ public static class TestWorldStateFactory
         if (dbProvider is null) dbProvider = TestMemDbProvider.Init();
         if (logManager is null) logManager = LimboLogs.Instance;
 
-        PruningConfig pruningConfig = new PruningConfig();
-        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-        TrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new();
+        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
@@ -64,9 +64,9 @@ public static class TestWorldStateFactory
 
     public static WorldStateManager CreateWorldStateManagerForTest(IDbProvider dbProvider, ILogManager logManager)
     {
-        PruningConfig pruningConfig = new PruningConfig();
-        TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-        TrieStore trieStore = new TrieStore(
+        PruningConfig pruningConfig = new();
+        TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+        TrieStore trieStore = new(
             new NodeStorage(dbProvider.StateDb),
             No.Pruning,
             Persist.EveryBlock,
@@ -74,7 +74,7 @@ public static class TestWorldStateFactory
             pruningConfig,
             LimboLogs.Instance);
         finalizedStateProvider.TrieStore = trieStore;
-        var worldState = new TrieStoreScopeProvider(trieStore, dbProvider.CodeDb, logManager);
+        TrieStoreScopeProvider worldState = new(trieStore, dbProvider.CodeDb, logManager);
 
         return new WorldStateManager(worldState, trieStore, dbProvider, logManager);
     }

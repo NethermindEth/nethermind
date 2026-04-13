@@ -6,15 +6,10 @@ using Nethermind.Core;
 
 namespace Nethermind.Db
 {
-    public class InMemoryColumnWriteBatch<TKey> : IColumnsWriteBatch<TKey>
+    public class InMemoryColumnWriteBatch<TKey>(IColumnsDb<TKey> columnsDb) : IColumnsWriteBatch<TKey>
     {
         private readonly ConcurrentDictionary<TKey, IWriteBatch> _writeBatches = new();
-        private readonly IColumnsDb<TKey> _columnsDb;
-
-        public InMemoryColumnWriteBatch(IColumnsDb<TKey> columnsDb)
-        {
-            _columnsDb = columnsDb;
-        }
+        private readonly IColumnsDb<TKey> _columnsDb = columnsDb;
 
         public IWriteBatch GetColumnBatch(TKey key)
         {

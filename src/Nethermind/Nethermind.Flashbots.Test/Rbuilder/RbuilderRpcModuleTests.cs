@@ -89,7 +89,7 @@ public class RbuilderRpcModuleTests
     [Test]
     public async Task Test_calculateStateRoot()
     {
-        Dictionary<Address, AccountChange> accountDiff = new Dictionary<Address, AccountChange>();
+        Dictionary<Address, AccountChange> accountDiff = new();
         accountDiff[TestItem.AddressA] = new AccountChange()
         {
             Nonce = 10,

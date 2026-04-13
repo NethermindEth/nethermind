@@ -51,7 +51,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
-var unhandledError = "A critical error has occurred";
+string unhandledError = "A critical error has occurred";
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -233,7 +233,7 @@ void AddConfigurationOptions(Command command)
 {
     static Option CreateOption<T>(Type configType, string name, string? alias)
     {
-        var category = ConfigExtensions.GetCategoryName(configType);
+        string category = ConfigExtensions.GetCategoryName(configType);
         alias = string.IsNullOrWhiteSpace(alias) ? name : alias;
 
         return new Option<T>($"--{category}.{name}", $"--{category}-{alias}".ToLowerInvariant());
@@ -354,8 +354,8 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     {
         if (child is OptionResult result && !result.Implicit)
         {
-            var isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
-            var value = isBoolean
+            bool isBoolean = result.Option.GetType().GenericTypeArguments.SingleOrDefault() == typeof(bool);
+            string value = isBoolean
                 ? result.GetValueOrDefault<bool>().ToString().ToLowerInvariant()
                 : result.GetValueOrDefault<string>();
 
@@ -385,7 +385,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         {
             string? fallback;
 
-            foreach (var ext in new[] { ".json", ".cfg" })
+            foreach (string ext in new[] { ".json", ".cfg" })
             {
                 fallback = $"{configFile}{ext}";
 
@@ -399,7 +399,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
         // For backward compatibility. To be removed in the future.
         else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
         {
-            var name = Path.GetFileNameWithoutExtension(configFile)!;
+            string name = Path.GetFileNameWithoutExtension(configFile)!;
 
             configFile = $"{configFile[..^4]}.json";
 
@@ -418,7 +418,7 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(new JsonConfigSource(configFile));
     configProvider.Initialize();
 
-    var (ErrorMsg, Errors) = configProvider.FindIncorrectSettings();
+    (string ErrorMsg, IList<(IConfigSource Source, string Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
 
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
@@ -443,7 +443,7 @@ RootCommand CreateRootCommand()
 
     rootCommand.Description = "Nethermind Ethereum execution client";
 
-    var versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
+    VersionOption versionOption = (VersionOption)rootCommand.Children.SingleOrDefault(c => c is VersionOption);
 
     if (versionOption is not null)
     {

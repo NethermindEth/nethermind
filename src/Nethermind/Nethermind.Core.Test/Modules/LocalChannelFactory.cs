@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="networkConfig">Network config for LocalEndpoint.</param>
 public class LocalChannelFactory(string networkGroup, INetworkConfig networkConfig) : IChannelFactory
 {
-    private IPEndPoint LocalEndpoint = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
+    private IPEndPoint LocalEndpoint = new(IPAddress.Parse(networkConfig.LocalIp ?? "127.0.0.1"), networkConfig.P2PPort);
 
     public IServerChannel CreateServer()
     {
@@ -149,7 +149,7 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
                 {
                     if (channelRegistry.TryGetValue((networkGroup, addressedEnvelope.Recipient), out WeakReference<LocalDatagramChannel>? reference) && reference.TryGetTarget(out LocalDatagramChannel? recipient))
                     {
-                        DatagramPacket newEnvelop = new DatagramPacket(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
+                        DatagramPacket newEnvelop = new(addressedEnvelope.Content, _bondedEndpoint, addressedEnvelope.Recipient);
                         ReferenceCountUtil.Retain(newEnvelop);
                         recipient!.WriteInbound(newEnvelop);
                     }

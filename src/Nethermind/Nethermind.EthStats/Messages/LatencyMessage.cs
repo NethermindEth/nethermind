@@ -5,14 +5,9 @@
 // ReSharper disable UnusedAutoPropertyAccessor.Global
 namespace Nethermind.EthStats.Messages
 {
-    public class LatencyMessage : IMessage
+    public class LatencyMessage(long latency) : IMessage
     {
         public string? Id { get; set; }
-        public long Latency { get; }
-
-        public LatencyMessage(long latency)
-        {
-            Latency = latency;
-        }
+        public long Latency { get; } = latency;
     }
 }

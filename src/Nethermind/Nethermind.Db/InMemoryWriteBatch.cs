@@ -7,17 +7,12 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Db
 {
-    public class InMemoryWriteBatch : IWriteBatch
+    public class InMemoryWriteBatch(IKeyValueStore storeWithNoBatchSupport) : IWriteBatch
     {
-        private readonly IKeyValueStore _store;
+        private readonly IKeyValueStore _store = storeWithNoBatchSupport;
         // Note: need to keep order of operation
         private readonly ArrayPoolList<(byte[] Key, byte[]? Value)> _writes = new(1);
         private WriteFlags _writeFlags = WriteFlags.None;
-
-        public InMemoryWriteBatch(IKeyValueStore storeWithNoBatchSupport)
-        {
-            _store = storeWithNoBatchSupport;
-        }
 
         public void Dispose()
         {

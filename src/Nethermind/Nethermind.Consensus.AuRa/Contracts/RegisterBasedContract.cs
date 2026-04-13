@@ -8,22 +8,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class RegisterBasedContract : Contract
+    public class RegisterBasedContract(
+        IAbiEncoder abiEncoder,
+        IRegisterContract registerContract,
+        string registryKey,
+        AbiDefinition? abiDefinition = null) : Contract(abiEncoder, abiDefinition: abiDefinition)
     {
-        private readonly IRegisterContract _registerContract;
-        private readonly string _registryKey;
+        private readonly IRegisterContract _registerContract = registerContract;
+        private readonly string _registryKey = registryKey;
         private Hash256 _currentHashAddress = Keccak.Zero;
-
-        public RegisterBasedContract(
-            IAbiEncoder abiEncoder,
-            IRegisterContract registerContract,
-            string registryKey,
-            AbiDefinition? abiDefinition = null)
-            : base(abiEncoder, abiDefinition: abiDefinition)
-        {
-            _registerContract = registerContract;
-            _registryKey = registryKey;
-        }
 
         protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
         {

@@ -126,7 +126,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
             if (block.Transactions.Length == 0)
             {
                 BlockCensorshipInfo blockCensorshipInfo = new(false, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
             }
             else
@@ -189,7 +189,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
                                   || blockTxsOfTrackedAddresses * 2 < poolTxsThatAreBetterThanWorstInBlock;
 
                 BlockCensorshipInfo blockCensorshipInfo = new(isCensored, block.ParentHash);
-                BlockNumberHash blockNumberHash = new BlockNumberHash(block);
+                BlockNumberHash blockNumberHash = new(block);
                 _potentiallyCensoredBlocks.Set(blockNumberHash, blockCensorshipInfo);
 
                 if (isCensored)

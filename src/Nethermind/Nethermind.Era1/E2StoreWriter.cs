@@ -12,18 +12,13 @@ using Nethermind.Core.Resettables;
 using Snappier;
 namespace Nethermind.Era1;
 
-public class E2StoreWriter : IDisposable
+public class E2StoreWriter(Stream stream) : IDisposable
 {
     internal const int HeaderSize = 8;
-    private readonly Stream _stream;
+    private readonly Stream _stream = stream;
     private readonly IncrementalHash _checksumCalculator = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
 
     public long Position => _stream.Position;
-
-    public E2StoreWriter(Stream stream)
-    {
-        _stream = stream;
-    }
 
     public async Task<int> WriteEntryAsSnappy(ushort type, Memory<byte> bytes, CancellationToken cancellation = default)
     {

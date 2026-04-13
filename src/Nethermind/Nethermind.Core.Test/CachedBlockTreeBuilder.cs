@@ -35,7 +35,7 @@ public class CachedBlockTreeBuilder
         else
         {
             BlockTreeBuilder builder = blockTreeBuilderFactory();
-            CachedDb cachedValue = new CachedDb(
+            CachedDb cachedValue = new(
                 MemDb.CopyFrom(builder.BlocksDb),
                 MemDb.CopyFrom(builder.MetadataDb),
                 MemDb.CopyFrom(builder.HeadersDb),

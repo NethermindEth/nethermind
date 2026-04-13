@@ -164,7 +164,7 @@ public class StartBlockProducerAuRa(
 
         BlockAccessListManager balManager = new(worldState, specProvider, blockhashProvider, logManager, blocksConfig, withdrawalProcessorFactory);
 
-        var transactionExecutor = new BlockProcessor.BlockProductionTransactionsExecutor(
+        BlockProcessor.BlockProductionTransactionsExecutor transactionExecutor = new(
             new BuildUpTransactionProcessorAdapter(txProcessor),
             worldState,
             new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes),
@@ -210,7 +210,7 @@ public class StartBlockProducerAuRa(
                 _localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     _txPriorityContract?.Priorities,
                     blockTree,
@@ -316,7 +316,7 @@ public class StartBlockProducerAuRa(
 
             if (randomnessContractAddress?.Any() == true)
             {
-                RandomContractTxSource randomContractTxSource = new RandomContractTxSource(
+                RandomContractTxSource randomContractTxSource = new(
                     GetRandomContracts(randomnessContractAddress, abiEncoder,
                         readOnlyTxProcessingEnvFactory.Create(),
                         signer),
@@ -343,7 +343,7 @@ public class StartBlockProducerAuRa(
 
         if (needSigner)
         {
-            TxSealer transactionSealer = new TxSealer(engineSigner, timestamper);
+            TxSealer transactionSealer = new(engineSigner, timestamper);
             txSource = new GeneratedTxSource(txSource, transactionSealer, apiStateReader, logManager);
         }
 

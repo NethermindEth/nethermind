@@ -760,8 +760,8 @@ namespace Nethermind.Trie.Test
                     TrackPastKeys = TrackPastKeys,
                     PruningBoundary = LookupLimit,
                 };
-                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-                TrieStore trieStore = new TrieStore(
+                TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+                TrieStore trieStore = new(
                     new NodeStorage(new MemDb()),
                     pruneStrategy,
                     Persist.EveryNBlock(PersistEveryN),
@@ -801,7 +801,7 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<(TrieStoreConfigurations, int, int, int)> FuzzAccountScenarios()
         {
-            foreach (var trieStoreConfigurations in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfigurations in CreateTrieStoreConfigurations())
             {
                 yield return new(trieStoreConfigurations, 128, 128, 8);
             }
@@ -912,7 +912,7 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int uniqueValuesCount, int? seed)> FuzzAccountsWithReorganizationsScenarios()
         {
-            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
             {
                 yield return (trieStoreConfiguration, 4, 16, 4, null);
             }
@@ -1071,7 +1071,7 @@ namespace Nethermind.Trie.Test
 
         private static IEnumerable<(TrieStoreConfigurations, int accountsCount, int blocksCount, int? seed)> FuzzAccountsWithStorageScenarios()
         {
-            foreach (var trieStoreConfiguration in CreateTrieStoreConfigurations())
+            foreach (TrieStoreConfigurations trieStoreConfiguration in CreateTrieStoreConfigurations())
             {
                 yield return (trieStoreConfiguration, 96, 192, 1541344441);
                 yield return (trieStoreConfiguration, 128, 2568, 988091870);
@@ -1132,7 +1132,7 @@ namespace Nethermind.Trie.Test
             BlockHeader? baseBlock = null;
             for (int blockNumber = 0; blockNumber < blocksCount; blockNumber++)
             {
-                using var _ = stateProvider.BeginScope(baseBlock);
+                using IDisposable _ = stateProvider.BeginScope(baseBlock);
 
                 bool isEmptyBlock = _random.Next(5) == 0;
                 if (!isEmptyBlock)
@@ -1148,7 +1148,7 @@ namespace Nethermind.Trie.Test
                         if (stateProvider.AccountExists(address))
                         {
                             stateProvider.TryGetAccount(address, out AccountStruct existingStruct);
-                            Account existing = new Account(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
+                            Account existing = new(existingStruct.Nonce, existingStruct.Balance, new Hash256(existingStruct.StorageRoot), new Hash256(existingStruct.CodeHash));
                             if (existing.Balance != account.Balance)
                             {
                                 if (account.Balance > existing.Balance)
@@ -1205,7 +1205,7 @@ namespace Nethermind.Trie.Test
             {
                 try
                 {
-                    using var _ = stateProvider.BeginScope(baseBlock);
+                    using IDisposable _ = stateProvider.BeginScope(baseBlock);
                     for (int i = 0; i < addresses.Length; i++)
                     {
                         if (stateProvider.AccountExists(addresses[i]))
@@ -1239,9 +1239,9 @@ namespace Nethermind.Trie.Test
             int itemCount = 1024;
             int repetition = 100;
 
-            PruningConfig pruningConfig = new PruningConfig();
-            TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-            using TrieStore trieStore = new TrieStore(
+            PruningConfig pruningConfig = new();
+            TestFinalizedStateProvider finalizedStateProvider = new(pruningConfig.PruningBoundary);
+            using TrieStore trieStore = new(
                 new NodeStorage(new MemDb()),
                 new TestPruningStrategy(shouldPrune: true),
                 Persist.EveryBlock,
@@ -1251,9 +1251,9 @@ namespace Nethermind.Trie.Test
             );
             finalizedStateProvider.TrieStore = trieStore;
 
-            PatriciaTree tree = new PatriciaTree(trieStore, LimboLogs.Instance);
+            PatriciaTree tree = new(trieStore, LimboLogs.Instance);
 
-            using ArrayPoolList<(Hash256, Hash256)> kv = new ArrayPoolList<(Hash256, Hash256)>(itemCount);
+            using ArrayPoolList<(Hash256, Hash256)> kv = new(itemCount);
 
             Span<byte> buffer = stackalloc byte[32];
             for (int i = 0; i < itemCount; i++)
@@ -1264,7 +1264,7 @@ namespace Nethermind.Trie.Test
                 kv.Add((key, Keccak.Compute(buffer)));
             }
 
-            foreach (var it in kv)
+            foreach ((Hash256, Hash256) it in kv)
             {
                 (Hash256 key, Hash256 value) = it;
                 tree.Set(key.Bytes, value.BytesToArray());
@@ -1277,7 +1277,7 @@ namespace Nethermind.Trie.Test
 
             Parallel.For(0, repetition, (index, _) =>
             {
-                foreach (var it in kv)
+                foreach ((Hash256, Hash256) it in kv)
                 {
                     (Hash256 key, Hash256 value) = it;
                     tree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value.BytesToArray());

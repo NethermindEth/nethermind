@@ -83,7 +83,7 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                var result = new byte[65];
+                byte[] result = new byte[65];
                 Bytes.CopyTo(result);
                 result[64] = RecoveryId;
                 return result;

@@ -18,15 +18,10 @@ using Nethermind.Specs;
 
 namespace Nethermind.Network.Test.Builders
 {
-    public class SerializationBuilder : BuilderBase<IMessageSerializationService>
+    public class SerializationBuilder(ITimestamper timestamper = null) : BuilderBase<IMessageSerializationService>
     {
-        private readonly ITimestamper _timestamper;
+        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
         private List<SerializerInfo> _serializers = new();
-
-        public SerializationBuilder(ITimestamper timestamper = null)
-        {
-            _timestamper = timestamper ?? Timestamper.Default;
-        }
 
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {

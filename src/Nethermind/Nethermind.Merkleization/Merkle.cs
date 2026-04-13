@@ -21,7 +21,7 @@ public static partial class Merkle
         // ZeroHashes[0] will be UInt256.Zero
         for (int i = 1; i < 64; i++)
         {
-            var previous = ZeroHashes[i - 1];
+            UInt256 previous = ZeroHashes[i - 1];
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
             ZeroHashes[i] = new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(concatenation)));
@@ -82,8 +82,8 @@ public static partial class Merkle
 
     public static void MixIn(ref UInt256 root, int value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
-        var lengthPart = new UInt256((ulong)value, v, v, v);
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
+        UInt256 lengthPart = new((ulong)value, v, v, v);
         root = HashConcatenation(root, lengthPart, 0);
     }
 
@@ -104,7 +104,7 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, int value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
         root = new UInt256((ulong)value, v, v, v);
     }
 
@@ -115,7 +115,7 @@ public static partial class Merkle
 
     public static void Merkleize(out UInt256 root, long value)
     {
-        var v = value < 0 ? ulong.MaxValue : 0L;
+        ulong v = value < 0 ? ulong.MaxValue : 0L;
         root = new UInt256((ulong)value, v, v, v);
     }
 
@@ -141,7 +141,7 @@ public static partial class Merkle
         {
             fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
             {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
 
                 root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
             }
@@ -155,7 +155,7 @@ public static partial class Merkle
         {
             fixed (byte* buffer = &readOnlyBytes.GetPinnableReference())
             {
-                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new Span<byte>(buffer, readOnlyBytes.Length);
+                Span<byte> apiNeedsWriteableEvenThoughOnlyReading = new(buffer, readOnlyBytes.Length);
 
                 root = new UInt256(apiNeedsWriteableEvenThoughOnlyReading);
             }
@@ -371,7 +371,7 @@ public static partial class Merkle
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {
@@ -395,7 +395,7 @@ public static partial class Merkle
         }
 
         int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
-        Merkleizer merkleizer = new Merkleizer(depth);
+        Merkleizer merkleizer = new(depth);
         int length = value.Length;
         for (int i = 0; i < length; i++)
         {

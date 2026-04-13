@@ -9,13 +9,8 @@ using Nethermind.Crypto;
 
 namespace Nethermind.Consensus
 {
-    public class NethDevSealEngine : ISealer, ISealValidator
+    public class NethDevSealEngine(Address? address = null) : ISealer, ISealValidator
     {
-        public NethDevSealEngine(Address? address = null)
-        {
-            Address = address ?? Address.Zero;
-        }
-
         public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
@@ -28,7 +23,7 @@ namespace Nethermind.Consensus
             return true;
         }
 
-        public Address Address { get; }
+        public Address Address { get; } = address ?? Address.Zero;
 
         public bool ValidateParams(BlockHeader? parent, BlockHeader? header, bool isUncle = false)
         {

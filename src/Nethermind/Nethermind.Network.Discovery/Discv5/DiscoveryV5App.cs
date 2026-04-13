@@ -283,7 +283,7 @@ public sealed class DiscoveryV5App : IDiscoveryApp
 
     public void InitializeChannel(IChannel channel)
     {
-        var handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
+        NettyDiscoveryV5Handler handler = _serviceProvider.GetRequiredService<NettyDiscoveryV5Handler>();
         handler.InitializeChannel(channel);
         channel.Pipeline.AddLast(handler);
     }

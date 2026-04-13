@@ -16,7 +16,7 @@ namespace Nethermind.Core
 
         public Timestamper(long timestamp)
         {
-            var blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
+            DateTimeOffset blockTime = DateTimeOffset.FromUnixTimeSeconds(timestamp);
             _constantDate = blockTime.UtcDateTime;
         }
 

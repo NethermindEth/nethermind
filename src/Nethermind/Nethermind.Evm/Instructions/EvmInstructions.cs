@@ -26,7 +26,7 @@ public static unsafe partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         // Allocate lookup table for all possible opcodes.
-        var lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
+        delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] lookup = new delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[byte.MaxValue + 1];
 
         for (int i = 0; i < lookup.Length; i++)
         {

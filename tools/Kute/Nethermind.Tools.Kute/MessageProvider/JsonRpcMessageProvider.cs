@@ -17,7 +17,7 @@ public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
 
     public async IAsyncEnumerable<JsonRpc> Messages([EnumeratorCancellation] CancellationToken token = default)
     {
-        await foreach (var msg in _provider.Messages(token))
+        await foreach (string msg in _provider.Messages(token))
         {
             var node = JsonNode.Parse(msg);
 
@@ -25,7 +25,7 @@ public sealed class JsonRpcMessageProvider : IMessageProvider<JsonRpc>
             {
                 case JsonObject obj:
                     {
-                        var isResponse = obj["response"] is not null;
+                        bool isResponse = obj["response"] is not null;
                         if (isResponse)
                         {
                             yield return new JsonRpc.Response(node);

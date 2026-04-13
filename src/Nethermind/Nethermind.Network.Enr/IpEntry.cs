@@ -9,10 +9,8 @@ namespace Nethermind.Network.Enr;
 /// <summary>
 /// An entry storing the IP address of the node.
 /// </summary>
-public class IpEntry : EnrContentEntry<IPAddress>
+public class IpEntry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddress)
 {
-    public IpEntry(IPAddress ipAddress) : base(ipAddress) { }
-
     public override string Key => EnrContentKey.Ip;
 
     protected override int GetRlpLengthOfValue()

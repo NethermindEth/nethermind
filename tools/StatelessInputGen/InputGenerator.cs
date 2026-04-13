@@ -141,18 +141,18 @@ internal static class InputGenerator
 
     private static int GetWitnessSize(Witness witness)
     {
-        var size = 0;
+        int size = 0;
 
-        foreach (var code in witness.Codes)
+        foreach (byte[] code in witness.Codes)
             size += code.Length;
 
-        foreach (var header in witness.Headers)
+        foreach (byte[] header in witness.Headers)
             size += header.Length;
 
-        foreach (var key in witness.Keys)
+        foreach (byte[] key in witness.Keys)
             size += key.Length;
 
-        foreach (var state in witness.State)
+        foreach (byte[] state in witness.State)
             size += state.Length;
 
         return size;

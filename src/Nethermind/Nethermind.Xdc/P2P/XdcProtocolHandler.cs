@@ -54,7 +54,7 @@ internal class XdcProtocolHandler(
 
     public override void HandleMessage(ZeroPacket message)
     {
-        var size = message.Content.ReadableBytes;
+        int size = message.Content.ReadableBytes;
 
         int packetType = message.PacketType;
 

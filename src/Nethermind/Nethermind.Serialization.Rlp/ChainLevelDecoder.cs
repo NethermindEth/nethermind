@@ -9,11 +9,9 @@ using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class ChainLevelDecoder : RlpValueDecoder<ChainLevelInfo>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
+    public sealed class ChainLevelDecoder() : RlpValueDecoder<ChainLevelInfo>
     {
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ChainLevelDecoder))]
-        public ChainLevelDecoder() { }
-
         public override void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)

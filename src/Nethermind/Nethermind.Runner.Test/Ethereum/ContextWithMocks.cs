@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            NethermindApi.Dependencies apiDependencies = new NethermindApi.Dependencies(
+            NethermindApi.Dependencies apiDependencies = new(
                 Substitute.For<IConfigProvider>(),
                 new EthereumJsonSerializer(),
                 LimboLogs.Instance,
@@ -47,7 +47,7 @@ namespace Nethermind.Runner.Test.Ethereum
                     .Build()
             );
 
-            var api = new NethermindApi(apiDependencies);
+            NethermindApi api = new(apiDependencies);
             MockOutNethermindApi(api);
             return api;
         }
@@ -70,7 +70,7 @@ namespace Nethermind.Runner.Test.Ethereum
                 }
 
                 // Dynamically resolve any interface with nsubstitute
-                ComponentRegistration registration = new ComponentRegistration(
+                ComponentRegistration registration = new(
                     Guid.NewGuid(),
                     new DelegateActivator(swt.ServiceType, (c, p) =>
                     {

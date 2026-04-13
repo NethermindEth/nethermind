@@ -19,27 +19,18 @@ namespace Nethermind.Network
     /// <summary>
     /// This class should be split into multiple sources
     /// </summary>
-    public class NodesLoader : INodeSource
+    public class NodesLoader(
+        INetworkConfig networkConfig,
+        INodeStatsManager stats,
+        [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
+        IRlpxHost rlpxHost,
+        ILogManager logManager) : INodeSource
     {
-        private readonly INetworkConfig _networkConfig;
-        private readonly INodeStatsManager _stats;
-        private readonly INetworkStorage _peerStorage;
-        private readonly IRlpxHost _rlpxHost;
-        private readonly ILogger _logger;
-
-        public NodesLoader(
-            INetworkConfig networkConfig,
-            INodeStatsManager stats,
-            [KeyFilter(DbNames.PeersDb)] INetworkStorage peerStorage,
-            IRlpxHost rlpxHost,
-            ILogManager logManager)
-        {
-            _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
-            _stats = stats ?? throw new ArgumentNullException(nameof(stats));
-            _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
-            _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-        }
+        private readonly INetworkConfig _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+        private readonly INodeStatsManager _stats = stats ?? throw new ArgumentNullException(nameof(stats));
+        private readonly INetworkStorage _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+        private readonly IRlpxHost _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NodesLoader>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken)
         {
