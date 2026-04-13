@@ -10,6 +10,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 
 namespace Nethermind.Evm.Test
 {
@@ -112,6 +114,42 @@ namespace Nethermind.Evm.Test
             TestAllTracerWithOutput tracer = CreateTracer();
             TransactionResult result = _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
             return (result, tracer);
+        }
+    }
+
+    public class Eip3860WithEip8037Tests : VirtualMachineTestsBase
+    {
+        protected override long BlockNumber => 1;
+        protected override ulong Timestamp => 0;
+        protected override ISpecProvider SpecProvider { get; } = new TestSpecProvider(
+            new OverridableReleaseSpec(Amsterdam.Instance) { IsEip3860Enabled = false });
+
+        [TestCase("60006000F0")]
+        [TestCase("60006000F5")]
+        public void Eip8037_create_allows_oversized_initcode_when_eip3860_is_disabled(string createCode)
+        {
+            string dataLengthHex = (Spec.MaxInitCodeSize + 1).ToString("X");
+            if ((dataLengthHex.Length & 1) != 0)
+            {
+                dataLengthHex = "0" + dataLengthHex;
+            }
+            Instruction dataPush = Instruction.PUSH1 + (byte)(dataLengthHex.Length / 2 - 1);
+
+            bool isCreate2 = createCode[^2..] == Instruction.CREATE2.ToString("X");
+            byte[] evmCode = isCreate2
+                ? Prepare.EvmCode.PushSingle(0).FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done
+                : Prepare.EvmCode.FromCode(dataPush.ToString("X") + dataLengthHex + createCode).Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+            TestState.InsertCode(TestItem.AddressC, evmCode, Spec);
+
+            byte[] callCode = Prepare.EvmCode.Call(TestItem.AddressC, 1_000_000).Done;
+
+            TestAllTracerWithOutput tracer = Execute(Activation, 2_000_000, callCode);
+
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(tracer.ReportedActionErrors, Is.Empty);
+            Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo((UInt256)1));
         }
     }
 }

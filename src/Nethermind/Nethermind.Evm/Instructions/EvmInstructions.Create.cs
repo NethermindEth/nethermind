@@ -61,13 +61,15 @@ public static partial class EvmInstructions
     /// <typeparam name="TGasPolicy">The gas policy implementation.</typeparam>
     /// <typeparam name="TOpCreate">The type of create operation (either <see cref="OpCreate"/> or <see cref="OpCreate2"/>).</typeparam>
     /// <typeparam name="TTracingInst">Tracing instructions type used for instrumentation if active.</typeparam>
+    /// <typeparam name="TEip3860">EIP-3860 activation flag.</typeparam>
+    /// <typeparam name="TEip8037">EIP-8037 activation flag.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">Reference to the EVM stack.</param>
     /// <param name="gas">Reference to the gas state.</param>
     /// <param name="programCounter">Reference to the program counter.</param>
     /// <returns>An <see cref="EvmExceptionType"/> indicating success or the type of exception encountered.</returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip8037>(
+    public static EvmExceptionType InstructionCreate<TGasPolicy, TOpCreate, TTracingInst, TEip3860, TEip8037>(
         VirtualMachine<TGasPolicy> vm,
         ref EvmStack stack,
         ref TGasPolicy gas,
@@ -75,6 +77,7 @@ public static partial class EvmInstructions
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TOpCreate : struct, IOpCreate
         where TTracingInst : struct, IFlag
+        where TEip3860 : struct, IFlag
         where TEip8037 : struct, IFlag
     {
         // Increment metrics counter for contract creation operations.
@@ -112,8 +115,7 @@ public static partial class EvmInstructions
         }
 
         // EIP-3860: Limit the maximum size of the initialization code.
-        bool isEip3860 = spec.IsEip3860Enabled;
-        if (isEip3860)
+        if (TEip3860.IsActive)
         {
             if (initCodeLength > spec.MaxInitCodeSize)
             {
@@ -131,7 +133,7 @@ public static partial class EvmInstructions
         if (outOfGas)
             goto OutOfGas;
 
-        long initCodeWordCost = spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * initCodeWords : 0;
+        long initCodeWordCost = TEip3860.IsActive ? GasCostOf.InitCodeWord * initCodeWords : 0;
         long create2HashCost = typeof(TOpCreate) == typeof(OpCreate2) ? GasCostOf.Sha3Word * initCodeWords : 0;
         long extraCost = initCodeWordCost + create2HashCost;
 

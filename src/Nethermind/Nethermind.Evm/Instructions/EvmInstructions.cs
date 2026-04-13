@@ -268,9 +268,13 @@ public static unsafe partial class EvmInstructions
         }
 
         // Contract creation and call opcodes.
-        lookup[(int)Instruction.CREATE] = spec.IsEip8037Enabled
-            ? &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OnFlag>
-            : &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OffFlag>;
+        lookup[(int)Instruction.CREATE] = (spec.IsEip3860Enabled, spec.IsEip8037Enabled) switch
+        {
+            (true, true) => &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OnFlag, OnFlag>,
+            (true, false) => &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OnFlag, OffFlag>,
+            (false, true) => &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OffFlag, OnFlag>,
+            (false, false) => &InstructionCreate<TGasPolicy, OpCreate, TTracingInst, OffFlag, OffFlag>,
+        };
         lookup[(int)Instruction.CALL] = (spec.IsEip8037Enabled, spec.IsEip7708Enabled) switch
         {
             (true, true) => &InstructionCall<TGasPolicy, OpCall, TTracingInst, OnFlag, OnFlag>,
@@ -298,9 +302,13 @@ public static unsafe partial class EvmInstructions
         }
         if (spec.Create2OpcodeEnabled)
         {
-            lookup[(int)Instruction.CREATE2] = spec.IsEip8037Enabled
-                ? &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OnFlag>
-                : &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OffFlag>;
+            lookup[(int)Instruction.CREATE2] = (spec.IsEip3860Enabled, spec.IsEip8037Enabled) switch
+            {
+                (true, true) => &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OnFlag, OnFlag>,
+                (true, false) => &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OnFlag, OffFlag>,
+                (false, true) => &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OffFlag, OnFlag>,
+                (false, false) => &InstructionCreate<TGasPolicy, OpCreate2, TTracingInst, OffFlag, OffFlag>,
+            };
         }
 
         if (spec.StaticCallEnabled)
