@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Text.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -18,39 +17,11 @@ public sealed class BeaconApiRootsProvider(
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
 
-    // Completed results only — written once per slot, then read-only
-    private readonly ConcurrentDictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = new();
-    // In-flight fetches — prevents redundant parallel beacon node calls for the same slot
-    private readonly ConcurrentDictionary<long, Lazy<Task<(ValueHash256, ValueHash256)?>>> _inFlight = new();
-
     public void Dispose() => _client.Dispose();
 
-    public async Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
-        long slot, CancellationToken cancellationToken = default)
-    {
-        if (_cache.TryGetValue(slot, out (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot) cached))
-            return cached;
-
-        // Deduplicate concurrent callers for the same slot: only one fetch reaches the beacon node.
-        Lazy<Task<(ValueHash256, ValueHash256)?>> lazy = _inFlight.GetOrAdd(
-            slot, static (s, self) => new Lazy<Task<(ValueHash256, ValueHash256)?>>(
-                () => self.FetchWithRetryAsync(s, CancellationToken.None)), this);
-
-        (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result;
-        try
-        {
-            result = await lazy.Value.ConfigureAwait(false);
-        }
-        finally
-        {
-            _inFlight.TryRemove(slot, out _);
-        }
-
-        if (result.HasValue)
-            _cache[slot] = result.Value;
-
-        return result;
-    }
+    public Task<(ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)?> GetBeaconRoots(
+        long slot, CancellationToken cancellationToken = default) =>
+        FetchWithRetryAsync(slot, cancellationToken);
 
     private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
         long slot, CancellationToken cancellationToken) =>
