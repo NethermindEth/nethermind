@@ -7,12 +7,43 @@ using System.IO;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
 using NUnit.Framework;
+
 namespace Ethereum.Ssz.Test;
 
 [TestFixture]
 public class SszContainerTests
 {
-    private static readonly IReadOnlyDictionary<string, IContainerHandler> Handlers = new HandlerMap()
+    private abstract class ContainerHandler
+    {
+        public abstract void RunValid(byte[] ssz, UInt256 expectedRoot);
+        public abstract void RunInvalid(byte[] ssz);
+    }
+
+    private sealed class ContainerHandler<T> : ContainerHandler where T : ISszCodec<T>
+    {
+        public override void RunValid(byte[] ssz, UInt256 expectedRoot)
+        {
+            T.Decode(ssz, out T decoded);
+            Assert.That(T.Encode(decoded), Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
+
+            T.Merkleize(decoded, out UInt256 root);
+            Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
+        }
+
+        public override void RunInvalid(byte[] ssz) =>
+            Assert.That(() => T.Decode(ssz, out T _), Throws.InstanceOf<InvalidDataException>());
+    }
+
+    private sealed class HandlerMap() : Dictionary<string, ContainerHandler>(StringComparer.Ordinal)
+    {
+        public HandlerMap Add<T>() where T : ISszCodec<T>
+        {
+            this[typeof(T).Name] = new ContainerHandler<T>();
+            return this;
+        }
+    }
+
+    private static readonly IReadOnlyDictionary<string, ContainerHandler> Handlers = new HandlerMap()
         .Add<SingleFieldTestStruct>()
         .Add<SmallTestStruct>()
         .Add<FixedTestStruct>()
@@ -22,22 +53,13 @@ public class SszContainerTests
         .Add<ProgressiveTestStruct>()
         .Add<ProgressiveBitsStruct>();
 
-    private sealed class HandlerMap() : Dictionary<string, IContainerHandler>(StringComparer.Ordinal)
-    {
-        public HandlerMap Add<T>() where T : ISszCodec<T>
-        {
-            this[typeof(T).Name] = new ContainerHandler<T>();
-            return this;
-        }
-    }
-
     [TestCaseSource(nameof(ValidContainerCases))]
     public void Container_valid_roundtrip_and_root(string casePath, string containerType)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(casePath, "meta.yaml"));
 
-        Assert.That(Handlers.TryGetValue(containerType, out IContainerHandler? handler), Is.True,
+        Assert.That(Handlers.TryGetValue(containerType, out ContainerHandler? handler), Is.True,
             $"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
         handler!.RunValid(ssz, expectedRoot);
     }
@@ -47,30 +69,9 @@ public class SszContainerTests
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "serialized.ssz_snappy"));
 
-        Assert.That(Handlers.TryGetValue(containerType, out IContainerHandler? handler), Is.True,
+        Assert.That(Handlers.TryGetValue(containerType, out ContainerHandler? handler), Is.True,
             $"Unrecognized container type: {containerType} - add test support for it in {nameof(SszContainerTests)}");
         handler!.RunInvalid(ssz);
-    }
-
-    private interface IContainerHandler
-    {
-        void RunValid(byte[] ssz, UInt256 expectedRoot);
-        void RunInvalid(byte[] ssz);
-    }
-
-    private sealed class ContainerHandler<T> : IContainerHandler where T : ISszCodec<T>
-    {
-        public void RunValid(byte[] ssz, UInt256 expectedRoot)
-        {
-            T.Decode(ssz, out T decoded);
-            Assert.That(T.Encode(decoded), Is.EqualTo(ssz), "Re-encoded SSZ does not match original");
-
-            T.Merkleize(decoded, out UInt256 root);
-            Assert.That(root, Is.EqualTo(expectedRoot), "Hash tree root mismatch");
-        }
-
-        public void RunInvalid(byte[] ssz) =>
-            Assert.That(() => T.Decode(ssz, out T _), Throws.InstanceOf<InvalidDataException>());
     }
 
     /// <summary>
