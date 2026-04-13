@@ -88,61 +88,67 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.EthMessage.Hashes.Count);
         bool lastBlockIncomplete = false;
 
-        ulong sizeEstimate = 0;
-        for (int blockIndex = 0; blockIndex < getReceiptsMessage.EthMessage.Hashes.Count; blockIndex++)
+        try
         {
-            TxReceipt[] receipts = SyncServer.GetReceipts(getReceiptsMessage.EthMessage.Hashes[blockIndex]);
-            int startIndex = blockIndex == 0 ? checked((int)getReceiptsMessage.FirstBlockReceiptIndex) : 0;
-
-            if (receipts.Length == 0)
+            ulong sizeEstimate = 0;
+            for (int blockIndex = 0; blockIndex < getReceiptsMessage.EthMessage.Hashes.Count; blockIndex++)
             {
-                if (startIndex != 0)
+                TxReceipt[] receipts = SyncServer.GetReceipts(getReceiptsMessage.EthMessage.Hashes[blockIndex]);
+                int startIndex = blockIndex == 0 ? checked((int)getReceiptsMessage.FirstBlockReceiptIndex) : 0;
+
+                if (receipts.Length == 0)
                 {
-                    txReceipts.Dispose();
-                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
+                    if (startIndex != 0)
+                    {
+                        throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
+                    }
+
+                    txReceipts.Add([]);
+                    continue;
                 }
 
-                txReceipts.Add([]);
-                continue;
-            }
-
-            if (startIndex < 0 || startIndex >= receipts.Length)
-            {
-                txReceipts.Dispose();
-                throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
-            }
-
-            int taken = 0;
-
-            for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
-            {
-                taken++;
-                sizeEstimate += MessageSizeEstimator.EstimateSize(receipts[receiptIndex]);
-
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                if (startIndex < 0 || startIndex >= receipts.Length)
                 {
-                    lastBlockIncomplete = receiptIndex < receipts.Length - 1 || cancellationToken.IsCancellationRequested;
+                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for block receipts length {receipts.Length}");
+                }
+
+                int taken = 0;
+
+                for (int receiptIndex = startIndex; receiptIndex < receipts.Length; receiptIndex++)
+                {
+                    taken++;
+                    sizeEstimate += MessageSizeEstimator.EstimateSize(receipts[receiptIndex]);
+
+                    if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
+                    {
+                        lastBlockIncomplete = receiptIndex < receipts.Length - 1 || cancellationToken.IsCancellationRequested;
+                        break;
+                    }
+                }
+
+                if (lastBlockIncomplete && MessageSizeEstimator.EstimateSize(receipts) < SoftOutgoingMessageSizeLimit / 2)
+                {
+                    lastBlockIncomplete = false;
+                    break;
+                }
+
+                TxReceipt[] truncated = new TxReceipt[taken];
+                Array.Copy(receipts, startIndex, truncated, 0, taken);
+                txReceipts.Add(truncated);
+
+                if (lastBlockIncomplete || cancellationToken.IsCancellationRequested)
+                {
                     break;
                 }
             }
 
-            if (lastBlockIncomplete && MessageSizeEstimator.EstimateSize(receipts) < SoftOutgoingMessageSizeLimit / 2)
-            {
-                lastBlockIncomplete = false;
-                break;
-            }
-
-            TxReceipt[] truncated = new TxReceipt[taken];
-            Array.Copy(receipts, startIndex, truncated, 0, taken);
-            txReceipts.Add(truncated);
-
-            if (lastBlockIncomplete || cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
+            return Task.FromResult(new ReceiptsResponse(txReceipts, lastBlockIncomplete));
         }
-
-        return Task.FromResult(new ReceiptsResponse(txReceipts, lastBlockIncomplete));
+        catch
+        {
+            txReceipts.Dispose();
+            throw;
+        }
     }
 
     public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
@@ -187,7 +193,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                     if (response.EthMessage.TxReceipts.Count == 0)
                     {
-                        throw new SubprotocolException("Received empty Receipts payload in eth/70 response");
+                        if (response.LastBlockIncomplete || firstBlockReceiptIndex > 0)
+                        {
+                            throw new SubprotocolException("Peer returned no progress for partial receipts");
+                        }
+
+                        break;
                     }
 
                     if (response.EthMessage.TxReceipts.Count > blockHashes.Count - blockIndex)
