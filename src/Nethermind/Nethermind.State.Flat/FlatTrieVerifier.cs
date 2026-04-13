@@ -67,7 +67,7 @@ public class FlatTrieVerifier
         ArgumentNullException.ThrowIfNull(_persistence);
         ArgumentNullException.ThrowIfNull(_flatDbManager);
 
-        StateId stateId = new StateId(stateAtBlock);
+        StateId stateId = new(stateAtBlock);
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         if (reader.CurrentState != stateId)
         {
@@ -682,7 +682,7 @@ public class FlatTrieVerifier
             }
 
             // Navigate based on node type
-            TreePath fullPath = new TreePath(flatKey, 64);
+            TreePath fullPath = new(flatKey, 64);
             switch (currentNode.NodeType)
             {
                 case NodeType.Branch:
@@ -760,7 +760,7 @@ public class FlatTrieVerifier
 
         if (_logger.IsInfo) _logger.Info($"  -> Scanning remaining path with zero hash...");
 
-        TreePath fullPath = new TreePath(flatKey, 64);
+        TreePath fullPath = new(flatKey, 64);
         while (currentPath.Length < lookupLimit)
         {
             int nibble = fullPath[currentPath.Length];

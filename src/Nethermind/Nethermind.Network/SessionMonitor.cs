@@ -73,7 +73,7 @@ namespace Nethermind.Network
 
         private async Task SendPingMessagesAsync()
         {
-            var token = _cancellationTokenSource.Token;
+            CancellationToken token = _cancellationTokenSource.Token;
             while (!token.IsCancellationRequested
                 && await _pingTimer.WaitForNextTickAsync(token))
             {

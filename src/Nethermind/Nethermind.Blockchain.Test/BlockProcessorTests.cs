@@ -127,7 +127,7 @@ public class BlockProcessorTests
         testRpc.TestWallet.UnlockAccount(address, new SecureString());
         await testRpc.AddFunds(address, 1.Ether);
         await testRpc.AddBlock();
-        SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+        SemaphoreSlim suggestedBlockResetEvent = new(0);
         testRpc.BlockTree.NewHeadBlock += (_, _) =>
         {
             suggestedBlockResetEvent.Release(1);
@@ -307,7 +307,7 @@ public class BlockProcessorTests
         BlockToProduce newBlock = new(Build.A.BlockHeader.WithExcessBlobGas(0).TestObject);
         IWorldState stateProvider = new WorldStateStab();
 
-        using var _ = stateProvider.BeginScope(IWorldState.PreGenesis);
+        using IDisposable _ = stateProvider.BeginScope(IWorldState.PreGenesis);
 
         Transaction? addedTransaction = null;
         txPicker.AddingTransaction += (s, e) => addedTransaction = e.Transaction;

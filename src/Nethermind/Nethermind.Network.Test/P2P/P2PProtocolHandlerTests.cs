@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.P2P
             // to account for adaptive packet type
             data.ReadByte();
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -179,7 +179,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -226,7 +226,7 @@ namespace Nethermind.Network.Test.P2P
             using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
             data.ReadByte(); // adaptive packet type
 
-            Packet packet = new Packet(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadAllBytesAsArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,

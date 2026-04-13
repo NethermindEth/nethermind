@@ -47,7 +47,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            var (value, length) = DecodeUInt(data, position, packed);
+            (UInt256 value, int length) = DecodeUInt(data, position, packed);
 
             return Length switch
             {

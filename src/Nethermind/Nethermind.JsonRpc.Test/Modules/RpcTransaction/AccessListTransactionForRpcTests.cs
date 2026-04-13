@@ -84,7 +84,7 @@ public static class AccessListTransactionForRpcTests
         // Surprising inconsistency in `FluentAssertions` where `AllSatisfy` fails on empty collections.
         // This requires wrapping the assertion in a condition.
         // See: https://github.com/fluentassertions/fluentassertions/discussions/2143#discussioncomment-9677309
-        var accessList = json.GetProperty("accessList").EnumerateArray();
+        JsonElement.ArrayEnumerator accessList = json.GetProperty("accessList").EnumerateArray();
         if (accessList.Any())
         {
             accessList.Should().AllSatisfy(static item =>
@@ -96,9 +96,9 @@ public static class AccessListTransactionForRpcTests
             });
         }
         json.GetProperty("chainId").GetString().Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        var yParity = json.GetProperty("yParity").GetString();
+        string? yParity = json.GetProperty("yParity").GetString();
         yParity.Should().MatchRegex("^0x([1-9a-f]+[0-9a-f]*|0)$");
-        if (json.TryGetProperty("v", out var v))
+        if (json.TryGetProperty("v", out JsonElement v))
         {
             v.GetString().Should().Be(yParity);
         }

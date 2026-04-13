@@ -16,9 +16,9 @@ public static class Program
         Dictionary<string, long> pathsToBeTested = GetPathsToBeTested(directories);
 
         // Sort the tests by size in descending order
-        var sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
+        List<KeyValuePair<string, long>> sortedTests = pathsToBeTested.OrderByDescending(kv => kv.Value).ToList();
 
-        var groupedTestNames = new SortedList<long, List<string>>();
+        SortedList<long, List<string>> groupedTestNames = new SortedList<long, List<string>>();
 
         foreach (var test in sortedTests)
         {

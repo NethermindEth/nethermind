@@ -12,28 +12,18 @@ namespace Nethermind.Core.Collections;
 /// without an explicit TryTrim. Also allow specifying object pool of node to be shared between multiple stacks.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public class CompactStack<T>
+public class CompactStack<T>(ObjectPool<CompactStack<T>.Node>? nodePool = null)
 {
-    public class Node
+    public class Node(int nodeSize)
     {
         internal Node? _tail = null;
-        internal T[] _array = null!;
+        internal T[] _array = new T[nodeSize];
         internal int _count = 0;
-
-        public Node(int nodeSize)
-        {
-            _array = new T[nodeSize];
-        }
     }
 
-    public class ObjectPoolPolicy : IPooledObjectPolicy<Node>
+    public class ObjectPoolPolicy(int nodeSize) : IPooledObjectPolicy<Node>
     {
-        private readonly int _nodeSize;
-
-        public ObjectPoolPolicy(int nodeSize)
-        {
-            _nodeSize = nodeSize;
-        }
+        private readonly int _nodeSize = nodeSize;
 
         public Node Create()
         {
@@ -48,13 +38,8 @@ public class CompactStack<T>
         }
     }
 
-    private readonly ObjectPool<Node> _nodePool;
+    private readonly ObjectPool<Node> _nodePool = nodePool ?? new DefaultObjectPool<Node>(new ObjectPoolPolicy(64), 1);
     private Node? _head = null;
-
-    public CompactStack(ObjectPool<Node>? nodePool = null)
-    {
-        _nodePool = nodePool ?? new DefaultObjectPool<Node>(new ObjectPoolPolicy(64), 1);
-    }
 
     public bool IsEmpty => _head is null;
 

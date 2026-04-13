@@ -100,9 +100,9 @@ public static class Config
             var labels = new Dictionary<string, string>();
             foreach (var token in r.Tokens)
             {
-                foreach (var pair in token.Value.Split(','))
+                foreach (string pair in token.Value.Split(','))
                 {
-                    var parts = pair.Split('=', 2);
+                    string[] parts = pair.Split('=', 2);
                     if (parts.Length == 2)
                     {
                         labels.Add(parts[0], parts[1]);

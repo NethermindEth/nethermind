@@ -40,7 +40,7 @@ namespace Nethermind.Benchmarks.Core
             _ethereumEcdsa = new(_specProvider.ChainId);
             _sut = new(_ethereumEcdsa, _specProvider, NullLogManager.Instance);
 
-            var rnd = new Random();
+            Random rnd = new();
 
             _block100TxWith100AuthSigs = Build.A.Block
                 .WithHeader(new BlockHeader()
@@ -97,7 +97,7 @@ namespace Nethermind.Benchmarks.Core
 
             Transaction[] CreateTransactions(int txCount, int authPerTx)
             {
-                var list = new List<Transaction>();
+                List<Transaction> list = new();
                 for (int i = 0; i < txCount; i++)
                 {
                     PrivateKey signer = _privateKeys[i];

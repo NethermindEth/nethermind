@@ -11,13 +11,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
 
-public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
 {
-    public PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver)
-        : base(ecdsa, nodeKey, nodeIdResolver)
-    {
-    }
-
     public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
     {
         (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);

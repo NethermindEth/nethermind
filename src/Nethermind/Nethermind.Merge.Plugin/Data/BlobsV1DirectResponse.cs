@@ -19,14 +19,9 @@ namespace Nethermind.Merge.Plugin.Data;
 /// directly into a <see cref="PipeWriter"/>, bypassing <see cref="System.Text.Json.Utf8JsonWriter"/>
 /// to avoid extra buffer copies for large blob payloads.
 /// </summary>
-public sealed class BlobsV1DirectResponse : IStreamableResult, IEnumerable<BlobAndProofV1?>, IDisposable
+public sealed class BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items) : IStreamableResult, IEnumerable<BlobAndProofV1?>, IDisposable
 {
-    private readonly ArrayPoolList<BlobAndProofV1?> _items;
-
-    public BlobsV1DirectResponse(ArrayPoolList<BlobAndProofV1?> items)
-    {
-        _items = items;
-    }
+    private readonly ArrayPoolList<BlobAndProofV1?> _items = items;
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {

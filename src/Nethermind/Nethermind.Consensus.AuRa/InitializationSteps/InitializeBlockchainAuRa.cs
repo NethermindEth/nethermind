@@ -26,7 +26,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
 
     protected override async Task InitBlockchain()
     {
-        var chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
+        AuRaChainSpecEngineParameters chainSpecAuRa = api.ChainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>();
         api.FinalizationManager = new AuRaBlockFinalizationManager(
             api.BlockTree!,
             api.ChainLevelInfoRepository!,
@@ -53,7 +53,7 @@ public class InitializeBlockchainAuRa(AuRaNethermindApi api, IChainHeadInfoProvi
                 localDataSource?.GetWhitelistLocalDataSource() ?? new EmptyLocalDataSource<IEnumerable<Address>>());
 
             DictionaryContractDataStore<TxPriorityContract.Destination> prioritiesContractDataStore =
-                new DictionaryContractDataStore<TxPriorityContract.Destination>(
+                new(
                     new TxPriorityContract.DestinationSortedListContractDataStoreCollection(),
                     txPriorityContract?.Priorities,
                     api.BlockTree,

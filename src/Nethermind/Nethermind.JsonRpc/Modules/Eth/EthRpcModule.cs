@@ -197,7 +197,7 @@ public partial class EthRpcModule(
         }
         catch (MissingTrieNodeException e)
         {
-            var hash = e.Hash;
+            Hash256 hash = e.Hash;
             return ResultWrapper<byte[]>.Fail($"missing trie node {hash} (path ) state {hash} is not available", ErrorCodes.InvalidInput);
         }
     }
@@ -927,7 +927,7 @@ public partial class EthRpcModule(
 
         using IEnumerator<FilterLog> expectedEnum = expectedResponse.GetEnumerator();
 
-        var i = -1;
+        int i = -1;
         while (++i < response.Count | expectedEnum.MoveNext())
         {
             FilterLog? actual = i < response.Count ? response[i] : null;

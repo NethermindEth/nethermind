@@ -51,17 +51,11 @@ namespace Nethermind.Serialization.Json
             return converter;
         }
 
-        private class DictionaryAddressKeyConverterInner<TKey, TValue> :
+        private class DictionaryAddressKeyConverterInner<TKey, TValue>(JsonSerializerOptions options) :
             JsonConverter<Dictionary<TKey, TValue>> where TKey : notnull
         {
-            private readonly JsonConverter<TValue> _valueConverter;
-
-            public DictionaryAddressKeyConverterInner(JsonSerializerOptions options)
-            {
-                // For performance, use the existing converter.
-                _valueConverter = (JsonConverter<TValue>)options
+            private readonly JsonConverter<TValue> _valueConverter = (JsonConverter<TValue>)options
                     .GetConverter(typeof(TValue));
-            }
 
             public override Dictionary<TKey, TValue> Read(
                 ref Utf8JsonReader reader,
@@ -73,7 +67,7 @@ namespace Nethermind.Serialization.Json
                     throw new JsonException($"JsonTokenType was of type {reader.TokenType}, only objects are supported");
                 }
 
-                var dictionary = new Dictionary<TKey, TValue>();
+                Dictionary<TKey, TValue> dictionary = new();
                 while (reader.Read())
                 {
                     if (reader.TokenType == JsonTokenType.EndObject)
@@ -86,7 +80,7 @@ namespace Nethermind.Serialization.Json
                         throw new JsonException("JsonTokenType was not PropertyName");
                     }
 
-                    var propertyName = reader.GetString();
+                    string? propertyName = reader.GetString();
 
                     if (string.IsNullOrWhiteSpace(propertyName))
                     {

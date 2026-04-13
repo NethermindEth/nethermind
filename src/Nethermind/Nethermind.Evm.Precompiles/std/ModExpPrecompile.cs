@@ -28,7 +28,7 @@ public unsafe partial class ModExpPrecompile
             return errorOrEmpty;
         }
 
-        using var modulusInt = mpz_t.Create();
+        using mpz_t modulusInt = mpz_t.Create();
 
         ReadOnlySpan<byte> modulusDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength + (int)expLength, (int)modulusLength);
 
@@ -41,9 +41,9 @@ public unsafe partial class ModExpPrecompile
         if (Gmp.mpz_sgn(modulusInt) == 0)
             return new byte[modulusLength];
 
-        using var baseInt = mpz_t.Create();
-        using var expInt = mpz_t.Create();
-        using var powmResult = mpz_t.Create();
+        using mpz_t baseInt = mpz_t.Create();
+        using mpz_t expInt = mpz_t.Create();
+        using mpz_t powmResult = mpz_t.Create();
 
         ReadOnlySpan<byte> baseDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(96, (int)baseLength);
 

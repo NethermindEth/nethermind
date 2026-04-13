@@ -14,7 +14,7 @@ namespace Nethermind.Logging
     {
         private readonly LogLevel _logLevel;
         private readonly string _prefix;
-        private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
+        private readonly BlockingCollection<string> _queuedEntries = new(new ConcurrentQueue<string>());
 
         public void Flush()
         {

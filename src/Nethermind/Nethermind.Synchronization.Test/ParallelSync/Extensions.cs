@@ -25,14 +25,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             return new FastBlocksFinishedState(syncProgressResolver);
         }
 
-        internal class FastBlocksFinishedState
+        internal class FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
         {
-            private readonly ISyncProgressResolver _syncProgressResolver;
-
-            public FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
-            {
-                _syncProgressResolver = syncProgressResolver;
-            }
+            private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
 
             public void Returns(FastBlocksState returns)
             {

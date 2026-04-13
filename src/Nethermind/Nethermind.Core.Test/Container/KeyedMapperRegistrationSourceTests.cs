@@ -27,7 +27,7 @@ public class KeyedMapperRegistrationSourceTests
     {
         bool adapterWasDisposed = false;
 
-        var builder = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddKeyedSingleton<ClassA>("Key", new ClassA("Property1"));
 
         if (shouldDispose)

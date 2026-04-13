@@ -728,7 +728,7 @@ namespace Nethermind.TxPool
         {
             if (transaction.HasAuthorizationList)
             {
-                foreach (var auth in transaction.AuthorizationList)
+                foreach (AuthorizationTuple auth in transaction.AuthorizationList)
                 {
                     if (auth.Authority is not null)
                         _pendingDelegations.DecrementDelegationCount(auth.Authority!);
@@ -1042,7 +1042,7 @@ namespace Nethermind.TxPool
 
             public bool TryGetAccount(Address address, out AccountStruct account)
             {
-                var cache = _caches[GetCacheIndex(address)];
+                ClockCache<AddressAsKey, AccountStruct> cache = _caches[GetCacheIndex(address)];
                 if (!cache.TryGet(new AddressAsKey(address), out account))
                 {
                     if (!_provider.TryGetAccount(address, out account))

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Xdc.Spec;
@@ -20,31 +22,31 @@ public class VoteTests
     [Test]
     public async Task HandleVote_SuccessfullyGenerateAndProcessQc()
     {
-        using var blockchain = await XdcTestBlockchain.Create();
-        var votesManager = CreateVotesManager(blockchain);
+        using XdcTestBlockchain blockchain = await XdcTestBlockchain.Create();
+        VotesManager votesManager = CreateVotesManager(blockchain);
         IXdcConsensusContext ctx = blockchain.XdcContext;
 
         // Add a new block with NO QC simulation
-        var freshBlock = await blockchain.AddBlockWithoutCommitQc();
-        var header = (freshBlock.Header as XdcBlockHeader)!;
+        Block freshBlock = await blockchain.AddBlockWithoutCommitQc();
+        XdcBlockHeader header = (freshBlock.Header as XdcBlockHeader)!;
 
-        var currentBlockHash = freshBlock?.Hash!;
+        Hash256 currentBlockHash = freshBlock?.Hash!;
         IXdcReleaseSpec releaseSpec = blockchain.SpecProvider.GetXdcSpec(header, ctx.CurrentRound);
-        var switchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(header)!;
+        EpochSwitchInfo switchInfo = blockchain.EpochSwitchManager.GetEpochSwitchInfo(header)!;
         PrivateKey[] keys = blockchain.TakeRandomMasterNodes(releaseSpec, switchInfo);
-        var blockInfo = new BlockRoundInfo(currentBlockHash, ctx.CurrentRound, freshBlock!.Number);
-        var gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % releaseSpec.EpochLength - releaseSpec.Gap);
+        BlockRoundInfo blockInfo = new(currentBlockHash, ctx.CurrentRound, freshBlock!.Number);
+        ulong gap = (ulong)Math.Max(0, switchInfo.EpochSwitchBlockInfo.BlockNumber - switchInfo.EpochSwitchBlockInfo.BlockNumber % releaseSpec.EpochLength - releaseSpec.Gap);
 
         // Initial values to check
-        var initialLockQc = ctx.LockQC;
-        var initialRound = ctx.CurrentRound;
-        var initialHighestQc = ctx.HighestQC;
+        QuorumCertificate? initialLockQc = ctx.LockQC;
+        ulong initialRound = ctx.CurrentRound;
+        QuorumCertificate initialHighestQc = ctx.HighestQC;
         Assert.That(header.ExtraConsensusData!.BlockRound, Is.EqualTo(ctx.CurrentRound));
 
         // Amount of votes processed in this loop will be 1 less than the required to reach the threshold
         for (int i = 0; i < keys.Length - 1; i++)
         {
-            var newVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys[i]);
+            Vote newVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys[i]);
             await votesManager.HandleVote(newVote);
         }
         // Check same values as before: qc has not yet been processed, so there should be no changes
@@ -53,8 +55,8 @@ public class VoteTests
         ctx.HighestQC.Should().BeEquivalentTo(initialHighestQc);
 
         // Create another vote which is signed by someone not from the master node list
-        var randomKey = blockchain.RandomKeys.First();
-        var randomVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, randomKey);
+        PrivateKey randomKey = blockchain.RandomKeys.First();
+        Vote randomVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, randomKey);
         await votesManager.HandleVote(randomVote);
 
         // Again same check: vote is not valid so threshold is not yet reached
@@ -63,7 +65,7 @@ public class VoteTests
         ctx.HighestQC.Should().BeEquivalentTo(initialHighestQc);
 
         // Create a vote message that should trigger qc processing and increment the round
-        var lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
+        Vote lastVote = XdcTestHelper.BuildSignedVote(blockInfo, gap, keys.Last());
         await votesManager.HandleVote(lastVote);
         // Check new round has been set
         Assert.That(ctx.CurrentRound, Is.EqualTo(initialRound + 1));

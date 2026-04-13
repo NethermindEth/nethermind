@@ -60,7 +60,7 @@ namespace Nethermind.Synchronization.FastSync
             _lastSyncProgress = progress;
             double priority = CalculatePriority(stateSyncItem.NodeDataType, stateSyncItem.Level, stateSyncItem.Rightness);
 
-            var selectedCollection = stateSyncItem.NodeDataType switch
+            ConcurrentStack<StateSyncItem> selectedCollection = stateSyncItem.NodeDataType switch
             {
                 NodeDataType.Code => CodeItems,
                 NodeDataType.State when priority <= 0.5f => StateItemsPriority0,
@@ -187,7 +187,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 for (int i = 0; i < codeMaxCount; i++)
                 {
-                    if (CodeItems.TryPop(out var codeItem))
+                    if (CodeItems.TryPop(out StateSyncItem codeItem))
                     {
                         requestItems.Add(codeItem!);
                     }

@@ -24,7 +24,7 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
 
         if (bytes.Length < 64)
         {
-            var newArray = new byte[64];
+            byte[] newArray = new byte[64];
             bytes.AsSpan().CopyTo(newArray.AsSpan(64 - bytes.Length));
             bytes = newArray;
         }

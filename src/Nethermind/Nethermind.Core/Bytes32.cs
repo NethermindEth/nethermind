@@ -64,7 +64,7 @@ public class Bytes32 : IEquatable<Bytes32>
         return left.Equals(right);
     }
 
-    public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
+    public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new(span);
 
     public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
 

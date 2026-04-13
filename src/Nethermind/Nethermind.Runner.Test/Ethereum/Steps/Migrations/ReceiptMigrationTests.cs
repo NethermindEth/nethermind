@@ -117,16 +117,10 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
             }
         }
 
-        private class TestReceiptStorage : IReceiptStorage
+        private class TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage) : IReceiptStorage
         {
-            private readonly IReceiptStorage _inStorage;
-            private readonly IReceiptStorage _outStorage;
-
-            public TestReceiptStorage(IReceiptStorage inStorage, IReceiptStorage outStorage)
-            {
-                _inStorage = inStorage;
-                _outStorage = outStorage;
-            }
+            private readonly IReceiptStorage _inStorage = inStorage;
+            private readonly IReceiptStorage _outStorage = outStorage;
 
             public Hash256 FindBlockHash(Hash256 txHash) => _inStorage.FindBlockHash(txHash);
 

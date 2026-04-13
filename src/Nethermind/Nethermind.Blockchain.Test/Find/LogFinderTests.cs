@@ -119,10 +119,10 @@ public class LogFinderTests
     {
         SetUp(allowReceiptIterator);
         StoreTreeBlooms(withBloomDb);
-        var logFilter = AllBlockFilter().Build();
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        LogFilter logFilter = AllBlockFilter().Build();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
         logs.Length.Should().Be(5);
-        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
+        int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         // indexes[0].Should().Be(0);
         // indexes[1].Should().Be(1);
         // indexes[2].Should().Be(0);
@@ -137,7 +137,7 @@ public class LogFinderTests
         SetUp(allowReceiptIterator);
         LogFilter logFilter = AllBlockFilter().Build();
         FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
-        var indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
+        int[] indexes = logs.Select(static l => (int)l.LogIndex).ToArray();
         Assert.That(indexes, Is.EqualTo([0, 1, 0, 1, 2]));
     }
 
@@ -148,7 +148,7 @@ public class LogFinderTests
         _receiptStorage = NullReceiptStorage.Instance;
         _logFinder = CreateLogFinder();
 
-        var logFilter = AllBlockFilter().Build();
+        LogFilter logFilter = AllBlockFilter().Build();
 
         _logFinder.Invoking(it => it.FindLogs(logFilter))
             .Should()
@@ -163,7 +163,7 @@ public class LogFinderTests
 
         SetupHeadWithNoTransaction();
 
-        var logFilter = AllBlockFilter().Build();
+        LogFilter logFilter = AllBlockFilter().Build();
 
         _logFinder.Invoking(it => it.FindLogs(logFilter))
             .Should()
@@ -174,10 +174,10 @@ public class LogFinderTests
     public void filter_all_logs_should_throw_when_to_block_is_not_found([ValueSource(nameof(WithBloomValues))] bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var blockFinder = Substitute.For<IBlockFinder>();
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         _logFinder = CreateLogFinder(blockFinder);
-        var logFilter = AllBlockFilter().Build();
-        var action = new Func<IEnumerable<FilterLog>>(() => _logFinder.FindLogs(logFilter));
+        LogFilter logFilter = AllBlockFilter().Build();
+        Func<IEnumerable<FilterLog>> action = new(() => _logFinder.FindLogs(logFilter));
         action.Should().Throw<ResourceNotFoundException>();
         blockFinder.Received().FindHeader(logFilter.ToBlock, false);
         blockFinder.DidNotReceive().FindHeader(logFilter.FromBlock);
@@ -205,11 +205,11 @@ public class LogFinderTests
     public void filter_by_address(Address[] addresses, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var filterBuilder = AllBlockFilter();
+        FilterBuilder filterBuilder = AllBlockFilter();
         filterBuilder = addresses.Length == 1 ? filterBuilder.WithAddress(addresses[0]) : filterBuilder.WithAddresses(addresses);
-        var logFilter = filterBuilder.Build();
+        LogFilter logFilter = filterBuilder.Build();
 
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
         logs.Length.Should().Be(expectedCount);
     }
@@ -238,11 +238,11 @@ public class LogFinderTests
     public void filter_by_topics_and_return_logs_in_order(TopicExpression[] topics, bool withBloomDb, long[] expectedBlockNumbers)
     {
         StoreTreeBlooms(withBloomDb);
-        var logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
+        LogFilter logFilter = AllBlockFilter().WithTopicExpressions(topics).Build();
 
-        var logs = _logFinder.FindLogs(logFilter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(logFilter).ToArray();
 
-        var blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
+        long[] blockNumbers = logs.Select(static (log) => log.BlockNumber).ToArray();
         Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
     }
 
@@ -270,7 +270,7 @@ public class LogFinderTests
     public void filter_by_blocks(LogFilter filter, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         logs.Length.Should().Be(expectedCount);
     }
 
@@ -279,8 +279,8 @@ public class LogFinderTests
     {
         StoreTreeBlooms(withBloomDb);
         _logFinder = CreateLogFinder();
-        var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        LogFilter filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
 
         logs.Length.Should().Be(3);
     }
@@ -311,7 +311,7 @@ public class LogFinderTests
     public void complex_filter(LogFilter filter, int expectedCount, bool withBloomDb)
     {
         StoreTreeBlooms(withBloomDb);
-        var logs = _logFinder.FindLogs(filter).ToArray();
+        FilterLog[] logs = _logFinder.FindLogs(filter).ToArray();
         logs.Length.Should().Be(expectedCount);
     }
 
@@ -319,14 +319,14 @@ public class LogFinderTests
     [NonParallelizable]
     public async Task Throw_log_finder_operation_canceled_after_given_timeout([Values(2, 0.01)] double waitTime)
     {
-        var timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
+        TimeSpan timeout = TimeSpan.FromMilliseconds(Timeout.MaxWaitTime);
         using CancellationTokenSource cancellationTokenSource = new(timeout);
         CancellationToken cancellationToken = cancellationTokenSource.Token;
 
         StoreTreeBlooms(true);
         _logFinder = CreateLogFinder();
-        var logFilter = AllBlockFilter().Build();
-        var logs = _logFinder.FindLogs(logFilter, cancellationToken);
+        LogFilter logFilter = AllBlockFilter().Build();
+        IEnumerable<FilterLog> logs = _logFinder.FindLogs(logFilter, cancellationToken);
 
         await Task.Delay(timeout * waitTime);
 
@@ -413,7 +413,7 @@ public class LogFinderTests
     {
         SetUp(true, chainLength: 10);
 
-        var logIndexStorage = Substitute.For<ILogIndexStorage>();
+        ILogIndexStorage logIndexStorage = Substitute.For<ILogIndexStorage>();
         logIndexStorage.Enabled.Returns(true);
         logIndexStorage.MinBlockNumber.Returns(indexFrom);
         logIndexStorage.MaxBlockNumber.Returns(indexTo);
@@ -428,7 +428,7 @@ public class LogFinderTests
             .WithAddress(address)
             .Build();
 
-        var logFinder = new IndexedLogFinder(
+        IndexedLogFinder logFinder = new(
             _blockTree, _receiptStorage, _receiptStorage, _bloomStorage, LimboLogs.Instance, _receiptsRecovery,
             logIndexStorage, minBlocksToUseIndex: 1
         );

@@ -24,7 +24,7 @@ public class TreePathTests
     [Test]
     public void TestIndexWrite()
     {
-        TreePath path = new TreePath(Keccak.Zero, 64);
+        TreePath path = new(Keccak.Zero, 64);
         for (int i = 0; i < 64; i++)
         {
             path[i] = (byte)(i % 16);
@@ -37,7 +37,7 @@ public class TreePathTests
     [Test]
     public void TestIndexRead()
     {
-        TreePath path = new TreePath(new ValueHash256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"), 64);
+        TreePath path = new(new ValueHash256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"), 64);
         for (int i = 0; i < 64; i++)
         {
             path[i].Should().Be((byte)(i % 16));
@@ -52,7 +52,7 @@ public class TreePathTests
         {
             nibbles[i] = (byte)(i % 16);
         }
-        TreePath path = new TreePath();
+        TreePath path = new();
         TreePath newPath = path.Append(nibbles);
 
         path.Length.Should().Be(0);
@@ -73,7 +73,7 @@ public class TreePathTests
         {
             nibbles[i] = (byte)(i % 16);
         }
-        TreePath path = new TreePath();
+        TreePath path = new();
         path = path.Append(nibbles.AsSpan(0, partition));
         path.Length.Should().Be(partition);
         path = path.Append(nibbles.AsSpan(partition));
@@ -94,9 +94,9 @@ public class TreePathTests
     [TestCase(30, 16, "0x0123456789abcdef000000000000000000000000000000000000000000000000")]
     public void TestTruncate(int truncate1, int truncate2, string expectedHash)
     {
-        ValueHash256 originalHash = new ValueHash256("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        ValueHash256 originalHash = new("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
 
-        TreePath path = new TreePath(originalHash, 64);
+        TreePath path = new(originalHash, 64);
         path = path.Truncate(truncate1);
         path.Length.Should().Be(truncate1);
         path = path.Truncate(truncate2);
@@ -218,7 +218,7 @@ public class TreePathTests
 
     private static TreePath CreateFullTreePath()
     {
-        TreePath path = new TreePath();
+        TreePath path = new();
         for (int i = 0; i < 64; i++)
         {
             path = path.Append((byte)(i % 16));

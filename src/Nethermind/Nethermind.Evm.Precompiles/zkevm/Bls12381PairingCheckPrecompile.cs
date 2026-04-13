@@ -18,8 +18,8 @@ public partial class Bls12381PairingCheckPrecompile
         if (!ValidateInputLength(inputData))
             return Errors.InvalidInputLength;
 
-        var pairCount = inputData.Length / PairSize;
-        var decodedLen = (Eip2537.LenG1Trimmed + Eip2537.LenG2Trimmed) * pairCount;
+        int pairCount = inputData.Length / PairSize;
+        int decodedLen = (Eip2537.LenG1Trimmed + Eip2537.LenG2Trimmed) * pairCount;
 
         if (pairCount <= StackallocPairCountThreshold)
         {

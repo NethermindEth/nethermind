@@ -19,10 +19,10 @@ namespace Nethermind.Abi.Test.Json
         [TestCase(typeof(ValidatorContract))]
         public void Can_load_contract(Type contractType)
         {
-            var parser = new AbiDefinitionParser();
-            var json = AbiDefinitionParser.LoadContract(contractType);
-            var contract = parser.Parse(json);
-            var serialized = AbiDefinitionParser.Serialize(contract);
+            AbiDefinitionParser parser = new();
+            string json = AbiDefinitionParser.LoadContract(contractType);
+            AbiDefinition contract = parser.Parse(json);
+            string serialized = AbiDefinitionParser.Serialize(contract);
             JToken.Parse(serialized).Should().ContainSubtree(json);
         }
     }

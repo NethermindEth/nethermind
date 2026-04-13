@@ -16,17 +16,17 @@ internal static partial class MetricsGenerator
     {
         path = Path.Join(path, "docs", "monitoring", "metrics");
 
-        var startMark = "<!--[start autogen]-->";
-        var endMark = "<!--[end autogen]-->";
-        var excluded = Array.Empty<string>();
+        string startMark = "<!--[start autogen]-->";
+        string endMark = "<!--[end autogen]-->";
+        string[] excluded = Array.Empty<string>();
         var types = Directory
             .GetFiles(AppDomain.CurrentDomain.BaseDirectory, "Nethermind.*.dll")
             .SelectMany(a => Assembly.LoadFile(a).GetExportedTypes())
             .Where(t => t.Name.Equals("Metrics", StringComparison.Ordinal) &&
                 !excluded.Any(x => t.FullName?.Contains(x, StringComparison.Ordinal) ?? false))
             .OrderBy(t => GetNamespace(t.FullName));
-        var fileName = Path.Join(path, "metrics.md");
-        var tempFileName = Path.Join(path, "~metrics.md");
+        string fileName = Path.Join(path, "metrics.md");
+        string tempFileName = Path.Join(path, "~metrics.md");
 
         // Delete the temp file if it exists
         File.Delete(tempFileName);
@@ -36,7 +36,7 @@ internal static partial class MetricsGenerator
 
         writeStream.NewLine = "\n";
 
-        var line = string.Empty;
+        string? line = string.Empty;
 
         do
         {
@@ -51,7 +51,7 @@ internal static partial class MetricsGenerator
         foreach (var type in types)
             WriteMarkdown(writeStream, type);
 
-        var skip = true;
+        bool skip = true;
 
         for (line = readStream.ReadLine(); line is not null; line = readStream.ReadLine())
         {
@@ -91,7 +91,7 @@ internal static partial class MetricsGenerator
         foreach (var prop in props)
         {
             var attr = prop.GetCustomAttribute<DescriptionAttribute>();
-            var param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
+            string param = _regex.Replace(prop.Name, m => $"_{m.Value.ToLowerInvariant()}");
 
             file.WriteLine($"- #### `nethermind{param}` \\{{#{param[1..]}\\}}");
 
@@ -108,7 +108,7 @@ internal static partial class MetricsGenerator
 
     private static string? GetNamespace(string? fullTypeName)
     {
-        var ns = fullTypeName?
+        string? ns = fullTypeName?
             .Replace("Nethermind.", null, StringComparison.Ordinal)
             .Replace(".Metrics", null, StringComparison.Ordinal);
 

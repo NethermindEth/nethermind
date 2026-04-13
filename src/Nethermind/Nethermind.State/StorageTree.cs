@@ -30,7 +30,7 @@ namespace Nethermind.State
 
             for (int i = 0; i < lookup.Length; i++)
             {
-                UInt256 index = new UInt256((uint)i);
+                UInt256 index = new((uint)i);
                 index.ToBigEndian(buffer);
                 lookup[i] = ValueKeccak.Compute(buffer);
             }

@@ -30,7 +30,7 @@ public class WorldStateModule(IInitConfig initConfig) : Module
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
-                DbSettings stateDbSettings = new DbSettings(GetTitleDbName(DbNames.State), DbNames.State);
+                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
                 return new FullPruningDb(

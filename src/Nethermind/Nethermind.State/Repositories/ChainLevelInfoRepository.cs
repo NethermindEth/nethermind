@@ -77,7 +77,7 @@ namespace Nethermind.State.Repositories
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<long> blockNumbers)
         {
             byte[][] keys = new byte[blockNumbers.Count][];
-            for (var i = 0; i < blockNumbers.Count; i++)
+            for (int i = 0; i < blockNumbers.Count; i++)
             {
                 keys[i] = blockNumbers[i].ToBigEndianByteArrayWithoutLeadingZeros();
             }

@@ -17,8 +17,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
         // ReSharper disable once MemberCanBePrivate.Global
         public MethodInfo[] Scenarios { get; } = new MethodInfo[2];
-        private Dictionary<MethodInfo, ParameterInfo[]> _paramsCache = new Dictionary<MethodInfo, ParameterInfo[]>();
-        private ConcurrentDictionary<MethodInfo, ParameterInfo[]> _concurrentParamsCache = new ConcurrentDictionary<MethodInfo, ParameterInfo[]>();
+        private Dictionary<MethodInfo, ParameterInfo[]> _paramsCache = new();
+        private ConcurrentDictionary<MethodInfo, ParameterInfo[]> _concurrentParamsCache = new();
 
         public ParamInfoBenchmarks()
         {

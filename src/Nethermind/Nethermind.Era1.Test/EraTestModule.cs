@@ -47,7 +47,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
 
         await testCtx.Resolve<PseudoNethermindRunner>().StartBlockProcessing(cancellationToken);
 
-        var util = testCtx.Resolve<TestBlockchainUtil>();
+        TestBlockchainUtil util = testCtx.Resolve<TestBlockchainUtil>();
         for (int i = 0; i < chainLength - 1; i++)
         {
             await util.AddBlock(cancellationToken);
