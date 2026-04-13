@@ -434,9 +434,20 @@ public partial class EthRpcModule(
             _blockchainBridge.RecoverTxSenders(block);
         }
 
-        return ResultWrapper<BlockForRpc?>.Success(block is null
-            ? null
-            : new BlockForRpc(block, returnFullTransactionObjects, _specProvider));
+        if (block is null)
+        {
+            return ResultWrapper<BlockForRpc?>.Success(null);
+        }
+
+        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider);
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            blockForRpc.Hash = null;
+            blockForRpc.Nonce = null;
+            blockForRpc.Miner = null;
+        }
+
+        return ResultWrapper<BlockForRpc?>.Success(blockForRpc);
     }
 
     public virtual ResultWrapper<TransactionForRpc?> eth_getTransactionByHash(Hash256 transactionHash)

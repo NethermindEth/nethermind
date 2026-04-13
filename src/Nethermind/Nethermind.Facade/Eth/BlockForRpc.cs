@@ -108,14 +108,16 @@ public class BlockForRpc
     public long GasUsed { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    public Hash256 Hash { get; set; }
+    public Hash256? Hash { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
-    public Address Miner { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Address? Miner { get; set; }
     public Hash256? MixHash { get; set; }
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public byte[]? Nonce { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
