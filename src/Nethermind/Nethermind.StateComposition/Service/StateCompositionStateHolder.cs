@@ -141,10 +141,6 @@ internal sealed class StateCompositionStateHolder
             // is not persisted. getCachedStats() returns incremental stats;
             // getTrieDistribution() requires a fresh scan.
 
-            // Phase C: restore depth stats baseline if the snapshot carried one.
-            // When absent the depth stats stay unseeded, which means incremental
-            // deltas are dropped until a fresh scan seeds them — preventing
-            // negative gauges from applying deltas on a zero baseline.
             _currentDepthStats.Reset();
             if (snapshot.DepthStats is { IsSeeded: true } persisted)
                 _currentDepthStats.SeedFromSnapshot(persisted);

@@ -20,7 +20,7 @@ internal sealed partial class TrieDiffWalker
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
 
-        if (_trackDepth)
+        if (trackDepth)
         {
             int d = Math.Min(depth, 15);
             switch (node.NodeType)
@@ -119,7 +119,6 @@ internal sealed partial class TrieDiffWalker
             return;
         }
 
-        // Account leaf
         if (added) _accountsAdded++;
         else _accountsRemoved++;
 
@@ -146,7 +145,7 @@ internal sealed partial class TrieDiffWalker
         if (account.HasStorage)
         {
             Hash256 addressHash = GetAddressHash(leaf, ref path);
-            ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
+            ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(addressHash);
             TreePath storagePath = TreePath.Empty;
             Hash256 storageRoot = new(account.StorageRoot);
 
@@ -166,7 +165,7 @@ internal sealed partial class TrieDiffWalker
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
 
-        if (_trackDepth)
+        if (trackDepth)
         {
             int d = Math.Min(depth, 15);
             switch (node.NodeType)

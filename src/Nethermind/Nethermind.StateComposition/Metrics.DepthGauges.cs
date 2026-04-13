@@ -10,8 +10,7 @@ using Nethermind.StateComposition.Diff;
 namespace Nethermind.StateComposition;
 
 // Partial extension of Metrics that adds the 149 per-depth Prometheus gauges
-// and the UpdateFromDistribution helper.  Phase A: populated on scan completion
-// only.  Phase B will call this on every incremental diff as well.
+// and the UpdateFromDistribution helper.
 //
 // Property naming convention note:
 //   Nethermind's MetricsController converts PascalCase property names to snake_case
@@ -22,10 +21,6 @@ namespace Nethermind.StateComposition;
 //   names: "StateCompAccountTrieDepth_7_FullNodes" → "state_comp_account_trie_depth_7_full_nodes".
 public static partial class Metrics
 {
-    // ------------------------------------------------------------------ //
-    // Scalar depth gauges (5)
-    // ------------------------------------------------------------------ //
-
     [GaugeMetric]
     [Description("Weighted average depth of account trie leaf paths")]
     public static double StateCompAvgAccountPathDepth { get; set; }
@@ -45,11 +40,6 @@ public static partial class Metrics
     [GaugeMetric]
     [Description("Average children per account-trie branch node")]
     public static double StateCompAvgBranchOccupancy { get; set; }
-
-    // ------------------------------------------------------------------ //
-    // Account trie per-depth gauges (64 = 16 depths x 4 fields)
-    // Prometheus names: nethermind_state_comp_account_trie_depth_{N}_{field}
-    // ------------------------------------------------------------------ //
 
     [GaugeMetric]
     [Description("Account trie full nodes at depth 0")]
@@ -307,11 +297,6 @@ public static partial class Metrics
     [Description("Account trie bytes at depth 15")]
     public static long StateCompAccountTrieDepth_15_Bytes { get; set; }
 
-    // ------------------------------------------------------------------ //
-    // Storage trie per-depth gauges (64 = 16 depths x 4 fields)
-    // Prometheus names: nethermind_state_comp_storage_trie_depth_{N}_{field}
-    // ------------------------------------------------------------------ //
-
     [GaugeMetric]
     [Description("Storage trie full nodes at depth 0")]
     public static long StateCompStorageTrieDepth_0_FullNodes { get; set; }
@@ -568,11 +553,6 @@ public static partial class Metrics
     [Description("Storage trie bytes at depth 15")]
     public static long StateCompStorageTrieDepth_15_Bytes { get; set; }
 
-    // ------------------------------------------------------------------ //
-    // Branch occupancy histogram (16 buckets, C = 1..16 children)
-    // Prometheus names: nethermind_state_comp_account_trie_branch_occupancy_{C}_children
-    // ------------------------------------------------------------------ //
-
     [GaugeMetric]
     [Description("Account trie branches with exactly 1 child")]
     public static long StateCompAccountTrieBranchOccupancy_1_Children { get; set; }
@@ -637,12 +617,6 @@ public static partial class Metrics
     [Description("Account trie branches with exactly 16 children")]
     public static long StateCompAccountTrieBranchOccupancy_16_Children { get; set; }
 
-    // ------------------------------------------------------------------ //
-    // UpdateFromDistribution — called on scan completion (Phase A).
-    // Phase B will also call this after every incremental diff.
-    // No reflection; uses a switch dispatch so the JIT can devirtualise.
-    // ------------------------------------------------------------------ //
-
     /// <summary>
     /// Populate all 149 depth-distribution gauges from a <see cref="TrieDepthDistribution"/>
     /// produced by a completed full scan.  Depths not present in the distribution arrays
@@ -650,7 +624,6 @@ public static partial class Metrics
     /// </summary>
     public static void UpdateFromDistribution(TrieDepthDistribution dist)
     {
-        // Zero all per-depth account trie gauges before writing fresh values.
         StateCompAccountTrieDepth_0_FullNodes = StateCompAccountTrieDepth_0_ShortNodes = StateCompAccountTrieDepth_0_ValueNodes = StateCompAccountTrieDepth_0_Bytes = 0;
         StateCompAccountTrieDepth_1_FullNodes = StateCompAccountTrieDepth_1_ShortNodes = StateCompAccountTrieDepth_1_ValueNodes = StateCompAccountTrieDepth_1_Bytes = 0;
         StateCompAccountTrieDepth_2_FullNodes = StateCompAccountTrieDepth_2_ShortNodes = StateCompAccountTrieDepth_2_ValueNodes = StateCompAccountTrieDepth_2_Bytes = 0;

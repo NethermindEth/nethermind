@@ -45,7 +45,6 @@ public class StateCompositionServiceTests
         IStateCompositionConfig config = CreateValidConfig();
         config.ScanParallelism.Returns(0);
 
-        // Invalid value is clamped to 1 — no exception on construction.
         Assert.DoesNotThrow(() =>
         {
             using StateCompositionService _ = new(
@@ -228,8 +227,6 @@ public class StateCompositionServiceTests
 
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
-        // RunTreeVisitor mock is a no-op, so visitor finds nothing → returns null.
-        // The important assertion is that the flow completes without error.
         Result<TopContractEntry?> result = await service.InspectContractAsync(
             Address.Zero, header, CancellationToken.None);
 
@@ -328,8 +325,6 @@ public class StateCompositionServiceTests
         await firstInspect;
     }
 
-    // ── Item 4: Cancellation mid-scan ──────────────────────────────────────────
-
     /// <summary>
     /// When the CancellationToken passed to AnalyzeAsync is cancelled while the
     /// visitor is in-flight, the task must complete (not hang) and must NOT mark
@@ -399,10 +394,6 @@ public class StateCompositionServiceTests
         Assert.That(stateHolder.IsInitialized, Is.False,
             "Baseline must not be marked complete after mid-scan cancellation");
     }
-
-    // ── Item 5 is in TrieDiffWalkerTests.cs ───────────────────────────────────
-
-    // ── Item 6: Cross-semaphore interaction ───────────────────────────────────
 
     /// <summary>
     /// AnalyzeAsync and InspectContractAsync use SEPARATE semaphores (_scanLock vs _inspectLock).

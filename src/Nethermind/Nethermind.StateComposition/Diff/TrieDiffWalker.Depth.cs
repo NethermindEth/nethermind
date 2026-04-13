@@ -21,14 +21,11 @@ internal sealed partial class TrieDiffWalker
         {
             _depthDelta.AccountFullNodes[depth] += sign;
             _depthDelta.AccountNodeBytes[depth] += sign * bytes;
-            // Branch occupancy histogram
             int children = CountBranchChildren(branch);
-            if (children > 0)
-            {
-                _depthDelta.BranchOccupancy[children - 1] += sign;
-                _depthDelta.TotalBranchNodesDelta += sign;
-                _depthDelta.TotalBranchChildrenDelta += sign * children;
-            }
+            if (children <= 0) return;
+            _depthDelta.BranchOccupancy[children - 1] += sign;
+            _depthDelta.TotalBranchNodesDelta += sign;
+            _depthDelta.TotalBranchChildrenDelta += sign * children;
         }
     }
 

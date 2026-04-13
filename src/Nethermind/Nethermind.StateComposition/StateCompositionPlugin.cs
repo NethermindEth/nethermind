@@ -59,7 +59,6 @@ public class StateCompositionPlugin : INethermindPlugin
 
         StateCompositionSnapshot snap = snapshot.Value;
 
-        // Validate snapshot against canonical chain — reject if reorged
         BlockHeader? header = blockTree.FindHeader(snap.BlockNumber);
         if (header?.StateRoot is null || header.StateRoot != snap.StateRoot)
         {

@@ -100,7 +100,6 @@ internal partial class StateCompositionService
             // CurrentDepthStats already returns a clone under lock.
             _stateHolder.CurrentDepthStats));
 
-        // Prune stale snapshot entries beyond the configured retention window.
         int blocksToKeep = _config.SnapshotBlocksToKeep;
         if (blocksToKeep <= 0) return;
 

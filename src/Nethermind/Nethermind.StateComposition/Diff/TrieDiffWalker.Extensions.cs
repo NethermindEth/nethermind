@@ -21,11 +21,10 @@ internal sealed partial class TrieDiffWalker
 
         if (oldKey is not null && newKey is not null && oldKey.AsSpan().SequenceEqual(newKey))
         {
-            // Same key prefix: record both extension nodes, recurse child
             RecordNode(NodeType.Extension, oldExt.FullRlp.Length, isStorage, added: false);
             RecordNode(NodeType.Extension, newExt.FullRlp.Length, isStorage, added: true);
 
-            if (_trackDepth)
+            if (trackDepth)
             {
                 int d = Math.Min(depth, 15);
                 RecordDepthShort(oldExt.FullRlp.Length, d, isStorage, added: false);
@@ -74,7 +73,6 @@ internal sealed partial class TrieDiffWalker
         }
         else
         {
-            // Different key prefixes: entirely different subtrees
             CollectSubtree(oldExt, ref path, resolver, isStorage, added: false, depth);
             CollectSubtree(newExt, ref path, resolver, isStorage, added: true, depth);
         }

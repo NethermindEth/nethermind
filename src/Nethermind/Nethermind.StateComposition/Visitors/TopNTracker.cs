@@ -57,10 +57,6 @@ internal sealed class TopNTracker(int topN)
         MergeTopN(TopBySize, ref TopBySizeCount, other.TopBySize, other.TopBySizeCount, CompareBySize);
     }
 
-    // --- Deterministic multi-field comparators ---
-    // Each follows: primary metric DESC → secondary DESC → tertiary DESC → Owner bytes ASC (tiebreaker)
-    // Owner ASC matches Geth's bytes.Compare(a.Owner[:], b.Owner[:])
-
     /// <summary>MaxDepth DESC → TotalNodes DESC → ValueNodes DESC → Owner bytes ASC</summary>
     internal static int CompareByDepth(in TopContractEntry a, in TopContractEntry b)
     {
@@ -117,7 +113,6 @@ internal sealed class TopNTracker(int topN)
             return;
         }
 
-        // Find the minimum entry in the heap
         int minIdx = 0;
         for (int i = 1; i < topN; i++)
         {
@@ -125,18 +120,15 @@ internal sealed class TopNTracker(int topN)
                 minIdx = i;
         }
 
-        // Replace if new entry is greater than current minimum
         if (comparer(entry, heap[minIdx]) > 0)
             heap[minIdx] = entry;
     }
 
     private bool WouldTryInsert(TopContractEntry[] heap, int count, in TopContractEntry entry, EntryComparer comparer)
     {
-        // Not yet full — any entry would be inserted
         if (count < topN)
             return true;
 
-        // Full: insert only if entry beats the current minimum
         int minIdx = 0;
         for (int i = 1; i < topN; i++)
         {
