@@ -7,7 +7,7 @@ on:
     types: [submitted]
 
 concurrency:
-  group: sync-pr-${{ github.head_ref || github.ref }}
+  group: sync-pr-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 env:
@@ -17,6 +17,9 @@ env:
 jobs:
   check-approval:
     name: "Check PR approval"
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     outputs:
       run: ${{ steps.check.outputs.run }}
@@ -25,14 +28,16 @@ jobs:
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          is_fork=${{ github.event.pull_request.head.repo.fork }}
-          if [ "$is_fork" != "true" ]; then
+          if [ "$IS_FORK" != "true" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          pr_number=${{ github.event.pull_request.number }}
-          approved=$(gh api repos/${{ github.repository }}/pulls/${pr_number}/reviews \
+
+          # Fork PR: only run if at least one approval exists
+          approved=$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}/reviews" \
             --jq '[.[] | select(.state == "APPROVED")] | length > 0')
           echo "run=$approved" >> "$GITHUB_OUTPUT"
 
