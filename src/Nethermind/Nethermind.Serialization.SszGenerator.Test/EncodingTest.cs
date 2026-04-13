@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -143,14 +144,6 @@ public class EncodingTest
     }
 
     [Test]
-    public void Decode_rejects_unknown_compatible_union_selector()
-    {
-        Assert.That(
-            () => SszEncoding.Decode([99], out CompatibleNumberUnion _),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
     public void Encode_and_decode_progressive_container_uses_field_indices()
     {
         ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
@@ -243,68 +236,33 @@ public class EncodingTest
         Assert.That(actual, Is.EqualTo(expected));
     }
 
-    [Test]
-    public void Decode_rejects_truncated_variable_container_input()
+    [TestCaseSource(nameof(InvalidInputCases))]
+    public void Encoding_rejects_invalid_input(Action action) =>
+        Assert.That(action, Throws.InstanceOf<InvalidDataException>());
+
+    private static IEnumerable<TestCaseData> InvalidInputCases()
     {
-        Assert.That(
-            () => SszEncoding.Decode(new byte[4], out VariableC _),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Decode_rejects_offsets_that_point_into_the_fixed_section()
-    {
-        byte[] encoded = [4, 0, 0, 0, 8, 0, 0, 0];
-
-        Assert.That(
-            () => SszEncoding.Decode(encoded, out DoubleListContainer _),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Decode_rejects_offsets_that_are_out_of_order()
-    {
-        byte[] encoded = [8, 0, 0, 0, 7, 0, 0, 0];
-
-        Assert.That(
-            () => SszEncoding.Decode(encoded, out DoubleListContainer _),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Decode_rejects_offsets_that_point_past_the_end()
-    {
-        VariableC valid = new() { Fixed1 = 1, Fixed2 = [10, 20] };
-        byte[] encoded = SszEncoding.Encode(valid);
-
-        encoded[8] = 0xFF;
-        encoded[9] = 0xFF;
-        encoded[10] = 0x00;
-        encoded[11] = 0x00;
-
-        Assert.That(
-            () => SszEncoding.Decode(encoded, out VariableC _),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Encode_rejects_vectors_with_the_wrong_length()
-    {
-        FixedVectorContainer container = new() { Items = [new FixedC()] };
-
-        Assert.That(
-            () => SszEncoding.Encode(container),
-            Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Encode_rejects_lists_above_the_declared_limit()
-    {
-        SingleListContainer container = new() { Items = [1UL, 2UL, 3UL, 4UL, 5UL] };
-
-        Assert.That(
-            () => SszEncoding.Encode(container),
-            Throws.InstanceOf<InvalidDataException>());
+        yield return new TestCaseData((Action)(() => SszEncoding.Decode([99], out CompatibleNumberUnion _)))
+            .SetName("Decode rejects unknown compatible union selector");
+        yield return new TestCaseData((Action)(() => SszEncoding.Decode(new byte[4], out VariableC _)))
+            .SetName("Decode rejects truncated variable container input");
+        yield return new TestCaseData((Action)(() => SszEncoding.Decode([4, 0, 0, 0, 8, 0, 0, 0], out DoubleListContainer _)))
+            .SetName("Decode rejects offsets that point into the fixed section");
+        yield return new TestCaseData((Action)(() => SszEncoding.Decode([8, 0, 0, 0, 7, 0, 0, 0], out DoubleListContainer _)))
+            .SetName("Decode rejects offsets that are out of order");
+        yield return new TestCaseData((Action)(() =>
+        {
+            byte[] encoded = SszEncoding.Encode(new VariableC { Fixed1 = 1, Fixed2 = [10, 20] });
+            encoded[8] = 0xFF;
+            encoded[9] = 0xFF;
+            encoded[10] = 0x00;
+            encoded[11] = 0x00;
+            SszEncoding.Decode(encoded, out VariableC _);
+        })).SetName("Decode rejects offsets that point past the end");
+        yield return new TestCaseData((Action)(() => SszEncoding.Encode(new FixedVectorContainer { Items = [new FixedC()] })))
+            .SetName("Encode rejects vectors with the wrong length");
+        yield return new TestCaseData((Action)(() => SszEncoding.Encode(new SingleListContainer { Items = [1UL, 2UL, 3UL, 4UL, 5UL] })))
+            .SetName("Encode rejects lists above the declared limit");
     }
 
     private static UInt256 MixInActiveFieldsSpec(UInt256 root, byte activeFields)
