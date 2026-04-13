@@ -18,13 +18,8 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class PeerInfo
+    public class PeerInfo(ISyncPeer syncPeer)
     {
-        public PeerInfo(ISyncPeer syncPeer)
-        {
-            SyncPeer = syncPeer;
-        }
-
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
         public AllocationContexts AllocatedContexts { get; private set; }
@@ -33,7 +28,7 @@ namespace Nethermind.Synchronization.Peers
 
         private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
 
-        public ISyncPeer SyncPeer { get; }
+        public ISyncPeer SyncPeer { get; } = syncPeer;
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
@@ -95,7 +90,7 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Free(AllocationContexts contexts)
         {
-            AllocatedContexts ^= contexts;
+            AllocatedContexts &= ~contexts;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -123,7 +118,7 @@ namespace Nethermind.Synchronization.Peers
         [MethodImpl(MethodImplOptions.Synchronized)]
         private void WakeUp(AllocationContexts allocationContexts)
         {
-            SleepingContexts ^= allocationContexts;
+            SleepingContexts &= ~allocationContexts;
 
             foreach (KeyValuePair<AllocationContexts, int> allocationIndex in AllocationIndexes)
             {

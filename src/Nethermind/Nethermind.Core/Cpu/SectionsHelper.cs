@@ -17,13 +17,13 @@ internal static partial class SectionsHelper
 
     public static Dictionary<string, string> ParseSection(string? content, char separator)
     {
-        var values = new Dictionary<string, string>();
-        var list = content?.Split(newline, StringSplitOptions.RemoveEmptyEntries);
+        Dictionary<string, string> values = new();
+        string[]? list = content?.Split(newline, StringSplitOptions.RemoveEmptyEntries);
         if (list is not null)
             foreach (string line in list)
                 if (line.Contains(separator))
                 {
-                    var lineParts = line.Split(separator);
+                    string[] lineParts = line.Split(separator);
                     if (lineParts.Length >= 2)
                         values[lineParts[0].Trim()] = lineParts[1].Trim();
                 }

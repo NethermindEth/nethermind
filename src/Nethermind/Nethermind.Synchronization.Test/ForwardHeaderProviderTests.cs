@@ -397,7 +397,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -673,7 +673,7 @@ public partial class ForwardHeaderProviderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -689,16 +689,10 @@ public partial class ForwardHeaderProviderTests
         }
     }
 
-    private class ResponseBuilder
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
-
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
-        {
-            _blockTree = blockTree;
-            _testHeaderMapping = testHeaderMapping;
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
         public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
         {

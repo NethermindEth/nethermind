@@ -11,6 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Consensus
 {
+    [Parallelizable(ParallelScope.All)]
     public class SinglePendingTxSelectorTests
     {
         private readonly BlockHeader _anyParent = Build.A.BlockHeader.TestObject;
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             });
 
             SinglePendingTxSelector selector = new(txSource);
-            var result = selector.GetTransactions(_anyParent, 1000000).ToArray();
+            Transaction[] result = selector.GetTransactions(_anyParent, 1000000).ToArray();
             result.Should().HaveCount(1);
             result[0].Timestamp.Should().Be(8);
             result[0].Nonce.Should().Be(1);

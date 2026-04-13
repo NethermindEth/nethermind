@@ -113,7 +113,7 @@ public class Eip7883Tests
 
     private static ReadOnlyMemory<byte> PrepareInput(UInt256 baseLength, UInt256 expLength, UInt256 modulusLength)
     {
-        var inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
+        byte[] inputBytes = new byte[(int)(96 + baseLength + expLength + modulusLength)];
 
         Array.Copy(baseLength.ToBigEndian(), 0, inputBytes, 0, 32);
         Array.Copy(expLength.ToBigEndian(), 0, inputBytes, 32, 32);

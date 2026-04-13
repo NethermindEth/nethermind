@@ -18,7 +18,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
@@ -59,9 +58,9 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
-        private readonly INodeStorage _nodeStorage;
+        private readonly ITreeSyncStore _store;
         private readonly IBlockTree _blockTree;
-        private readonly StateSyncPivot _stateSyncPivot;
+        private readonly IStateSyncPivot _stateSyncPivot;
 
         // This is not exactly a lock for read and write, but a RWLock serves it well. It protects the five field
         // below which need to be cleared atomically during reset root, hence the write lock, while allowing
@@ -81,15 +80,15 @@ namespace Nethermind.Synchronization.FastSync
 
         public event EventHandler<ITreeSync.SyncCompletedEventArgs>? SyncCompleted;
 
-        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, INodeStorage nodeStorage, IBlockTree blockTree, StateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
+        public TreeSync([KeyFilter(DbNames.Code)] IDb codeDb, ITreeSyncStore store, IBlockTree blockTree, IStateSyncPivot stateSyncPivot, ISyncConfig syncConfig, ILogManager logManager)
         {
             _syncMode = SyncMode.StateNodes;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
+            _store = store ?? throw new ArgumentNullException(nameof(store));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateSyncPivot = stateSyncPivot;
 
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<TreeSync>() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             _data = new DetailedProgress(_blockTree.NetworkId, progress);
@@ -222,25 +221,26 @@ namespace Nethermind.Synchronization.FastSync
                         }
 
                         /* if the peer does not have details of this particular node */
-                        byte[] currentResponseItem = batch.Responses[i];
-                        if (currentResponseItem is null)
+                        ReadOnlySpan<byte> currentResponseSpan = batch.Responses[i];
+                        if (currentResponseSpan.IsEmpty)
                         {
                             AddNodeToPending(batch.RequestedNodes[i], null, "missing", true);
                             continue;
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan
+                        if (!ValueKeccak.Compute(currentResponseSpan).BytesAsSpan
                                 .SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             if (_logger.IsTrace)
                                 _logger.Trace(
-                                    $"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
+                                    $"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i].Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToArray().ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
                             continue;
                         }
 
+                        byte[] currentResponseItem = currentResponseSpan.ToArray();
                         nonEmptyResponses++;
                         NodeDataType nodeDataType = currentStateSyncItem.NodeDataType;
                         if (nodeDataType == NodeDataType.Code)
@@ -373,7 +373,7 @@ namespace Nethermind.Synchronization.FastSync
             try
             {
                 // it finished downloading
-                rootNodeKeyExists = _nodeStorage.KeyExists(null, TreePath.Empty, _rootNode);
+                rootNodeKeyExists = _store.NodeExists(null, TreePath.Empty, _rootNode);
             }
             catch (ObjectDisposedException)
             {
@@ -547,7 +547,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
                     else
                     {
-                        keyExists = _nodeStorage.KeyExists(syncItem.Address, syncItem.Path, syncItem.Hash);
+                        keyExists = _store.NodeExists(syncItem.Address, syncItem.Path, syncItem.Hash);
                     }
 
                     if (keyExists)
@@ -597,7 +597,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
             }
 
-            if (_previouslyPendingItems.TryRemove(syncItem.Key, out var responseBytes))
+            if (_previouslyPendingItems.TryRemove(syncItem.Key, out byte[] responseBytes))
             {
                 if (_logger.IsTrace) _logger.Trace($"Using cache for key {syncItem.Key}");
                 int invalidNodes = 0;
@@ -653,7 +653,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void SaveNode(StateSyncItem syncItem, byte[] data)
         {
-            _newPendingItems.TryRemove(syncItem.Key, out var _);
+            _newPendingItems.TryRemove(syncItem.Key, out byte[] _);
             if (syncItem.IsRoot)
             {
                 if (!VerifyStorageUpdated(syncItem, data))
@@ -677,7 +677,7 @@ namespace Nethermind.Synchronization.FastSync
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
 
-                            _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
+                            _store.SaveNode(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
                         finally
                         {
@@ -695,7 +695,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            _nodeStorage.Set(syncItem.Address, syncItem.Path, syncItem.Hash, data);
+                            _store.SaveNode(syncItem.Address, syncItem.Path, syncItem.Hash, data);
                         }
                         finally
                         {
@@ -727,7 +727,10 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _nodeStorage.Flush(onlyWal: false);
+                if (_stateSyncPivot.GetPivotHeader() is { } pivotHeader)
+                {
+                    _store.FinalizeSync(pivotHeader);
+                }
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
@@ -739,18 +742,15 @@ namespace Nethermind.Synchronization.FastSync
 
         private bool VerifyStorageUpdated(StateSyncItem item, byte[] value)
         {
-            DependentItem dependentItem = new DependentItem(item, value, _stateSyncPivot.UpdatedStorages.Count);
+            DependentItem dependentItem = new(item, value, _stateSyncPivot.UpdatedStorages.Count);
 
-            // Need complete state tree as the correct storage root may be different at this point.
-            StateTree stateTree = new StateTree(new RawScopedTrieStore(_nodeStorage, null), LimboLogs.Instance);
-            // The root is not persisted at this point yet, so we set it as root ref here.
-            stateTree.RootRef = new TrieNode(NodeType.Unknown, value);
+            using ITreeSyncVerificationContext verificationContext = _store.CreateVerificationContext(value);
 
             if (_logger.IsDebug) _logger.Debug($"Checking {_stateSyncPivot.UpdatedStorages.Count} updated storages");
 
             foreach (Hash256 updatedAddress in _stateSyncPivot.UpdatedStorages)
             {
-                Account? account = stateTree.Get(updatedAddress);
+                Account? account = verificationContext.GetAccount(updatedAddress);
 
                 if (account?.StorageRoot is not null
                     && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
@@ -759,6 +759,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else
                 {
+                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is ok");
                     dependentItem.Counter--;
                 }
             }
@@ -949,7 +950,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         _pendingItems.MaxStateLevel = 64;
                         DependentItem dependentItem = new(currentStateSyncItem, currentResponseItem, 2, true);
-                        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(trieNode.Value.Span);
+                        Rlp.ValueDecoderContext ctx = new(trieNode.Value.AsSpan());
                         (Hash256 codeHash, Hash256 storageRoot) = AccountDecoder.DecodeHashesOnly(ref ctx);
                         if (codeHash != Keccak.OfAnEmptyString)
                         {

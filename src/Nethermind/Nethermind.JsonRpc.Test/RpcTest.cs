@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
@@ -77,10 +77,10 @@ public static class RpcTest
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {
         // TODO: Eventually we would like to support injecting a custom serializer
-        var serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         parameters ??= [];
 
-        var jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
+        JsonElement jsonParameters = serializer.Deserialize<JsonElement>(serializer.Serialize(parameters));
 
         return new JsonRpcRequest
         {

@@ -7,18 +7,12 @@ using System.Linq;
 
 namespace Nethermind.Db
 {
-    public class ReadOnlyColumnsDb<T> : IReadOnlyColumnDb<T>, IDisposable
+    public class ReadOnlyColumnsDb<T>(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore) : IReadOnlyColumnDb<T>, IDisposable
     {
-        private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns;
-        private readonly IColumnsDb<T> _baseColumnDb;
-
-        public ReadOnlyColumnsDb(IColumnsDb<T> baseColumnDb, bool createInMemWriteStore)
-        {
-            _baseColumnDb = baseColumnDb;
-            _readOnlyColumns = baseColumnDb.ColumnKeys
+        private readonly IDictionary<T, IReadOnlyDb> _readOnlyColumns = baseColumnDb.ColumnKeys
                 .Select(key => (key, db: baseColumnDb.GetColumnDb(key).CreateReadOnly(createInMemWriteStore)))
                 .ToDictionary(it => it.key, it => it.db);
-        }
+        private readonly IColumnsDb<T> _baseColumnDb = baseColumnDb;
 
         public IDb GetColumnDb(T key)
         {

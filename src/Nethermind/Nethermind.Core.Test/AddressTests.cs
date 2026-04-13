@@ -186,7 +186,7 @@ public class AddressTests
     [TestCase("0x00fffffffffffffffffffffffffffffffffffffffe", true)]
     public void Parse_variable_length(string addressHex, bool allowOverflow)
     {
-        var result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
+        bool result = Address.TryParseVariableLength(addressHex, out Address? address, allowOverflow);
         result.Should().Be(addressHex.Length <= Address.SystemUserHex.Length || allowOverflow);
         if (result)
         {
@@ -206,19 +206,19 @@ public class AddressTests
     [SuppressMessage("Reliability", "CA2014:Do not use stackalloc in loops")]
     public void ToHash_avoid_garbage_in_first_bytes()
     {
-        for (var j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
+        for (int j = 0; j < 2; j++) // Loop to ensure stack is filled with some data
         {
             Span<byte> addressBytes = stackalloc byte[Address.Size];
-            for (var i = 0; i < Address.Size; i++)
+            for (int i = 0; i < Address.Size; i++)
             {
                 addressBytes[i] = (byte)(i + j);
             }
 
-            var address = new Address(addressBytes);
+            Address address = new(addressBytes);
 
             Span<byte> expectedHashBytes = stackalloc byte[Hash256.Size];
             addressBytes.CopyTo(expectedHashBytes[(Hash256.Size - Address.Size)..]);
-            var expectedHash = new ValueHash256(expectedHashBytes);
+            ValueHash256 expectedHash = new(expectedHashBytes);
 
             address.ToHash().Should().BeEquivalentTo(expectedHash);
         }

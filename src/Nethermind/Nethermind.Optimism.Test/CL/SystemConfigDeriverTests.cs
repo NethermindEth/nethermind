@@ -43,18 +43,18 @@ public class SystemConfigDeriverTests
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedBatcher()
     {
-        var rawAddress = new byte[Address.Size];
+        byte[] rawAddress = new byte[Address.Size];
         rawAddress[19] = 0xAA;
-        var address = new Address(rawAddress);
+        Address address = new(rawAddress);
 
-        var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+        byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.Batcher);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.Batcher);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
-        var expectedConfig = new SystemConfig { BatcherAddress = address };
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfig expectedConfig = new() { BatcherAddress = address };
 
         actualConfig.Should().Be(expectedConfig);
     }
@@ -64,15 +64,15 @@ public class SystemConfigDeriverTests
     {
         UInt256 scalar = 0xAA;
 
-        var encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        var expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             Scalar = [.. new byte[31], 0xAA]
         };
@@ -83,21 +83,21 @@ public class SystemConfigDeriverTests
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_Ecotone()
     {
-        var scalarData = new byte[Hash256.Size];
+        byte[] scalarData = new byte[Hash256.Size];
         scalarData[0] = 1;
         scalarData[24 + 3] = 0xB3;
         scalarData[28 + 3] = 0xBB;
-        var scalar = new ValueHash256(scalarData).ToUInt256();
+        UInt256 scalar = new ValueHash256(scalarData).ToUInt256();
 
-        var encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        var expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             Scalar = scalarData,
             Overhead = new byte[32]
@@ -114,19 +114,19 @@ public class SystemConfigDeriverTests
     [TestCase(23)]
     public void UpdateSystemConfigFromL1BLock_UpdatedFeeScalars_InvalidEcotone(int indexOfNonZero)
     {
-        var scalarData = new byte[Hash256.Size];
+        byte[] scalarData = new byte[Hash256.Size];
         scalarData[0] = 1;
         scalarData[indexOfNonZero] = 0xFF;
-        var scalar = new ValueHash256(scalarData).ToUInt256();
+        UInt256 scalar = new ValueHash256(scalarData).ToUInt256();
 
-        var encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
+        byte[] encodedScalar = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, scalar);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedScalar);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.FeeScalars);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var initialConfig = new SystemConfig();
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(initialConfig, receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig initialConfig = new();
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(initialConfig, receipts);
 
         // Invalid scalars should be ignored and we should keep the initial config.
         actualConfig.Should().Be(initialConfig);
@@ -135,19 +135,19 @@ public class SystemConfigDeriverTests
     [Test]
     public void UpdateSystemConfigFromL1BLock_UpdatedUnsafeBlockSigner()
     {
-        var rawAddress = new byte[Address.Size];
+        byte[] rawAddress = new byte[Address.Size];
         rawAddress[19] = 0xAA;
-        var address = new Address(rawAddress);
+        Address address = new(rawAddress);
 
-        var encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
+        byte[] encodedAddress = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, AddressSignature, address);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedAddress);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.UnsafeBlockSigner);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.UnsafeBlockSigner);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        var expectedConfig = new SystemConfig();
+        SystemConfig expectedConfig = new();
 
         // The log data is ignored by consensus and no modifications to the
         // system config occur.
@@ -159,15 +159,15 @@ public class SystemConfigDeriverTests
     {
         UInt256 gasLimit = 0xBB;
 
-        var encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
+        byte[] encodedGasLimit = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, gasLimit);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedGasLimit);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.GasLimit);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.GasLimit);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        var expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             GasLimit = 0xBB
         };
@@ -179,17 +179,17 @@ public class SystemConfigDeriverTests
     public void UpdateSystemConfigFromL1BLock_UpdatedEIP1559Params()
     {
         byte[] eip1559ParamsRaw = [0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8];
-        var eip1559Params = new UInt256(eip1559ParamsRaw, isBigEndian: true);
+        UInt256 eip1559Params = new(eip1559ParamsRaw, isBigEndian: true);
 
-        var encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
+        byte[] encodedEIP1559Params = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256Signature, eip1559Params);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedEIP1559Params);
 
-        var receipts = BuildReceipts(encodedData, SystemConfigUpdate.EIP1559Params);
+        ReceiptForRpc[] receipts = BuildReceipts(encodedData, SystemConfigUpdate.EIP1559Params);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        SystemConfig actualConfig = deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
-        var expectedConfig = new SystemConfig
+        SystemConfig expectedConfig = new()
         {
             EIP1559Params = [.. new byte[24], 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8]
         };
@@ -216,8 +216,8 @@ public class SystemConfigDeriverTests
             }
         ];
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
         update.Should().Throw<ArgumentException>();
     }
@@ -228,13 +228,13 @@ public class SystemConfigDeriverTests
         UInt256 overhead = 0xFF;
         UInt256 scalar = 0xAA;
 
-        var encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
-        var encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
+        byte[] encodedPair = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, UInt256TupleSignature, overhead, scalar);
+        byte[] encodedData = AbiEncoder.Instance.Encode(AbiEncodingStyle.None, BytesSignature, encodedPair);
 
-        var receipts = BuildReceipts([.. encodedData, 0x00], SystemConfigUpdate.FeeScalars);
+        ReceiptForRpc[] receipts = BuildReceipts([.. encodedData, 0x00], SystemConfigUpdate.FeeScalars);
 
-        var deriver = new SystemConfigDeriver(SystemConfigProxy);
-        var update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
+        SystemConfigDeriver deriver = new(SystemConfigProxy);
+        Func<SystemConfig> update = () => deriver.UpdateSystemConfigFromL1BLockReceipts(new SystemConfig(), receipts);
 
         update.Should().Throw<AbiException>();
     }

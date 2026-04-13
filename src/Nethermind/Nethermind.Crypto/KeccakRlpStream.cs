@@ -12,7 +12,7 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Hash256 GetHash() => new Hash256(_keccakHash.GenerateValueHash());
+        public Hash256 GetHash() => new(_keccakHash.GenerateValueHash());
 
         public ValueHash256 GetValueHash() => _keccakHash.GenerateValueHash();
 
@@ -36,31 +36,6 @@ namespace Nethermind.Crypto
         {
             Span<byte> zeros = stackalloc byte[length];
             Write(zeros);
-        }
-
-        public override byte ReadByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        public override byte PeekByte()
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            throw new NotSupportedException("Cannot read form Keccak");
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            WriteZero(length);
         }
 
         public override int Position

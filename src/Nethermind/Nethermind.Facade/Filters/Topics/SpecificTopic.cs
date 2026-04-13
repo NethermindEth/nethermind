@@ -6,15 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class SpecificTopic : TopicExpression
+    public class SpecificTopic(Hash256 topic) : TopicExpression
     {
-        private readonly Hash256 _topic;
+        private readonly Hash256 _topic = topic;
         private Bloom.BloomExtract _bloomExtract;
 
-        public SpecificTopic(Hash256 topic)
-        {
-            _topic = topic;
-        }
+        public Hash256 Topic => _topic;
+        public override bool AcceptsAnyBlock => false;
 
         private ref readonly Bloom.BloomExtract BloomExtract
         {

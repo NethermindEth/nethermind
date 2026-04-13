@@ -22,10 +22,10 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
     public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)
     {
-        var value = new SortedDictionary<long, UInt256>();
+        SortedDictionary<long, UInt256> value = new();
         if (reader.TokenType == JsonTokenType.String)
         {
-            var blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+            UInt256 blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
             value.Add(0, blockReward);
         }
         else if (reader.TokenType == JsonTokenType.Number)
@@ -42,16 +42,16 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                var property =
+                UInt256 property =
                     UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
-                var key = (long)property;
+                long key = (long)property;
                 reader.Read();
                 if (reader.TokenType != JsonTokenType.String)
                 {
                     throw new ArgumentException("Cannot deserialize dictionary.");
                 }
 
-                var blockReward =
+                UInt256 blockReward =
                     UInt256Converter.ReadHex(reader.HasValueSequence ? reader.ValueSequence.ToArray() : reader.ValueSpan);
                 value.Add(key, blockReward);
 

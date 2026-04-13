@@ -13,7 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.Debugger;
 
-public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
+public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWrapper, IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     public enum DebugPhase { Starting, Blocked, Running, Aborted }
@@ -23,14 +23,9 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
     private Func<VmState<TGasPolicy>, bool>? _globalBreakCondition;
     private readonly object _lock = new();
 
-    public DebugTracer(ITxTracer tracer)
-    {
-        InnerTracer = tracer;
-    }
-
     public event Action? BreakPointReached;
     public event Action? ExecutionThreadSet;
-    public ITxTracer InnerTracer { get; private set; }
+    public ITxTracer InnerTracer { get; private set; } = tracer;
     public DebugPhase CurrentPhase { get; private set; } = DebugPhase.Starting;
     public bool CanReadState => CurrentPhase is DebugPhase.Blocked;
     public bool IsStepByStepModeOn { get; set; }
@@ -190,14 +185,14 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
         }
     }
 
-    public void MarkAsSuccess(Address recipient, GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         => InnerTracer.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
 
-    public void MarkAsFailed(Address recipient, GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => InnerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
 
-    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env, int codeSection = 0, int functionDepth = 0)
-        => InnerTracer.StartOperation(pc, opcode, gas, env, codeSection, functionDepth);
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        => InnerTracer.StartOperation(pc, opcode, gas, env);
 
     public void ReportOperationError(EvmExceptionType error)
         => InnerTracer.ReportOperationError(error);
@@ -228,6 +223,12 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
         => InnerTracer.LoadOperationStorage(address, storageIndex, value);
+
+    public void SetOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        => InnerTracer.SetOperationTransientStorage(address, storageIndex, newValue, currentValue);
+
+    public void LoadOperationTransientStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        => InnerTracer.LoadOperationTransientStorage(address, storageIndex, value);
 
     public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         => InnerTracer.ReportSelfDestruct(address, balance, refundAddress);
@@ -298,8 +299,7 @@ public class DebugTracer<TGasPolicy> : ITxTracer, ITxTracerWrapper, IDisposable
 /// <summary>
 /// Non-generic DebugTracer for backward compatibility with EthereumGasPolicy.
 /// </summary>
-public class DebugTracer : DebugTracer<EthereumGasPolicy>
+public class DebugTracer(ITxTracer tracer) : DebugTracer<EthereumGasPolicy>(tracer)
 {
-    public DebugTracer(ITxTracer tracer) : base(tracer) { }
 }
 #endif

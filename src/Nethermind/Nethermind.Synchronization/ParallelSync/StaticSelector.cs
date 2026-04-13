@@ -6,13 +6,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Synchronization.ParallelSync
 {
-    public class StaticSelector : ISyncModeSelector
+    public class StaticSelector(SyncMode syncMode) : ISyncModeSelector
     {
-        public StaticSelector(SyncMode syncMode)
-        {
-            Current = syncMode;
-        }
-
         public static StaticSelector Full { get; } = new(SyncMode.Full);
 
         public static StaticSelector SnapSync { get; } = new(SyncMode.SnapSync);
@@ -27,7 +22,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public static StaticSelector FullWithFastBlocks { get; } = new(SyncMode.Full | SyncMode.FastBlocks);
 
-        public SyncMode Current { get; }
+        public SyncMode Current { get; } = syncMode;
 
         public event EventHandler<SyncModeChangedEventArgs> Preparing
         {

@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -41,11 +42,12 @@ public class Eth69ProtocolHandler(
     ISpecProvider specProvider,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth68ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer
+        gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy), ISyncPeer, IStaticProtocolInfo
 {
     public override string Name => "eth69";
 
-    public override byte ProtocolVersion => EthVersions.Eth69;
+    public new static byte Version => EthVersions.Eth69;
+    public override byte ProtocolVersion => Version;
 
     public override int MessageIdSpaceSize => 18;
 

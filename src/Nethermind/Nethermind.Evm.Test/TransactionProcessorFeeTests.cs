@@ -40,7 +40,7 @@ public class TransactionProcessorFeeTests
 
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
 
@@ -92,7 +92,7 @@ public class TransactionProcessorFeeTests
     {
         _spec.FeeCollector = TestItem.AddressC;
 
-        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether());
+        _stateProvider.CreateAccount(TestItem.AddressB, 100.Ether);
 
         byte[] byteCode = Prepare.EvmCode
             .PushData(SelfDestructAddress)
@@ -248,10 +248,10 @@ public class TransactionProcessorFeeTests
         BlockReceiptsTracer blockTracer = new();
         blockTracer.SetOtherTracer(cancellationBlockTracer);
 
-        var blkCtx = new BlockExecutionContext(block.Header, _spec);
+        BlockExecutionContext blkCtx = new(block.Header, _spec);
         blockTracer.StartNewBlockTrace(block);
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx1);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx1);
             _transactionProcessor.Execute(tx1, blkCtx, txTracer);
             blockTracer.EndTxTrace();
         }
@@ -263,7 +263,7 @@ public class TransactionProcessorFeeTests
 
         try
         {
-            var txTracer = blockTracer.StartNewTxTrace(tx2);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx2);
             _transactionProcessor.Execute(tx2, blkCtx, txTracer);
             blockTracer.EndTxTrace();
             blockTracer.EndBlockTrace();
@@ -315,7 +315,7 @@ public class TransactionProcessorFeeTests
         tracer.StartNewBlockTrace(block);
         foreach (Transaction tx in block.Transactions)
         {
-            var txTracer = tracer.StartNewTxTrace(tx);
+            ITxTracer txTracer = tracer.StartNewTxTrace(tx);
             _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _spec), txTracer);
             tracer.EndTxTrace();
         }

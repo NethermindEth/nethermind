@@ -3,7 +3,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using CkzgLib;
 using FluentAssertions;
@@ -14,6 +18,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -32,7 +37,7 @@ public partial class EngineModuleTests
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Commitments!.Length, Is.EqualTo(blobTxCount));
         Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount * Ckzg.CellsPerExtBlob));
-        ShardBlobNetworkWrapper wrapper = new ShardBlobNetworkWrapper(getPayloadResultBlobsBundle.Blobs,
+        ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
             getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateProofs(wrapper), Is.True);
     }
@@ -46,7 +51,7 @@ public partial class EngineModuleTests
         });
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new List<byte[]>(requestSize);
+        List<byte[]> request = new(requestSize);
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -92,9 +97,9 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
@@ -121,9 +126,9 @@ public partial class EngineModuleTests
         // we are not adding this tx
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfRequestedBlobs)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         // requesting hashes that are not present in TxPool
@@ -146,14 +151,14 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -192,14 +197,14 @@ public partial class EngineModuleTests
 
         Transaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithMaxFeePerBlobGas(1000.Wei())
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
             .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
 
         chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
 
-        List<byte[]> blobVersionedHashesRequest = new List<byte[]>(requestSize);
+        List<byte[]> blobVersionedHashesRequest = new(requestSize);
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -245,5 +250,68 @@ public partial class EngineModuleTests
 
         result.Result.Should().BeEquivalentTo(Result.Fail(MergeErrorMessages.UnsupportedFork));
         result.ErrorCode.Should().Be(MergeErrorCodes.UnsupportedFork);
+    }
+
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
+    {
+        // Build a small list with one real entry and one null
+        byte[] blob = new byte[16];
+        Random.Shared.NextBytes(blob);
+        byte[] proof1 = new byte[48];
+        Random.Shared.NextBytes(proof1);
+        byte[] proof2 = new byte[48];
+        Random.Shared.NextBytes(proof2);
+
+        byte[]?[] blobs = [blob, null];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([proof1, proof2]), default];
+
+        BlobsV2DirectResponse response = new(blobs, proofs, 2);
+
+        // Write via streaming path
+        Pipe pipe = new();
+        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        // Write via STJ for comparison
+        string stjJson = JsonSerializer.Serialize(response, EthereumJsonSerializer.JsonOptions);
+
+        streamedJson.Should().Be(stjJson);
+    }
+
+    [Test]
+    public async Task BlobsV2DirectResponse_WriteToAsync_empty_list()
+    {
+        BlobsV2DirectResponse response = new([], [], 0);
+
+        Pipe pipe = new();
+        await response.WriteToAsync(pipe.Writer, CancellationToken.None);
+        await pipe.Writer.CompleteAsync();
+
+        ReadResult readResult = await pipe.Reader.ReadAsync();
+        string json = Encoding.UTF8.GetString(readResult.Buffer);
+        pipe.Reader.AdvanceTo(readResult.Buffer.End);
+
+        json.Should().Be("[]");
+    }
+
+    [Test]
+    public void BlobsV2DirectResponse_WriteToAsync_throws_on_cancelled_token()
+    {
+        byte[] blob = new byte[131072]; // 128KB
+        byte[]?[] blobs = [blob];
+        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([new byte[48]])];
+        BlobsV2DirectResponse response = new(blobs, proofs, 1);
+
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        Pipe pipe = new();
+        Func<Task> act = async () => await response.WriteToAsync(pipe.Writer, cts.Token);
+        act.Should().ThrowAsync<OperationCanceledException>();
     }
 }

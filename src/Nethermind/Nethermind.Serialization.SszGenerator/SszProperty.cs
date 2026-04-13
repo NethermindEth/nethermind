@@ -13,16 +13,16 @@ class SszProperty
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
-        SszProperty result = new SszProperty { Name = prop.Name, Type = type };
+        SszProperty result = new() { Name = prop.Name, Type = type };
 
         if (itemType is not null || prop.Type.Name == "BitArray")
         {
-            var vectorAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszVectorAttribute");
+            AttributeData? vectorAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszVectorAttribute");
             if (vectorAttr is not null)
             {
                 result.Length = vectorAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
             }
-            var listAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszListAttribute");
+            AttributeData? listAttr = prop.GetAttributes().FirstOrDefault(a => a.AttributeClass?.Name == "SszListAttribute");
             if (listAttr is not null)
             {
                 result.Limit = listAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;

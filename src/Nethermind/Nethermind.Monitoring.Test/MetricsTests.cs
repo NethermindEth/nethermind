@@ -8,11 +8,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
-using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using NUnit.Framework;
@@ -31,7 +32,7 @@ public class MetricsTests
         public static long OneTwoThreeSpecial { get; set; }
 
         [System.ComponentModel.Description("Another test description.")]
-        [KeyIsLabel("somelabel")]
+        [KeyIsLabel("some_label")]
         public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
 
         [KeyIsLabel("label1", "label2", "label3")]
@@ -85,16 +86,16 @@ public class MetricsTests
         TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
         metricsController.UpdateAllMetrics();
 
-        var updater = metricsController._individualUpdater;
-        var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
-        var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
-        var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
-        var keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
-        var keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
-        var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
-        var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
-        var keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
-        var keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
+        Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+        string keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
+        string keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+        string keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+        string keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
+        string keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
+        string keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
+        string keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
+        string keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
+        string keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
 
         Assert.That(updater.Keys, Has.Member(keyDefault));
         Assert.That(updater.Keys, Has.Member(keySpecial));
@@ -161,7 +162,6 @@ public class MetricsTests
             typeof(History.Metrics)
         ];
         MetricsController metricsController = new(metricsConfig);
-        MonitoringService monitoringService = new(metricsController, metricsConfig, LimboLogs.Instance);
         List<Type> metrics = [.. TypeDiscovery.FindNethermindBasedTypes(nameof(Metrics))];
         metrics.AddRange(knownMetricsTypes);
 
@@ -174,6 +174,45 @@ public class MetricsTests
 
             metricsController.UpdateAllMetrics();
         });
+    }
+
+    [Test]
+    public void UpdateAllMetrics_does_not_throw_when_registration_is_concurrent()
+    {
+        MetricsConfig metricsConfig = new() { Enabled = true };
+        MetricsController metricsController = new(metricsConfig);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        CancellationToken ct = cts.Token;
+
+        // Continuously call UpdateAllMetrics on one thread while registering metrics on another
+        Task updater = Task.Run(() =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                metricsController.UpdateAllMetrics();
+            }
+        });
+
+        Task registrar = Task.Run(() =>
+        {
+            Type[] types =
+            [
+                typeof(TestMetrics),
+                typeof(Blockchain.Metrics),
+                typeof(Evm.Metrics),
+                typeof(Network.Metrics),
+                typeof(Db.Metrics),
+            ];
+
+            for (int i = 0; !ct.IsCancellationRequested; i++)
+            {
+                metricsController.RegisterMetrics(types[i % types.Length]);
+                metricsController.AddMetricsUpdateAction(() => { });
+            }
+        });
+
+        Assert.DoesNotThrowAsync(() => Task.WhenAll(updater, registrar));
     }
 
     [Test]

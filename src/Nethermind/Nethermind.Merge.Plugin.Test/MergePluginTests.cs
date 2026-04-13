@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using FluentAssertions;
@@ -29,6 +31,17 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public class MergePluginTests
 {
+    private sealed class SourceGenProbe
+    {
+        public int Value { get; set; }
+    }
+
+    private sealed class ThrowingProbeResolver : IJsonTypeInfoResolver
+    {
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+            type == typeof(SourceGenProbe) ? throw new InvalidOperationException("probe resolver was used") : null;
+    }
+
     private ChainSpec _chainSpec = null!;
     private MergeConfig _mergeConfig = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
@@ -103,6 +116,15 @@ public class MergePluginTests
     }
 
     [Test]
+    public void AddTypeInfoResolver_updates_existing_serializer_instances()
+    {
+        EthereumJsonSerializer serializer = new();
+        EthereumJsonSerializer.AddTypeInfoResolver(new ThrowingProbeResolver());
+
+        Assert.Throws<InvalidOperationException>(() => serializer.Serialize(new SourceGenProbe { Value = 1 }));
+    }
+
+    [Test]
     public async Task Initializes_correctly()
     {
         using IContainer container = BuildContainer();
@@ -150,7 +172,7 @@ public class MergePluginTests
     [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = false,
             EnabledModules = new string[] { "eth", "subscribe" },

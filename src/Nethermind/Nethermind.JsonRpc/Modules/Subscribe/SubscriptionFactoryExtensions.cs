@@ -44,6 +44,20 @@ public static class SubscriptionFactoryExtensions
             );
     }
 
+    public static void RegisterTransactionReceiptsSubscription(
+        this ISubscriptionFactory subscriptionFactory,
+        IReceiptMonitor receiptMonitor,
+        IBlockTree? blockTree,
+        ILogManager? logManager
+        )
+    {
+        subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
+            SubscriptionType.EthSubscription.TransactionReceipts,
+            (jsonRpcDuplexClient, filter) =>
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, logManager, filter)
+            );
+    }
+
     public static void RegisterNewPendingTransactionsSubscription(
         this ISubscriptionFactory subscriptionFactory,
         ITxPool? txPool,
@@ -114,6 +128,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);
@@ -133,6 +148,7 @@ public static class SubscriptionFactoryExtensions
     {
         subscriptionFactory.RegisterNewHeadSubscription(blockTree, logManager, specProvider);
         subscriptionFactory.RegisterLogsSubscription(receiptMonitor, filterStore, blockTree, logManager);
+        subscriptionFactory.RegisterTransactionReceiptsSubscription(receiptMonitor, blockTree, logManager);
         subscriptionFactory.RegisterNewPendingTransactionsSubscription(txPool, specProvider, logManager);
         subscriptionFactory.RegisterDroppedPendingTransactionsSubscription(txPool, logManager);
         subscriptionFactory.RegisterSyncingSubscription(blockTree, ethSyncingInfo, logManager);

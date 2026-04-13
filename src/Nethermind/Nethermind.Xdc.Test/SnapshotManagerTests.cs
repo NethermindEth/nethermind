@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -31,9 +32,8 @@ internal class SnapshotManagerTests
 
         _snapshotDb = new MemDb();
 
-        IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
+        _snapshotManager = new SnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
     }
 
     [Test]
@@ -52,7 +52,7 @@ internal class SnapshotManagerTests
         // Arrange
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(gapBlock).Returns(header);
 
@@ -78,7 +78,7 @@ internal class SnapshotManagerTests
         // Arrange
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(gapBlock).Returns(header);
 
@@ -95,7 +95,7 @@ internal class SnapshotManagerTests
         // Arrange
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
         _blockTree.FindHeader(gapBlock).Returns(header);
 
         // Act
@@ -112,7 +112,7 @@ internal class SnapshotManagerTests
         // setup a snapshot and store it
         const int gapBlock1 = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot1 = new Snapshot(gapBlock1, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot1 = new(gapBlock1, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot1);
         _blockTree.FindHeader(gapBlock1).Returns(header);
         Snapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock1);
@@ -124,7 +124,7 @@ internal class SnapshotManagerTests
 
         const int gapBlock2 = 450;
         XdcBlockHeader header2 = Build.A.XdcBlockHeader().WithGeneratedExtraConsensusData(1).TestObject;
-        var snapshot2 = new Snapshot(gapBlock2, header2.Hash!, [Address.FromNumber(2)]);
+        Snapshot snapshot2 = new(gapBlock2, header2.Hash!, [Address.FromNumber(2)]);
         _snapshotManager.StoreSnapshot(snapshot2);
         _blockTree.FindHeader(gapBlock2).Returns(header2);
         _snapshotManager.StoreSnapshot(snapshot2);
@@ -145,7 +145,7 @@ internal class SnapshotManagerTests
     {
         // setup a snapshot and store it
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new Snapshot(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot = new(expectedGapNumber, header.Hash!, [Address.FromNumber(1)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(expectedGapNumber).Returns(header);
         Snapshot? result = _snapshotManager.GetSnapshotByBlockNumber(blockNumber, _xdcReleaseSpec);
@@ -156,7 +156,7 @@ internal class SnapshotManagerTests
 
     [TestCase(450)]
     [TestCase(1350)]
-    public void NewHeadBlock_(int gapNumber)
+    public void BlockAddedToMain_ShouldStoreSnapshot(int gapNumber)
     {
         IXdcReleaseSpec releaseSpec = Substitute.For<IXdcReleaseSpec>();
         releaseSpec.EpochLength.Returns(900);
@@ -164,14 +164,15 @@ internal class SnapshotManagerTests
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
-        SnapshotManager snapshotManager = new SnapshotManager(new MemDb(), blockTree, Substitute.For<IPenaltyHandler>(), Substitute.For<IMasternodeVotingContract>(), specProvider);
+        SnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
         snapshotManager.GetSnapshotByGapNumber(header.Number)!.HeaderHash.Should().Be(header.Hash!);
     }
 }

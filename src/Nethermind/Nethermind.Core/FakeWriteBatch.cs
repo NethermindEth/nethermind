@@ -5,21 +5,15 @@ using System;
 
 namespace Nethermind.Core
 {
-    public class FakeWriteBatch : IWriteBatch
+    public class FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches, Action? onDispose) : IWriteBatch
     {
-        private readonly IWriteOnlyKeyValueStore _storePretendingToSupportBatches;
+        private readonly IWriteOnlyKeyValueStore _storePretendingToSupportBatches = storePretendingToSupportBatches;
 
-        private readonly Action? _onDispose;
+        private readonly Action? _onDispose = onDispose;
 
         public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches)
             : this(storePretendingToSupportBatches, null)
         {
-        }
-
-        public FakeWriteBatch(IWriteOnlyKeyValueStore storePretendingToSupportBatches, Action? onDispose)
-        {
-            _storePretendingToSupportBatches = storePretendingToSupportBatches;
-            _onDispose = onDispose;
         }
 
         public void Dispose()

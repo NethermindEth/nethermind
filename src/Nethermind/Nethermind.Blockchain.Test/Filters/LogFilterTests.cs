@@ -11,6 +11,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 public class LogFilterTests
 {
     private int _filterCounter;
@@ -207,7 +209,7 @@ public class LogFilterTests
 
     private Core.Bloom GetBloom(params LogEntry[] logEntries)
     {
-        Core.Bloom bloom = new Core.Bloom();
+        Core.Bloom bloom = new();
         bloom.Add(logEntries);
         return bloom;
     }

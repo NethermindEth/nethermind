@@ -12,20 +12,16 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Specs;
 
 namespace Nethermind.Network.Test.Builders
 {
-    public class SerializationBuilder : BuilderBase<IMessageSerializationService>
+    public class SerializationBuilder(ITimestamper timestamper = null) : BuilderBase<IMessageSerializationService>
     {
-        private readonly ITimestamper _timestamper;
+        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
         private List<SerializerInfo> _serializers = new();
-
-        public SerializationBuilder(ITimestamper timestamper = null)
-        {
-            _timestamper = timestamper ?? Timestamper.Default;
-        }
 
         public SerializationBuilder With<T>(IZeroMessageSerializer<T> serializer) where T : MessageBase
         {
@@ -101,6 +97,13 @@ namespace Nethermind.Network.Test.Builders
                 .With<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider))
                 .With(new StatusMessageSerializer69())
                 .With(new BlockRangeUpdateMessageSerializer());
+        }
+
+        public SerializationBuilder WithEth70(ISpecProvider specProvider)
+        {
+            return WithEth69(specProvider)
+                .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70(new GetReceiptsMessageSerializer()))
+                .With<ReceiptsMessage70>(new ReceiptsMessageSerializer70(specProvider));
         }
 
         public SerializationBuilder WithNodeData()

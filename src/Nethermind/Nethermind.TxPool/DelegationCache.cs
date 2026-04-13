@@ -28,7 +28,7 @@ internal sealed class DelegationCache
     private void InternalIncrement(AddressAsKey key, bool increment)
     {
         int value = increment ? 1 : -1;
-        var lastCount = _pendingDelegations.AddOrUpdate(key,
+        int lastCount = _pendingDelegations.AddOrUpdate(key,
             (k) =>
             {
                 if (increment)

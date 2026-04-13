@@ -99,28 +99,16 @@ public class UInt256Converter : JsonConverter<UInt256>
         return new UInt256(in readOnlyBytes, isBigEndian: true);
     }
 
-    [SkipLocalsInit]
     public override void Write(
         Utf8JsonWriter writer,
         UInt256 value,
         JsonSerializerOptions options)
     {
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-        if (value.IsZero)
-        {
-            writer.WriteRawValue(usedConversion == NumberConversion.ZeroPaddedHex
-                ? "\"0x0000000000000000000000000000000000000000000000000000000000000000\""u8
-                : "\"0x0\""u8);
-            return;
-        }
-        switch (usedConversion)
+        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        switch (conversion)
         {
             case NumberConversion.Hex:
-                {
-                    Span<byte> bytes = stackalloc byte[32];
-                    value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes);
-                }
+                HexWriter.WriteUInt256HexRawValue(writer, value);
                 break;
             case NumberConversion.Decimal:
                 writer.WriteRawValue(value.ToString(CultureInfo.InvariantCulture));
@@ -129,35 +117,23 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                {
-                    Span<byte> bytes = stackalloc byte[32];
-                    value.ToBigEndian(bytes);
-                    ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
-                }
+                HexWriter.WriteUInt256HexRawValue(writer, value, zeroPadded: true);
                 break;
             default:
-                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+                throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
         }
     }
 
     public override UInt256 ReadAsPropertyName(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         ReadInternal(ref reader, JsonTokenType.PropertyName);
 
-    [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
-        if (value.IsZero)
-        {
-            writer.WritePropertyName(usedConversion == NumberConversion.ZeroPaddedHex
-                ? "0x0000000000000000000000000000000000000000000000000000000000000000"u8
-                : "0x0"u8);
-            return;
-        }
-        switch (usedConversion)
+        NumberConversion conversion = ForcedNumberConversion.GetFinalConversion();
+        switch (conversion)
         {
             case NumberConversion.Hex:
-                WriteHexPropertyName(writer, value, false);
+                HexWriter.WriteUInt256HexPropertyName(writer, value);
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
@@ -166,23 +142,11 @@ public class UInt256Converter : JsonConverter<UInt256>
                 writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
             case NumberConversion.ZeroPaddedHex:
-                WriteHexPropertyName(writer, value, true);
+                HexWriter.WriteUInt256HexPropertyName(writer, value, zeroPadded: true);
                 break;
             default:
-                throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
+                throw new NotSupportedException($"{conversion} format is not supported for {nameof(UInt256)}");
         }
-    }
-
-    private static void WriteHexPropertyName(Utf8JsonWriter writer, UInt256 value, bool isZeroPadded)
-    {
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        ByteArrayConverter.Convert(
-            writer,
-            bytes,
-            static (w, h) => w.WritePropertyName(h),
-            skipLeadingZeros: !isZeroPadded,
-            addQuotations: false);
     }
 
     [DoesNotReturn, StackTraceHidden]

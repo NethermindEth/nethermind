@@ -378,7 +378,7 @@ public class AbiTests
     {
         Hash256 assetId = Keccak.Compute("assetId");
         uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
-        UInt256 value = 1.Ether();
+        UInt256 value = 1.Ether;
         uint units = 10U;
         byte[] salt = new byte[16];
 
@@ -517,10 +517,10 @@ public class AbiTests
 
         AbiSignature signature = new("abc", type);
 
-        ValueTuple<ValueTuple<ValueTuple<UInt256>>> tupleception = new(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
-        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, tupleception);
+        ValueTuple<ValueTuple<ValueTuple<UInt256>>> nestedTuple = new(new ValueTuple<ValueTuple<UInt256>>(new ValueTuple<UInt256>(88888)));
+        byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, nestedTuple);
         object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
-        Assert.That(arguments[0], Is.EqualTo(tupleception));
+        Assert.That(arguments[0], Is.EqualTo(nestedTuple));
     }
 
     [Test]
@@ -556,14 +556,14 @@ public class AbiTests
     [Test]
     public void Should_encode_arrays_and_lists_equally()
     {
-        var abi = new AbiArray(AbiType.UInt256);
-        var array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
-        var list = new List<UInt256>() { 1, 2, 3, UInt256.MaxValue };
-        using var pool = new ArrayPoolList<UInt256>(4);
+        AbiArray abi = new(AbiType.UInt256);
+        UInt256[] array = new UInt256[] { 1, 2, 3, UInt256.MaxValue };
+        List<UInt256> list = new() { 1, 2, 3, UInt256.MaxValue };
+        using ArrayPoolList<UInt256> pool = new(4);
 
         pool.AddRange(array);
 
-        var encoded = abi.Encode(array, false);
+        byte[] encoded = abi.Encode(array, false);
 
         abi.Encode(list, false).Should().BeEquivalentTo(encoded);
         abi.Encode(pool, false).Should().BeEquivalentTo(encoded);
@@ -572,7 +572,7 @@ public class AbiTests
     [Test]
     public void Should_throw_on_malformed_abi()
     {
-        var abi = new AbiSignature(
+        AbiSignature abi = new(
             "DepositEvent",
             AbiType.DynamicBytes,
             AbiType.DynamicBytes,

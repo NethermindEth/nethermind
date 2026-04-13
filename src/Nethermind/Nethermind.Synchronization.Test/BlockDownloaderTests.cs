@@ -146,7 +146,7 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        List<long> newHeadSequence = new List<long>();
+        List<long> newHeadSequence = new();
         ctx.BlockTree.BlockAddedToMain += (_, b) => newHeadSequence.Add(b.Block.Number);
 
         await ctx.FastSyncUntilNoRequest(peerInfo);
@@ -210,7 +210,7 @@ public partial class BlockDownloaderTests
     [Test]
     public async Task Return_Null_On_InConsistentHeaderSequence()
     {
-        using ArrayPoolList<BlockHeader?> headers = new ArrayPoolList<BlockHeader?>(1);
+        using ArrayPoolList<BlockHeader?> headers = new(1);
         headers.Add(Build.A.EmptyBlockHeader);
         headers.Add(Build.A.EmptyBlockHeader);
 
@@ -248,7 +248,7 @@ public partial class BlockDownloaderTests
                 .AddSingleton<IBlockProcessingQueue>(blockProcessingQueue));
 
         Context ctx = node.Resolve<Context>();
-        var request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
+        BlocksRequest? request = await ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(
             DownloaderOptions.Insert,
             0,
             CancellationToken.None);
@@ -604,7 +604,7 @@ public partial class BlockDownloaderTests
 
         if (isMerge)
         {
-            var mergeContext = container.Resolve<PostMergeContext>();
+            PostMergeContext mergeContext = container.Resolve<PostMergeContext>();
             mergeContext.BeaconPivot.EnsurePivot(syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
             mergeContext.InsertBeaconHeaderFrom(syncPeer, beaconPivotNumber, syncPivotNumber);
             mergeContext.BeaconPivot.ProcessDestination = syncPeer.BlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None);
@@ -613,13 +613,13 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
 
-        var req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest req1 = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
         req1.Should().NotBeNull();
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req1, default);
 
         while (true)
         {
-            var req = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+            BlocksRequest? req = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
             if (req is null) break;
             await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, req, default);
             ctx.FastSyncFeedComponent.Feed.HandleResponse(req);
@@ -628,7 +628,7 @@ public partial class BlockDownloaderTests
         ctx.FastSyncFeedComponent.Feed.HandleResponse(req1);
 
         // Receipt for the first req
-        var finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
+        BlocksRequest finalReq = await ctx.FastSyncFeedComponent.Feed.PrepareRequest();
         await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, finalReq, default);
         ctx.FastSyncFeedComponent.Feed.HandleResponse(finalReq);
 
@@ -842,6 +842,11 @@ public partial class BlockDownloaderTests
                 },
             })
             .AddSingleton<Context>();
+
+        if (PseudoNethermindModule.TestUseFlat && configProvider.GetConfig<ISyncConfig>().FastSync)
+        {
+            Assert.Ignore("Flat does not work when fast sync is on");
+        }
 
         configurer?.Invoke(b);
         return b
@@ -1141,7 +1146,7 @@ public partial class BlockDownloaderTests
             throw new NotImplementedException();
         }
 
-        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }
@@ -1157,16 +1162,10 @@ public partial class BlockDownloaderTests
         }
     }
 
-    private class ResponseBuilder
+    private class ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
     {
-        private readonly IBlockTree _blockTree;
-        private readonly Dictionary<long, Hash256> _testHeaderMapping;
-
-        public ResponseBuilder(IBlockTree blockTree, Dictionary<long, Hash256> testHeaderMapping)
-        {
-            _blockTree = blockTree;
-            _testHeaderMapping = testHeaderMapping;
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly Dictionary<long, Hash256> _testHeaderMapping = testHeaderMapping;
 
         public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
         {
@@ -1255,7 +1254,7 @@ public partial class BlockDownloaderTests
 
             for (int i = 0; i < blockHashes.Count; i++)
             {
-                if (consistent && _headers.TryGetValue(blockHashes[i], out var value))
+                if (consistent && _headers.TryGetValue(blockHashes[i], out BlockHeader? value))
                 {
                     blockHeaders[i] = value;
                 }
@@ -1264,7 +1263,7 @@ public partial class BlockDownloaderTests
                     blockHeaders[i] = Build.A.BlockHeader.WithNumber(blockHeaders[i - 1].Number + 1).WithHash(blockHashes[i]).TestObject;
                 }
                 _headers[blockHashes[i]] = blockHeaders[i];
-                var header = blockHeaders[i];
+                BlockHeader header = blockHeaders[i];
 
                 BlockBody body = consistent
                     ? _bodies[blockHashes[i]]
@@ -1320,7 +1319,7 @@ public partial class BlockDownloaderTests
 
                 _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                     ? Keccak.EmptyTreeHash
-                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamDecoder<TxReceipt>()!);
+                    : ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], Rlp.GetStreamEncoder<TxReceipt>()!);
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
@@ -1329,6 +1328,6 @@ public partial class BlockDownloaderTests
         }
 
         public BlockHeader? GetHeader(Hash256 hash) =>
-            _headers.TryGetValue(hash, out var header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
+            _headers.TryGetValue(hash, out BlockHeader? header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
     }
 }

@@ -31,7 +31,7 @@ namespace Nethermind.Clique.Test
             RlpStream stream = new(decoder.GetLength(expected, RlpBehaviors.None));
             decoder.Encode(stream, expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(stream.Data.AsRlpStream());
+            Snapshot actual = decoder.Decode(stream.Data.AsSpan());
             // Validate fields
             Assert.That(actual.Number, Is.EqualTo(expected.Number));
             Assert.That(actual.Hash, Is.EqualTo(expected.Hash));

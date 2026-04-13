@@ -4,20 +4,16 @@
 using System;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class NettyRlpStream : RlpStream, IDisposable
+    public sealed class NettyRlpStream(IByteBuffer buffer) : RlpStream, IDisposable
     {
-        private readonly IByteBuffer _buffer;
+        private readonly IByteBuffer _buffer = buffer;
 
-        private readonly int _initialPosition;
-
-        public NettyRlpStream(IByteBuffer buffer)
-        {
-            _buffer = buffer;
-            _initialPosition = buffer.ReaderIndex;
-        }
+        private readonly int _initialPosition = buffer.ReaderIndex;
 
         public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
@@ -43,45 +39,6 @@ namespace Nethermind.Serialization.Rlp
             _buffer.WriteZero(length);
         }
 
-        public override byte ReadByte()
-        {
-            return _buffer.ReadByte();
-        }
-
-        public override Span<byte> Read(int length)
-        {
-            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex, length);
-            _buffer.SkipBytes(span.Length);
-            return span;
-        }
-
-        public override Span<byte> Peek(int offset, int length)
-        {
-            Span<byte> span = _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.ReaderIndex + offset, length);
-            return span;
-        }
-
-        public override byte PeekByte()
-        {
-            byte result = _buffer.ReadByte();
-            _buffer.SetReaderIndex(_buffer.ReaderIndex - 1);
-            return result;
-        }
-
-        protected override byte PeekByte(int offset)
-        {
-            _buffer.MarkReaderIndex();
-            _buffer.SkipBytes(offset);
-            byte result = _buffer.ReadByte();
-            _buffer.ResetReaderIndex();
-            return result;
-        }
-
-        protected override void SkipBytes(int length)
-        {
-            _buffer.SkipBytes(length);
-        }
-
         public override int Position
         {
             get => _buffer.ReaderIndex - _initialPosition;
@@ -89,8 +46,6 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public override int Length => _buffer.ReadableBytes + (_buffer.ReaderIndex - _initialPosition);
-
-        public override bool HasBeenRead => _buffer.ReadableBytes <= 0;
 
         protected override string Description => "|NettyRlpStream|description missing|";
 
@@ -105,6 +60,57 @@ namespace Nethermind.Serialization.Rlp
         public void Dispose()
         {
             _buffer.SafeRelease();
+        }
+
+        public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
+        {
+            if (list is not IRlpWrapper rlpWrapper) return false;
+            byteBuffer.EnsureWritable(rlpWrapper.RlpLength);
+            rlpWrapper.Write(new NettyRlpStream(byteBuffer));
+            return true;
+        }
+
+        public static void WriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
+        {
+            if (TryWriteByteArrayList(byteBuffer, list))
+                return;
+
+            int contentLength = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(list[i]);
+            }
+
+            int length = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(length);
+            NettyRlpStream rlpStream = new(byteBuffer);
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < list.Count; i++)
+            {
+                rlpStream.Encode(list[i]);
+            }
+        }
+
+        public static RlpByteArrayList DecodeByteArrayList(IByteBuffer byteBuffer)
+        {
+            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            Rlp.ValueDecoderContext ctx = new(memoryOwner.Memory, true);
+            int startPos = ctx.Position;
+            RlpByteArrayList? list = null;
+
+            try
+            {
+                list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner);
+                memoryOwner = null;
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                return list;
+            }
+            catch
+            {
+                list?.Dispose();
+                memoryOwner?.Dispose();
+                throw;
+            }
         }
     }
 }

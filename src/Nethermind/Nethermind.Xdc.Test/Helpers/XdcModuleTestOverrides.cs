@@ -21,7 +21,6 @@ using Nethermind.Wallet;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
-using NSubstitute;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -52,7 +51,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IMasternodeVotingContract, XdcTestDepositContract>()
 
             // add missing components
-            .AddSingleton<IPenaltyHandler, RandomPenaltyHandler>()
+            .AddSingleton<IPenaltyHandler, PenaltyHandler>()
             .AddSingleton<IForensicsProcessor, TrustyForensics>()
 
             // Environments
@@ -66,9 +65,9 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
 
             // Crypto
-            .AddSingleton(Substitute.For<IKeyStore>())
+            .AddSingleton<IKeyStore>(NullKeyStore.Instance)
             .AddSingleton<IWallet, DevWallet>()
-            .AddSingleton(Substitute.For<ITxSender>())
+            .AddSingleton<ITxSender>(NullTxSender.Instance)
 
             // Rpc
             .AddSingleton<IJsonRpcService, JsonRpcService>()
@@ -78,7 +77,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         // Yep... this global thing need to work.
         builder.RegisterBuildCallback((_) =>
         {
-            var assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
+            Assembly? assembly = Assembly.GetAssembly(typeof(NetworkNodeDecoder));
             if (assembly is not null)
                 Rlp.RegisterDecoders(assembly, canOverrideExistingDecoders: true);
         });
@@ -89,7 +88,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
         readonly Dictionary<Hash256, Address[]> _penaltiesCache = new();
         public Address[] Penalize(long number, Hash256 currentHash, Address[] candidates, int count = 2)
         {
-            var spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
+            IXdcReleaseSpec spec = specProvider.GetFinalSpec() as IXdcReleaseSpec ?? throw new ArgumentException("Must have XDC spec configured.");
             if (number == spec.SwitchBlock)
             {
                 return Array.Empty<Address>();
@@ -98,7 +97,7 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
             {
                 return _penaltiesCache[currentHash];
             }
-            var nodesCount = candidates.Length;
+            int nodesCount = candidates.Length;
             List<Address> penalized = new();
 
             Random rand = new();

@@ -1,0 +1,183 @@
+name: Codex review
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  codex:
+    name: Codex review
+    if: |
+      github.event.sender.type != 'Bot' &&
+      contains(
+        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event_name == 'issue_comment' && github.event.comment.author_association ||
+        github.event_name == 'pull_request_review_comment' && github.event.comment.author_association ||
+        github.event_name == 'pull_request_review' && github.event.review.author_association ||
+        github.event_name == 'issues' && github.event.issue.author_association ||
+        ''
+      ) &&
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@codex')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@codex')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@codex')) ||
+        (github.event_name == 'issues' && (contains(github.event.issue.body, '@codex') || contains(github.event.issue.title, '@codex')))
+      )
+    runs-on: ubuntu-latest
+    outputs:
+      final_message: ${{ steps.run-codex.outputs.final-message }}
+      issue_number: ${{ steps.target.outputs.issue_number }}
+    steps:
+      - name: React to trigger comment
+        if: github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const request = {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'eyes'
+            };
+
+            if (context.eventName === 'issue_comment') {
+              await github.rest.reactions.createForIssueComment(request);
+            } else {
+              await github.rest.reactions.createForPullRequestReviewComment(request);
+            }
+
+      - name: Resolve target
+        id: target
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const payload = context.payload;
+            const issueNumber =
+              payload.issue?.number ??
+              payload.pull_request?.number ??
+              '';
+            const prNumber =
+              payload.pull_request?.number ??
+              (payload.issue?.pull_request ? payload.issue.number : '') ??
+              '';
+            const title = payload.issue?.title ?? payload.pull_request?.title ?? '';
+            const body = payload.issue?.body ?? payload.pull_request?.body ?? '';
+            const requestText = payload.comment?.body ?? payload.review?.body ?? payload.issue?.body ?? '';
+            const targetType = prNumber ? 'pull_request' : 'issue';
+            const checkoutRef = prNumber ? `refs/pull/${prNumber}/merge` : context.ref;
+            let baseRef = '';
+
+            if (prNumber) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: Number(prNumber),
+              });
+
+              baseRef = pr.base.ref;
+            }
+
+            core.setOutput('issue_number', String(issueNumber));
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('target_type', targetType);
+            core.setOutput('title', title);
+            core.setOutput('body', body);
+            core.setOutput('request_text', requestText);
+            core.setOutput('checkout_ref', checkoutRef);
+            core.setOutput('base_ref', baseRef);
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.target.outputs.checkout_ref }}
+
+      - name: Fetch PR diff refs
+        if: steps.target.outputs.target_type == 'pull_request'
+        run: |
+          git fetch --no-tags origin \
+            "+refs/heads/${{ steps.target.outputs.base_ref }}:refs/remotes/origin/codex-base" \
+            "+refs/pull/${{ steps.target.outputs.pr_number }}/head:refs/remotes/origin/codex-head"
+
+      - name: Build prompt
+        id: prompt
+        uses: actions/github-script@v8
+        env:
+          TARGET_TYPE: ${{ steps.target.outputs.target_type }}
+          TARGET_NUMBER: ${{ steps.target.outputs.issue_number }}
+          REQUEST_TEXT: ${{ steps.target.outputs.request_text }}
+          TITLE: ${{ steps.target.outputs.title }}
+          BODY: ${{ steps.target.outputs.body }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            const workspace = process.env.GITHUB_WORKSPACE;
+            const basePromptPath = path.join(workspace, '.github/codex/prompts/review.md');
+            const promptPath = path.join(process.env.RUNNER_TEMP, 'codex-review-prompt.md');
+            const basePrompt = fs.readFileSync(basePromptPath, 'utf8').trimEnd();
+            const sections = [
+              basePrompt,
+              '',
+              '## Context',
+              `Repository: ${process.env.GITHUB_REPOSITORY}`,
+              `Target type: ${process.env.TARGET_TYPE}`,
+              `Target number: ${process.env.TARGET_NUMBER}`,
+              '',
+              '### Request',
+              process.env.REQUEST_TEXT || '(empty)',
+              '',
+              '### Title',
+              process.env.TITLE || '(empty)',
+              '',
+              '### Body',
+              process.env.BODY || '(empty)',
+            ];
+
+            fs.writeFileSync(promptPath, `${sections.join('\n')}\n`, 'utf8');
+            core.setOutput('prompt_file', promptPath);
+
+      # https://github.com/openai/codex-action/blob/main/docs/security.md#recommendation-run-openaicodex-action-as-the-last-step-in-a-job
+      - name: Run Codex
+        id: run-codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: ${{ steps.prompt.outputs.prompt_file }}
+
+  post-feedback:
+    name: Feedback
+    runs-on: ubuntu-latest
+    needs: codex
+    if: needs.codex.outputs.final_message != ''
+    steps:
+      - name: Report Codex feedback
+        uses: actions/github-script@v8
+        env:
+          CODEX_FINAL_MESSAGE: ${{ needs.codex.outputs.final_message }}
+          ISSUE_NUMBER: ${{ needs.codex.outputs.issue_number }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.ISSUE_NUMBER),
+              body: process.env.CODEX_FINAL_MESSAGE,
+            });

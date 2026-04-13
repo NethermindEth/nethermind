@@ -43,7 +43,7 @@ public class BlockTreeSuggestPacer : IDisposable
         if (currentBlockNumber - currentHeadNumber > _stopBatchSize && _dbBatchProcessed is null)
         {
             _blockNumberReachedToUnlock = currentBlockNumber - _stopBatchSize + _resumeBatchSize;
-            TaskCompletionSource completionSource = new TaskCompletionSource();
+            TaskCompletionSource completionSource = new();
             _dbBatchProcessed = completionSource;
         }
 

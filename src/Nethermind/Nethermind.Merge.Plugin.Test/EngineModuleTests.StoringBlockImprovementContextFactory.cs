@@ -8,29 +8,24 @@ using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Events;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Test;
 
 public partial class BaseEngineModuleTests
 {
-    public class StoringBlockImprovementContextFactory : IBlockImprovementContextFactory
+    public class StoringBlockImprovementContextFactory(IBlockImprovementContextFactory blockImprovementContextFactory, bool skipDuplicatedContext = false) : IBlockImprovementContextFactory
     {
-        private readonly IBlockImprovementContextFactory _blockImprovementContextFactory;
-        private readonly bool _skipDuplicatedContext;
+        private readonly IBlockImprovementContextFactory _blockImprovementContextFactory = blockImprovementContextFactory;
+        private readonly bool _skipDuplicatedContext = skipDuplicatedContext;
         public List<IBlockImprovementContext> CreatedContexts { get; } = new List<IBlockImprovementContext>();
 
         public event EventHandler<ImprovementStartedEventArgs>? ImprovementStarted;
 
         public event EventHandler<BlockEventArgs>? BlockImproved;
 
-        public StoringBlockImprovementContextFactory(IBlockImprovementContextFactory blockImprovementContextFactory, bool skipDuplicatedContext = false)
-        {
-            _blockImprovementContextFactory = blockImprovementContextFactory;
-            _skipDuplicatedContext = skipDuplicatedContext;
-        }
-
-        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, CancellationTokenSource cts)
+        public IBlockImprovementContext StartBlockImprovementContext(Block currentBestBlock, BlockHeader parentHeader, PayloadAttributes payloadAttributes, DateTimeOffset startDateTime, UInt256 currentBlockFees, SharedCancellationTokenSource cts)
         {
             IBlockImprovementContext blockImprovementContext = _blockImprovementContextFactory.StartBlockImprovementContext(currentBestBlock, parentHeader, payloadAttributes, startDateTime, currentBlockFees, cts);
             if (_skipDuplicatedContext
@@ -83,13 +78,8 @@ public partial class BaseEngineModuleTests
         }
     }
 
-    public class ImprovementStartedEventArgs : EventArgs
+    public class ImprovementStartedEventArgs(IBlockImprovementContext blockImprovementContext) : EventArgs
     {
-        public IBlockImprovementContext BlockImprovementContext { get; }
-
-        public ImprovementStartedEventArgs(IBlockImprovementContext blockImprovementContext)
-        {
-            BlockImprovementContext = blockImprovementContext;
-        }
+        public IBlockImprovementContext BlockImprovementContext { get; } = blockImprovementContext;
     }
 }

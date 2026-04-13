@@ -13,7 +13,6 @@ namespace Nethermind.Xdc.Test;
 [Parallelizable(ParallelScope.All)]
 internal class QuorumCertificateDecoderTests
 {
-
     public static IEnumerable QuorumCertificateCases
     {
         get
@@ -28,10 +27,10 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
+        RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
-        stream.Position = 0;
-        QuorumCertificate decoded = decoder.Decode(stream);
+        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
+        QuorumCertificate decoded = decoder.Decode(ref ctx);
 
         decoded.Should().BeEquivalentTo(quorumCert);
     }
@@ -42,17 +41,17 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
+        RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
-        stream.Position = 0;
         QuorumCertificate decoded;
         if (useRlpStream)
         {
-            decoded = decoder.Decode(stream);
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
+            decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
             decoded = decoder.Decode(ref decoderContext);
         }
 

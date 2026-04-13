@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -18,12 +16,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
             _txsMessageDeserializer.Serialize(byteBuffer, message);
         }
 
-        public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
-        {
-            NettyRlpStream rlpStream = new(byteBuffer);
-            IOwnedReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(rlpStream);
-            return new PooledTransactionsMessage(txs);
-        }
+        public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
+            byteBuffer.DeserializeRlp(Deserialize);
+
+        private static PooledTransactionsMessage Deserialize(ref Rlp.ValueDecoderContext ctx) =>
+            new(TransactionsMessageSerializer.DeserializeTxs(ref ctx));
 
         public int GetLength(PooledTransactionsMessage message, out int contentLength)
         {

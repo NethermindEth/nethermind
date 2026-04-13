@@ -57,7 +57,7 @@ jobs:
       - name: Create GitHub app token
         if: steps.update.outputs.file-count != '0'
         id: gh-app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -83,4 +83,4 @@ jobs:
           git add -A
           git commit -am "Update Dockerfiles"
           git push origin $head_branch
-          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "Update Dockerfiles" -b "$body" -l .net -l devops
+          gh pr create -B $GITHUB_REF_NAME -H $head_branch -t "chore: Update Dockerfiles" -b "$body" -l .net -l devops

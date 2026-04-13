@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -24,26 +25,18 @@ using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
-public class JsonRpcService : IJsonRpcService
+public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig) : IJsonRpcService
 {
     private readonly static Lock _reparseLock = new();
     private static Dictionary<TypeAsKey, bool> _reparseReflectionCache = new();
 
-    private readonly ILogger _logger;
-    private readonly IRpcModuleProvider _rpcModuleProvider;
-    private readonly HashSet<string> _methodsLoggingFiltering;
+    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcService>();
+    private readonly IRpcModuleProvider _rpcModuleProvider = rpcModuleProvider;
+    private readonly HashSet<string> _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
     private readonly Lock _propertyInfoModificationLock = new();
-    private readonly int _maxLoggedRequestParametersCharacters;
+    private readonly int _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
 
     private Dictionary<TypeAsKey, PropertyInfo?> _propertyInfoCache = [];
-
-    public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager, IJsonRpcConfig jsonRpcConfig)
-    {
-        _logger = logManager.GetClassLogger<JsonRpcService>();
-        _rpcModuleProvider = rpcModuleProvider;
-        _methodsLoggingFiltering = (jsonRpcConfig.MethodsLoggingFiltering ?? []).ToHashSet();
-        _maxLoggedRequestParametersCharacters = jsonRpcConfig.MaxLoggedRequestParametersCharacters ?? int.MaxValue;
-    }
 
     public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest, JsonRpcContext context)
     {
@@ -89,8 +82,8 @@ public class JsonRpcService : IJsonRpcService
         }
         else
         {
-            if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-            return GetErrorResponse(ErrorCodes.ParseError, "Parse error", rpcRequest.Id, rpcRequest.Method);
+            errorCode = ErrorCodes.InternalError;
+            errorText = "Internal error";
         }
 
         if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
@@ -182,7 +175,7 @@ public class JsonRpcService : IJsonRpcService
 
         if (_logger.IsTrace) LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
-        var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
+        int providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
         int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         int initialMissingParamsCount = missingParamsCount;
 
@@ -331,7 +324,7 @@ public class JsonRpcService : IJsonRpcService
     {
         if (_logger.IsTrace && !_methodsLoggingFiltering.Contains(methodName))
         {
-            StringBuilder builder = new StringBuilder();
+            StringBuilder builder = new();
             builder.Append("Executing JSON RPC call ");
             builder.Append(methodName);
             builder.Append(" with params [");
@@ -344,7 +337,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
+                    string? parameter = (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -403,6 +396,7 @@ public class JsonRpcService : IJsonRpcService
         }
         else
         {
+            EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(paramType, out JsonTypeInfo? typeInfo);
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 if (!_reparseReflectionCache.TryGetValue(paramType, out bool reparseString))
@@ -412,11 +406,15 @@ public class JsonRpcService : IJsonRpcService
 
                 executionParam = reparseString
                     ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
-                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                    : typeInfo is not null
+                        ? providedParameter.Deserialize(typeInfo)
+                        : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {
-                executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
+                executionParam = typeInfo is not null
+                    ? providedParameter.Deserialize(typeInfo)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
         }
 
@@ -437,7 +435,7 @@ public class JsonRpcService : IJsonRpcService
             reparseString = converter.GetType().Namespace.StartsWith("System.", StringComparison.Ordinal);
 
             // Copy-on-write: create a new dictionary so we don't mutate
-            Dictionary<TypeAsKey, bool> reparseReflectionCache = new Dictionary<TypeAsKey, bool>(_reparseReflectionCache)
+            Dictionary<TypeAsKey, bool> reparseReflectionCache = new(_reparseReflectionCache)
             {
                 [paramType] = reparseString
             };
@@ -455,21 +453,25 @@ public class JsonRpcService : IJsonRpcService
         int missingParamsCount)
     {
         int totalLength = providedParametersLength + missingParamsCount;
-        if (totalLength == 0) return (Array.Empty<object>(), false);
+        if (totalLength == 0) return ([], false);
 
         object[] executionParameters = new object[totalLength];
 
         bool hasMissing = missingParamsCount != 0;
         int i = 0;
-        var enumerator = providedParameters.EnumerateArray();
-        while (enumerator.MoveNext())
-        {
-            ExpectedParameter expectedParameter = expectedParameters[i];
 
-            object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
-            executionParameters[i] = parameter;
-            hasMissing |= ReferenceEquals(parameter, Type.Missing);
-            i++;
+        if (providedParametersLength > 0)
+        {
+            JsonElement.ArrayEnumerator enumerator = providedParameters.EnumerateArray();
+            while (enumerator.MoveNext())
+            {
+                ExpectedParameter expectedParameter = expectedParameters[i];
+
+                object? parameter = DeserializeParameter(enumerator.Current, expectedParameter);
+                executionParameters[i] = parameter;
+                hasMissing |= ReferenceEquals(parameter, Type.Missing);
+                i++;
+            }
         }
 
         for (i = providedParametersLength; i < totalLength; i++)

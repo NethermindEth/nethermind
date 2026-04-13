@@ -1,8 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   
   <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="NonBlocking" />
-    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" PrivateAssets="all"/>
+    <PackageReference Include="PierTwo.Lantern.Discv5.WireProtocol" PrivateAssets="all" />
     <PackageReference Include="System.Configuration.ConfigurationManager" />
   </ItemGroup>
   <ItemGroup>

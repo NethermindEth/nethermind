@@ -42,7 +42,7 @@ internal class XdcTestBlockchainTests
         BlockHeader parent = _blockchain.BlockTree.Genesis!;
         for (int i = 1; i < _blockchain.BlockTree.Head!.Number; i++)
         {
-            var block = _blockchain.BlockTree.FindBlock(i);
+            Block? block = _blockchain.BlockTree.FindBlock(i);
             Assert.That(block, Is.Not.Null);
             string? error;
             Assert.That(headerValidator.Validate(block!.Header, parent, false, out error), Is.True, "Header validation failed: " + error);

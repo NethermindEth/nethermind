@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -17,7 +18,7 @@ namespace Nethermind.KeyStore.Test;
 
 public class KeyStorePasswordProviderTests
 {
-    private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+    private static readonly List<(string Name, string Content)> _files = new()
     {
         ("TestingPasswordProviderFileF1", "PF1"),
         ("TestingPasswordProviderFileF2", "P    F2"),
@@ -29,9 +30,9 @@ public class KeyStorePasswordProviderTests
     [SetUp]
     public void SetUp()
     {
-        foreach (var (Name, Content) in _files)
+        foreach ((string Name, string Content) in _files)
         {
-            var filePath = Path.Combine(TestDir, Name);
+            string filePath = Path.Combine(TestDir, Name);
             if (!File.Exists(filePath))
             {
                 File.Create(filePath).Close();
@@ -43,9 +44,9 @@ public class KeyStorePasswordProviderTests
     [TearDown]
     public void TearDown()
     {
-        foreach (var (Name, _) in _files)
+        foreach ((string Name, string _) in _files)
         {
-            var filePath = Path.Combine(TestDir, Name);
+            string filePath = Path.Combine(TestDir, Name);
             if (File.Exists(filePath))
             {
                 File.Delete(filePath);
@@ -109,12 +110,12 @@ public class KeyStorePasswordProviderTests
         keyStoreConfig.Passwords.Returns(test.Passwords);
         keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
         keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
-        var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
+        KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
 
-        for (var index = 0; index < test.PasswordFiles.Count; ++index)
+        for (int index = 0; index < test.PasswordFiles.Count; ++index)
         {
-            var actualPassword = passwordProvider.GetPassword(test.UnlockAccounts[index]);
-            var expectedPassword = test.ExpectedPasswords[index];
+            SecureString actualPassword = passwordProvider.GetPassword(test.UnlockAccounts[index]);
+            string expectedPassword = test.ExpectedPasswords[index];
             Assert.That(actualPassword.IsReadOnly(), Is.True);
             Assert.That(actualPassword.Unsecure(), Is.EqualTo(expectedPassword));
         }
@@ -128,8 +129,8 @@ public class KeyStorePasswordProviderTests
         keyStoreConfig.PasswordFiles.Returns(_files.Where(x => test.PasswordFiles.Contains(x.Name)).Select(x => x.Name).ToArray());
         keyStoreConfig.BlockAuthorAccount.Returns(test.BlockAuthorAccount.ToString());
         keyStoreConfig.UnlockAccounts.Returns(test.UnlockAccounts.Select(a => a.ToString()).ToArray());
-        var passwordProvider = new KeyStorePasswordProvider(keyStoreConfig);
-        var blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
+        KeyStorePasswordProvider passwordProvider = new(keyStoreConfig);
+        SecureString blockAuthorPassword = passwordProvider.GetPassword(new Address(Bytes.FromHexString(keyStoreConfig.BlockAuthorAccount)));
         Assert.That(blockAuthorPassword.IsReadOnly(), Is.True);
         blockAuthorPassword.Unsecure().Should().Be(test.ExpectedBlockAuthorAccountPassword, test.TestName);
     }

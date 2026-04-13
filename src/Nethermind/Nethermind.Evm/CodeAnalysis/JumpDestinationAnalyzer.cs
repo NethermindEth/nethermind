@@ -16,7 +16,7 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
+public sealed class JumpDestinationAnalyzer(CodeInfo codeInfo, bool skipAnalysis = false)
 {
     private const int PUSH1 = (int)Instruction.PUSH1;
     private const int PUSHx = PUSH1 - 1;
@@ -24,10 +24,10 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     private const int BitShiftPerInt64 = 6;
 
     private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
-    private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
+    private long[]? _jumpDestinationBitmap = (codeInfo.Code.Length == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
     private object? _analysisComplete;
-    private ReadOnlyMemory<byte> MachineCode { get; } = code;
+    public ReadOnlyMemory<byte> MachineCode => codeInfo.Code;
 
     public bool ValidateJump(int destination)
     {
@@ -62,7 +62,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     private static void WaitForAnalysisToComplete(ManualResetEventSlim resetEvent)
     {
         // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
-        using var handle = Thread.CurrentThread.SetNormalPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetNormalPriority();
         // Already in progress, wait for completion.
         resetEvent.Wait();
     }
@@ -74,7 +74,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
         if (previous is null)
         {
             // Not already in progress, so start it.
-            var bitmap = CreateJumpDestinationBitmap();
+            long[] bitmap = CreateJumpDestinationBitmap();
             _jumpDestinationBitmap = bitmap;
             // Release the MRES to be GC'd
             Volatile.Write(ref _analysisComplete, bitmap);
@@ -384,7 +384,7 @@ public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
             if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
             {
                 // Boost the priority of the thread as block processing may be waiting on this.
-                using var handle = Thread.CurrentThread.BoostPriority();
+                using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
 
                 _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
                 // Release the MRES to be GC'd

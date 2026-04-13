@@ -13,6 +13,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Receipts;
 
+[Parallelizable(ParallelScope.All)]
 public class KeccaksIteratorTests
 {
     [TestCaseSource(nameof(TestKeccaks))]
@@ -56,7 +57,7 @@ public class KeccaksIteratorTests
         }
         int sequenceLength = Rlp.LengthOfSequence(totalLength);
 
-        RlpStream rlpStream = new RlpStream(sequenceLength);
+        RlpStream rlpStream = new(sequenceLength);
         rlpStream.StartSequence(totalLength);
         foreach (Hash256 keccak in input)
         {
@@ -84,7 +85,7 @@ public class KeccaksIteratorTests
         }
         int sequenceLength = Rlp.LengthOfSequence(totalLength);
 
-        RlpStream rlpStream = new RlpStream(sequenceLength);
+        RlpStream rlpStream = new(sequenceLength);
         rlpStream.StartSequence(totalLength);
         foreach (Hash256 keccak in input)
         {

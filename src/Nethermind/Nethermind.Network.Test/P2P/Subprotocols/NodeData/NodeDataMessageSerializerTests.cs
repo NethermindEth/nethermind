@@ -12,9 +12,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.NodeData;
 [Parallelizable(ParallelScope.All)]
 public class NodeDataMessageSerializerTests
 {
-    private static void Test(ArrayPoolList<byte[]> data)
+    private static void Test(ArrayPoolList<byte[]>? data)
     {
-        using NodeDataMessage message = new(data);
+        using NodeDataMessage message = new(data is not null ? new ByteArrayListAdapter(data) : null);
 
         NodeDataMessageSerializer serializer = new();
         SerializerTester.TestZero(serializer, message);

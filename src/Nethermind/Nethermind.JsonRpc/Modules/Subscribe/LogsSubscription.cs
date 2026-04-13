@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptCanonicalityMonitor = receiptCanonicalityMonitor ?? throw new ArgumentNullException(nameof(receiptCanonicalityMonitor));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<LogsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             FilterStore filterStore = store ?? throw new ArgumentNullException(nameof(store));
 
             if (filter is not null)
@@ -76,9 +76,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
             if (isAfterFromBlock && isBeforeToBlock)
             {
-                var filterLogs = GetFilterLogs(blockHeader, receipts, removed);
+                IEnumerable<FilterLog> filterLogs = GetFilterLogs(blockHeader, receipts, removed);
 
-                foreach (var filterLog in filterLogs)
+                foreach (FilterLog filterLog in filterLogs)
                 {
                     using JsonRpcResult result = CreateSubscriptionMessage(filterLog);
                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     {
                         for (int j = 0; j < receipt.Logs!.Length; j++)
                         {
-                            var receiptLog = receipt.Logs[j];
+                            LogEntry receiptLog = receipt.Logs[j];
                             if (_filter.Accepts(receiptLog))
                             {
                                 yield return new FilterLog(

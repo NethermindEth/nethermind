@@ -7,6 +7,7 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Json;
+using System;
 
 namespace Nethermind.Runner.Test
 {
@@ -40,7 +41,7 @@ namespace Nethermind.Runner.Test
         [TestCase("chainspec/custom_chainspec_that_does_not_exist.json")]
         public void ChainSpecNotFound(string chainSpecPath)
         {
-            var tryLoad = () => _loader.LoadEmbeddedOrFromFile(chainSpecPath);
+            Func<ChainSpec> tryLoad = () => _loader.LoadEmbeddedOrFromFile(chainSpecPath);
             tryLoad.Should().Throw<FileNotFoundException>();
         }
 

@@ -20,5 +20,6 @@ namespace Ethereum.Test.Base
         public Hash256? CurrentBeaconRoot { get; set; }
         public Hash256? CurrentWithdrawalsRoot { get; set; }
         public ulong? CurrentExcessBlobGas { get; set; }
+        public ulong? SlotNumber { get; set; }
     }
 }

@@ -8,21 +8,14 @@ using Nethermind.Core;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    internal class DataContract<T> : IDataContract<T>
+    internal class DataContract<T>(
+        Func<BlockHeader, IEnumerable<T>> getAll,
+DataContract<T>.TryGetChangesFromBlockDelegate tryGetChangesFromBlock) : IDataContract<T>
     {
         public delegate bool TryGetChangesFromBlockDelegate(BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items);
 
-        private readonly Func<BlockHeader, IEnumerable<T>> _getAll;
-        private readonly TryGetChangesFromBlockDelegate _tryGetChangesFromBlock;
-
-        public DataContract(
-            Func<BlockHeader, IEnumerable<T>> getAll,
-            TryGetChangesFromBlockDelegate tryGetChangesFromBlock)
-        {
-            IncrementalChanges = false;
-            _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
-            _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));
-        }
+        private readonly Func<BlockHeader, IEnumerable<T>> _getAll = getAll ?? throw new ArgumentNullException(nameof(getAll));
+        private readonly TryGetChangesFromBlockDelegate _tryGetChangesFromBlock = tryGetChangesFromBlock ?? throw new ArgumentNullException(nameof(tryGetChangesFromBlock));
 
         public DataContract(
             Func<BlockHeader, IEnumerable<T>> getAll,
@@ -45,6 +38,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         public bool TryGetItemsChangedFromBlock(BlockHeader header, TxReceipt[] receipts, out IEnumerable<T> items) => _tryGetChangesFromBlock(header, receipts, out items);
 
-        public bool IncrementalChanges { get; }
+        public bool IncrementalChanges { get; } = false;
     }
 }

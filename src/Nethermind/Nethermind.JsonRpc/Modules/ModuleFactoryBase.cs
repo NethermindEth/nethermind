@@ -24,14 +24,9 @@ namespace Nethermind.JsonRpc.Modules
         public string ModuleType { get; }
     }
 
-    public class SingletonFactory<T> : ModuleFactoryBase<T> where T : IRpcModule
+    public class SingletonFactory<T>(T module) : ModuleFactoryBase<T> where T : IRpcModule
     {
-        private readonly T _module;
-
-        public SingletonFactory(T module)
-        {
-            _module = module;
-        }
+        private readonly T _module = module;
 
         public override T Create()
         {

@@ -16,21 +16,17 @@ namespace Nethermind.Taiko;
 /// JsonRpc-based implementation of IL1StorageProvider that uses eth_getStorageAt
 /// RPC to retrieve L1 storage values.
 /// </summary>
-public class JsonRpcL1StorageProvider : IL1StorageProvider
+public class JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager) : IL1StorageProvider
 {
-    private readonly IJsonRpcClient _rpcClient;
-    private readonly ILogger _logger;
-
-    public JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager)
-    {
-        _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
-        _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
-    }
+    private readonly IJsonRpcClient _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
+    private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
 
     public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
     {
         try
         {
+            if (_logger.IsDebug) _logger.Debug($"L1SLOAD: sending eth_getStorageAt — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
+
             string? response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
                 contractAddress.ToString(),
@@ -40,15 +36,17 @@ public class JsonRpcL1StorageProvider : IL1StorageProvider
 
             if (response == null)
             {
-                _logger.Warn($"Failed to read L1 storage: contract={contractAddress}, key={storageKey}, block={blockNumber}");
+                if (_logger.IsWarn) _logger.Warn($"L1SLOAD: eth_getStorageAt returned null — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
                 return null;
             }
 
-            return UInt256.Parse(response);
+            UInt256 parsedValue = UInt256.Parse(response);
+            if (_logger.IsDebug) _logger.Debug($"L1SLOAD: eth_getStorageAt success — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, value={parsedValue}");
+            return parsedValue;
         }
         catch (Exception ex)
         {
-            _logger.Error($"L1 storage read failed: {ex.Message}");
+            if (_logger.IsError) _logger.Error($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex}");
             return null;
         }
     }

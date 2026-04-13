@@ -17,27 +17,26 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
+public class NettyDiscoveryHandler(
+    IDiscoveryMsgListener? discoveryManager,
+    IChannel? channel,
+    IMessageSerializationService? msgSerializationService,
+    ITimestamper? timestamper,
+    ILogManager? logManager,
+    NodeFilter? inboundMessageFilter = null) : NettyDiscoveryBaseHandler(logManager), IMsgSender
 {
-    private readonly ILogger _logger;
-    private readonly IDiscoveryMsgListener _discoveryMsgListener;
-    private readonly IChannel _channel;
-    private readonly IMessageSerializationService _msgSerializationService;
-    private readonly ITimestamper _timestamper;
-
-    public NettyDiscoveryHandler(
-        IDiscoveryMsgListener? discoveryManager,
-        IChannel? channel,
-        IMessageSerializationService? msgSerializationService,
-        ITimestamper? timestamper,
-        ILogManager? logManager) : base(logManager)
-    {
-        _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-    }
+    private static readonly TimeSpan MaxFutureExpirationOffset = TimeSpan.FromHours(1);
+    private static readonly TimeSpan DefaultInboundMessageWindow = TimeSpan.FromMilliseconds(100);
+    private const int DefaultInboundMessageBurstPerIp = 4;
+    private const int DefaultInboundMessageFilterSize = 8_192;
+    private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+    private readonly IChannel _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+    private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
+    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+    private readonly NodeFilter[] _inboundMessageFilters = inboundMessageFilter is null
+            ? CreateDefaultInboundMessageFilters()
+            : [inboundMessageFilter];
 
     public override void ChannelActive(IChannelHandlerContext context)
     {
@@ -56,11 +55,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
             if (_logger.IsError) _logger.Error("Exception when processing discovery messages", exception);
         }
 
-        context.DisconnectAsync().ContinueWith(x =>
-        {
-            if (x.IsFaulted && _logger.IsTrace)
-                _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
-        });
+        _ = LogDisconnectFailureAsync(context.DisconnectAsync());
     }
 
     public override void ChannelReadComplete(IChannelHandlerContext context)
@@ -111,21 +106,22 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         Metrics.DiscoveryMessagesSent.Increment(discoveryMsg.MsgType);
     }
 
-    private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg)
+    private bool TryParseMessage(DatagramPacket packet, out DiscoveryMsg? msg, out bool shouldForward)
     {
         msg = null;
+        shouldForward = true;
 
         IByteBuffer content = packet.Content;
         EndPoint address = packet.Sender;
 
         int size = content.ReadableBytes;
-        using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
 
         content.ReadBytes(msgBytes, 0, size);
 
         Interlocked.Add(ref Metrics.DiscoveryBytesReceived, size);
 
-        if (msgBytes.Length < 98)
+        if (size < 98)
         {
             if (_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {size}, sender: {address}");
             return false;
@@ -140,6 +136,13 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
         MsgType type = (MsgType)typeRaw;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
+
+        if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Rate limiting discovery message {type} from {remoteEndpoint}");
+            shouldForward = false;
+            return false;
+        }
 
         try
         {
@@ -157,10 +160,13 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
     {
-        if (!TryParseMessage(packet, out DiscoveryMsg? msg) || msg == null)
+        if (!TryParseMessage(packet, out DiscoveryMsg? msg, out bool shouldForward) || msg == null)
         {
-            packet.Content.ResetReaderIndex();
-            ctx.FireChannelRead(packet.Retain());
+            if (shouldForward)
+            {
+                packet.Content.ResetReaderIndex();
+                ctx.FireChannelRead(packet.Retain());
+            }
             return;
         }
 
@@ -177,7 +183,12 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
 
             // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
             Task.Factory.StartNew(
-                () => _discoveryMsgListener.OnIncomingMsg(msg),
+                static state =>
+                {
+                    (IDiscoveryMsgListener discoveryMsgListener, DiscoveryMsg discoveryMsg) = ((IDiscoveryMsgListener, DiscoveryMsg))state!;
+                    discoveryMsgListener.OnIncomingMsg(discoveryMsg);
+                },
+                (_discoveryMsgListener, msg),
                 CancellationToken.None,
                 TaskCreationOptions.RunContinuationsAsynchronously,
                 TaskScheduler.Default
@@ -227,6 +238,13 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
             return false;
         }
 
+        if (timeToExpire > MaxFutureExpirationOffset.TotalSeconds)
+        {
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} far future", size);
+            if (_logger.IsDebug) _logger.Debug($"Received a discovery message that expires too far in the future ({timeToExpire} seconds), type: {type}, sender: {address}, message: {msg}");
+            return false;
+        }
+
         if (msg.FarAddress is null)
         {
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", $"{msg.MsgType} has null far address", size);
@@ -262,6 +280,45 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(msg.FarAddress, "disc v4", msg.MsgType.ToString(), size);
         }
         Metrics.DiscoveryMessagesReceived.Increment(msg.MsgType);
+    }
+
+    private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
+    {
+        // Allow a small burst from the same IP so split Neighbors and other valid
+        // multi-packet exchanges are not dropped before signature verification.
+        NodeFilter[] inboundMessageFilters = _inboundMessageFilters;
+        for (int i = 0; i < inboundMessageFilters.Length; i++)
+        {
+            if (inboundMessageFilters[i].TryAccept(remoteEndpoint.Address, exactOnly: true))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static NodeFilter[] CreateDefaultInboundMessageFilters()
+    {
+        NodeFilter[] filters = new NodeFilter[DefaultInboundMessageBurstPerIp];
+        for (int i = 0; i < filters.Length; i++)
+        {
+            filters[i] = NodeFilter.CreateExact(DefaultInboundMessageFilterSize, DefaultInboundMessageWindow);
+        }
+
+        return filters;
+    }
+
+    private async Task LogDisconnectFailureAsync(Task disconnectTask)
+    {
+        try
+        {
+            await disconnectTask;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Error while disconnecting on context on {this} : {e}");
+        }
     }
 
     public event EventHandler? OnChannelActivated;

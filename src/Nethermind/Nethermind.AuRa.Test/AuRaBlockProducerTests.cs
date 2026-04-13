@@ -259,14 +259,9 @@ namespace Nethermind.AuRa.Test
             return new TestResult(q => context.BlockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>()));
         }
 
-        private class TestResult
+        private class TestResult(Action<Quantity> assert)
         {
-            private readonly Action<Quantity> _assert;
-
-            public TestResult(Action<Quantity> assert)
-            {
-                _assert = assert;
-            }
+            private readonly Action<Quantity> _assert = assert;
 
             public void ShouldProduceBlocks(Quantity quantity)
             {

@@ -19,7 +19,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
-using Nethermind.Evm;
 using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
@@ -71,6 +70,7 @@ namespace Nethermind.Core.Test.Builders
                         BlockInfoDb,
                         MetadataDb,
                         BadBlockStore,
+                        BlockAccessListStore,
                         ChainLevelInfoRepository,
                         _specProvider,
                         BloomStorage,
@@ -111,6 +111,7 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb HeadersDb { get; set; } = new TestMemDb();
         public IDb BlockNumbersDb { get; set; } = new TestMemDb();
+        public IDb BlockAccessListsDb { get; set; } = new TestMemDb();
 
         private IHeaderStore? _headerStore;
         public IHeaderStore HeaderStore
@@ -122,6 +123,19 @@ namespace Nethermind.Core.Test.Builders
             set
             {
                 _headerStore = value;
+            }
+        }
+
+        private IBlockAccessListStore? _balStore;
+        public IBlockAccessListStore BlockAccessListStore
+        {
+            get
+            {
+                return _balStore ??= new BlockAccessListStore(BlockAccessListsDb);
+            }
+            set
+            {
+                _balStore = value;
             }
         }
 
@@ -341,7 +355,7 @@ namespace Nethermind.Core.Test.Builders
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
                 currentBlock.Header.ReceiptsRoot =
-                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamDecoder<TxReceipt>()!);
+                    ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts, Rlp.GetStreamEncoder<TxReceipt>()!);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

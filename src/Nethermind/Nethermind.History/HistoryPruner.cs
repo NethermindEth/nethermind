@@ -77,7 +77,7 @@ public class HistoryPruner : IHistoryPruner
         IBlockProcessingQueue blockProcessingQueue,
         ILogManager logManager)
     {
-        _logger = logManager.GetClassLogger();
+        _logger = logManager.GetClassLogger<HistoryPruner>();
         _deletionProgressLoggingInterval = _logger.IsDebug ? 5 : 100000;
         _blockTree = blockTree;
         _receiptStorage = receiptStorage;
@@ -263,7 +263,7 @@ public class HistoryPruner : IHistoryPruner
                                 {
                                     try
                                     {
-                                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
+                                        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
                                             cancellationToken);
                                         TryPruneHistory(cts.Token);
                                     }
@@ -273,7 +273,7 @@ public class HistoryPruner : IHistoryPruner
                                     }
 
                                     return Task.CompletedTask;
-                                }))
+                                }, source: "HistoryPruner"))
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
@@ -543,7 +543,7 @@ public class HistoryPruner : IHistoryPruner
         }
         else
         {
-            UpdateDeletePointer(val.AsRlpStream().DecodeLong());
+            UpdateDeletePointer(val.AsRlpValueContext().DecodeLong());
             _lastSavedDeletePointer = _deletePointer;
             _hasLoadedDeletePointer = true;
         }

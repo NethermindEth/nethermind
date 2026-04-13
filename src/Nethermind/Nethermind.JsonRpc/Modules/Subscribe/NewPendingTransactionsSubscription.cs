@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -16,6 +17,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly ISpecProvider _specProvider;
         private readonly bool _includeTransactions;
 
+        [ConstructorWithSideEffect]
         public NewPendingTransactionsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
             ITxPool? txPool,
@@ -26,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<NewPendingTransactionsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _includeTransactions = options?.IncludeTransactions ?? false;
 
             _txPool.NewPending += OnNewPending;
@@ -38,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             ScheduleAction(async () =>
             {
                 using JsonRpcResult result = CreateSubscriptionMessage(_includeTransactions
-                    ? TransactionForRpc.FromTransaction(e.Transaction, chainId: _specProvider.ChainId)
+                    ? TransactionForRpc.FromTransaction(e.Transaction, new(_specProvider.ChainId))
                     : e.Transaction.Hash!);
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"NewPendingTransactions subscription {Id} printed hash of NewPendingTransaction.");

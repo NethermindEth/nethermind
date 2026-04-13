@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
@@ -11,10 +11,12 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
     <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Nethermind.Crypto.Bls" />
     <PackageReference Include="Nethermind.Crypto.SecP256r1" />
     <PackageReference Include="Nethermind.GmpBindings" />
     <PackageReference Include="Nethermind.MclBindings" />
   </ItemGroup>
+
 </Project>

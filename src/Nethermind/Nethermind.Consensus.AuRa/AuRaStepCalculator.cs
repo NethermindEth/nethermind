@@ -27,17 +27,17 @@ namespace Nethermind.Consensus.AuRa
         {
             get
             {
-                var timestampSeconds = _timestamper.UnixTime.SecondsLong;
+                long timestampSeconds = _timestamper.UnixTime.SecondsLong;
                 return GetStepInfo(timestampSeconds).GetCurrentStep(timestampSeconds);
             }
         }
 
-        public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInTicks);
+        public TimeSpan TimeToNextStep => new(TimeToNextStepInTicks);
 
         public TimeSpan TimeToStep(long step)
         {
-            var epoch = _timestamper.UnixTime;
-            var currentStepInfo = GetStepInfo(epoch.SecondsLong);
+            UnixTime epoch = _timestamper.UnixTime;
+            StepDurationInfo currentStepInfo = GetStepInfo(epoch.SecondsLong);
             long currentStep = currentStepInfo.GetCurrentStep(epoch.SecondsLong);
             if (step <= currentStep)
             {
@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.AuRa
             }
             else
             {
-                var timeToNextStep = new TimeSpan(GetTimeToNextStepInTicks(epoch, currentStepInfo));
+                TimeSpan timeToNextStep = new(GetTimeToNextStepInTicks(epoch, currentStepInfo));
                 return timeToNextStep + TimeSpan.FromSeconds(currentStepInfo.StepDuration * (step - currentStep - 1));
             }
 
@@ -64,21 +64,21 @@ namespace Nethermind.Consensus.AuRa
         {
             get
             {
-                var unixTime = _timestamper.UnixTime;
-                var currentStepInfo = GetStepInfo(unixTime.SecondsLong);
+                UnixTime unixTime = _timestamper.UnixTime;
+                StepDurationInfo currentStepInfo = GetStepInfo(unixTime.SecondsLong);
                 return GetTimeToNextStepInTicks(unixTime, currentStepInfo);
             }
         }
 
         private static long GetTimeToNextStepInTicks(UnixTime unixTime, StepDurationInfo currentStepInfo)
         {
-            var timeFromTransition = unixTime.MillisecondsLong - currentStepInfo.TransitionTimestampMilliseconds;
-            var timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
+            long timeFromTransition = unixTime.MillisecondsLong - currentStepInfo.TransitionTimestampMilliseconds;
+            long timeAlreadyPassedToNextStep = timeFromTransition % currentStepInfo.StepDurationMilliseconds;
             return (currentStepInfo.StepDurationMilliseconds - timeAlreadyPassedToNextStep) * TimeSpan.TicksPerMillisecond;
         }
 
         private StepDurationInfo GetStepInfo(long timestampInSeconds) =>
-            _stepDurations.TryGetForActivation(timestampInSeconds, out var currentStepInfo)
+            _stepDurations.TryGetForActivation(timestampInSeconds, out StepDurationInfo currentStepInfo)
                 ? currentStepInfo
                 : throw new InvalidOperationException($"Couldn't find state step duration information at timestamp {timestampInSeconds}");
 
@@ -94,7 +94,7 @@ namespace Nethermind.Consensus.AuRa
                 throw new ArgumentException("Authority Round step duration cannot be 0.");
             }
 
-            foreach (var key in stepDurations.Keys.ToArray())
+            foreach (long key in stepDurations.Keys.ToArray())
             {
                 const ushort maxValue = UInt16.MaxValue;
 
@@ -111,13 +111,13 @@ namespace Nethermind.Consensus.AuRa
             StepDurationInfo[] result = new StepDurationInfo[stepDurations.Count];
             KeyValuePair<long, long> firstStep = stepDurations.First();
             int index = 0;
-            var previousStep = result[index++] = new StepDurationInfo(0, firstStep.Key, firstStep.Value);
-            foreach (var currentStep in stepDurations.Skip(1))
+            StepDurationInfo previousStep = result[index++] = new StepDurationInfo(0, firstStep.Key, firstStep.Value);
+            foreach (KeyValuePair<long, long> currentStep in stepDurations.Skip(1))
             {
-                var previousStepLength = currentStep.Key - previousStep.TransitionTimestamp;
-                var previousStepCount = previousStepLength / previousStep.StepDuration + (previousStepLength % previousStep.StepDuration > 0 ? 1 : 0);
-                var currentTransitionStep = previousStep.TransitionStep + previousStepCount;
-                var currentTransitionTimestamp = previousStep.TransitionTimestamp + previousStepCount * previousStep.StepDuration;
+                long previousStepLength = currentStep.Key - previousStep.TransitionTimestamp;
+                long previousStepCount = previousStepLength / previousStep.StepDuration + (previousStepLength % previousStep.StepDuration > 0 ? 1 : 0);
+                long currentTransitionStep = previousStep.TransitionStep + previousStepCount;
+                long currentTransitionTimestamp = previousStep.TransitionTimestamp + previousStepCount * previousStep.StepDuration;
                 previousStep = result[index++] = new StepDurationInfo(currentTransitionStep, currentTransitionTimestamp, currentStep.Value);
             }
             return result;

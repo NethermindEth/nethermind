@@ -6,14 +6,9 @@ using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Blockchain.Services
 {
-    public class HealthHintService : IHealthHintService
+    public class HealthHintService(ChainSpec chainSpec) : IHealthHintService
     {
-        private readonly ChainSpec _chainSpec;
-
-        public HealthHintService(ChainSpec chainSpec)
-        {
-            _chainSpec = chainSpec;
-        }
+        private readonly ChainSpec _chainSpec = chainSpec;
 
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {

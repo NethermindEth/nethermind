@@ -85,7 +85,7 @@ public class ShutterEventSimulator
 
     public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount)
     {
-        var events = _eventSource.Take(eventCount).ToList();
+        List<Event> events = _eventSource.Take(eventCount).ToList();
         foreach (Event e in events)
         {
             _keys[e.Eon].Enqueue((e.IdentityPreimage, e.Key));
@@ -226,7 +226,7 @@ public class ShutterEventSimulator
         rawKeys.Sort(static (a, b) => Bytes.BytesComparer.Compare(a.IdentityPreimage, b.IdentityPreimage));
         rawKeys.Insert(0, ([], []));
 
-        var keys = rawKeys.Select(static k => new Key()
+        List<Key> keys = rawKeys.Select(static k => new Key()
         {
             Identity = ByteString.CopyFrom(k.IdentityPreimage),
             Key_ = ByteString.CopyFrom(k.Key),

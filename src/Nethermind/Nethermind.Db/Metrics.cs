@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#if ZK_EVM
+using System.Collections.Generic;
+#endif
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -20,26 +23,28 @@ namespace Nethermind.Db
         [DetailedMetricOnFlag]
         public static bool DetailedMetricsEnabled { get; set; }
 
+        private static bool IsBlockProcessingThread => ProcessingThread.IsBlockProcessingThread;
+
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
-        public static long StateTreeCache => _stateTreeCacheHits.GetTotalValue();
-        private static readonly ZeroContentionCounter _stateTreeCacheHits = new();
-        internal static void IncrementStateTreeCacheHits() => _stateTreeCacheHits.Increment();
+        public static long StateTreeCache => _mainStateTreeCacheHits + _otherStateTreeCacheHits;
+        private static long _mainStateTreeCacheHits;
+        private static long _otherStateTreeCacheHits;
+        internal static void IncrementStateTreeCacheHits() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeCacheHits : ref _otherStateTreeCacheHits);
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
-        public static long StateTreeReads => _stateTreeReads.GetTotalValue();
-        private static readonly ZeroContentionCounter _stateTreeReads = new();
-
-        [Description("Number of State Trie reads on thread.")]
-        internal static long ThreadLocalStateTreeReads => _stateTreeReads.ThreadLocalValue;
-        internal static void IncrementStateTreeReads() => _stateTreeReads.Increment();
+        public static long StateTreeReads => _mainStateTreeReads + _otherStateTreeReads;
+        private static long _mainStateTreeReads;
+        private static long _otherStateTreeReads;
+        internal static void IncrementStateTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateTreeReads : ref _otherStateTreeReads);
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads => _stateReaderReads.GetTotalValue();
-        private static readonly ZeroContentionCounter _stateReaderReads = new();
-        internal static void IncrementStateReaderReads() => _stateReaderReads.Increment();
+        public static long StateReaderReads => _mainStateReaderReads + _otherStateReaderReads;
+        private static long _mainStateReaderReads;
+        private static long _otherStateReaderReads;
+        internal static void IncrementStateReaderReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStateReaderReads : ref _otherStateReaderReads);
 
         [CounterMetric]
         [Description("Number of state trie writes.")]
@@ -59,18 +64,17 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of storage trie cache hits.")]
-        public static long StorageTreeCache => _storageTreeCache.GetTotalValue();
-        private static readonly ZeroContentionCounter _storageTreeCache = new();
-        internal static void IncrementStorageTreeCache() => _storageTreeCache.Increment();
+        public static long StorageTreeCache => _mainStorageTreeCache + _otherStorageTreeCache;
+        private static long _mainStorageTreeCache;
+        private static long _otherStorageTreeCache;
+        internal static void IncrementStorageTreeCache() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeCache : ref _otherStorageTreeCache);
 
         [CounterMetric]
         [Description("Number of storage trie reads.")]
-        public static long StorageTreeReads => _storageTreeReads.GetTotalValue();
-        private static readonly ZeroContentionCounter _storageTreeReads = new();
-
-        [Description("Number of storage trie reads on thread.")]
-        internal static long ThreadLocalStorageTreeReads => _storageTreeReads.ThreadLocalValue;
-        internal static void IncrementStorageTreeReads() => _storageTreeReads.Increment();
+        public static long StorageTreeReads => _mainStorageTreeReads + _otherStorageTreeReads;
+        private static long _mainStorageTreeReads;
+        private static long _otherStorageTreeReads;
+        internal static void IncrementStorageTreeReads() => Interlocked.Increment(ref IsBlockProcessingThread ? ref _mainStorageTreeReads : ref _otherStorageTreeReads);
 
         [CounterMetric]
         [Description("Number of storage reader reads.")]
@@ -92,6 +96,16 @@ namespace Nethermind.Db
         [Description("Indicator if StateDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
+#if ZK_EVM
+        public static Dictionary<string, long> DbReads { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbWrites { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbMemtableSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbBlockCacheSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<string, long> DbIndexFilterSize { get; } = new Dictionary<string, long>();
+        public static Dictionary<(string, string), double> DbStats { get; } = new Dictionary<(string, string), double>();
+        public static Dictionary<(string, int, string), double> DbCompactionStats { get; } = new Dictionary<(string, int, string), double>();
+#else
         [GaugeMetric]
         [Description("Database reads per database")]
         [KeyIsLabel("db")]
@@ -129,7 +143,7 @@ namespace Nethermind.Db
         [Description("Metrics extracted from RocksDB Compaction Stats")]
         [KeyIsLabel("db", "level", "metric")]
         public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
-
+#endif
         [DetailedMetric]
         [Description("Prewarmer get operation times")]
         [ExponentialPowerHistogramMetric(Start = 10, Factor = 1.5, Count = 30, LabelNames = ["part", "is_prewarmer"])]

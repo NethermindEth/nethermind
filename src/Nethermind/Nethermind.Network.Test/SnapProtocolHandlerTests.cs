@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,8 @@ public class SnapProtocolHandlerTests
                 NodeStatsManager,
                 MessageSerializationService,
                 RunImmediatelyScheduler.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new SyncConfig());
             set
             {
                 _snapProtocolHandler = value;
@@ -102,7 +104,7 @@ public class SnapProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
@@ -111,7 +113,7 @@ public class SnapProtocolHandlerTests
 
                         packet.PacketType = SnapMessageCode.AccountRange;
                         SnapProtocolHandler.HandleMessage(packet);
-                        ReferenceCountUtil.Release(packet);
+                        ReferenceCountUtil.Release(packet); // releases buffer
                     });
                 return this;
             }
@@ -155,6 +157,18 @@ public class SnapProtocolHandlerTests
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
+    }
+
+    [TestCase(long.MaxValue, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes + 1, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(SnapMessageLimits.MaxResponseBytes, SnapMessageLimits.MaxResponseBytes)]
+    [TestCase(1_000_000L, 1_000_000L)]
+    [TestCase(1L, 1L)]
+    [TestCase(0L, 1L)]
+    [TestCase(-1L, 1L)]
+    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected)
+    {
+        Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
     }
 
     [Test]

@@ -126,26 +126,27 @@ public class LeafData : INodeWithKey
     public int MemorySize => MemorySizes.RefSize + // StorageRoot
                              MemorySizes.RefSize + // RefSize for Key, then the key itself
                              (Key is not null ? (int)MemorySizes.Align(Key.Length + MemorySizes.ArrayOverhead) : 0) +
-                             _value.MemorySize; // value
+                             MemorySizes.RefSize + // RefSize for _value._array
+                             (_value.IsNotNullOrEmpty ? (int)MemorySizes.Align(_value.UnderlyingLength + MemorySizes.ArrayOverhead) : 0); // value
 
-    private readonly SpanSource _value;
+    private readonly CappedArray<byte> _value;
 
     public byte[] Key { get; set; }
-    public SpanSource Value => _value;
+    public CappedArray<byte> Value => _value;
     public TrieNode? StorageRoot { get; set; }
 
     public LeafData()
     {
-        _value = SpanSource.Empty;
+        _value = CappedArray<byte>.Empty;
     }
 
-    internal LeafData(byte[] key, SpanSource value)
+    internal LeafData(byte[] key, CappedArray<byte> value)
     {
         Key = key;
         _value = value;
     }
 
-    private LeafData(byte[] key, SpanSource value, TrieNode? storageRoot)
+    private LeafData(byte[] key, CappedArray<byte> value, TrieNode? storageRoot)
     {
         Key = key;
         _value = value;
@@ -156,5 +157,5 @@ public class LeafData : INodeWithKey
 
     INodeData INodeData.Clone() => new LeafData(Key, _value);
 
-    public LeafData CloneWithNewValue(SpanSource value) => new(Key, value, StorageRoot);
+    public LeafData CloneWithNewValue(CappedArray<byte> value) => new(Key, value, StorageRoot);
 }

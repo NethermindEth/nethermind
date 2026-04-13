@@ -15,7 +15,7 @@ public class ShutterTxFilter(
     ILogManager logManager)
 {
     private readonly TxValidator _txValidator = new(specProvider.ChainId);
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    private readonly ILogger _logger = logManager.GetClassLogger<ShutterTxFilter>();
 
     public AcceptTxResult IsAllowed(Transaction tx, UInt256 gasLimit, BlockHeader parentHeader)
     {
@@ -40,6 +40,6 @@ public class ShutterTxFilter(
             return AcceptTxResult.Invalid;
         }
 
-        return wellFormed ? AcceptTxResult.Accepted : AcceptTxResult.Invalid;
+        return AcceptTxResult.Accepted;
     }
 }

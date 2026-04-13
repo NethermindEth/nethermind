@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
@@ -19,7 +20,7 @@ public class GetPayloadV3Handler(
     ISpecProvider specProvider,
     ILogManager logManager,
     ICensorshipDetector? censorshipDetector = null)
-    : GetPayloadHandlerBase<GetPayloadV3Result>(3, payloadPreparationService, specProvider, logManager, censorshipDetector)
+    : GetPayloadHandlerBase<GetPayloadV3Result>(EngineApiVersions.GetPayload.V3, payloadPreparationService, specProvider, logManager, censorshipDetector)
 {
     protected override GetPayloadV3Result GetPayloadResultFromBlock(IBlockProductionContext context)
     {

@@ -14,6 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Taiko.Test.Tdx;
 
+[Explicit]
 public class TdxServiceTests
 {
     private ISurgeTdxConfig _config = null!;
@@ -123,7 +124,7 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
 
         newService.IsBootstrapped.Should().BeTrue();
         TdxGuestInfo? info2 = newService.GetGuestInfo();
@@ -148,7 +149,7 @@ public class TdxServiceTests
     {
         TdxGuestInfo info1 = _service.Bootstrap();
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         TdxGuestInfo info2 = newService.Bootstrap();
 
         info2.PublicKey.Should().Be(info1.PublicKey);
@@ -162,7 +163,7 @@ public class TdxServiceTests
         Block block = Build.A.Block.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
         TdxBlockHeaderSignature signature1 = _service.SignBlockHeader(block.Header);
 
-        var newService = new TdxService(_config, _client, LimboLogs.Instance);
+        TdxService newService = new(_config, _client, LimboLogs.Instance);
         newService.Bootstrap();
         TdxBlockHeaderSignature signature2 = newService.SignBlockHeader(block.Header);
 

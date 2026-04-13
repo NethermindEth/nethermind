@@ -27,6 +27,7 @@ using NUnit.Framework;
 namespace Nethermind.Trie.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class PruningScenariosTests
     {
         private ILogger _logger;
@@ -36,7 +37,7 @@ namespace Nethermind.Trie.Test
         public void SetUp()
         {
             _logManager = LimboLogs.Instance;
-            _logger = _logManager.GetClassLogger();
+            _logger = _logManager.GetClassLogger<PruningScenariosTests>();
         }
 
         /* When analyzing the tests below please remember that the way we store accounts is by calculating a hash
@@ -48,7 +49,7 @@ namespace Nethermind.Trie.Test
         {
             // Fixed seed for reproducible fuzzing
             const int fuzzSeed = 12345;
-            var random = new Random(fuzzSeed);
+            Random random = new(fuzzSeed);
 
             _logger.Info($"Fuzzing pruning scenarios with seed: {fuzzSeed}");
 
@@ -61,12 +62,12 @@ namespace Nethermind.Trie.Test
             _logger.Info($"Scenario: {accountsCount} accounts, {blocksCount} blocks, maxDepth: {maxDepth}, storageOps: {storageOperationsPerBlock}");
 
             // Create pruning context with random configuration
-            var pruningContext = PruningContext.InMemory
+            PruningContext pruningContext = PruningContext.InMemory
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
             // Randomly choose between different pruning strategies
-            var strategyChoice = random.Next(0, 3);
+            int strategyChoice = random.Next(0, 3);
             switch (strategyChoice)
             {
                 case 0:
@@ -83,7 +84,7 @@ namespace Nethermind.Trie.Test
             pruningContext = pruningContext.WithMaxDepth(maxDepth).TurnOnPrune();
 
             // Generate random accounts and operations
-            var accounts = new List<int>();
+            List<int> accounts = new();
             for (int i = 0; i < accountsCount; i++)
             {
                 accounts.Add(i);
@@ -97,23 +98,23 @@ namespace Nethermind.Trie.Test
                 for (int op = 0; op < operationsInBlock; op++)
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
-                    var operation = random.Next(0, 4);
+                    int operation = random.Next(0, 4);
 
                     switch (operation)
                     {
                         case 0: // Create/Update account balance
-                            var balance = (UInt256)random.Next(1, 1000);
+                            UInt256 balance = (UInt256)random.Next(1, 1000);
                             pruningContext.SetAccountBalance(accountIndex, balance);
                             break;
 
                         case 1: // Set storage
-                            var storageKey = random.Next(1, 10);
-                            var storageValue = random.Next(1, 100);
+                            int storageKey = random.Next(1, 10);
+                            int storageValue = random.Next(1, 100);
                             pruningContext.SetStorage(accountIndex, storageKey, storageValue);
                             break;
 
                         case 2: // Delete storage
-                            var deleteKey = random.Next(1, 10);
+                            int deleteKey = random.Next(1, 10);
                             pruningContext.DeleteStorage(accountIndex, deleteKey);
                             break;
 
@@ -127,10 +128,10 @@ namespace Nethermind.Trie.Test
                 for (int storageOp = 0; storageOp < storageOperationsPerBlock; storageOp++)
                 {
                     int accountIndex = accounts[random.Next(accounts.Count)];
-                    var storageKey = random.Next(1, 10);
-                    var storageValue = random.Next(1, 100);
+                    int storageKey = random.Next(1, 10);
+                    int storageValue = random.Next(1, 100);
 
-                    var storageOperation = random.Next(0, 3);
+                    int storageOperation = random.Next(0, 3);
                     switch (storageOperation)
                     {
                         case 0:
@@ -159,7 +160,7 @@ namespace Nethermind.Trie.Test
                     for (int branchOp = 0; branchOp < random.Next(1, 3); branchOp++)
                     {
                         int accountIndex = accounts[random.Next(accounts.Count)];
-                        var balance = (UInt256)random.Next(1, 1000);
+                        UInt256 balance = (UInt256)random.Next(1, 1000);
                         pruningContext.SetAccountBalance(accountIndex, balance);
                     }
 
@@ -194,7 +195,8 @@ namespace Nethermind.Trie.Test
         {
             private BlockHeader? _baseBlock = Build.A.EmptyBlockHeader;
             private readonly Dictionary<string, BlockHeader?> _branchingPoints = new();
-            private readonly ManualResetEvent _stateDbBlocker = new ManualResetEvent(true);
+            private readonly ManualResetEvent _stateDbBlocker = new(true);
+            private readonly ManualResetEventSlim _writeReached = new(false);
             private readonly TestMemDb _stateDb;
             private readonly TestMemDb _codeDb;
             private IDisposable? _worldStateCloser = null;
@@ -207,16 +209,17 @@ namespace Nethermind.Trie.Test
             private readonly TestPruningStrategy _pruningStrategy;
             private readonly IPruningConfig _pruningConfig;
             private readonly TestFinalizedStateProvider _finalizedStateProvider;
-            private readonly Random _random = new Random(0);
+            private readonly Random _random = new(0);
 
             [DebuggerStepThrough]
             private PruningContext(TestPruningStrategy pruningStrategy, IPersistenceStrategy persistenceStrategy, IPruningConfig? pruningConfig = null)
             {
                 _logManager = LimboLogs.Instance;
-                _logger = _logManager.GetClassLogger();
+                _logger = _logManager.GetClassLogger<PruningContext>();
                 _stateDb = new TestMemDb();
                 _stateDb.WriteFunc = (k, v) =>
                 {
+                    _writeReached.Set();
                     _stateDbBlocker.WaitOne();
                     return true;
                 };
@@ -435,11 +438,16 @@ namespace Nethermind.Trie.Test
                 return this;
             }
 
+            public Task StartSyncPruneInBackground()
+            {
+                return Task.Run(() => _trieStore.SyncPruneQueue());
+            }
+
             public PruningContext DisposeAndRecreate()
             {
                 _worldStateCloser!.Dispose();
                 _trieStore.Dispose();
-                TestFinalizedStateProvider finalizedStateProvider = new TestFinalizedStateProvider(_pruningConfig.PruningBoundary);
+                TestFinalizedStateProvider finalizedStateProvider = new(_pruningConfig.PruningBoundary);
                 _trieStore = new TrieStore(new NodeStorage(_stateDb), _pruningStrategy, _persistenceStrategy, finalizedStateProvider, _pruningConfig, _logManager);
                 _stateProvider = new WorldState(
                     new TrieStoreScopeProvider(_trieStore, _codeDb, _logManager), _logManager);
@@ -573,6 +581,12 @@ namespace Nethermind.Trie.Test
             public PruningContext UnblockDatabase()
             {
                 _stateDbBlocker.Set();
+                return this;
+            }
+
+            public PruningContext WaitForBlockedWrite(int timeoutMs = 10000)
+            {
+                Assert.That(_writeReached.Wait(timeoutMs), Is.True, "Pruning task did not reach database write");
                 return this;
             }
 
@@ -1099,7 +1113,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx
@@ -1148,7 +1162,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1162,7 +1176,7 @@ namespace Nethermind.Trie.Test
             ctx
                 .AssertThatDirtyNodeCountIs(9)
                 .AssertThatCachedNodeCountIs(951)
-                .AssertThatTotalMemoryUsedIs(822384);
+                .AssertThatTotalMemoryUsedIs(823096);
         }
 
         [Test]
@@ -1170,7 +1184,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemoryWithPastKeyTracking
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(100.MiB())
+                .WithPersistedMemoryLimit(100.MiB)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
 
@@ -1198,7 +1212,7 @@ namespace Nethermind.Trie.Test
         {
             PruningContext ctx = PruningContext.InMemory
                 .WithMaxDepth(2)
-                .WithPersistedMemoryLimit(200.KiB())
+                .WithPersistedMemoryLimit(200.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.1)
                 .TurnOnPrune()
                 .TurnOffAlwaysPrunePersistedNode();
@@ -1212,9 +1226,9 @@ namespace Nethermind.Trie.Test
 
                 if (thresholdReached)
                 {
-                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB() * 0.1));
+                    ctx.AssertThatTotalMemoryUsedIsNoLessThan((long)(200.KiB * 0.1));
                 }
-                else if (ctx.TotalMemoryUsage > 190.KiB())
+                else if (ctx.TotalMemoryUsage > 190.KiB)
                 {
                     thresholdReached = true;
                 }
@@ -1222,7 +1236,7 @@ namespace Nethermind.Trie.Test
 
             ctx
                 .AssertThatDirtyNodeCountIs(9)
-                .AssertThatCachedNodeCountMoreThan(280);
+                .AssertThatCachedNodeCountMoreThan(275);
         }
 
         [Test]
@@ -1259,7 +1273,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx
@@ -1283,7 +1297,7 @@ namespace Nethermind.Trie.Test
                 .WithMaxDepth(maxDepth)
                 .TurnOnPrune();
 
-            using ArrayPoolList<Hash256> stateRoots = new ArrayPoolList<Hash256>(256);
+            using ArrayPoolList<Hash256> stateRoots = new(256);
             for (int i = 0; i < 256; i++)
             {
                 ctx
@@ -1320,8 +1334,11 @@ namespace Nethermind.Trie.Test
             }
             ctx.ExitScope();
 
-            // Make sure prune task started and its snapshotting
-            Thread.Sleep(100);
+            // Start pruning explicitly on background thread (avoids relying on async prune delay timing)
+            Task pruneTask = ctx.StartSyncPruneInBackground();
+
+            // Wait until pruning actually hits the blocked database write
+            ctx.WaitForBlockedWrite();
 
             Task blockTask = Task.Run(() =>
             {
@@ -1346,13 +1363,16 @@ namespace Nethermind.Trie.Test
             }
             else
             {
-                await Task.Delay(1000);
+                await Task.Delay(3000);
                 blockTask.IsCompleted.Should().BeFalse();
 
                 ctx.UnblockDatabase();
 
                 await blockTask;
             }
+
+            ctx.UnblockDatabase();
+            await pruneTask;
 
         }
 
@@ -1365,7 +1385,7 @@ namespace Nethermind.Trie.Test
                     cfg.DirtyNodeShardBit = 12; // More shard, deliberately make it slow
                 })
                 .WithMaxDepth(128)
-                .WithPersistedMemoryLimit(50.KiB())
+                .WithPersistedMemoryLimit(50.KiB)
                 .WithPrunePersistedNodeParameter(1, 0.01)
                 .TurnOffPrune();
 

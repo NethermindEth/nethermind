@@ -12,7 +12,7 @@ public class L1Origin(UInt256 blockId,
     ValueHash256 l1BlockHash,
     int[]? buildPayloadArgsId,
     bool isForcedInclusion = false,
-    int[]? signature = null)
+    byte[]? signature = null)
 {
     public UInt256 BlockId { get; set; } = blockId;
     public ValueHash256? L2BlockHash { get; set; } = l2BlockHash;
@@ -22,7 +22,7 @@ public class L1Origin(UInt256 blockId,
     // Taiko uses int-like serializer (Go's default encoding for byte arrays)
     public int[]? BuildPayloadArgsId { get; set; } = buildPayloadArgsId;
     public bool IsForcedInclusion { get; set; } = isForcedInclusion;
-    public int[]? Signature { get; set; } = signature;
+    public byte[]? Signature { get; set; } = signature;
 
     /// <summary>
     /// IsPreconfBlock returns true if the L1Origin is for a preconfirmation block.
