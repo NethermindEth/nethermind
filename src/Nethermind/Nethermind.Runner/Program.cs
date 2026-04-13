@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -131,9 +132,29 @@ async Task<int> ConfigureAsync(string[] args)
 
     TypeDiscovery.Initialize(typeof(INethermindPlugin));
 
+    List<(string Name, string Description)> stepCommands = DiscoverStepCommands();
+    Argument<string> commandArgument = new("command")
+    {
+        Description = "Optional command to run instead of the full client",
+        Arity = ArgumentArity.ZeroOrOne
+    };
+    commandArgument.Validators.Add(result =>
+    {
+        string? value = result.GetValueOrDefault<string>();
+        if (value is not null && !stepCommands.Any(c => c.Name == value))
+            result.AddError($"Unknown command '{value}'. Available commands: {string.Join(", ", stepCommands.Select(c => c.Name))}");
+    });
+    rootCommand.Add(commandArgument);
+
     AddConfigurationOptions(rootCommand);
 
-    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+    rootCommand.SetAction((result, token) =>
+    {
+        string? command = result.GetValue(commandArgument);
+        if (command is not null)
+            return RunCommandAsync(result, pluginLoader, command, token);
+        return RunAsync(result, pluginLoader, token);
+    });
 
     parseResult = rootCommand.Parse(args);
     parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
@@ -227,6 +248,91 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     exit.Set();
 
     return processExitSource.ExitCode;
+}
+
+async Task<int> RunCommandAsync(ParseResult parseResult, PluginLoader pluginLoader, string commandName, CancellationToken cancellationToken)
+{
+    IConfigProvider configProvider = CreateConfigProvider(parseResult);
+    IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+    IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
+    ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
+    IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
+
+    pluginLoader.OrderPlugins(pluginConfig);
+
+    ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
+        initConfig, keyStoreConfig, snapshotConfig);
+
+    NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
+    DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
+#if !DEBUG
+    DotNettyLeakDetector.Level = DotNettyLeakDetector.DetectionLevel.Disabled;
+#endif
+
+    logger = logManager.GetClassLogger();
+
+    ConfigureSeqLogger(configProvider);
+    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
+
+    if (parseResult.GetValue(BasicOptions.PurgeDb))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath);
+    }
+    else if (parseResult.GetValue(BasicOptions.ForceResync))
+    {
+        PurgeDatabaseDirectory(initConfig.BaseDbPath, preserveNetwork: true);
+    }
+
+    logger.Info($"Running command: {commandName}");
+
+    if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
+
+    processExitSource = new(cancellationToken);
+    ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
+    IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
+    EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins);
+
+    try
+    {
+        await ethereumRunner.StartCommand(commandName, processExitSource.Token);
+    }
+    catch (OperationCanceledException)
+    {
+        if (logger.IsTrace) logger.Trace("Nethermind operation was canceled.");
+    }
+    catch (Exception ex)
+    {
+        if (logger.IsError) logger.Error(unhandledError, ex);
+
+        processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
+    }
+
+    logger.Info("Command completed. Shutting down...");
+
+    await ethereumRunner.StopAsync();
+
+    logger.Info("Nethermind is shut down");
+
+    exit.Set();
+
+    return processExitSource.ExitCode;
+}
+
+static List<(string Name, string Description)> DiscoverStepCommands()
+{
+    List<(string Name, string Description)> commands = [];
+
+    foreach (Type type in TypeDiscovery.FindNethermindBasedTypes(typeof(IStep)))
+    {
+        if (type.IsAbstract || type.IsInterface)
+            continue;
+
+        RunnerCommandAttribute? attr = type.GetCustomAttribute<RunnerCommandAttribute>();
+        if (attr is not null && !attr.IsDefault && !commands.Any(c => c.Name == attr.Name))
+            commands.Add((attr.Name, attr.Description));
+    }
+
+    return commands;
 }
 
 void AddConfigurationOptions(Command command)

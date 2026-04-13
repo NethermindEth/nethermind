@@ -27,6 +27,12 @@ namespace Nethermind.Api.Steps
                 StepType.GetCustomAttribute<RunnerStepDependenciesAttribute>();
             Dependencies = dependenciesAttribute?.Dependencies ?? [];
             Dependents = dependenciesAttribute?.Dependents ?? [];
+
+            RunnerCommandAttribute? commandAttribute =
+                StepType.GetCustomAttribute<RunnerCommandAttribute>();
+            CommandName = commandAttribute?.Name;
+            CommandDescription = commandAttribute?.Description;
+            IsDefaultCommand = commandAttribute?.IsDefault ?? false;
         }
 
         public Type StepBaseType { get; }
@@ -35,6 +41,10 @@ namespace Nethermind.Api.Steps
 
         public Type[] Dependencies { get; }
         public Type[] Dependents { get; }
+
+        public string? CommandName { get; }
+        public string? CommandDescription { get; }
+        public bool IsDefaultCommand { get; }
 
         public override string ToString()
         {

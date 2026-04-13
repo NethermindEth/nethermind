@@ -3,6 +3,7 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
+using Nethermind.Init;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Runner.Ethereum.Modules;
@@ -33,7 +34,8 @@ public class BuiltInStepsModule : Module
         typeof(StartBlockProcessor),
         typeof(StartBlockProducer),
         typeof(StartMonitoring),
-        typeof(StartLogIndex)
+        typeof(StartLogIndex),
+        typeof(RunVerifyTrie)
     ];
 
     protected override void Load(ContainerBuilder builder)
