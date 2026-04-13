@@ -842,6 +842,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized2, Is.EqualTo(expectedResult), serialized2);
     }
 
+    [TestCase("hash")]
+    [TestCase("nonce")]
+    [TestCase("miner")]
+    public async Task Eth_getBlockByNumber_pending_fields_should_be_null(string field)
+    {
+        using Context ctx = await Context.Create();
+
+        string serialized = await ctx.Test.TestEthRpc("eth_getBlockByNumber", "pending", "true");
+        JToken json = JToken.Parse(serialized);
+
+        json["result"]![field]!.Type.Should().Be(JTokenType.Null);
+    }
+
     [TestCase("0x0")]
     public async Task Eth_get_block_by_number_should_not_recover_tx_senders_for_request_without_tx_details(string blockParameter)
     {
