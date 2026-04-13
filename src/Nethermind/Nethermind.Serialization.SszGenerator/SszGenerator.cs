@@ -16,12 +16,20 @@ public class SszGenerator : IIncrementalGenerator
         DiagnosticSeverity.Error,
         isEnabledByDefault: true);
 
+    private static readonly DiagnosticDescriptor NestedTypeNotSupportedRule = new(
+        "SSZ004",
+        "SSZ types must be top-level",
+        "SSZ container '{0}' is nested inside another type and is not supported by the source generator",
+        "SourceGeneration",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         context.RegisterPostInitializationOutput(static spc =>
             spc.AddSource("Serialization.SszEncoding.Helpers.cs", SourceText.From(GenerateHelpersCode(), Encoding.UTF8)));
 
-        IncrementalValuesProvider<(SszType Type, List<SszType> FoundTypes, Location? Location)?> classDeclarations = context.SyntaxProvider
+        IncrementalValuesProvider<(SszType Type, List<SszType> FoundTypes, Location? Location, bool IsNested)?> classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: (syntaxNode, _) => IsClassWithAttribute(syntaxNode),
                 transform: (context, _) => GetClassWithAttribute(context))
@@ -31,6 +39,12 @@ public class SszGenerator : IIncrementalGenerator
         {
             if (decl is null)
             {
+                return;
+            }
+
+            if (decl.Value.IsNested)
+            {
+                spc.ReportDiagnostic(Diagnostic.Create(NestedTypeNotSupportedRule, decl.Value.Location ?? Location.None, decl.Value.Type.Name));
                 return;
             }
 
@@ -62,6 +76,9 @@ using Nethermind.Serialization.Ssz;
     static byte[] ISszCodec<{decl.Name}>.Encode({decl.Name} value) =>
         SszEncoding.Encode(value);
 
+    static void ISszCodec<{decl.Name}>.Encode(Span<byte> data, {decl.Name} value) =>
+        SszEncoding.Encode(data, value);
+
     static void ISszCodec<{decl.Name}>.Merkleize({decl.Name} value, out UInt256 root) =>
         SszEncoding.Merkleize(value, out root);
 }}
@@ -74,7 +91,7 @@ using Nethermind.Serialization.Ssz;
                classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
     }
 
-    private static (SszType Type, List<SszType> FoundTypes, Location? Location)? GetClassWithAttribute(GeneratorSyntaxContext context)
+    private static (SszType Type, List<SszType> FoundTypes, Location? Location, bool IsNested)? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
         TypeDeclarationSyntax classDeclaration = (TypeDeclarationSyntax)context.Node;
         foreach (AttributeListSyntax attributeList in classDeclaration.AttributeLists)
@@ -84,11 +101,13 @@ using Nethermind.Serialization.Ssz;
                 IMethodSymbol? methodSymbol = context.SemanticModel.GetSymbolInfo(attribute).Symbol as IMethodSymbol;
                 if (methodSymbol is not null && IsSszRootAttribute(methodSymbol.ContainingType))
                 {
+                    INamedTypeSymbol typeSymbol = (INamedTypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!;
                     List<SszType> foundTypes = new(SszType.BasicTypes);
                     return (
-                        SszType.From(context.SemanticModel, foundTypes, (ITypeSymbol)context.SemanticModel.GetDeclaredSymbol(classDeclaration)!),
+                        SszType.From(context.SemanticModel, foundTypes, typeSymbol),
                         foundTypes,
-                        classDeclaration.Identifier.GetLocation());
+                        classDeclaration.Identifier.GetLocation(),
+                        typeSymbol.ContainingType is not null);
                 }
             }
         }

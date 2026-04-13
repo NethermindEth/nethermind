@@ -64,7 +64,7 @@ public class SszContainerTests
         }
 
         public void RunInvalid(byte[] ssz) =>
-            Assert.That(() => T.Decode(ssz, out T _), Throws.InstanceOf<Exception>());
+            Assert.That(() => T.Decode(ssz, out T _), Throws.InstanceOf<InvalidDataException>());
     }
 
     /// <summary>

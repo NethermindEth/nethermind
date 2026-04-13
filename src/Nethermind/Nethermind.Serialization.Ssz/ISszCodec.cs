@@ -20,6 +20,9 @@ public interface ISszCodec<T> where T : ISszCodec<T>
     /// <summary>Encodes <paramref name="value"/> to a freshly allocated SSZ buffer.</summary>
     static abstract byte[] Encode(T value);
 
+    /// <summary>Encodes <paramref name="value"/> into <paramref name="data"/>, which must already be sized for the result.</summary>
+    static abstract void Encode(Span<byte> data, T value);
+
     /// <summary>Computes the SSZ hash-tree root of <paramref name="value"/>.</summary>
     static abstract void Merkleize(T value, out UInt256 root);
 }
