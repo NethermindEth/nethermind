@@ -11,7 +11,7 @@ namespace Nethermind.Serialization.Json;
 
 public class Base64Converter : JsonConverter<byte[]>
 {
-    public override byte[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         JsonTokenType tokenType = reader.TokenType;
 

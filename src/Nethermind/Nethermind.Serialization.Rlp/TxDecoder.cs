@@ -67,13 +67,13 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
     public void RegisterDecoder(TxType type, ITxDecoder decoder) => _decoders[(int)type] = decoder;
 
     private ITxDecoder GetDecoder(TxType txType) =>
-        _decoders.TryGetByTxType(txType, out ITxDecoder decoder)
+        _decoders.TryGetByTxType(txType, out ITxDecoder? decoder)
             ? decoder
             : throw new RlpException($"Unknown transaction type {txType}") { Data = { { "txType", txType } } };
 
     protected override T? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        T transaction = null;
+        T? transaction = null;
         Decode(ref decoderContext, ref transaction, rlpBehaviors);
         return transaction;
     }
@@ -111,7 +111,7 @@ public class TxDecoder<T> : RlpValueDecoder<T> where T : Transaction, new()
             }
         }
 
-        GetDecoder(txType).Decode(ref Unsafe.As<T, Transaction>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        GetDecoder(txType).Decode(ref Unsafe.As<T?, Transaction?>(ref transaction), txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     public override void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => EncodeTx(stream, item, rlpBehaviors, forSigning: false, isEip155Enabled: false, chainId: 0);

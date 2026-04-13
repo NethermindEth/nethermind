@@ -48,7 +48,7 @@ public class SubnetSnapshotDecoderTests
         encoder.Encode(stream, original);
 
         SubnetSnapshotDecoder decoder = new();
-        SubnetSnapshot decoded = decoder.Decode(stream.Data.AsSpan());
+        SubnetSnapshot decoded = decoder.Decode(stream.Data.AsSpan())!;
         decoded.Should().BeEquivalentTo(original);
     }
 }

@@ -23,7 +23,7 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         int length = ctx.ReadSequenceLength();
         int check = length + ctx.Position;
 
-        Address address = ctx.DecodeAddress();
+        Address address = ctx.DecodeAddress()!;
 
         SlotChanges[] slotChanges = ctx.DecodeArray(SlotChangesDecoder.Instance, true, default, _slotsLimit);
         UInt256? lastSlot = null;

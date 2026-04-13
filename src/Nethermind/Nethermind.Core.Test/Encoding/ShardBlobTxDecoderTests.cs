@@ -52,7 +52,7 @@ public partial class ShardBlobTxDecoderTests
         Func<Transaction> tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
-            return _txDecoder.Decode(ref ctx);
+            return _txDecoder.Decode(ref ctx)!;
         };
         tryDecode.Should().Throw<RlpException>();
     }
@@ -111,7 +111,7 @@ public partial class ShardBlobTxDecoderTests
         Func<Transaction> tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(stream.Data);
-            return _txDecoder.Decode(ref ctx);
+            return _txDecoder.Decode(ref ctx)!;
         };
         tryDecode.Should().Throw<RlpException>();
     }

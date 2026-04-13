@@ -8,8 +8,6 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Json;
 
-#nullable enable
-
 internal sealed class BufferSegment : ReadOnlySequenceSegment<byte>
 {
     private IMemoryOwner<byte>? _memoryOwner;

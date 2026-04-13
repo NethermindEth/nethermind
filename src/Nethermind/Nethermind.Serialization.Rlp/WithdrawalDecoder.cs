@@ -23,7 +23,7 @@ public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
         {
             Index = decoderContext.DecodeULong(),
             ValidatorIndex = decoderContext.DecodeULong(),
-            Address = decoderContext.DecodeAddress(),
+            Address = decoderContext.DecodeAddress()!,
             AmountInGwei = decoderContext.DecodeULong()
         };
     }
@@ -47,11 +47,11 @@ public sealed class WithdrawalDecoder() : RlpValueDecoder<Withdrawal>
 
     public Rlp Encode(Withdrawal? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        RlpStream stream = new(GetLength(item, rlpBehaviors));
+        RlpStream stream = new(GetLength(item!, rlpBehaviors));
 
         Encode(stream, item, rlpBehaviors);
 
-        return new(stream.Data.ToArray());
+        return new(stream.Data.ToArray()!);
     }
 
     private static int GetContentLength(Withdrawal item) =>

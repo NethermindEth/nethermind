@@ -146,5 +146,5 @@ public sealed class BlobTxDecoder<T>(Func<T>? transactionFactory = null)
     protected override int GetPayloadLength(Transaction transaction) =>
         base.GetPayloadLength(transaction)
         + Rlp.LengthOf(transaction.MaxFeePerBlobGas)
-        + Rlp.LengthOf(transaction.BlobVersionedHashes);
+        + Rlp.LengthOf(transaction.BlobVersionedHashes!);
 }

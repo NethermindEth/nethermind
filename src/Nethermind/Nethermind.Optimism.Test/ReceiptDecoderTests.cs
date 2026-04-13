@@ -17,7 +17,7 @@ public class ReceiptDecoderTests
         {
             OptimismReceiptMessageDecoder decoder = new();
             Rlp.ValueDecoderContext ctx = new(rlp);
-            OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedReceipt = (OptimismTxReceipt)decoder.Decode(ref ctx, RlpBehaviors.SkipTypedWrapping)!;
 
             RlpStream encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
             decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
@@ -40,7 +40,7 @@ public class ReceiptDecoderTests
             decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             Rlp.ValueDecoderContext valueDecoderCtx = new(encodedRlp.Data);
-            OptimismTxReceipt decodedStorageReceipt = decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedStorageReceipt = decoder.Decode(ref valueDecoderCtx, RlpBehaviors.SkipTypedWrapping)!;
 
             Assert.Multiple(() =>
             {
@@ -59,7 +59,7 @@ public class ReceiptDecoderTests
             trieDecoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
             Rlp.ValueDecoderContext trieCtx = new(encodedTrieRlp.Data);
-            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieCtx, RlpBehaviors.SkipTypedWrapping);
+            OptimismTxReceipt decodedTrieReceipt = (OptimismTxReceipt)trieDecoder.Decode(ref trieCtx, RlpBehaviors.SkipTypedWrapping)!;
 
             Assert.Multiple(() =>
             {

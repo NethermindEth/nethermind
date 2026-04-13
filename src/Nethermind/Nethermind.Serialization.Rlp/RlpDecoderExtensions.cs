@@ -19,7 +19,7 @@ namespace Nethermind.Serialization.Rlp
             T[] result = new T[length];
             for (int i = 0; i < result.Length; i++)
             {
-                result[i] = decoder.Decode(ref decoderContext, rlpBehaviors);
+                result[i] = decoder.Decode(ref decoderContext, rlpBehaviors)!;
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -40,7 +40,7 @@ namespace Nethermind.Serialization.Rlp
             Rlp[] rlpSequence = new Rlp[items.Length];
             for (int i = 0; i < items.Length; i++)
             {
-                rlpSequence[i] = items[i] is null ? Rlp.OfEmptyList : decoder.Encode(items[i], behaviors);
+                rlpSequence[i] = items[i] is null ? Rlp.OfEmptyList : decoder.Encode(items[i]!, behaviors);
             }
 
             return Rlp.Encode(rlpSequence);
@@ -74,7 +74,7 @@ namespace Nethermind.Serialization.Rlp
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                totalLength += decoder.GetLength(items[i], behaviors);
+                totalLength += decoder.GetLength(items[i]!, behaviors);
             }
 
             int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -84,7 +84,7 @@ namespace Nethermind.Serialization.Rlp
 
             for (int i = 0; i < items.Length; i++)
             {
-                decoder.Encode(rlpStream, items[i], behaviors);
+                decoder.Encode(rlpStream, items[i]!, behaviors);
             }
 
             return rlpStream;
@@ -103,7 +103,7 @@ namespace Nethermind.Serialization.Rlp
             int totalLength = 0;
             for (int i = 0; i < items.Count; i++)
             {
-                totalLength += decoder.GetLength(items[i], behaviors);
+                totalLength += decoder.GetLength(items[i]!, behaviors);
             }
 
             int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -113,7 +113,7 @@ namespace Nethermind.Serialization.Rlp
 
             for (int i = 0; i < items.Count; i++)
             {
-                decoder.Encode(rlpStream, items[i], behaviors);
+                decoder.Encode(rlpStream, items[i]!, behaviors);
             }
 
             return rlpStream;
@@ -124,7 +124,7 @@ namespace Nethermind.Serialization.Rlp
             int totalLength = 0;
             for (int i = 0; i < items.Count; i++)
             {
-                totalLength += decoder.GetLength(items[i], behaviors);
+                totalLength += decoder.GetLength(items[i]!, behaviors);
             }
 
             int bufferLength = Rlp.LengthOfSequence(totalLength);
@@ -134,7 +134,7 @@ namespace Nethermind.Serialization.Rlp
 
             for (int i = 0; i < items.Count; i++)
             {
-                decoder.Encode(rlpStream, items[i], behaviors);
+                decoder.Encode(rlpStream, items[i]!, behaviors);
             }
 
             return rlpStream;
@@ -143,9 +143,9 @@ namespace Nethermind.Serialization.Rlp
         public static CappedArray<byte> EncodeToCappedArray<T>(this IRlpStreamEncoder<T> decoder, T? item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None, ICappedArrayPool? bufferPool = null)
         {
-            int size = decoder.GetLength(item, rlpBehaviors);
+            int size = decoder.GetLength(item!, rlpBehaviors);
             CappedArray<byte> buffer = bufferPool.SafeRent(size);
-            decoder.Encode(buffer.AsRlpStream(), item, rlpBehaviors);
+            decoder.Encode(buffer.AsRlpStream(), item!, rlpBehaviors);
             return buffer;
         }
 
@@ -184,12 +184,13 @@ namespace Nethermind.Serialization.Rlp
             if (items is null)
             {
                 stream.Encode(Rlp.OfEmptyList);
+                return;
             }
 
             stream.StartSequence(decoder.GetContentLength(items, behaviors));
             for (int index = 0; index < items.Length; index++)
             {
-                T t = items[index];
+                T? t = items[index];
                 if (t is null)
                 {
                     stream.Encode(Rlp.OfEmptyList);
@@ -212,7 +213,7 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = 0;
             for (int i = 0; i < items.Length; i++)
             {
-                contentLength += decoder.GetLength(items[i], behaviors);
+                contentLength += decoder.GetLength(items[i]!, behaviors);
             }
 
             return contentLength;

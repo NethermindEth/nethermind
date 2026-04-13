@@ -35,12 +35,12 @@ public class TimeoutCertificateDecoderTests
         if (useRlpStream)
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
         else
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
 
         decoded.Should().BeEquivalentTo(tc);

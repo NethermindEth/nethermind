@@ -67,8 +67,8 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
-            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext)!;
+            BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck)!;
 
             Block block = new(header, body)
             {
@@ -87,7 +87,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data.ToArray());
+            return new(rlpStream.Data.ToArray()!);
         }
 
         public override void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -129,7 +129,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 stream.StartSequence(withdrawalsLength.Value);
 
-                for (int i = 0; i < item.Withdrawals.Length; i++)
+                for (int i = 0; i < item.Withdrawals!.Length; i++)
                 {
                     stream.Encode(item.Withdrawals[i]);
                 }
@@ -149,7 +149,7 @@ namespace Nethermind.Serialization.Rlp
             int sequenceLength = decoderContext.ReadSequenceLength();
             int blockCheck = decoderContext.Position + sequenceLength;
 
-            BlockHeader header = _headerDecoder.Decode(ref decoderContext);
+            BlockHeader header = _headerDecoder.Decode(ref decoderContext)!;
 
             int contentLength = decoderContext.ReadSequenceLength();
             int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);

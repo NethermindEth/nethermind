@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
 using System;
 using System.Runtime.CompilerServices;
 using System.Text.Json;

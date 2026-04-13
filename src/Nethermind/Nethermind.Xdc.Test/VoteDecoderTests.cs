@@ -59,12 +59,12 @@ public class VoteDecoderTests
         if (useRlpStream)
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
         else
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
 
         decoded.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
@@ -85,10 +85,10 @@ public class VoteDecoderTests
         stream.Position = 0;
 
         Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        Vote decodedStream = decoder.Decode(ref streamCtx);
+        Vote decodedStream = decoder.Decode(ref streamCtx)!;
 
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        Vote decodedContext = decoder.Decode(ref decoderContext);
+        Vote decodedContext = decoder.Decode(ref decoderContext)!;
 
         decodedStream.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
         decodedContext.Should().BeEquivalentTo(vote, options => options.Excluding(v => v.Signer));
@@ -130,7 +130,7 @@ public class VoteDecoderTests
         Assert.That(sealingEncoded.Bytes.Length, Is.LessThan(normalEncoded.Bytes.Length),
             "ForSealing encoding should be shorter as it omits the signature.");
 
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing);
+        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)sealingEncoded.Bytes, RlpBehaviors.ForSealing)!;
 
         Assert.That(decoded.Signature, Is.Null,
             "ForSealing decoding should not contain Signature field.");
@@ -152,7 +152,7 @@ public class VoteDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         VoteDecoder decoder = new();
-        Vote decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        Vote? decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
 
         Assert.That(decoded, Is.Null);
     }
@@ -163,7 +163,7 @@ public class VoteDecoderTests
         VoteDecoder decoder = new();
         Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
 
-        Vote decoded = decoder.Decode(ref decoderContext);
+        Vote? decoded = decoder.Decode(ref decoderContext);
 
         Assert.That(decoded, Is.Null);
     }

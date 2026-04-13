@@ -48,7 +48,7 @@ public class SnapshotDecoderTests
         encoder.Encode(stream, original);
 
         SnapshotDecoder decoder = new();
-        Snapshot decoded = decoder.Decode(stream.Data.AsSpan());
+        Snapshot decoded = decoder.Decode(stream.Data.AsSpan())!;
         decoded.Should().BeEquivalentTo(original);
     }
 }

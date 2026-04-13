@@ -7,8 +7,6 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Serialization.Json;
 
-#nullable enable
-
 internal struct BufferSegmentStack(int size)
 {
     private SegmentAsValueType[] _array = new SegmentAsValueType[size];

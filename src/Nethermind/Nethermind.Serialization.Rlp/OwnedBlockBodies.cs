@@ -30,7 +30,7 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
     {
         if (_memoryOwner is null) return;
 
-        foreach (BlockBody? blockBody in Bodies)
+        foreach (BlockBody? blockBody in Bodies!)
         {
             if (blockBody is null) continue;
             foreach (Transaction tx in blockBody.Transactions)
@@ -49,7 +49,7 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
     {
         if (_memoryOwner is null) return;
 
-        foreach (BlockBody? blockBody in Bodies)
+        foreach (BlockBody? blockBody in Bodies!)
         {
             if (blockBody is null) continue;
             foreach (Transaction tx in blockBody.Transactions)
@@ -64,15 +64,15 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
 
     public IEnumerator<BlockBody?> GetEnumerator()
     {
-        foreach (BlockBody blockBody in _rawBodies)
+        foreach (BlockBody? blockBody in _rawBodies!)
         {
             yield return blockBody;
         }
     }
 
-    IEnumerator IEnumerable.GetEnumerator() => _rawBodies.GetEnumerator();
+    IEnumerator IEnumerable.GetEnumerator() => _rawBodies!.GetEnumerator();
 
-    public int Count => _rawBodies.Length;
+    public int Count => _rawBodies!.Length;
 
-    public BlockBody? this[int index] => _rawBodies[index];
+    public BlockBody? this[int index] => _rawBodies![index];
 }

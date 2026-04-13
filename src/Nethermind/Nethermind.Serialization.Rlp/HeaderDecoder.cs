@@ -30,9 +30,9 @@ namespace Nethermind.Serialization.Rlp
             int headerSequenceLength = decoderContext.ReadSequenceLength();
             int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Hash256? parentHash = decoderContext.DecodeKeccak();
-            Hash256? unclesHash = decoderContext.DecodeKeccak();
-            Address? beneficiary = decoderContext.DecodeAddress();
+            Hash256 parentHash = decoderContext.DecodeKeccak()!;
+            Hash256 unclesHash = decoderContext.DecodeKeccak()!;
+            Address beneficiary = decoderContext.DecodeAddress()!;
             Hash256? stateRoot = decoderContext.DecodeKeccak();
             Hash256? transactionsRoot = decoderContext.DecodeKeccak();
             Hash256? receiptsRoot = decoderContext.DecodeKeccak();
@@ -120,7 +120,7 @@ namespace Nethermind.Serialization.Rlp
                 if (isAuRa)
                 {
                     rlpStream.Encode(header.AuRaStep!.Value);
-                    rlpStream.Encode(header.AuRaSignature);
+                    rlpStream.Encode(header.AuRaSignature!);
                 }
                 else
                 {
@@ -164,7 +164,7 @@ namespace Nethermind.Serialization.Rlp
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
 
-            return new Rlp(rlpStream.Data.ToArray());
+            return new Rlp(rlpStream.Data.ToArray()!);
         }
 
         private static int GetContentLength(BlockHeader? item, RlpBehaviors rlpBehaviors)

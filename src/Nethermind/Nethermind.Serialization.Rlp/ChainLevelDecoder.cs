@@ -20,7 +20,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            if (item.BlockInfos.AsSpan().Contains(null))
+            if (Array.Exists(item.BlockInfos, static bi => bi is null))
             {
                 ThrowHasNull();
             }

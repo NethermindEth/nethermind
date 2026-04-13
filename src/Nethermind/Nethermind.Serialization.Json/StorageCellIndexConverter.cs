@@ -4,8 +4,6 @@
 using System;
 using Nethermind.Int256;
 
-#nullable enable
-
 namespace Nethermind.Serialization.Json
 {
     using System.Collections.Generic;

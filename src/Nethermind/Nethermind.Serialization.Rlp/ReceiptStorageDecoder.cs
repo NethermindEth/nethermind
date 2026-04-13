@@ -98,11 +98,12 @@ namespace Nethermind.Serialization.Rlp
             return txReceipt;
         }
 
-        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item is null) return Rlp.OfEmptyList;
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
+            return new Rlp(rlpStream.Data.ToArray()!);
         }
 
         public override void Encode(RlpStream rlpStream, TxReceipt? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -153,7 +154,7 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = item.Logs ?? [];
                 for (int i = 0; i < logs.Length; i++)
                 {
                     rlpStream.Encode(logs[i]);
@@ -174,7 +175,7 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                LogEntry[] logs = item.Logs;
+                LogEntry[] logs = item.Logs ?? [];
                 for (int i = 0; i < logs.Length; i++)
                 {
                     rlpStream.Encode(logs[i]);
@@ -223,17 +224,18 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOf(item.PostTransactionState);
             }
 
-            contentLength += Rlp.LengthOf(item.Error);
+            contentLength += Rlp.LengthOf(item.Error ?? string.Empty);
 
             return (contentLength, logsLength);
         }
 
         private static int GetLogsLength(TxReceipt item)
         {
+            LogEntry[] logs = item.Logs ?? [];
             int logsLength = 0;
-            for (int i = 0; i < item.Logs.Length; i++)
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;

@@ -8,7 +8,7 @@ using System.Linq;
 namespace Nethermind.Core.Test.Json;
 
 [TestFixture]
-public class Base64ConverterTests : ConverterTestBase<byte[]?>
+public class Base64ConverterTests : ConverterTestBase<byte[]>
 {
     [TestCase(null)]
     [TestCase(new byte[0])]

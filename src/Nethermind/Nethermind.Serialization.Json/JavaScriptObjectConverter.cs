@@ -11,8 +11,6 @@ using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core.Buffers;
 
-#nullable enable
-
 namespace Nethermind.Serialization.Json;
 
 public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>

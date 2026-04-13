@@ -56,14 +56,14 @@ namespace Nethermind.Serialization.Rlp
                 WriteByte(Rlp.EmptyListByte);
                 return;
             }
-            IRlpStreamEncoder<T> decoder = Rlp.GetStreamEncoder<T>();
+            IRlpStreamEncoder<T> decoder = Rlp.GetStreamEncoder<T>()!;
             int contentLength = decoder.GetContentLength(items);
 
             StartSequence(contentLength);
 
             foreach (T? item in items)
             {
-                decoder.Encode(this, item, rlpBehaviors);
+                decoder.Encode(this, item!, rlpBehaviors);
             }
         }
         public void Encode(Block value) => _blockDecoder.Encode(this, value);

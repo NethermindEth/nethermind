@@ -30,18 +30,17 @@ namespace Nethermind.Serialization.Rlp
             int topicsLength = decoderContext.ReadSequenceLength();
             int topicsCheck = decoderContext.Position + topicsLength;
             int topicCount = topicsLength / Rlp.LengthOfKeccakRlp;
-            decoderContext.GuardLimit(topicCount, RlpLimit.L4);
             Hash256[] topics = new Hash256[topicCount];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = decoderContext.DecodeKeccak();
+                topics[i] = decoderContext.DecodeKeccak()!;
             }
             decoderContext.Check(topicsCheck);
 
             byte[] data = decoderContext.DecodeByteArray();
             decoderContext.Check(logEntryCheck);
 
-            return new LogEntry(address, data, topics);
+            return new LogEntry(address!, data, topics);
         }
 
         public Rlp Encode(LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -53,7 +52,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data.ToArray());
+            return new Rlp(rlpStream.Data.ToArray()!);
         }
 
         public override void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

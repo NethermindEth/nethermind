@@ -30,7 +30,7 @@ namespace Nethermind.Serialization.Json
                 throw new NotSupportedException();
             }
 
-            return reader.GetString();
+            return reader.GetString()!;
         }
 
         public override void Write(

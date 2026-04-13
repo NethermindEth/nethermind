@@ -34,14 +34,14 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<Hash256> topics = new(topicCount);
             while (decoderContext.Position < untilPosition)
             {
-                topics.Add(decoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(decoderContext.DecodeZeroPrefixKeccak()!);
             }
             decoderContext.Check(untilPosition);
 
             byte[] data = DecodeCompactData(ref decoderContext);
             decoderContext.Check(logEntryCheck);
 
-            return new LogEntry(address, data, topics.ToArray());
+            return new LogEntry(address!, data, topics.ToArray());
         }
 
         public static void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviors, out LogEntryStructRef item)
@@ -75,7 +75,7 @@ namespace Nethermind.Serialization.Rlp
             using ArrayPoolListRef<Hash256> topics = new(sequenceLength * 2 / Rlp.LengthOfKeccakRlp);
             while (valueDecoderContext.Position < untilPosition)
             {
-                topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak());
+                topics.Add(valueDecoderContext.DecodeZeroPrefixKeccak()!);
             }
             valueDecoderContext.Check(untilPosition);
 

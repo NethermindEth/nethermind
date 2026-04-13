@@ -78,8 +78,8 @@ public partial class Rlp
                             try
                             {
                                 _decoderBuilder[key] = instance ??= (IRlpDecoder)(type.GetConstructor(Type.EmptyTypes) is not null ?
-                                    Activator.CreateInstance(type) :
-                                    Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null));
+                                    Activator.CreateInstance(type)! :
+                                    Activator.CreateInstance(type, BindingFlags.CreateInstance | BindingFlags.OptionalParamBinding, null, [Type.Missing], null)!);
                             }
                             catch (Exception)
                             {

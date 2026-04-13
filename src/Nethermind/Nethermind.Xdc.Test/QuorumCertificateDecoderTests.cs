@@ -30,7 +30,7 @@ internal class QuorumCertificateDecoderTests
         RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
         Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
-        QuorumCertificate decoded = decoder.Decode(ref ctx);
+        QuorumCertificate decoded = decoder.Decode(ref ctx)!;
 
         decoded.Should().BeEquivalentTo(quorumCert);
     }
@@ -47,12 +47,12 @@ internal class QuorumCertificateDecoderTests
         if (useRlpStream)
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
         else
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
 
         decoded.Should().BeEquivalentTo(quorumCert);

@@ -53,7 +53,7 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp() => RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+        static Rlp() => RegisterDecoders(Assembly.GetAssembly(typeof(Rlp))!);
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
@@ -79,7 +79,7 @@ namespace Nethermind.Serialization.Rlp
             using Lock.Scope _ = _decoderLock.EnterScope();
             _decoderBuilder.Clear();
             _decodersSnapshot = null;
-            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
+            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp))!);
             RegisterDecoder(typeof(Transaction), TxDecoder.Instance);
         }
 
@@ -144,8 +144,8 @@ namespace Nethermind.Serialization.Rlp
             return span.ToPooledList();
         }
 
-        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;
-        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder value) ? value as IRlpStreamEncoder<T> : null;
+        public static IRlpValueDecoder<T>? GetValueDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder? value) ? value as IRlpValueDecoder<T> : null;
+        public static IRlpStreamEncoder<T>? GetStreamEncoder<T>(string key = RlpDecoderKey.Default) => Decoders.TryGetValue(new(typeof(T), key), out IRlpDecoder? value) ? value as IRlpStreamEncoder<T> : null;
         public static IRlpObjectDecoder<T> GetObjectDecoder<T>(string key = RlpDecoderKey.Default) => Decoders.GetValueOrDefault(new(typeof(T), key)) as IRlpObjectDecoder<T> ?? throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
 
         public static ArrayPoolList<T> DecodeArrayPool<T>(ref ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None, RlpLimit? limit = null)
@@ -164,7 +164,7 @@ namespace Nethermind.Serialization.Rlp
             ArrayPoolList<T> result = new(length);
             for (int i = 0; i < length; i++)
             {
-                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors));
+                result.Add(rlpDecoder.Decode(ref decoderContext, rlpBehaviors)!);
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -180,7 +180,7 @@ namespace Nethermind.Serialization.Rlp
             IRlpValueDecoder<T>? rlpDecoder = GetValueDecoder<T>();
             bool shouldCheckStream = decoderContext.Position == 0 && (rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes;
             int length = decoderContext.Length;
-            T? result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors) : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            T result = rlpDecoder is not null ? rlpDecoder.Decode(ref decoderContext, rlpBehaviors)! : throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
             if (shouldCheckStream)
                 decoderContext.Check(length);
             return result;
@@ -205,7 +205,7 @@ namespace Nethermind.Serialization.Rlp
                 int totalLength = rlpStreamEncoder.GetLength(item, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamEncoder.Encode(stream, item, behaviors);
-                return new Rlp(stream.Data.ToArray());
+                return new Rlp(stream.Data.ToArray()!);
             }
 
             return GetObjectDecoder<T>().Encode(item, behaviors);
@@ -224,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
                 int totalLength = rlpStreamEncoder.GetLength(items, behaviors);
                 RlpStream stream = new(totalLength);
                 rlpStreamEncoder.Encode(stream, items, behaviors);
-                return new Rlp(stream.Data.ToArray());
+                return new Rlp(stream.Data.ToArray()!);
             }
 
             return GetObjectDecoder<T>().Encode(items, behaviors);
@@ -665,7 +665,7 @@ namespace Nethermind.Serialization.Rlp
 
             private Memory<byte> ReadSlicedMemory(int length)
             {
-                Memory<byte> data = Memory.Value.Slice(Position, length);
+                Memory<byte> data = Memory.GetValueOrDefault().Slice(Position, length);
                 Position += length;
                 return data;
             }
@@ -1377,7 +1377,7 @@ namespace Nethermind.Serialization.Rlp
                 return default;
             }
 
-            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            public T[] DecodeArray<T>(IRlpValueDecoder<T>? decoder = null, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
             {
                 if (decoder is null)
                 {
@@ -1395,12 +1395,12 @@ namespace Nethermind.Serialization.Rlp
                 {
                     if (PeekByte() == OfEmptyList[0])
                     {
-                        result[i] = defaultElement;
+                        result[i] = defaultElement!;
                         Position++;
                     }
                     else
                     {
-                        result[i] = decoder.Decode(ref this);
+                        result[i] = decoder.Decode(ref this)!;
                     }
                 }
 
@@ -1412,7 +1412,7 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            public T[] DecodeArray<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
             {
                 int positionCheck = ReadSequenceLength() + Position;
                 int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -1422,7 +1422,7 @@ namespace Nethermind.Serialization.Rlp
                 {
                     if (PeekByte() == OfEmptyList[0])
                     {
-                        result[i] = defaultElement;
+                        result[i] = defaultElement!;
                         Position++;
                     }
                     else
@@ -1439,7 +1439,7 @@ namespace Nethermind.Serialization.Rlp
                 return result;
             }
 
-            public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T defaultElement = default, RlpLimit? limit = null)
+            public ArrayPoolList<T> DecodeArrayPoolList<T>(DecodeRlpValue<T> decodeItem, bool checkPositions = true, T? defaultElement = default, RlpLimit? limit = null)
             {
                 int positionCheck = ReadSequenceLength() + Position;
                 int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : null);
@@ -1452,7 +1452,7 @@ namespace Nethermind.Serialization.Rlp
                     {
                         if (PeekByte() == OfEmptyList[0])
                         {
-                            result[i] = defaultElement;
+                            result[i] = defaultElement!;
                             Position++;
                         }
                         else
@@ -1796,7 +1796,7 @@ namespace Nethermind.Serialization.Rlp
 
         public bool Equals(RlpDecoderKey other) => _type == other._type && _key.Equals(other._key);
 
-        public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
+        public override bool Equals(object? obj) => obj is RlpDecoderKey key && Equals(key);
 
         public static bool operator ==(RlpDecoderKey left, RlpDecoderKey right) => left.Equals(right);
 

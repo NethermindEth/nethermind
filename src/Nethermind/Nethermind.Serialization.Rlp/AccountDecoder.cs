@@ -65,7 +65,7 @@ namespace Nethermind.Serialization.Rlp
 
             Encode(item, rlpStream, contentLength);
 
-            return new Rlp(rlpStream.Data.ToArray());
+            return new Rlp(rlpStream.Data.ToArray()!);
         }
 
         public void Encode(Account account, RlpStream rlpStream, int? contentLength = null)
@@ -183,7 +183,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = rlpStream.DecodeKeccak();
+                storageRoot = rlpStream.DecodeKeccak()!;
             }
 
             return storageRoot;
@@ -199,7 +199,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                codeHash = rlpStream.DecodeKeccak();
+                codeHash = rlpStream.DecodeKeccak()!;
             }
 
             return codeHash;

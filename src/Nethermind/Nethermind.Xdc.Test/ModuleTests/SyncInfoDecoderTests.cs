@@ -72,12 +72,12 @@ public class SyncInfoDecoderTests
         if (useRlpStream)
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
         else
         {
             Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-            decoded = decoder.Decode(ref decoderContext);
+            decoded = decoder.Decode(ref decoderContext)!;
         }
 
         decoded.Should().BeEquivalentTo(syncInfo);
@@ -106,11 +106,11 @@ public class SyncInfoDecoderTests
 
         // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext streamCtx = new(stream.Data.AsSpan());
-        SyncInfo decodedStream = decoder.Decode(ref streamCtx);
+        SyncInfo decodedStream = decoder.Decode(ref streamCtx)!;
 
         // Decode with ValueDecoderContext
         Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
-        SyncInfo decodedContext = decoder.Decode(ref decoderContext);
+        SyncInfo decodedContext = decoder.Decode(ref decoderContext)!;
 
         // Both should be equivalent to original
         decodedStream.Should().BeEquivalentTo(syncInfo);
@@ -156,7 +156,7 @@ public class SyncInfoDecoderTests
     public void Decode_Null_ReturnsNull()
     {
         SyncInfoDecoder decoder = new();
-        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes);
+        SyncInfo decoded = decoder.Decode((ReadOnlySpan<byte>)Rlp.OfEmptyList.Bytes)!;
 
         Assert.That(decoded, Is.Null);
     }
@@ -167,7 +167,7 @@ public class SyncInfoDecoderTests
         SyncInfoDecoder decoder = new();
         Rlp.ValueDecoderContext decoderContext = new(Rlp.OfEmptyList.Bytes);
 
-        SyncInfo decoded = decoder.Decode(ref decoderContext);
+        SyncInfo decoded = decoder.Decode(ref decoderContext)!;
 
         Assert.That(decoded, Is.Null);
     }

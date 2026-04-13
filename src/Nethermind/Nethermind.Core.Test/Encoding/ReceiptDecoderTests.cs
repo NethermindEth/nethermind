@@ -190,7 +190,7 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] rlpStreamResult = decoder.EncodeNew(txReceipt, RlpBehaviors.None);
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
-            TxReceipt deserialized = decoder.Decode(ref ctx);
+            TxReceipt deserialized = decoder.Decode(ref ctx)!;
 
             AssertMessageReceipt(txReceipt, deserialized);
         }
@@ -271,7 +271,7 @@ namespace Nethermind.Core.Test.Encoding
 
             byte[] rlpStreamResult = decoder.EncodeNew(txReceipt);
             Rlp.ValueDecoderContext ctx = new(rlpStreamResult);
-            TxReceipt deserialized = decoder.Decode(ref ctx);
+            TxReceipt deserialized = decoder.Decode(ref ctx)!;
 
             AssertMessageReceipt(txReceipt, deserialized);
         }

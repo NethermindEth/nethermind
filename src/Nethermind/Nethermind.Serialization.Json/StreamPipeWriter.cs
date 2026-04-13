@@ -14,8 +14,6 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Serialization.Json;
 
-#nullable enable
-
 public abstract class CountingWriter : PipeWriter
 {
     public long WrittenCount { get; protected set; }

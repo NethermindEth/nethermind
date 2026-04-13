@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Rlp
         // A 100M gas ceiling still allows roughly 266k LOG0 emissions after intrinsic gas.
         private static readonly RlpLimit LogsRlpLimit = RlpLimit.For<TxReceipt>(270_000, nameof(TxReceipt.Logs));
 
-        protected override TxReceipt DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        protected override TxReceipt? DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (ctx.IsNextItemEmptyList())
             {
@@ -116,9 +116,10 @@ namespace Nethermind.Serialization.Rlp
         private static int GetLogsLength(TxReceipt item)
         {
             int logsLength = 0;
-            for (int i = 0; i < item.Logs.Length; i++)
+            LogEntry[] logs = item.Logs ?? [];
+            for (int i = 0; i < logs.Length; i++)
             {
-                logsLength += Rlp.LengthOf(item.Logs[i]);
+                logsLength += Rlp.LengthOf(logs[i]);
             }
 
             return logsLength;
@@ -151,7 +152,7 @@ namespace Nethermind.Serialization.Rlp
             int length = GetLength(item, rlpBehaviors);
             RlpStream stream = new(length);
             Encode(stream, item, rlpBehaviors);
-            return stream.Data.ToArray();
+            return stream.Data.ToArray()!;
         }
 
         public override void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -195,7 +196,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(item.Bloom);
 
             rlpStream.StartSequence(logsLength);
-            LogEntry[] logs = item.Logs;
+            LogEntry[] logs = item.Logs ?? [];
             for (int i = 0; i < logs.Length; i++)
             {
                 rlpStream.Encode(logs[i]);

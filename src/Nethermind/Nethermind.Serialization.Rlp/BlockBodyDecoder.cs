@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp;
 
 [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
-public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpValueDecoder<BlockBody>
+public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : RlpValueDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
     private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();

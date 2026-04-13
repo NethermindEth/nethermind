@@ -3,8 +3,6 @@
 
 using System;
 
-#nullable enable
-
 namespace Nethermind.Serialization.Json
 {
     using System.Collections.Generic;
