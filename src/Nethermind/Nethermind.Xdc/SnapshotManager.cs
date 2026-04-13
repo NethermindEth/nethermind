@@ -94,7 +94,7 @@ internal class SnapshotManager : ISnapshotManager
             round = 0;
         else
             round = header.ExtraConsensusData.BlockRound;
-        // Could consider dropping the round parameter here, since the consensus parameters used here should not change 
+        // Could consider dropping the round parameter here, since the consensus parameters used here should not change
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(header, round);
         if (!ISnapshotManager.IsTimeForSnapshot(header.Number, spec))
             return;

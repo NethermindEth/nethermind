@@ -10,13 +10,12 @@ using Nethermind.Xdc.Types;
 
 namespace Nethermind.Xdc;
 
-internal class SubnetEpochSwitchManager : BaseEpochSwitchManager
+internal class SubnetEpochSwitchManager(
+    ISpecProvider xdcSpecProvider,
+    IBlockTree tree,
+    ISnapshotManager snapshotManager)
+    : BaseEpochSwitchManager(xdcSpecProvider, tree, snapshotManager)
 {
-    public SubnetEpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager)
-        : base(xdcSpecProvider, tree, snapshotManager)
-    {
-    }
-
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
         IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
@@ -32,9 +31,7 @@ internal class SubnetEpochSwitchManager : BaseEpochSwitchManager
     protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec)
     {
         if (snapshot is not SubnetSnapshot subnetSnapshot)
-        {
             throw new ArgumentException("Snapshot is not a SubnetSnapshot", nameof(snapshot));
-        }
 
         return subnetSnapshot.NextEpochPenalties;
     }
@@ -42,11 +39,10 @@ internal class SubnetEpochSwitchManager : BaseEpochSwitchManager
     public override EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
     {
         // https://github.com/XinFinOrg/XDC-Subnet/blob/master/consensus/XDPoS/engines/engine_v2/timeout.go
-        var xdcHeader = (XdcBlockHeader)_tree.Head?.Header;
+        XdcSubnetBlockHeader xdcHeader = (XdcSubnetBlockHeader)_tree.Head?.Header;
         if (xdcHeader is null)
-        {
             return null;
-        }
+
         return GetEpochSwitchInfo(xdcHeader);
     }
 
