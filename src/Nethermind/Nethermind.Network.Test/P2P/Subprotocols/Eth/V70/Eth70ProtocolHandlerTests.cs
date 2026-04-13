@@ -329,6 +329,74 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public async Task Should_accept_empty_receipts_payload_when_requesting_from_peer()
+    {
+        int requestCount = 0;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new(ArrayPoolList<TxReceipt[]>.Empty()), lastBlockIncomplete: false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+
+        result.Should().BeEmpty();
+        requestCount.Should().Be(1);
+    }
+
+    [Test]
+    public async Task Should_reject_empty_incomplete_receipts_payload_when_requesting_from_peer()
+    {
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, new(ArrayPoolList<TxReceipt[]>.Empty()), lastBlockIncomplete: true);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<SubprotocolException>()
+            .WithMessage("Peer returned no progress for partial receipts");
+    }
+
+    [Test]
+    public async Task Should_reject_empty_receipts_payload_for_partial_continuation()
+    {
+        Eth70ProtocolHandler.SoftOutgoingMessageSizeLimit = 75;
+
+        TxReceipt[] firstPage =
+        [
+            new() { GasUsedTotal = GasCostOf.Transaction, Logs = [] }
+        ];
+
+        int requestCount = 0;
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            requestCount++;
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = sent.FirstBlockReceiptIndex == 0
+                ? new(sent.RequestId, new(new[] { firstPage }.ToPooledList()), lastBlockIncomplete: true)
+                : new(sent.RequestId, new(ArrayPoolList<TxReceipt[]>.Empty()), lastBlockIncomplete: false);
+
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        Func<Task> act = async () => await _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<SubprotocolException>()
+            .WithMessage("Peer returned no progress for partial receipts");
+        requestCount.Should().Be(2);
+    }
+
+    [Test]
     public async Task Should_reject_when_receipts_response_below_minimum_size()
     {
         TxReceipt[] receipts =

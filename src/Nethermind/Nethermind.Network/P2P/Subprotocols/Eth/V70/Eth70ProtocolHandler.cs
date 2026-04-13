@@ -187,7 +187,12 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                     if (response.EthMessage.TxReceipts.Count == 0)
                     {
-                        throw new SubprotocolException("Received empty Receipts payload in eth/70 response");
+                        if (response.LastBlockIncomplete || firstBlockReceiptIndex > 0)
+                        {
+                            throw new SubprotocolException("Peer returned no progress for partial receipts");
+                        }
+
+                        break;
                     }
 
                     if (response.EthMessage.TxReceipts.Count > blockHashes.Count - blockIndex)
