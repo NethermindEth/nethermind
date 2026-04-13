@@ -93,7 +93,7 @@ public class DebugModuleTests
         Assert.That(chainLevel, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
+            Assert.That(chainLevel?.HasBlockOnMainChain, Is.True);
             Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
         }
     }
@@ -183,7 +183,7 @@ public class DebugModuleTests
     [Test]
     public void Debug_getBadBlocks_test()
     {
-        IBadBlockStore badBlocksStore = null!;
+        BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
 
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
@@ -208,7 +208,7 @@ public class DebugModuleTests
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
         ResultWrapper<IEnumerable<BadBlock>> blocks = rpcModule.debug_getBadBlocks();
-        Assert.That(blocks.Data.Count, Is.EqualTo(1));
+        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
@@ -238,8 +238,10 @@ public class DebugModuleTests
             Depth = 1
         };
 
-        GethLikeTxTrace trace = new();
-        trace.ReturnValue = Bytes.FromHexString("a2");
+        GethLikeTxTrace trace = new()
+        {
+            ReturnValue = Bytes.FromHexString("a2")
+        };
         trace.Entries.Add(entry);
 
         GethTraceOptions gtOptions = new();
