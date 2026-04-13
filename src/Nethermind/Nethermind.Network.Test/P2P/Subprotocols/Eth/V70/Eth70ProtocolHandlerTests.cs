@@ -246,14 +246,14 @@ public class Eth70ProtocolHandlerTests
                 ? receipts.Take(2).ToArray()
                 : receipts.Skip((int)sent.FirstBlockReceiptIndex).ToArray();
 
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { payload }.ToPooledList()), sent.FirstBlockReceiptIndex == 0);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(new[] { payload }.ToPooledList()), sent.FirstBlockReceiptIndex == 0);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero }, CancellationToken.None);
 
-        IOwnedReadOnlyList<TxReceipt[]> result = await task;
+        using IOwnedReadOnlyList<TxReceipt[]> result = await task;
         result.Should().HaveCount(1);
         result[0].Should().BeEquivalentTo(receipts);
     }
@@ -288,14 +288,14 @@ public class Eth70ProtocolHandlerTests
                 : [block1.Skip((int)sent.FirstBlockReceiptIndex).ToArray(), block2];
 
             bool lastBlockIncomplete = sent.FirstBlockReceiptIndex == 0;
-            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
         Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
-        IOwnedReadOnlyList<TxReceipt[]> result = await task;
+        using IOwnedReadOnlyList<TxReceipt[]> result = await task;
         result.Should().HaveCount(2);
         result[0].Should().BeEquivalentTo(block1);
         result[1].Should().BeEquivalentTo(block2);
@@ -315,12 +315,12 @@ public class Eth70ProtocolHandlerTests
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
             TxReceipt[][] payload = [[], block2Receipts];
 
-            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
-        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { Keccak.Zero, TestItem.KeccakA }, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0], Is.Empty);
@@ -385,7 +385,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
@@ -408,7 +408,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
@@ -433,7 +433,7 @@ public class Eth70ProtocolHandlerTests
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
-            ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(new[] { receipts }.ToPooledList()), true);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
@@ -471,12 +471,12 @@ public class Eth70ProtocolHandlerTests
                 .Select(i => new[] { new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (i + 1), Logs = [] } })
                 .ToArray();
 
-            ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
+            using ReceiptsMessage70 response = new(sent.RequestId, new(payload.ToPooledList()), lastBlockIncomplete: false);
             HandleZeroMessage(response, Eth70MessageCode.Receipts);
         });
 
         HandleIncomingStatusMessage();
-        IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(blockHashes, CancellationToken.None);
 
         // Handler should make only 1 request - not loop trying to get remaining 3 blocks
         // When peer returns fewer than requested with incomplete=false, it means peer can't/won't provide more
