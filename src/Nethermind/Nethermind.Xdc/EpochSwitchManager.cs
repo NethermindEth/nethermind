@@ -136,7 +136,7 @@ internal class EpochSwitchManager : IEpochSwitchManager
             return null;
         }
 
-        Address[] penalties = header.PenaltiesAddress.Value.ToArray();;
+        Address[] penalties = header.PenaltiesAddress.Value.ToArray();
         Address[] candidates = snap.NextEpochCandidates;
 
         Address[] standbyNodes = Array.Empty<Address>();
