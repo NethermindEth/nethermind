@@ -89,10 +89,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override Node Node { get; set; } = new Node(Build.A.PrivateKey.TestObject.PublicKey, "127.0.0.1", 1234);
 
-        public override void Disconnect(DisconnectReason reason, string details)
-        {
+        public override void Disconnect(DisconnectReason reason, string details) =>
             Disconnected?.Invoke(this, EventArgs.Empty);
-        }
 
         public override Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
@@ -212,10 +210,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             UpdateHead();
         }
 
-        public override string ToString()
-        {
-            return $"SyncPeerMock:{ClientId}";
-        }
+        public override string ToString() =>
+            $"SyncPeerMock:{ClientId}";
     }
 
     private WhenImplementation When => new(_synchronizerType);

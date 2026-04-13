@@ -25,10 +25,8 @@ public class StateSyncAllocationStrategyTests
     [TestCase(EthVersions.Eth67, true, ExpectedResult = true)]
     [TestCase(EthVersions.Eth66, false, ExpectedResult = true)]
     [TestCase(EthVersions.Eth67, false, ExpectedResult = false)]
-    public bool Can_allocate_node(int ethVersion, bool hasSnap)
-    {
-        return IsNodeAllocated(ethVersion, hasSnap);
-    }
+    public bool Can_allocate_node(int ethVersion, bool hasSnap) =>
+        IsNodeAllocated(ethVersion, hasSnap);
 
     private bool IsNodeAllocated(int version, bool hasSnap)
     {
@@ -57,9 +55,7 @@ public class StateSyncAllocationStrategyTests
     private class NoopAllocationStrategy : IPeerAllocationStrategy
     {
         public bool CanBeReplaced => false;
-        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
-        {
-            return peers.FirstOrDefault();
-        }
+        public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree) =>
+            peers.FirstOrDefault();
     }
 }

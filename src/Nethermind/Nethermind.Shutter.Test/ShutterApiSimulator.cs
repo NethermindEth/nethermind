@@ -114,10 +114,8 @@ public class ShutterApiSimulator(
 
 
     // fake out P2P module
-    protected override void InitP2P(IPAddress _)
-    {
+    protected override void InitP2P(IPAddress _) =>
         P2P = Substitute.For<IShutterP2P>();
-    }
 
     protected override IShutterEon InitEon()
     {
@@ -128,8 +126,6 @@ public class ShutterApiSimulator(
     }
 
     // set genesis unix timestamp to 1
-    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper)
-    {
-        return new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
-    }
+    protected override SlotTime InitTime(ISpecProvider specProvider, ITimestamper timestamper) =>
+        new(1000, timestamper, _slotLength, _blockUpToDateCutoff);
 }
