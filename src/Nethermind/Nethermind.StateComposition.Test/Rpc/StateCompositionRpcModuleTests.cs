@@ -8,13 +8,15 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using NSubstitute;
-using NUnit.Framework;
-
+using Nethermind.JsonRpc;
+using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Rpc;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Snapshots;
+using NSubstitute;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Rpc;
 
@@ -23,19 +25,15 @@ public class StateCompositionRpcModuleTests
 {
     // Minimal subclass that lets tests override only what they need without
     // satisfying the full StateCompositionService constructor.
-    private class FakeService : StateCompositionService
+    private class FakeService() : StateCompositionService(Substitute.For<IStateReader>(),
+        Substitute.For<IWorldStateManager>(),
+        Substitute.For<IBlockTree>(),
+        new StateCompositionStateHolder(),
+        new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance),
+        Substitute.For<IStateCompositionConfig>(),
+        LimboLogs.Instance)
     {
         public bool CancelScanCalled { get; private set; }
-
-        public FakeService() : base(
-            Substitute.For<Nethermind.State.IStateReader>(),
-            Substitute.For<Nethermind.State.IWorldStateManager>(),
-            Substitute.For<IBlockTree>(),
-            new StateCompositionStateHolder(),
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance),
-            Substitute.For<IStateCompositionConfig>(),
-            Nethermind.Logging.LimboLogs.Instance)
-        { }
 
         public override void CancelScan()
         {
@@ -52,9 +50,9 @@ public class StateCompositionRpcModuleTests
             new FakeService(),
             stateHolder,
             Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance));
+            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
-        JsonRpc.ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_getCachedStats();
+        ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_getCachedStats();
 
         Assert.That(result.Data.CurrentStats, Is.Null);
     }
@@ -68,9 +66,9 @@ public class StateCompositionRpcModuleTests
             new FakeService(),
             stateHolder,
             Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance));
+            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
-        JsonRpc.ResultWrapper<ScanMetadata?> result = await rpc.statecomp_getCacheMetadata();
+        ResultWrapper<ScanMetadata?> result = await rpc.statecomp_getCacheMetadata();
 
         Assert.That(result.Data, Is.Null);
     }
@@ -84,12 +82,15 @@ public class StateCompositionRpcModuleTests
             service,
             new StateCompositionStateHolder(),
             Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance));
+            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
-        JsonRpc.ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
+        ResultWrapper<bool> result = await rpc.statecomp_cancelScan();
 
-        Assert.That(result.Data, Is.True);
-        Assert.That(service.CancelScanCalled, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data, Is.True);
+            Assert.That(service.CancelScanCalled, Is.True);
+        }
     }
 
     [Test]
@@ -102,9 +103,9 @@ public class StateCompositionRpcModuleTests
             new FakeService(),
             new StateCompositionStateHolder(),
             blockTree,
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance));
+            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
-        JsonRpc.ResultWrapper<StateCompositionStats> result = await rpc.statecomp_getStats();
+        ResultWrapper<StateCompositionStats> result = await rpc.statecomp_getStats();
 
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
@@ -119,9 +120,9 @@ public class StateCompositionRpcModuleTests
             new FakeService(),
             new StateCompositionStateHolder(),
             blockTree,
-            new StateCompositionSnapshotStore(new MemDb(), Nethermind.Logging.LimboLogs.Instance));
+            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
 
-        JsonRpc.ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null);
+        ResultWrapper<TopContractEntry?> result = await rpc.statecomp_inspectContract(null);
 
         using (Assert.EnterMultipleScope())
         {

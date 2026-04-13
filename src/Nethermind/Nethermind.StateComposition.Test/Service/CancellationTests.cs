@@ -5,11 +5,10 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Trie;
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Visitors;
+using Nethermind.Trie;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Service;
 

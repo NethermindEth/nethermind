@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Immutable;
 using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
@@ -37,7 +38,7 @@ internal sealed class TopNTracker(int topN)
 
     /// <summary>
     /// Returns true if <paramref name="entry"/> would be inserted into at least one of the 4
-    /// ranking categories. Used to defer expensive <see cref="ImmutableArray"/> allocation
+    /// ranking categories. Used to defer expensive <see cref="ImmutableArray{T}"/> allocation
     /// until we know the entry actually ranks — most contracts never rank and can skip the freeze.
     /// </summary>
     public bool WouldInsert(in TopContractEntry entry) =>

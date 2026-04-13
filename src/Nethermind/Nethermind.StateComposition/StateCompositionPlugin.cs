@@ -25,7 +25,7 @@ public class StateCompositionPlugin : INethermindPlugin
     public string Description => "State composition metrics";
     public string Author => "Nethermind";
 
-    public bool Enabled => _config?.Enabled ?? false;
+    public bool Enabled => _config is { Enabled: true };
     public IModule Module => new StateCompositionModule();
 
     public Task Init(INethermindApi nethermindApi)

@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using NUnit.Framework;
-
 using Nethermind.StateComposition.Diff;
+using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test;
 
@@ -31,9 +30,12 @@ public class MetricsLabeledGaugeTests
 
         Metrics.UpdateDepthDistribution(cold);
 
-        Assert.That(Metrics.StateCompTrieDepthNodes, Is.Empty);
-        Assert.That(Metrics.StateCompTrieDepthBytes, Is.Empty);
-        Assert.That(Metrics.StateCompAccountBranchOccupancy, Is.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.StateCompTrieDepthNodes, Is.Empty);
+            Assert.That(Metrics.StateCompTrieDepthBytes, Is.Empty);
+            Assert.That(Metrics.StateCompAccountBranchOccupancy, Is.Empty);
+        }
     }
 
     [Test]
@@ -78,8 +80,8 @@ public class MetricsLabeledGaugeTests
         using (Assert.EnterMultipleScope())
         {
             // Depth 0 has no physical predecessor → always 0.
-            Assert.That(Metrics.StateCompTrieDepthNodes[("account", 0, "value")], Is.EqualTo(0));
-            Assert.That(Metrics.StateCompTrieDepthNodes[("storage", 0, "value")], Is.EqualTo(0));
+            Assert.That(Metrics.StateCompTrieDepthNodes[("account", 0, "value")], Is.Zero);
+            Assert.That(Metrics.StateCompTrieDepthNodes[("storage", 0, "value")], Is.Zero);
 
             // Depth d>0 reads physical depth d-1 — the Geth +1 presentation shift.
             Assert.That(Metrics.StateCompTrieDepthNodes[("account", 1, "value")], Is.EqualTo(stats.AccountValueNodes[0]));

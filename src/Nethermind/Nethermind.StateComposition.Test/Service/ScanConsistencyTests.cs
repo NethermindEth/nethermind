@@ -6,23 +6,22 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
-using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Service;
+using Nethermind.StateComposition.Snapshots;
+using Nethermind.StateComposition.Visitors;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
-
-using Nethermind.StateComposition.Data;
-using Nethermind.StateComposition.Visitors;
-using Nethermind.StateComposition.Service;
-using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Test.Service;
 
@@ -61,7 +60,7 @@ public class ScanConsistencyTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContract());
         tree.Commit();
@@ -107,7 +106,7 @@ public class ScanConsistencyTests
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
         // Block 1: 2 accounts
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Commit();
         tree.UpdateRootHash();
@@ -279,7 +278,7 @@ public class ScanConsistencyTests
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
         // Block 0: 3 accounts (2 EOA + 1 contract)
-        tree.Set(TestItem.AddressA, CreateEOA(100));
+        tree.Set(TestItem.AddressA, CreateEOA());
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContract());
         tree.Commit();
@@ -296,7 +295,7 @@ public class ScanConsistencyTests
         // Wire IStateReader to delegate RunTreeVisitor to the real StateTree
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(default!, default))
+                x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(callInfo =>
             {
                 var visitor = (ITreeVisitor<StateCompositionContext>)callInfo[0];
@@ -360,7 +359,7 @@ public class ScanConsistencyTests
 
         IStateReader stateReader = Substitute.For<IStateReader>();
         stateReader.WhenForAnyArgs(x =>
-                x.RunTreeVisitor<StateCompositionContext>(default!, default))
+                x.RunTreeVisitor<StateCompositionContext>(null!, null))
             .Do(callInfo =>
             {
                 var visitor = (ITreeVisitor<StateCompositionContext>)callInfo[0];
@@ -379,14 +378,20 @@ public class ScanConsistencyTests
         await service.AnalyzeAsync(
             Build.A.BlockHeader.WithNumber(0).WithStateRoot(root0).TestObject,
             CancellationToken.None);
-        Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(1));
-        Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(1));
+            Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.Zero);
+        }
 
         // Second scan at root1 — overwrites cached stats
         await service.AnalyzeAsync(
             Build.A.BlockHeader.WithNumber(1).WithStateRoot(root1).TestObject,
             CancellationToken.None);
-        Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(3));
-        Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(3));
+            Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.EqualTo(1));
+        }
     }
 }
