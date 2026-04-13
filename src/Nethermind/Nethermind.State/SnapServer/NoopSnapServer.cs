@@ -13,6 +13,8 @@ public class NoopSnapServer : ISnapServer
 {
     public static readonly NoopSnapServer Instance = new();
 
+    public bool CanServe => false;
+
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken) =>
         EmptyByteArrayList.Instance;
 

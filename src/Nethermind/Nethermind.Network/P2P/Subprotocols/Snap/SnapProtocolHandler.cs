@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     public class SnapProtocolHandler : ZeroProtocolHandlerBase, ISnapSyncPeer, IStaticProtocolInfo
     {
         private ISnapServer SyncServer { get; }
+        private bool CanServe { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -36,6 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public override byte ProtocolVersion => Version;
         public override string ProtocolCode => Code;
         public override int MessageIdSpaceSize => 8;
+
+        private const string DisconnectMessage = "Serving snap data is not implemented in this node.";
 
         private readonly MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
         private readonly MessageDictionary<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
@@ -57,6 +60,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
+            CanServe = snapServer.CanServe;
             SnapMessageLimits.GetTrieNodesPathsPerGroupRlpLimit = RlpLimit.For<PathGroup>(syncConfig.SnapServingMaxPathsPerGroup, nameof(PathGroup.Group));
         }
 
@@ -85,7 +89,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
-                    HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
@@ -93,7 +98,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
-                    HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
@@ -101,7 +107,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
-                    HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
@@ -109,7 +116,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
+                    if (ShouldServeSnap())
+                        HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
@@ -117,6 +125,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(trieNodesMessage, size);
                     break;
             }
+        }
+
+        private bool ShouldServeSnap()
+        {
+            if (!CanServe)
+            {
+                Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                if (Logger.IsDebug)
+                    Logger.Debug($"Peer disconnected because of requesting Snap data. Peer: {Session.Node.ClientId}");
+                return false;
+            }
+
+            return true;
         }
 
         private void Handle(AccountRangeMessage msg, long size)

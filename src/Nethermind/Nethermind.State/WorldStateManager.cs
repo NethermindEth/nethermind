@@ -56,7 +56,8 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash
+    private ISnapServer? _snapServer;
+    public ISnapServer SnapServer => _snapServer ??= _trieStore.Scheme == INodeStorage.KeyScheme.Hash
         ? NoopSnapServer.Instance
         : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
 
