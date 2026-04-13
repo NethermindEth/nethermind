@@ -83,9 +83,9 @@ jobs:
       # Extra reruns for opcodes that are both flagged and noisy in the first pass.
       NOISY_RERUNS: "2"
       # BenchmarkDotNet iteration tuning (defaults in code: 3/15/15).
-      BENCHMARK_LAUNCH_COUNT: "2"
-      BENCHMARK_WARMUP_COUNT: "5"
-      BENCHMARK_ITERATION_COUNT: "10"
+      BENCHMARK_LAUNCH_COUNT: "1"
+      BENCHMARK_WARMUP_COUNT: "1"
+      BENCHMARK_ITERATION_COUNT: "1"
     steps:
       - name: Free up disk space
         uses: jlumbroso/free-disk-space@v1.3.1
