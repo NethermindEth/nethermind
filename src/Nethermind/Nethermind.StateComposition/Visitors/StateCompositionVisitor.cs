@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Threading;
 using Nethermind.Core;
@@ -22,6 +23,7 @@ internal sealed class StateCompositionVisitor(
     ILogManager logManager,
     int topN = 20,
     bool excludeStorage = false,
+    Func<ValueHash256, int>? codeSizeLookup = null,
     CancellationToken ct = default)
     : ITreeVisitor<StateCompositionContext>, IDisposable
 {
@@ -30,6 +32,14 @@ internal sealed class StateCompositionVisitor(
     private readonly ThreadLocal<VisitorCounters> _localCounters = new(() => new VisitorCounters(topN), trackAllValues: true);
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
+
+    /// <summary>
+    /// Visitor-wide dedup map for codeHash observations. Ensures each unique
+    /// bytecode contributes to <see cref="VisitorCounters.CodeBytes"/> exactly once
+    /// across all worker threads. Using byte as the value type because
+    /// ConcurrentDictionary has no Set analogue — content is irrelevant.
+    /// </summary>
+    private readonly ConcurrentDictionary<ValueHash256, byte> _seenCodeHashes = new();
 
     private VisitorCounters? _aggregated;
 
@@ -160,7 +170,20 @@ internal sealed class StateCompositionVisitor(
         c.AccountsTotal++;
 
         if (account.HasCode)
+        {
             c.ContractsTotal++;
+
+            // Dedup by codeHash across all worker threads: only the first observer
+            // of a given codeHash pays the lookup cost and contributes bytes. Proxies,
+            // minimal clones, and factory-deployed contracts share bytecode and
+            // therefore contribute 0 bytes on subsequent observations.
+            if (codeSizeLookup is not null && _seenCodeHashes.TryAdd(account.CodeHash, 0))
+            {
+                int size = codeSizeLookup(account.CodeHash);
+                if (size > 0)
+                    c.CodeBytes += size;
+            }
+        }
 
         if (account.IsTotallyEmpty)
             c.EmptyAccounts++;
@@ -187,6 +210,8 @@ internal sealed class StateCompositionVisitor(
             StorageTrieShortNodes = agg.StorageShortNodes + agg.StorageValueNodes,
             StorageTrieValueNodes = agg.StorageValueNodes,
             EmptyAccounts = agg.EmptyAccounts,
+            CodeBytesTotal = agg.CodeBytes,
+            SlotCountHistogram = ImmutableArray.Create(agg.SlotCountHistogram),
             TopContractsByDepth = BuildSortedTopN(agg.TopN.TopByDepth, agg.TopN.TopByDepthCount, TopNTracker.CompareByDepth),
             TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),

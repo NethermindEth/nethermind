@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -18,9 +19,11 @@ namespace Nethermind.StateComposition.Snapshots;
 ///   4. [optional] 162 longs of CumulativeDepthStats:
 ///        10 arrays × 16 longs (Account{Full,Short,Value,Bytes}, Storage{Full,Short,Value,Bytes}, BranchOccupancy)
 ///        + TotalBranchNodes + TotalBranchChildren
-/// Legacy snapshots (11 stat longs, or 13 longs without depth fields) will fail to
-/// decode and are discarded by the plugin, which then triggers a fresh scan to
-/// rebuild the baseline with the new schema.
+///   5. codeBytesTotal (long)
+///   6. 16 longs of SlotCountHistogram
+/// Legacy snapshots (pre-CodeBytes/SlotHistogram schema) will fail to decode and
+/// are discarded by the plugin, which then triggers a fresh scan to rebuild the
+/// baseline with the new schema.
 /// </summary>
 public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompositionSnapshot>
 {
@@ -73,6 +76,14 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         {
             stream.Encode(0L);
         }
+
+        // CodeBytesTotal + 16 slot-count histogram longs — always written so a
+        // restarted node resumes these metrics from the last persisted baseline
+        // instead of dropping to zero until the next full scan.
+        stream.Encode(item.Stats.CodeBytesTotal);
+        ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
+        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
+            stream.Encode(hist.IsDefault ? 0L : hist[i]);
     }
 
     private static int GetContentLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -120,6 +131,12 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         {
             contentLength += Rlp.LengthOf(0L);
         }
+
+        // CodeBytesTotal + 16 slot-count histogram longs
+        contentLength += Rlp.LengthOf(item.Stats.CodeBytesTotal);
+        ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
+        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
+            contentLength += Rlp.LengthOf(hist.IsDefault ? 0L : hist[i]);
 
         return contentLength;
     }
@@ -190,6 +207,17 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             depthStats.TotalBranchChildren = ctx.DecodeLong();
             depthStats.MarkSeeded();
         }
+
+        // CodeBytesTotal + 16 slot-count histogram longs
+        long codeBytesTotal = ctx.DecodeLong();
+        long[] hist = new long[CumulativeSizeStats.SlotHistogramLength];
+        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++) hist[i] = ctx.DecodeLong();
+
+        stats = stats with
+        {
+            CodeBytesTotal = codeBytesTotal,
+            SlotCountHistogram = ImmutableArray.Create(hist),
+        };
 
         return new StateCompositionSnapshot(stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats);
     }

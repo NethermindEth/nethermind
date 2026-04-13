@@ -927,6 +927,16 @@ public class TrieDiffWalkerTests
             CumulativeSizeStats expected = CumulativeSizeStats.FromScanStats(s2);
             v2.Dispose();
 
+            // CodeBytesTotal and SlotCountHistogram are frozen by design —
+            // ApplyDiff leaves them at their last-scan values, so record
+            // equality must ignore them here. Normalize them on `cumulative`
+            // so the assertion covers only diff-tracked fields.
+            cumulative = cumulative with
+            {
+                CodeBytesTotal = expected.CodeBytesTotal,
+                SlotCountHistogram = expected.SlotCountHistogram,
+            };
+
             // 4. Compare
             bool match = cumulative == expected;
             if (!match) allPassed = false;

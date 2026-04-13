@@ -92,8 +92,18 @@ internal partial class StateCompositionService : IDisposable
 
             (int topN, int parallelism, long memoryBudget) = ResolveScanOptions();
 
+            // Close over _stateReader so the visitor can fetch bytecode by codeHash
+            // for the CodeBytesTotal metric. Dedup happens inside the visitor — each
+            // unique codeHash triggers exactly one GetCode call across all workers.
+            Func<ValueHash256, int> codeSizeLookup =
+                hash => _stateReader.GetCode(hash)?.Length ?? 0;
+
             using StateCompositionVisitor visitor = new(
-                _logManager, topN, _config.ExcludeStorage, linkedCts.Token);
+                _logManager,
+                topN,
+                _config.ExcludeStorage,
+                codeSizeLookup,
+                linkedCts.Token);
 
             VisitingOptions options = new()
             {
