@@ -13,7 +13,7 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
 
     private ArrayPoolList<TransactionForRpcWithTraceTypes>? _calls = calls;
 
-    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls => _calls ?? ArrayPoolList<TransactionForRpcWithTraceTypes>.Empty();
+    public ArrayPoolList<TransactionForRpcWithTraceTypes> Calls => _calls ??= ArrayPoolList<TransactionForRpcWithTraceTypes>.Empty();
 
     public void Dispose() => _calls?.Dispose();
 
@@ -52,6 +52,7 @@ public class TraceCallManyRequest(ArrayPoolList<TransactionForRpcWithTraceTypes>
                     }
                 }
 
+                _calls?.Dispose();
                 _calls = calls;
             }
             catch
