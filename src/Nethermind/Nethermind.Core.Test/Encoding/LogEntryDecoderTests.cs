@@ -122,9 +122,34 @@ public class LogEntryDecoderTests
         });
     }
 
+    [Test]
+    public void Compact_struct_ref_decoder_rejects_log_entry_length_beyond_limit()
+    {
+        byte[] malformed = CreateCompactLogEntryWithTooLargeDeclaredLength();
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            Rlp.ValueDecoderContext ctx = new(malformed);
+            CompactLogEntryDecoder.DecodeLogEntryStructRef(ref ctx, RlpBehaviors.None, out _);
+        });
+    }
+
+    // This simulates a malformed compact log entry wire payload: [address, topics, zeroPrefix, rlpData].
     private static Rlp CreateCompactLogEntryWithTooLargeZeroPrefix() => Rlp.Encode(
         Rlp.Encode(TestItem.AddressA.Bytes),
         Rlp.OfEmptyList,
         Rlp.Encode((int)16.MB),
         Rlp.Encode(new byte[] { 1 }));
+
+    private static byte[] CreateCompactLogEntryWithTooLargeDeclaredLength()
+    {
+        int declaredLength = (int)16.MB + 1;
+        return
+        [
+            0xfa,
+            (byte)(declaredLength >> 16),
+            (byte)(declaredLength >> 8),
+            (byte)declaredLength,
+        ];
+    }
 }

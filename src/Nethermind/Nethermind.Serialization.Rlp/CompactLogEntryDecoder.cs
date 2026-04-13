@@ -54,6 +54,7 @@ namespace Nethermind.Serialization.Rlp
             }
 
             int logEntryLength = decoderContext.ReadSequenceLength();
+            decoderContext.GuardLimit(logEntryLength, RlpLimit);
             int logEntryCheck = decoderContext.Position + logEntryLength;
             decoderContext.DecodeAddressStructRef(out var address);
             var (PrefixLength, ContentLength) = decoderContext.PeekPrefixAndContentLength();
@@ -121,13 +122,14 @@ namespace Nethermind.Serialization.Rlp
             int zeroPrefix = decoderContext.DecodeInt();
             ReadOnlySpan<byte> rlpData = decoderContext.DecodeByteArraySpan();
 
-            if (zeroPrefix < 0 || zeroPrefix > RlpLimit.Limit - rlpData.Length)
+            if (zeroPrefix < 0)
             {
                 throw new RlpLimitException($"Expanded {nameof(LogEntry)} data with zero prefix {zeroPrefix} and content length {rlpData.Length} exceeds limit {RlpLimit.Limit}.");
             }
 
-            int dataLength = zeroPrefix + rlpData.Length;
-            byte[] data = new byte[dataLength];
+            Rlp.GuardLimit(zeroPrefix, RlpLimit.Limit - rlpData.Length, RlpLimit);
+
+            byte[] data = new byte[zeroPrefix + rlpData.Length];
             rlpData.CopyTo(data.AsSpan(zeroPrefix));
             return data;
         }
