@@ -132,7 +132,7 @@ internal class EraWriterTests
             await sut.Finalize();
         }
 
-        using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
+        using E2StoreReader reader = new(tmpFile.Path);
         reader.HasTotalDifficulty.Should().Be(!isPostMerge);
     }
 
@@ -150,7 +150,7 @@ internal class EraWriterTests
             await sut.Finalize();
         }
 
-        using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
+        using E2StoreReader reader = new(tmpFile.Path);
         if (isPostMerge)
             reader.AccumulatorRootOffset.Should().Be(-1, "post-merge epoch has no AccumulatorRoot entry");
         else
@@ -168,7 +168,7 @@ internal class EraWriterTests
             await sut.Finalize();
         }
 
-        using E2StoreReader reader = new E2StoreReader(tmpFile.Path);
+        using E2StoreReader reader = new(tmpFile.Path);
         reader.HeaderOffset(0).Should().Be(8);
     }
 

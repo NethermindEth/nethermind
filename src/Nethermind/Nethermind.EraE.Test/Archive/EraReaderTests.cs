@@ -19,7 +19,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_InPreMergeEpoch_ReturnsCorrectBlockNumbers()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         for (int i = 0; i < 3; i++)
         {
@@ -32,7 +32,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_InPreMergeEpoch_TotalDifficultyIsRestored()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         (Block block, _) = await sut.GetBlockByNumber(2);
         block.TotalDifficulty.Should().Be(file.Contents[2].Block.TotalDifficulty);
@@ -42,7 +42,7 @@ internal class EraReaderTests
     public async Task ReadAccumulatorRoot_InPreMergeEpoch_Succeeds()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         Assert.That(() => sut.ReadAccumulatorRoot(), Throws.Nothing);
     }
@@ -58,7 +58,7 @@ internal class EraReaderTests
 
         ValueHash256 expectedRoot = calculator.ComputeRoot();
 
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
         verifiedRoot.Should().Be(expectedRoot);
@@ -68,7 +68,7 @@ internal class EraReaderTests
     public async Task GetAsyncEnumerator_InPreMergeEpoch_YieldsAllBlocks()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 3, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         List<(Block, TxReceipt[])> result = await sut.ToListAsync();
         result.Should().HaveCount(3);
@@ -79,7 +79,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_InPostMergeEpoch_ReturnsCorrectBlockNumbers()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         for (int i = 0; i < 3; i++)
         {
@@ -92,7 +92,7 @@ internal class EraReaderTests
     public async Task ReadAccumulatorRoot_InPostMergeEpoch_ThrowsEraException()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         Assert.That(() => sut.ReadAccumulatorRoot(), Throws.TypeOf<EraException>());
     }
@@ -101,10 +101,10 @@ internal class EraReaderTests
     public async Task VerifyContent_InPostMergeEpoch_ReturnsDefaultHash()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 3);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         ValueHash256 result = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
-        result.Should().Be(default(ValueHash256), "post-merge epochs have no accumulator");
+        result.Should().Be(default, "post-merge epochs have no accumulator");
     }
 
     [Test]
@@ -129,7 +129,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_InTransitionEpoch_FirstPostMergeBlockHasIsPostMergeTrue()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 2);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         (Block postMergeBlock, _) = await sut.GetBlockByNumber(2);
         postMergeBlock.Header.IsPostMerge.Should().BeTrue();
@@ -139,7 +139,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_WithBelowRangeNumber_ThrowsArgumentOutOfRangeException()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         Assert.That(async () => await sut.GetBlockByNumber(-1), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
@@ -148,7 +148,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_WithAboveRangeNumber_ThrowsArgumentOutOfRangeException()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 2, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         Assert.That(async () => await sut.GetBlockByNumber(999), Throws.TypeOf<ArgumentOutOfRangeException>());
     }
