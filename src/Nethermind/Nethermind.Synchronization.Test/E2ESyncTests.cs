@@ -202,7 +202,10 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     /// <summary>
     /// Common code for all node
     /// </summary>
-    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer)
+    private Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer) =>
+        CreateNode(nodeKey, configurer, dbMode);
+
+    private async Task<IContainer> CreateNode(PrivateKey nodeKey, Func<IConfigProvider, ChainSpec, Task> configurer, DbMode dbModeOverride)
     {
         IConfigProvider configProvider = new ConfigProvider();
         ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
@@ -246,7 +249,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
-        switch (dbMode)
+        switch (dbModeOverride)
         {
             case DbMode.Default:
                 // Um... nothing?
@@ -420,6 +423,32 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             networkConfig.FilterPeersByRecentIp = false;
             networkConfig.FilterDiscoveryNodesByRecentIp = false;
         });
+
+        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
+    }
+
+    [Test]
+    [Retry(5)]
+    public async Task SnapSync_HalfPathServer_HashClient()
+    {
+        if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
+
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource().ThatCancelAfter(TestTimeout);
+
+        PrivateKey clientKey = TestItem.PrivateKeyD;
+        await using IContainer client = await CreateNode(clientKey, async (cfg, spec) =>
+        {
+            SyncConfig syncConfig = (SyncConfig)cfg.GetConfig<ISyncConfig>();
+            syncConfig.FastSync = true;
+            syncConfig.SnapSync = true;
+
+            await SetPivot(syncConfig, cancellationTokenSource.Token);
+
+            INetworkConfig networkConfig = cfg.GetConfig<INetworkConfig>();
+            networkConfig.P2PPort = AllocatePort();
+            networkConfig.FilterPeersByRecentIp = false;
+            networkConfig.FilterDiscoveryNodesByRecentIp = false;
+        }, DbMode.Hash);
 
         await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationTokenSource.Token);
     }
