@@ -148,6 +148,7 @@ public class TaikoModule : Module
             .AddModule(new BaseMergePluginModule())
 
             .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
+            .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())
