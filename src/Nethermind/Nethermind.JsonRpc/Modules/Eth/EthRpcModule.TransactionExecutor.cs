@@ -84,13 +84,23 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 {
                     if (executionReverted)
                     {
+                        // For Error(string) and Panic(uint256) reverts, errorMessage is the decoded human-readable
+                        // text and should be appended to the message (matching Geth behaviour). For custom errors
+                        // and bare reverts, errorMessage is the Revert sentinel ("revert") — keep the message as
+                        // plain "execution reverted" so the raw bytes live only in data, not in message.
+                        string revertMessage = errorMessage is null or TransactionSubstate.Revert
+                            ? "execution reverted"
+                            : "execution reverted: " + errorMessage;
+
                         if (executionRevertedReason is not null)
                         {
-                            return ResultWrapper<TResult, string>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
+                            return ResultWrapper<TResult, string>.Fail(revertMessage, ErrorCodes.ExecutionReverted, executionRevertedReason.ToHexString(true));
                         }
 
-                        string? errorData = errorMessage is not null ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true) : null;
-                        return ResultWrapper<TResult, string?>.Fail("execution reverted: " + errorMessage, ErrorCodes.ExecutionReverted, errorData);
+                        string? errorData = errorMessage is not null and not TransactionSubstate.Revert
+                            ? Encoding.UTF8.GetBytes(errorMessage).ToHexString(true)
+                            : null;
+                        return ResultWrapper<TResult, string?>.Fail(revertMessage, ErrorCodes.ExecutionReverted, errorData);
                     }
 
                     return ResultWrapper<TResult>.Fail(errorMessage ?? "", ErrorCodes.InvalidInput, bodyData);

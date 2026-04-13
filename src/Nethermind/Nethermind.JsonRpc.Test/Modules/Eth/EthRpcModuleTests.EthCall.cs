@@ -333,6 +333,29 @@ public partial class EthRpcModuleTests
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
+    [Test]
+    public async Task Eth_call_with_custom_error_revert_puts_bytes_only_in_data()
+    {
+        // When a contract reverts with a custom error (unknown 4-byte selector), message must be
+        // plain "execution reverted" and the raw bytes must appear only in data — matching Geth.
+        // See: https://github.com/NethermindEth/nethermind/issues/11095
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        // keccak4("ActionFailed()") = 0x080a1c27
+        byte[] selector = [0x08, 0x0a, 0x1c, 0x27];
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithCustomError(selector)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x080a1c27"},"id":67}"""));
+    }
+
     [TestCase(
         "Nonce override doesn't cause failure",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""",
