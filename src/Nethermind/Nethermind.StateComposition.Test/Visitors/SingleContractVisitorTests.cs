@@ -26,7 +26,6 @@ public class SingleContractVisitorTests
         using SingleContractVisitor visitor = new(
             LimboLogs.Instance, targetStorageRoot: default, ct: CancellationToken.None);
 
-        // Visit an account that does NOT match the target
         TrieNode node = new(NodeType.Leaf, [0xc0]);
         StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
         AccountStruct eoa = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
@@ -52,7 +51,6 @@ public class SingleContractVisitorTests
         AccountStruct targetAccount = new(0, 0, targetRoot, Keccak.Zero.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in targetAccount);
 
-        // Visit storage nodes
         byte[] storageRlp = [0xc0, 0x01, 0x02, 0x03];
         TrieNode branchNode = new(NodeType.Branch, storageRlp);
         TrieNode leafNode = new(NodeType.Leaf, [0xc0, 0x01]);
@@ -64,7 +62,6 @@ public class SingleContractVisitorTests
         visitor.VisitLeaf(in storCtx1, leafNode);
         visitor.VisitLeaf(in storCtx1, leafNode);
 
-        // End target via next account visit
         AccountStruct nextAccount = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
         visitor.VisitAccount(in accountCtx, node, in nextAccount);
 

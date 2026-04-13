@@ -27,12 +27,6 @@ public class CumulativeDepthStatsTests
         return s;
     }
 
-    // ------------------------------------------------------------------
-    // 1. SeedFromScan round-trip: values written by SeedFromScan must
-    //    produce the same gauge values as UpdateFromDistribution when
-    //    fed through UpdateFromDepthStats.
-    // ------------------------------------------------------------------
-
     [Test]
     public void SeedThenUpdate_MatchesUpdateFromDistribution()
     {
@@ -78,10 +72,6 @@ public class CumulativeDepthStatsTests
         fromDist.AssertPerDepthEqualTo(fromStats);
     }
 
-    // ------------------------------------------------------------------
-    // 2. ApplyDelta single-bucket increment
-    // ------------------------------------------------------------------
-
     [Test]
     public void ApplyDelta_SingleBucketIncrement_OnlyTargetBucketChanges()
     {
@@ -116,10 +106,6 @@ public class CumulativeDepthStatsTests
         Assert.That(stats.TotalBranchChildren, Is.EqualTo(0));
     }
 
-    // ------------------------------------------------------------------
-    // 3. Multiple deltas compound correctly
-    // ------------------------------------------------------------------
-
     [Test]
     public void ApplyDelta_MultipleDeltas_Compound()
     {
@@ -141,10 +127,6 @@ public class CumulativeDepthStatsTests
         Assert.That(stats.TotalBranchChildren, Is.EqualTo(24));
     }
 
-    // ------------------------------------------------------------------
-    // 4. Negative delta (removal) decrements correctly
-    // ------------------------------------------------------------------
-
     [Test]
     public void ApplyDelta_NegativeDelta_Decrements()
     {
@@ -165,10 +147,6 @@ public class CumulativeDepthStatsTests
         Assert.That(stats.AccountValueNodes[7], Is.EqualTo(2));
         Assert.That(stats.AccountShortNodes[7], Is.EqualTo(2));
     }
-
-    // ------------------------------------------------------------------
-    // 5. Reset zeros everything
-    // ------------------------------------------------------------------
 
     [Test]
     public void Reset_ZerosAllArraysAndScalars()
@@ -198,10 +176,6 @@ public class CumulativeDepthStatsTests
         Assert.That(stats.TotalBranchNodes, Is.EqualTo(0));
         Assert.That(stats.TotalBranchChildren, Is.EqualTo(0));
     }
-
-    // ------------------------------------------------------------------
-    // 6. Clone is a deep copy
-    // ------------------------------------------------------------------
 
     [Test]
     public void Clone_IsDeepCopy_MutatingOriginalDoesNotAffectClone()

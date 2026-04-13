@@ -42,7 +42,6 @@ public class StateCompositionVisitorTests
     [Test]
     public void Visitor_ShouldVisit_TracksBranchChildren()
     {
-        // Simulate 3 branch children being visited
         ValueHash256 hash = default;
         StateCompositionContext ctx1 = new(default, level: 1, isStorage: false, branchChildIndex: 0);
         StateCompositionContext ctx2 = new(default, level: 1, isStorage: false, branchChildIndex: 3);
@@ -212,17 +211,14 @@ public class StateCompositionVisitorTests
         StateCompositionContext storageCtx7 = new(default, level: 7, isStorage: true, branchChildIndex: null);
         StateCompositionContext accountCtx = new(default, level: 0, isStorage: false, branchChildIndex: null);
 
-        // Account 1: storage max depth 3
         AccountStruct acc1 = new(0, 0, Keccak.Zero.ValueHash256, Keccak.Zero.ValueHash256);
         _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc1);
         _visitor.VisitLeaf(in storageCtx3, leafNode);
 
-        // Account 2: storage max depth 7
         AccountStruct acc2 = new(0, 0, Keccak.Compute("root2").ValueHash256, Keccak.Zero.ValueHash256);
         _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc2);
         _visitor.VisitLeaf(in storageCtx7, leafNode);
 
-        // Account 3: no storage (flushes acc2)
         AccountStruct acc3 = new(0, 0, Keccak.EmptyTreeHash.ValueHash256, Keccak.OfAnEmptyString.ValueHash256);
         _visitor.VisitAccount(in accountCtx, new TrieNode(NodeType.Leaf, [0xc0]), in acc3);
 

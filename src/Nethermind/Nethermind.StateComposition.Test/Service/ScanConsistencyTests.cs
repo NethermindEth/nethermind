@@ -61,7 +61,6 @@ public class ScanConsistencyTests
         MemDb db = new();
         StateTree tree = new(new RawScopedTrieStore(db), LimboLogs.Instance);
 
-        // --- Block 1: 3 accounts (2 EOAs + 1 contract) ---
         tree.Set(TestItem.AddressA, CreateEOA(100));
         tree.Set(TestItem.AddressB, CreateEOA(200));
         tree.Set(TestItem.AddressC, CreateContract());
@@ -69,14 +68,12 @@ public class ScanConsistencyTests
         tree.UpdateRootHash();
         Hash256 root1 = tree.RootHash;
 
-        // --- Block 2: +2 accounts = 5 total (3 EOAs + 2 contracts) ---
         tree.Set(TestItem.AddressD, CreateEOA(300));
         tree.Set(TestItem.AddressE, CreateContract());
         tree.Commit();
         tree.UpdateRootHash();
         Hash256 root2 = tree.RootHash;
 
-        // Scan at root1 — must see block 1's state only
         using StateCompositionVisitor v1 = new(LimboLogs.Instance);
         tree.Accept(v1, root1);
         StateCompositionStats stats1 = v1.GetStats(1, root1);
@@ -321,7 +318,6 @@ public class ScanConsistencyTests
         Result<StateCompositionStats> result0 =
             await service.AnalyzeAsync(header0, CancellationToken.None);
 
-        // Scan at root1 (semaphore released after first scan)
         BlockHeader header1 = Build.A.BlockHeader
             .WithNumber(1).WithStateRoot(root1).TestObject;
         Result<StateCompositionStats> result1 =

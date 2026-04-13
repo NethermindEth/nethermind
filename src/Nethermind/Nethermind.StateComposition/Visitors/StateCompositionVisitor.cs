@@ -31,7 +31,6 @@ internal sealed class StateCompositionVisitor(
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
 
-    // Cached aggregation result — computed once after scan completes
     private VisitorCounters? _aggregated;
 
     public bool IsFullDbScan => true;

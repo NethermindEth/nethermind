@@ -17,14 +17,12 @@ internal sealed partial class TrieDiffWalker
     /// </summary>
     private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
-        // Record the branch nodes themselves (old removed, new added)
         RecordNode(NodeType.Branch, oldBranch.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Branch, newBranch.FullRlp.Length, isStorage, added: true);
 
-        if (_trackDepth)
+        if (trackDepth)
         {
             int d = Math.Min(depth, 15);
-            // Remove old branch, add new branch at this depth
             RecordDepthBranch(oldBranch, d, isStorage, added: false);
             RecordDepthBranch(newBranch, d, isStorage, added: true);
         }
@@ -35,7 +33,6 @@ internal sealed partial class TrieDiffWalker
             Hash256? oldChildHash = oldBranch.GetChildHash(i);
             Hash256? newChildHash = newBranch.GetChildHash(i);
 
-            // Fast skip: both hashes present and equal
             if (oldChildHash is not null && newChildHash is not null && oldChildHash == newChildHash)
                 continue;
 
@@ -62,7 +59,6 @@ internal sealed partial class TrieDiffWalker
         Hash256? oldChildHash, Hash256? newChildHash, bool oldIsNull, bool newIsNull,
         ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int childDepth)
     {
-        // Both have hashes (differ — fast-equal case handled by caller)
         if (oldChildHash is not null && newChildHash is not null)
         {
             DiffSubtree(oldChildHash, newChildHash, ref path, resolver, isStorage, childDepth);

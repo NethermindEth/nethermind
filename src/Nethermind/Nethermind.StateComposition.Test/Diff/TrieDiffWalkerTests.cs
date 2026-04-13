@@ -226,10 +226,8 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        // Same account modified → net zero accounts
         Assert.That(diff.NetAccounts, Is.EqualTo(0));
         Assert.That(diff.NetContracts, Is.EqualTo(0));
-        // But the leaf node itself changed (old removed, new added)
         Assert.That(diff.AccountTrieLeavesAdded, Is.GreaterThanOrEqualTo(1));
         Assert.That(diff.AccountTrieLeavesRemoved, Is.GreaterThanOrEqualTo(1));
     }

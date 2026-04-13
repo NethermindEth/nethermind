@@ -47,7 +47,6 @@ public class StateCompositionSnapshotStore(
             ArrayPool<byte>.Shared.Return(buffer);
         }
 
-        // Update sentinel with latest block number
         Span<byte> blockBytes = stackalloc byte[8];
         BinaryPrimitives.WriteInt64BigEndian(blockBytes, snapshot.BlockNumber);
         db.PutSpan(LatestKey, blockBytes);

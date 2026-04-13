@@ -22,13 +22,11 @@ namespace Nethermind.StateComposition.Diff;
 /// </summary>
 public sealed class CumulativeDepthStats
 {
-    // Per-depth account trie counters, indices [0..15]
     public long[] AccountFullNodes { get; } = new long[16];
     public long[] AccountShortNodes { get; } = new long[16];
     public long[] AccountValueNodes { get; } = new long[16];
     public long[] AccountNodeBytes { get; } = new long[16];
 
-    // Per-depth storage trie counters, indices [0..15]
     public long[] StorageFullNodes { get; } = new long[16];
     public long[] StorageShortNodes { get; } = new long[16];
     public long[] StorageValueNodes { get; } = new long[16];
@@ -128,8 +126,6 @@ public sealed class CumulativeDepthStats
         for (int i = 0; i < dist.BranchOccupancyDistribution.Length && i < 16; i++)
             BranchOccupancy[i] = dist.BranchOccupancyDistribution[i];
 
-        // Derive TotalBranchNodes and TotalBranchChildren from the occupancy histogram
-        // (index i = branches with (i+1) children)
         long nodes = 0, children = 0;
         for (int i = 0; i < 16; i++)
         {

@@ -23,22 +23,18 @@ internal sealed partial class TrieDiffWalker
         RecordNode(NodeType.Leaf, oldLeaf.FullRlp.Length, isStorage, added: false);
         RecordNode(NodeType.Leaf, newLeaf.FullRlp.Length, isStorage, added: true);
 
-        if (_trackDepth)
+        if (trackDepth)
         {
             int d = Math.Min(depth, 15);
-            // Old leaf removed, new leaf added (same path = modification, both short+value counters net to zero)
             RecordDepthLeaf(oldLeaf.FullRlp.Length, d, isStorage, added: false);
             RecordDepthLeaf(newLeaf.FullRlp.Length, d, isStorage, added: true);
         }
 
         if (isStorage)
         {
-            // Storage leaves: each leaf is one slot, but same path means same slot modified → net zero
-            // Both exist at same path so it's an update, not add/remove
             return;
         }
 
-        // Account trie leaves: decode to check contract and storage changes
         DecodeAndDiffAccountLeaves(oldLeaf, newLeaf, ref path);
     }
 
@@ -50,9 +46,6 @@ internal sealed partial class TrieDiffWalker
     {
         AccountStruct oldAccount = DecodeAccount(oldLeaf);
         AccountStruct newAccount = DecodeAccount(newLeaf);
-
-        // Account itself: same path, same account, just modified → net zero for account count
-        // (not an add or remove of an account)
 
         // Contract status change
         if (!oldAccount.HasCode && newAccount.HasCode) _contractsAdded++;
@@ -73,7 +66,7 @@ internal sealed partial class TrieDiffWalker
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
         Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
-        ITrieNodeResolver storageResolver = _resolver.GetStorageTrieNodeResolver(addressHash);
+        ITrieNodeResolver storageResolver = resolver.GetStorageTrieNodeResolver(addressHash);
         TreePath storagePath = TreePath.Empty;
         // Storage tries always start at depth 0 (independent trie)
         DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);

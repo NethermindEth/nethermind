@@ -14,14 +14,10 @@ namespace Nethermind.StateComposition.Diff;
 /// Content-addressed property: if hash(old) == hash(new), entire subtree identical → skip.
 /// Read-only — uses only <see cref="ITrieNodeResolver.FindCachedOrUnknown"/>.
 /// </summary>
-internal sealed partial class TrieDiffWalker
+internal sealed partial class TrieDiffWalker(ITrieNodeResolver resolver, bool trackDepth = false)
 {
-    private readonly ITrieNodeResolver _resolver;
-    private readonly bool _trackDepth;
-    private readonly DepthDelta _depthDelta;
+    private readonly DepthDelta _depthDelta = new();
 
-    // Mutable counters accumulated during a single ComputeDiff call.
-    // Reset at the start of each call.
     private int _accountsAdded, _accountsRemoved;
     private int _contractsAdded, _contractsRemoved;
     private int _accountTrieBranchesAdded, _accountTrieBranchesRemoved;
@@ -36,13 +32,6 @@ internal sealed partial class TrieDiffWalker
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    public TrieDiffWalker(ITrieNodeResolver resolver, bool trackDepth = false)
-    {
-        _resolver = resolver;
-        _trackDepth = trackDepth;
-        _depthDelta = new DepthDelta();
-    }
-
     /// <summary>
     /// Compute exact diff between two committed state roots.
     /// Both roots must already be persisted and resolvable via the resolver.
@@ -50,7 +39,7 @@ internal sealed partial class TrieDiffWalker
     public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
     {
         ResetCounters();
-        if (_trackDepth) _depthDelta.Clear();
+        if (trackDepth) _depthDelta.Clear();
 
         Hash256? oldHash = NormalizeHash(oldRoot);
         Hash256? newHash = NormalizeHash(newRoot);
@@ -58,7 +47,7 @@ internal sealed partial class TrieDiffWalker
         if (oldHash == newHash) return default;
 
         TreePath path = TreePath.Empty;
-        DiffSubtree(oldHash, newHash, ref path, _resolver, isStorage: false, depth: 0);
+        DiffSubtree(oldHash, newHash, ref path, resolver, isStorage: false, depth: 0);
 
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
@@ -74,7 +63,7 @@ internal sealed partial class TrieDiffWalker
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
-            DepthDelta: _trackDepth ? _depthDelta : null
+            DepthDelta: trackDepth ? _depthDelta : null
         );
     }
 

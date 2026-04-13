@@ -50,7 +50,6 @@ public sealed class VisitorCounters(int topN = 20)
 
     public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
 
-    // Current storage trie accumulator (reset per contract)
     private ValueHash256 _currentStorageRoot;
     private ValueHash256 _currentOwner;
     private int _currentStorageMaxDepth;
@@ -59,7 +58,6 @@ public sealed class VisitorCounters(int topN = 20)
     private long _currentStorageTotalSize;
     private bool _hasActiveStorageTrie;
 
-    // Per-depth counters for current storage trie
     private readonly DepthCounter[] _currentStorageDepths = new DepthCounter[MaxTrackedDepth];
 
     // Scratch array for building TrieLevelStat[] without allocating a Builder each time.
@@ -67,7 +65,6 @@ public sealed class VisitorCounters(int topN = 20)
     // Only copied to a fresh array (and frozen to ImmutableArray) when the contract ranks in Top-N.
     private TrieLevelStat[]? _levelScratch;
 
-    // Top-N contract rankings (extracted to TopNTracker for SRP)
     internal TopNTracker TopN { get; } = new(topN);
 
     /// <summary>
@@ -87,7 +84,6 @@ public sealed class VisitorCounters(int topN = 20)
         _currentStorageTotalSize = 0;
         _hasActiveStorageTrie = true;
 
-        // Reset per-depth counters for this storage trie
         Array.Clear(_currentStorageDepths);
     }
 
@@ -103,7 +99,6 @@ public sealed class VisitorCounters(int topN = 20)
         if (isLeaf)
             _currentStorageValueNodes++;
 
-        // Per-depth tracking for Levels[16]
         int depthIdx = Math.Min(depth, MaxTrackedDepth - 1);
         if (isBranch)
             _currentStorageDepths[depthIdx].AddFullNode(byteSize);
