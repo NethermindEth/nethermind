@@ -13,7 +13,6 @@
     "PivotNumber": 24859000,
     "PivotHash": "0x8bed302334c594b65f08037f05f12bfa4bf54d2993fd3132e9e22975a6b55beb",
     "PivotTotalDifficulty": "58750003716598352816469",
-    "FastSyncCatchUpHeightDelta": 10000000000,
     "AncientReceiptsBarrier": 15537394,
     "AncientBodiesBarrier": 15537394
   },

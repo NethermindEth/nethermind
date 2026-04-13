@@ -182,7 +182,12 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("sepolia ^archive", true)]
     [TestCase("hoodi ^archive", true)]
     [TestCase("mainnet ^archive", true)]
-    public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync) => Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
+    public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
+    {
+#pragma warning disable CS0612 // Type or member is obsolete
+        Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
+#pragma warning restore CS0612
+    }
 
     [TestCase("^spaceneth.json")]
     public void Diagnostics_mode_is_not_enabled_by_default(string configWildcard) => Test<IInitConfig, DiagnosticMode>(configWildcard, static c => c.DiagnosticMode, DiagnosticMode.None);
