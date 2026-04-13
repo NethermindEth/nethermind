@@ -6,16 +6,16 @@ using System.Threading;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class SyncPeerAllocation
+    public class SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null)
     {
         public static SyncPeerAllocation FailedAllocation = new(AllocationContexts.None, null);
 
         /// <summary>
         /// this should be used whenever we change IsAllocated property on PeerInfo-
         /// </summary>
-        private readonly Lock? _allocationLock;
+        private readonly Lock? _allocationLock = allocationLock ?? new Lock();
 
-        private AllocationContexts Contexts { get; }
+        private AllocationContexts Contexts { get; } = contexts;
 
         [MemberNotNullWhen(true, nameof(HasPeer))]
         public PeerInfo? Current { get; private set; }
@@ -27,12 +27,6 @@ namespace Nethermind.Synchronization.Peers
             : this(contexts, allocationLock)
         {
             Current = peerInfo;
-        }
-
-        public SyncPeerAllocation(AllocationContexts contexts, Lock? allocationLock = null)
-        {
-            Contexts = contexts;
-            _allocationLock = allocationLock ?? new Lock();
         }
 
         public void AllocatePeer(PeerInfo? selected)

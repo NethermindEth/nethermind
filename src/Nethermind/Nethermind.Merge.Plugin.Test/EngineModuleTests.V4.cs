@@ -195,7 +195,7 @@ public partial class EngineModuleTests
 
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(invalidBlock);
 
-        var response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(executionPayload, [], invalidBlock.ParentBeaconBlockRoot, executionRequests: ExecutionRequestsProcessorMock.Requests);
 
         Assert.That(response.Data.Status, Is.EqualTo("INVALID"));
     }
@@ -213,7 +213,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 executionPayload = ExecutionPayloadV3.Create(TestBlock);
 
         // must reject if execution requests types are not in ascending order
-        var response = await rpc.engine_newPayloadV4(
+        ResultWrapper<PayloadStatusV1> response = await rpc.engine_newPayloadV4(
                 executionPayload,
                 [],
                 TestBlock.ParentBeaconBlockRoot,
@@ -359,8 +359,8 @@ public partial class EngineModuleTests
             ? chain.WaitForImprovedBlock()
             : Task.CompletedTask;
 
-        ForkchoiceStateV1 forkchoiceState = new ForkchoiceStateV1(headBlockHash, finalizedBlockHash, safeBlockHash);
-        PayloadAttributes payloadAttributes = new PayloadAttributes
+        ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
+        PayloadAttributes payloadAttributes = new()
         {
             Timestamp = timestamp,
             PrevRandao = random,

@@ -129,7 +129,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
         public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            var value = new SortedDictionary<long, long>();
+            SortedDictionary<long, long> value = new();
             if (reader.TokenType == JsonTokenType.String)
             {
                 value.Add(0, JsonSerializer.Deserialize<long>(ref reader, options));
@@ -147,7 +147,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
                     {
                         throw new ArgumentException("Cannot deserialize BlockReward.");
                     }
-                    var key = long.Parse(reader.GetString());
+                    long key = long.Parse(reader.GetString());
                     reader.Read();
                     if (reader.TokenType == JsonTokenType.String)
                     {

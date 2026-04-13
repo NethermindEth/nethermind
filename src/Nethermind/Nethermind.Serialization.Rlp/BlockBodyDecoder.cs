@@ -6,21 +6,15 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp;
 
-public sealed class BlockBodyDecoder : RlpValueDecoder<BlockBody>
+[method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
+public sealed class BlockBodyDecoder(IHeaderDecoder headerDecoder = null) : RlpValueDecoder<BlockBody>
 {
     private readonly TxDecoder _txDecoder = TxDecoder.Instance;
-    private readonly IHeaderDecoder _headerDecoder;
+    private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
     private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
     private static BlockBodyDecoder? _instance = null;
     public static BlockBodyDecoder Instance => _instance ??= new BlockBodyDecoder();
-
-    [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(BlockBodyDecoder))]
-    // Cant set to private because of `Rlp.RegisterDecoder`.
-    public BlockBodyDecoder(IHeaderDecoder headerDecoder = null)
-    {
-        _headerDecoder = headerDecoder ?? new HeaderDecoder();
-    }
 
     public override int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
     {

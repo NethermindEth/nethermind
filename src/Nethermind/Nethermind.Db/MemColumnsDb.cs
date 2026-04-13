@@ -20,13 +20,13 @@ namespace Nethermind.Db
 
         public MemColumnsDb(params TKey[] keys)
         {
-            foreach (var key in keys)
+            foreach (TKey key in keys)
             {
                 GetColumnDb(key);
             }
         }
 
-        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out var db) ? _columnDbs[key] = new MemDb() : db;
+        public IDb GetColumnDb(TKey key) => !_columnDbs.TryGetValue(key, out IDb db) ? _columnDbs[key] = new MemDb() : db;
         public IEnumerable<TKey> ColumnKeys => _columnDbs.Keys;
 
         public IReadOnlyColumnDb<TKey> CreateReadOnly(bool createInMemWriteStore)

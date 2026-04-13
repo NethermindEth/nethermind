@@ -12,16 +12,11 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
-    public sealed class ReceiptStorageDecoder : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        private readonly bool _supportTxHash;
+        private readonly bool _supportTxHash = supportTxHash;
         private const byte MarkTxHashByte = 255;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-        public ReceiptStorageDecoder(bool supportTxHash = true)
-        {
-            _supportTxHash = supportTxHash;
-        }
 
         // Used by Rlp decoders discovery
         public ReceiptStorageDecoder() : this(true)

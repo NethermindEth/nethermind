@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.Ethash
 
             isDisposed = true;
 
-            var data = Data;
+            Bucket[] data = Data;
             Data = null;
             _arrayPool.Return(data);
         }

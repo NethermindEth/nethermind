@@ -19,7 +19,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
     private readonly int _lastN = 0;
 
     private Hash256? _lastQueuedStateRoot = null;
-    private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
+    private Queue<Hash256> _stateRootQueue = new();
     private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
 
     public LastNStateRootTracker(IBlockTree blockTree, int lastN)

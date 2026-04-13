@@ -380,7 +380,7 @@ public class NodeHealthServiceTests
     {
         if (messages.Any(static x => !string.IsNullOrWhiteSpace(x)))
         {
-            var joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
+            string joined = string.Join(". ", messages.Where(static x => !string.IsNullOrWhiteSpace(x)));
             if (!string.IsNullOrWhiteSpace(joined))
             {
                 return joined + ".";

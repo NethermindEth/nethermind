@@ -87,7 +87,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        StorageRange storage = new StorageRange()
+        StorageRange storage = new()
         {
             Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
         };
@@ -116,7 +116,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        StorageRange storage = new StorageRange()
+        StorageRange storage = new()
         {
             Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
         };
@@ -137,12 +137,12 @@ public class SnapProviderTests
     public void AddStorageRange_ShouldPersistEntries()
     {
         const int slotCount = 6;
-        TestMemDb stateDb = new TestMemDb();
-        TestRawTrieStore store = new TestRawTrieStore(stateDb);
+        TestMemDb stateDb = new();
+        TestRawTrieStore store = new(stateDb);
 
         // Build storage tree with RLP-encoded 32-byte values
         Hash256 accountHash = TestItem.Tree.AccountAddress0;
-        StorageTree storageTree = new StorageTree(store.GetTrieStore(accountHash), LimboLogs.Instance);
+        StorageTree storageTree = new(store.GetTrieStore(accountHash), LimboLogs.Instance);
         PathWithStorageSlot[] slots = new PathWithStorageSlot[slotCount];
         for (int i = 0; i < slotCount; i++)
         {
@@ -155,7 +155,7 @@ public class SnapProviderTests
         storageTree.Commit();
         Array.Sort(slots, (a, b) => a.Path.CompareTo(b.Path));
 
-        StateTree stateTree = new StateTree(store.GetTrieStore(null), LimboLogs.Instance);
+        StateTree stateTree = new(store.GetTrieStore(null), LimboLogs.Instance);
         stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         stateTree.Commit();
 
@@ -163,7 +163,7 @@ public class SnapProviderTests
         AccountProofCollector proofCollector = new(accountHash.Bytes,
             new ValueHash256[] { Keccak.Zero, slots[^1].Path });
         stateTree.Accept(proofCollector, stateTree.RootHash);
-        var proof = proofCollector.BuildResult();
+        AccountProof proof = proofCollector.BuildResult();
 
         using IContainer container = CreateContainer();
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
@@ -274,22 +274,22 @@ public class SnapProviderTests
     public void Test_EdgeCases(string testFileName)
     {
         using DeflateStream decompressor =
-            new DeflateStream(
+            new(
                 GetType().Assembly
                     .GetManifestResourceStream($"Nethermind.Synchronization.Test.SnapSync.TestFixtures.{testFileName}")!,
                 CompressionMode.Decompress);
         BadReq asReq = JsonSerializer.Deserialize<BadReq>(decompressor)!;
-        AccountDecoder acd = new AccountDecoder();
+        AccountDecoder acd = new();
         Account[] accounts = asReq.Accounts.Select((bt) => acd.Decode((ReadOnlySpan<byte>)Bytes.FromHexString(bt))!).ToArray();
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
         List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
-        TestMemDb db = new TestMemDb();
-        NodeStorage nodeStorage = new NodeStorage(db);
-        var adapter = new SnapUpperBoundAdapter(new RawScopedTrieStore(nodeStorage));
-        StateTree stree = new StateTree(adapter, LimboLogs.Instance);
-        var factory = new TestSnapTrieFactory(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
+        TestMemDb db = new();
+        NodeStorage nodeStorage = new(db);
+        SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage));
+        StateTree stree = new(adapter, LimboLogs.Instance);
+        TestSnapTrieFactory factory = new(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         SnapProviderHelper.AddAccountRange(
                 factory,
                 0,
@@ -311,19 +311,19 @@ public class SnapProviderTests
 
     private static (SnapServer, Hash256) BuildSnapServerFromEntries((Hash256, Account)[] entries)
     {
-        TestMemDb stateDb = new TestMemDb();
-        TestRawTrieStore trieStore = new TestRawTrieStore(stateDb);
-        StateTree st = new StateTree(trieStore, LimboLogs.Instance);
+        TestMemDb stateDb = new();
+        TestRawTrieStore trieStore = new(stateDb);
+        StateTree st = new(trieStore, LimboLogs.Instance);
         {
-            using var _ = trieStore.BeginBlockCommit(0);
-            foreach (var entry in entries)
+            using IBlockCommitter _ = trieStore.BeginBlockCommit(0);
+            foreach ((Hash256, Account) entry in entries)
             {
                 st.Set(entry.Item1, entry.Item2);
             }
             st.Commit();
         }
 
-        var ss = new SnapServer(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
+        SnapServer ss = new(trieStore.AsReadOnly(), new TestMemDb(), LimboLogs.Instance);
         return (ss, st.RootHash);
     }
 }

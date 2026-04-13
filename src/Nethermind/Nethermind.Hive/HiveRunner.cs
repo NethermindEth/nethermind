@@ -162,7 +162,7 @@ namespace Nethermind.Hive
 
             byte[] chainFileContent = fileSystem.File.ReadAllBytes(chainFile);
             Rlp.ValueDecoderContext rlpContext = new(chainFileContent);
-            List<Block> blocks = new List<Block>();
+            List<Block> blocks = new();
 
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
             while (rlpContext.PeekNumberOfItemsRemaining() > 0)

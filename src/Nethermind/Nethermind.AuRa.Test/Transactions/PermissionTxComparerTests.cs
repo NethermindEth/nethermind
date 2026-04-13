@@ -260,7 +260,7 @@ namespace Nethermind.AuRa.Test.Transactions
             Block block = Build.A.Block.WithNumber(0).TestObject;
             blockTree.Head.Returns(block);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-            var spec = new ReleaseSpec() { IsEip1559Enabled = false };
+            ReleaseSpec spec = new() { IsEip1559Enabled = false };
             specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
             IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();

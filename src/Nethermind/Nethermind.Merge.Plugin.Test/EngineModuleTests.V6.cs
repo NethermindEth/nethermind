@@ -403,7 +403,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
         List<Hash256> blockHashes = [];
-        for (var i = 1; i < 5; i++)
+        for (int i = 1; i < 5; i++)
         {
             ExecutionPayloadV4 payload = await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
             blockHashes.Add(payload.BlockHash);
@@ -429,7 +429,7 @@ public partial class EngineModuleTests
         TestSpecProvider specProvider = new(Amsterdam.Instance);
         using MergeTestBlockchain chain = await CreateBlockchain(specProvider);
 
-        for (var i = 1; i < 5; i++)
+        for (int i = 1; i < 5; i++)
         {
             await AddNewBlockV6(chain.EngineRpcModule, chain, 1);
         }

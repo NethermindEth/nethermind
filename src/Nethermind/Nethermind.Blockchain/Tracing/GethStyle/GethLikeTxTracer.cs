@@ -62,11 +62,10 @@ public abstract class GethLikeTxTracer : TxTracer
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
 
-public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry : GethTxTraceEntry, new()
+public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethLikeTxTracer(options) where TEntry : GethTxTraceEntry, new()
 {
     protected TEntry? CurrentTraceEntry { get; set; }
 
-    protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
     public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)

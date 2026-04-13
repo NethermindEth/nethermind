@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain
 
         public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
         {
-            var bestKnownNumber = BestKnownNumber;
+            long bestKnownNumber = BestKnownNumber;
             if (endNumber is null || endNumber == bestKnownNumber)
             {
                 if (Head?.Number > 0)

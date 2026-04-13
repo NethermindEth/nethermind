@@ -33,7 +33,7 @@ public class LocalDbContext(
 
     public void SetAccountsAndCommit(params (Hash256 Address, Account? Account)[] accounts)
     {
-        foreach (var (address, account) in accounts)
+        foreach ((Hash256? address, Account? account) in accounts)
             StateTree.Set(address, account);
         StateTree.Commit();
     }
@@ -50,7 +50,7 @@ public class LocalDbContext(
         StateTree.RootHash = remote.StateTree.RootHash;
 
         if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
-        TreeDumper dumper = new TreeDumper();
+        TreeDumper dumper = new();
         remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
         if (!skipLogs) logger.Info(remoteStr);

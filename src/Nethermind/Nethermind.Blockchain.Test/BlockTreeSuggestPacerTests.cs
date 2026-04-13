@@ -18,7 +18,7 @@ public class BlockTreeSuggestPacerTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, 10, 5);
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
 
         pacer.WaitForQueue(1, default).IsCompleted.Should().BeTrue();
     }
@@ -28,7 +28,7 @@ public class BlockTreeSuggestPacerTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, 10, 5);
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
 
         pacer.WaitForQueue(11, default).IsCompleted.Should().BeFalse();
     }
@@ -38,7 +38,7 @@ public class BlockTreeSuggestPacerTests
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         blockTree.Head.Returns(Build.A.Block.WithNumber(0).TestObject);
-        using BlockTreeSuggestPacer pacer = new BlockTreeSuggestPacer(blockTree, 10, 5);
+        using BlockTreeSuggestPacer pacer = new(blockTree, 10, 5);
 
         Task waitTask = pacer.WaitForQueue(11, default);
         waitTask.IsCompleted.Should().BeFalse();

@@ -43,7 +43,7 @@ public abstract class CacheBenchmarkBase
         {
             byte[] addressBytes = new byte[20];
             random.NextBytes(addressBytes);
-            Address address = new Address(addressBytes);
+            Address address = new(addressBytes);
             _keys[i] = address;
             _accounts[i] = Build.An.Account.WithBalance((UInt256)i).TestObject;
 

@@ -11,19 +11,12 @@ using Nethermind.Network;
 
 namespace Nethermind.Runner.Ethereum
 {
-    public class GrpcRunner : IStoppableService
+    public class GrpcRunner(NethermindService.NethermindServiceBase service, IGrpcConfig config, ILogManager logManager) : IStoppableService
     {
-        private readonly NethermindService.NethermindServiceBase _service;
-        private readonly IGrpcConfig _config;
-        private readonly ILogger _logger;
+        private readonly NethermindService.NethermindServiceBase _service = service;
+        private readonly IGrpcConfig _config = config;
+        private readonly ILogger _logger = logManager.GetClassLogger<GrpcRunner>();
         private Server? _server;
-
-        public GrpcRunner(NethermindService.NethermindServiceBase service, IGrpcConfig config, ILogManager logManager)
-        {
-            _service = service;
-            _config = config;
-            _logger = logManager.GetClassLogger<GrpcRunner>();
-        }
 
         public Task Start(CancellationToken cancellationToken)
         {

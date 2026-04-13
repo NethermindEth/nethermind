@@ -32,7 +32,7 @@ public class WorldStateManagerTests
         IWorldStateScopeProvider worldState = Substitute.For<IWorldStateScopeProvider>();
         IPruningTrieStore trieStore = Substitute.For<IPruningTrieStore>();
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        WorldStateManager manager = new WorldStateManager(worldState, trieStore, dbProvider, LimboLogs.Instance);
+        WorldStateManager manager = new(worldState, trieStore, dbProvider, LimboLogs.Instance);
         return (worldState, trieStore, manager);
     }
 

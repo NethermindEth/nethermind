@@ -178,6 +178,11 @@ internal static class RlpHelpers
             ThrowSequenceLengthTooLong();
         }
 
+        if (position + 1 + lengthOfLength > data.Length)
+        {
+            ThrowRlpDataTruncated();
+        }
+
         int contentLength = DeserializeLengthRef(
             ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position + 1),
             lengthOfLength);
@@ -267,6 +272,10 @@ internal static class RlpHelpers
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowSequenceLengthTooLong()
         => throw new RlpException("Expected length of length less than or equal to 4");
+
+    [DoesNotReturn, StackTraceHidden]
+    public static void ThrowRlpDataTruncated()
+        => throw new RlpException("RLP data is truncated: not enough bytes for the declared length prefix");
 
     [DoesNotReturn, StackTraceHidden]
     public static void ThrowUnexpectedLength(int length)

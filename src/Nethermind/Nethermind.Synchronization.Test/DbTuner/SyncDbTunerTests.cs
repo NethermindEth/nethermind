@@ -42,7 +42,7 @@ public class SyncDbTunerTests
         _blockDb = Substitute.For<ITunableDb>();
         _receiptDb = Substitute.For<ITunableDb>();
 
-        SyncDbTuner _ = new SyncDbTuner(
+        SyncDbTuner _ = new(
             _syncConfig,
             _snapSyncFeed,
             _bodiesSyncFeed,

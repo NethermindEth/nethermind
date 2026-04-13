@@ -10,28 +10,23 @@ namespace Nethermind.Crypto
 {
     public partial class ProtectedData
     {
-        private class AspNetWrapper : IProtector
+        private class AspNetWrapper(string keyStoreDir) : IProtector
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
             private const string ProtectionDir = "protection_keys";
 
-            private readonly string _keyStoreDir;
-
-            public AspNetWrapper(string keyStoreDir)
-            {
-                _keyStoreDir = keyStoreDir;
-            }
+            private readonly string _keyStoreDir = keyStoreDir;
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                IDataProtector protector = GetProtector(scope, optionalEntropy);
                 return protector.Protect(userData);
             }
 
             public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                IDataProtector protector = GetProtector(scope, optionalEntropy);
                 return protector.Unprotect(encryptedData);
             }
 
@@ -54,14 +49,14 @@ namespace Nethermind.Crypto
 
             private static IDataProtector GetMachineProtector(byte[] optionalEntropy)
             {
-                var provider = DataProtectionProvider.Create(AppName);
-                var purpose = CreatePurpose(optionalEntropy);
+                IDataProtectionProvider provider = DataProtectionProvider.Create(AppName);
+                string purpose = CreatePurpose(optionalEntropy);
                 return provider.CreateProtector(purpose);
             }
 
             private static string CreatePurpose(byte[] optionalEntropy)
             {
-                var result = BaseName + Convert.ToBase64String(optionalEntropy);
+                string result = BaseName + Convert.ToBase64String(optionalEntropy);
                 return Uri.EscapeDataString(result);
             }
         }

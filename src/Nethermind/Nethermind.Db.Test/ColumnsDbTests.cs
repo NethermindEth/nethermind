@@ -92,9 +92,9 @@ public class ColumnsDbTests
     [Test]
     public void TestWriteBatch_WriteToAllColumn()
     {
-        var batch = _db.StartWriteBatch();
-        var colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
-        var colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
+        IColumnsWriteBatch<ReceiptsColumns> batch = _db.StartWriteBatch();
+        IWriteBatch colA = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+        IWriteBatch colB = batch.GetColumnBatch(ReceiptsColumns.Transactions);
 
         colA.Set(TestItem.KeccakA.Bytes, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA.Bytes, TestItem.KeccakB.BytesToArray());

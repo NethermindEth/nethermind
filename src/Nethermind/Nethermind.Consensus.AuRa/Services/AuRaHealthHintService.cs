@@ -7,18 +7,12 @@ using Nethermind.Consensus.AuRa.Validators;
 
 namespace Nethermind.Consensus.AuRa.Services
 {
-    public class AuraHealthHintService : IHealthHintService
+    public class AuraHealthHintService(
+        IAuRaStepCalculator auRaStepCalculator,
+        IValidatorStore validatorStore) : IHealthHintService
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly IValidatorStore _validatorStore;
-
-        public AuraHealthHintService(
-            IAuRaStepCalculator auRaStepCalculator,
-            IValidatorStore validatorStore)
-        {
-            _auRaStepCalculator = auRaStepCalculator;
-            _validatorStore = validatorStore;
-        }
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator;
+        private readonly IValidatorStore _validatorStore = validatorStore;
 
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {

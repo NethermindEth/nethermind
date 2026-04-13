@@ -38,7 +38,7 @@ namespace Nethermind.Store.Test
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
 
-            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void UpdateStorageValue(byte[] newValue)
             {
@@ -134,7 +134,7 @@ namespace Nethermind.Store.Test
             IReleaseSpec spec = MuirGlacier.Instance;
 
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
-            using var _ = provider.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
             void CommitEverything()
             {
@@ -186,7 +186,7 @@ namespace Nethermind.Store.Test
             (IWorldState state, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
             byte[] initialValue = new byte[] { 1, 2, 3 };
             BlockHeader baseBlock;
-            using (var _ = state.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = state.BeginScope(IWorldState.PreGenesis))
             {
                 /* to start with we need to create an account that we will be setting storage at */
                 state.CreateAccount(storageCell.Address, UInt256.One);
@@ -201,7 +201,7 @@ namespace Nethermind.Store.Test
                 baseBlock = Build.A.BlockHeader.WithNumber(2).WithStateRoot(state.StateRoot).TestObject;
             }
 
-            var retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
+            byte[] retrieved = reader.GetStorage(baseBlock, _address1, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(initialValue);
 
             /* at this stage we set the value in storage to 1,2,3 at the tested storage cell */
@@ -216,7 +216,7 @@ namespace Nethermind.Store.Test
 
             IWorldState processorStateProvider = state; // They are the same
 
-            using (var _ = processorStateProvider.BeginScope(baseBlock))
+            using (IDisposable _ = processorStateProvider.BeginScope(baseBlock))
             {
                 processorStateProvider.Set(storageCell, newValue);
                 processorStateProvider.Commit(MuirGlacier.Instance);
@@ -241,7 +241,7 @@ namespace Nethermind.Store.Test
             (IWorldState provider, IStateReader stateReader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
 
             Hash256 stateRoot;
-            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
@@ -249,7 +249,7 @@ namespace Nethermind.Store.Test
                 stateRoot = provider.StateRoot;
             }
 
-            var stats = stateReader.CollectStats(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject, new MemDb(), Logger);
+            TrieStats stats = stateReader.CollectStats(Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }
 
@@ -261,7 +261,7 @@ namespace Nethermind.Store.Test
             releaseSpec.IsEip7702Enabled.Returns(eip7702Enabled);
             IDbProvider dbProvider = TestMemDbProvider.Init();
             (IWorldState sut, IStateReader _) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
-            var scope = sut.BeginScope(IWorldState.PreGenesis);
+            IDisposable scope = sut.BeginScope(IWorldState.PreGenesis);
             sut.CreateAccount(TestItem.AddressA, 0);
             if (code is not null)
             {
@@ -338,7 +338,7 @@ namespace Nethermind.Store.Test
         {
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
             Hash256 stateRoot;
-            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);
@@ -356,7 +356,7 @@ namespace Nethermind.Store.Test
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader();
 
             Hash256 stateRoot;
-            using (var _ = provider.BeginScope(IWorldState.PreGenesis))
+            using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
             {
                 provider.CreateAccount(TestItem.AddressA, 1.Ether);
                 provider.Commit(MuirGlacier.Instance);

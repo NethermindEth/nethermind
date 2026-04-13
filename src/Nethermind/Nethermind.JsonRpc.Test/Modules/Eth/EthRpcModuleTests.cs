@@ -388,7 +388,7 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei).TestObject;
 
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether);
 
         Hash256? blockHash = Keccak.Zero;
         void handleNewBlock(object? sender, BlockEventArgs e)
@@ -455,7 +455,7 @@ public partial class EthRpcModuleTests
         BlockParameter? blockParameter = null;
         BlockHeader? header = ctx.Test.BlockFinder.FindHeader(blockParameter);
         string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
-        var expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";
+        string expected = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32000,\"message\":\"missing trie node {header?.StateRoot} (path ) state {header?.StateRoot} is not available\"}},\"id\":67}}";
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
@@ -1111,7 +1111,7 @@ public partial class EthRpcModuleTests
 
         LogEntry[] logEntries = new[] { Build.A.LogEntry.TestObject, Build.A.LogEntry.TestObject };
 
-        TxReceipt receipt1 = new TxReceipt()
+        TxReceipt receipt1 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 1,
@@ -1127,7 +1127,7 @@ public partial class EthRpcModuleTests
             Logs = logEntries
         };
 
-        TxReceipt receipt2 = new TxReceipt()
+        TxReceipt receipt2 = new()
         {
             Bloom = new Bloom(logEntries),
             Index = 2,
@@ -1400,7 +1400,7 @@ public partial class EthRpcModuleTests
     [TestCase(0)]
     public static void Should_handle_gasCap_as_max_if_null_or_zero(long? gasCap)
     {
-        LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
+        LegacyTransactionForRpc rpcTx = new();
 
         rpcTx.EnsureDefaults(gasCap);
 
@@ -1410,7 +1410,7 @@ public partial class EthRpcModuleTests
     [Test]
     public static void Should_handle_fromAddress_as_zero_if_null()
     {
-        LegacyTransactionForRpc rpcTx = new LegacyTransactionForRpc();
+        LegacyTransactionForRpc rpcTx = new();
 
         rpcTx.EnsureDefaults(0);
 
@@ -1424,14 +1424,14 @@ public partial class EthRpcModuleTests
     {
         long toTransactionWitDefaultsGasLimit;
         {
-            var rpcTx = new LegacyTransactionForRpc();
+            LegacyTransactionForRpc rpcTx = new();
             Result<Transaction> tx = rpcTx.ToTransaction();
             toTransactionWitDefaultsGasLimit = ((Transaction)tx).GasLimit;
         }
 
         long ensureDefaultsGasLimit;
         {
-            var rpcTx = new LegacyTransactionForRpc();
+            LegacyTransactionForRpc rpcTx = new();
             rpcTx.EnsureDefaults(gasCap);
             Result<Transaction> tx = rpcTx.ToTransaction();
             ensureDefaultsGasLimit = ((Transaction)tx).GasLimit;
@@ -1482,7 +1482,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task eth_sendRawTransaction_sender_with_non_delegated_code_is_rejected()
     {
-        var specProvider = new TestSpecProvider(Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
         TestRpcBlockchain Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
@@ -1507,7 +1507,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task eth_sendRawTransaction_sender_with_delegated_code_is_accepted()
     {
-        var specProvider = new TestSpecProvider(Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
@@ -1523,7 +1523,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        var code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 
@@ -1544,7 +1544,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task eth_sendRawTransaction_returns_correct_error_if_AuthorityTuple_has_null_value()
     {
-        var specProvider = new TestSpecProvider(Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
@@ -1567,7 +1567,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task eth_getTransactionByHash_returns_correct_values_on_SetCode_tx()
     {
-        TestSpecProvider specProvider = new TestSpecProvider(Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         specProvider.AllowTestChainOverride = false;
 
         TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(specProvider);
@@ -1575,7 +1575,7 @@ public partial class EthRpcModuleTests
         const int BadYparity = 229;
         const int BadR = 123;
         const int BadS = 123;
-        var authTuple = new AuthorizationTuple(0, Address.SystemUser, 0, BadYparity, BadR, BadS);
+        AuthorizationTuple authTuple = new(0, Address.SystemUser, 0, BadYparity, BadR, BadS);
         Transaction setCodeTx = Build.A.Transaction
           .WithType(TxType.SetCode)
           .WithNonce(test.ReadOnlyState.GetNonce(TestItem.AddressB))
@@ -1791,7 +1791,7 @@ public partial class EthRpcModuleTests
 
     private static (byte[] ByteCode, AccessListForRpc AccessList) GetTestAccessList(long loads = 2, bool allowSystemUser = true)
     {
-        var builder = new AccessList.Builder();
+        AccessList.Builder builder = new();
         if (allowSystemUser)
         {
             builder.AddAddress(Address.SystemUser);
@@ -1876,7 +1876,7 @@ public partial class EthRpcModuleTests
             {
                 builder.AddDecorator<ISyncConfig>((_, config) =>
                 {
-                    var cutBlock = blockNumber;
+                    long cutBlock = blockNumber;
                     config.AncientBodiesBarrier = cutBlock;
                     config.AncientReceiptsBarrier = cutBlock;
                     config.PivotNumber = cutBlock;

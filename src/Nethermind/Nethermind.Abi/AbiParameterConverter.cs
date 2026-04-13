@@ -21,7 +21,7 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
         where TFactory : IAbiTypeFactory
     {
         IList<IAbiTypeFactory> abiTypeFactories = _abiTypeFactories;
-        foreach (var factory in abiTypeFactories)
+        foreach (IAbiTypeFactory factory in abiTypeFactories)
         {
             if (factory is TFactory)
             {
@@ -113,11 +113,11 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
                 : throw new ArgumentException($"Invalid contract ABI json. Unknown array type {type}.");
         }
 
-        var match = AbiParameterConverterStatics.TypeExpression.Match(type);
+        Match match = AbiParameterConverterStatics.TypeExpression.Match(type);
         if (match.Success)
         {
-            var baseType = new string(match.Groups[AbiParameterConverterStatics.TypeGroup].Value.TakeWhile(char.IsLetter).ToArray());
-            var baseAbiType = GetBaseType(baseType, match, components);
+            string baseType = new(match.Groups[AbiParameterConverterStatics.TypeGroup].Value.TakeWhile(char.IsLetter).ToArray());
+            AbiType baseAbiType = GetBaseType(baseType, match, components);
             return match.Groups[AbiParameterConverterStatics.ArrayGroup].Success
                 ? match.Groups[AbiParameterConverterStatics.LengthGroup].Success
                     ? new AbiFixedLengthArray(baseAbiType, int.Parse(match.Groups[AbiParameterConverterStatics.LengthGroup].Value))
@@ -156,7 +156,7 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
             }
         }
 
-        if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out var simpleTypeFactory))
+        if (AbiParameterConverterStatics.SimpleTypeFactories.TryGetValue(baseType, out Func<int?, int?, AbiType>? simpleTypeFactory))
         {
             int? m = match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.TypeLengthGroup].Value) : (int?)null;
             int? n = match.Groups[AbiParameterConverterStatics.PrecisionGroup].Success ? int.Parse(match.Groups[AbiParameterConverterStatics.PrecisionGroup].Value) : (int?)null;

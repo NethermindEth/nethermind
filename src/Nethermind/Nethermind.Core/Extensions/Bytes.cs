@@ -516,7 +516,7 @@ namespace Nethermind.Core.Extensions
 
         public static string ToBitString(this BitArray bits)
         {
-            var sb = new StringBuilder();
+            StringBuilder sb = new();
 
             for (int i = 0; i < bits.Count; i++)
             {
@@ -563,30 +563,17 @@ namespace Nethermind.Core.Extensions
         public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros = false, bool withEip55Checksum = false) =>
             ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
 
-        private readonly struct StateSmall
+        private readonly struct StateSmall(byte[] bytes, bool withZeroX)
         {
-            public StateSmall(byte[] bytes, bool withZeroX)
-            {
-                Bytes = bytes;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly byte[] Bytes;
-            public readonly bool WithZeroX;
+            public readonly byte[] Bytes = bytes;
+            public readonly bool WithZeroX = withZeroX;
         }
 
-        private readonly struct State
+        private readonly struct State(byte[] bytes, int leadingZeros, bool withZeroX)
         {
-            public State(byte[] bytes, int leadingZeros, bool withZeroX)
-            {
-                Bytes = bytes;
-                LeadingZeros = leadingZeros;
-                WithZeroX = withZeroX;
-            }
-
-            public readonly byte[] Bytes;
-            public readonly int LeadingZeros;
-            public readonly bool WithZeroX;
+            public readonly byte[] Bytes = bytes;
+            public readonly int LeadingZeros = leadingZeros;
+            public readonly bool WithZeroX = withZeroX;
         }
 
         [DebuggerStepThrough]
@@ -1151,7 +1138,7 @@ namespace Nethermind.Core.Extensions
             {
                 ReadOnlySpan<byte> span = bytes[index..];
 
-                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out int bytesConsumed);
                 if (status == OperationStatus.Done)
                 {
                     if (!IsControlCharacter(rune))
