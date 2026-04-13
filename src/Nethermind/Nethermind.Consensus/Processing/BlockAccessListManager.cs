@@ -393,38 +393,28 @@ public class BlockAccessListManager(
         void Rollback();
     }
 
-    private class ParallelTxProcessorWithWorldStateManager : ITxProcessorWithWorldStateManager
+    private class ParallelTxProcessorWithWorldStateManager(
+        IBlockhashProvider blockHashProvider,
+        ISpecProvider specProvider,
+        IWorldState stateProvider,
+        ILogManager logManager) : ITxProcessorWithWorldStateManager
     {
         private TxProcessorWithWorldState[] _txProcessorsWithWorldStates;
-        private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
-        private readonly IWorldState _stateProvider;
-        private readonly ILogManager _logManager;
+        private readonly IBlockhashProvider _blockhashProvider = blockHashProvider;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IWorldState _stateProvider = stateProvider;
+        private readonly ILogManager _logManager = logManager;
         private int _len;
-
-        public ParallelTxProcessorWithWorldStateManager(
-            IBlockhashProvider blockHashProvider,
-            ISpecProvider specProvider,
-            IWorldState stateProvider,
-            ILogManager logManager)
-        {
-            _blockhashProvider = blockHashProvider;
-            _specProvider = specProvider;
-            _stateProvider = stateProvider;
-            _logManager = logManager;
-            // pre-allocate and reuse worldstates
-            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[16];
-            for (int i = 0; i < 16; i++)
-            {
-                _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
-            }
-        }
 
         public void Setup(Block block, BlockExecutionContext blockExecutionContext)
         {
             _len = block.Transactions.Length + 2;
+            _txProcessorsWithWorldStates = new TxProcessorWithWorldState[_len];
             for (int i = 0; i < _len; i++)
             {
+                // todo: could be a lot of allocations here
+                // will optimize to allocate ~16 worldstates upfront, and reuse them as they are ready
+                _txProcessorsWithWorldStates[i] = new(i, true, _blockhashProvider, _specProvider, _stateProvider, _logManager);
                 _txProcessorsWithWorldStates[i].Setup(block, blockExecutionContext);
             }
         }
