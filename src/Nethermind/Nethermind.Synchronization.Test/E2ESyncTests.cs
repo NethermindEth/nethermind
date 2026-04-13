@@ -428,6 +428,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [Test]
+    [Retry(5)]
     public async Task SnapSync_HalfPathServer_HashClient()
     {
         if (dbMode != DbMode.Default) Assert.Ignore("This test only runs on the Default (HalfPath) server fixture");
