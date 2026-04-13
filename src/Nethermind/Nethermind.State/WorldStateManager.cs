@@ -42,6 +42,9 @@ public class WorldStateManager : IWorldStateManager
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager);
         _blockingVerifyTrie = new BlockingVerifyTrie(trieStore, GlobalStateReader, _readaOnlyCodeCb!, logManager);
         _lastNStateRootTracker = lastNStateRootTracker;
+        SnapServer = trieStore.Scheme == INodeStorage.KeyScheme.Hash
+            ? NoopSnapServer.Instance
+            : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
     }
 
     public IWorldStateScopeProvider GlobalWorldState => _worldState;
@@ -56,7 +59,7 @@ public class WorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public ISnapServer? SnapServer => _trieStore.Scheme == INodeStorage.KeyScheme.Hash ? null : new SnapServer.SnapServer(_readOnlyTrieStore, _readaOnlyCodeCb, _logManager, _lastNStateRootTracker);
+    public ISnapServer SnapServer { get; }
 
     public IWorldStateScopeProvider CreateResettableWorldState()
     {
