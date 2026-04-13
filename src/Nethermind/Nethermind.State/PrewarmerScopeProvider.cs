@@ -63,14 +63,11 @@ public class PrewarmerScopeProvider(
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
-        {
-            return new StorageTreeWrapper(
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => new StorageTreeWrapper(
                 baseScope.CreateStorageTree(address),
                 storageCache,
                 address,
                 populatePreBlockCache);
-        }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
         {
@@ -154,10 +151,7 @@ public class PrewarmerScopeProvider(
 
         public void HintGet(Address address, Account? account) => baseScope.HintGet(address, account);
 
-        private Account? GetFromBaseTree(in AddressAsKey address)
-        {
-            return baseScope.Get(address);
-        }
+        private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
     }
 
     private sealed class StorageTreeWrapper(

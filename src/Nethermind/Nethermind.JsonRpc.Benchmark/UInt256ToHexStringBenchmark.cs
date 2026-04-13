@@ -50,15 +50,9 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark]
-        public string Improved()
-        {
-            return _scenarios[ScenarioIndex].ToHexString(true);
-        }
+        public string Improved() => _scenarios[ScenarioIndex].ToHexString(true);
 
         [Benchmark(Baseline = true)]
-        public string Current()
-        {
-            return _scenarios[ScenarioIndex].ToHexString(true);
-        }
+        public string Current() => _scenarios[ScenarioIndex].ToHexString(true);
     }
 }

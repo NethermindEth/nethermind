@@ -17,10 +17,7 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     private readonly IBlockTree _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
     private readonly IBlockTree _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
 
-    public void ResetMainChain()
-    {
-        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true); // Cannot be called until blocktree is ready.
-    }
+    public void ResetMainChain() => _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true); // Cannot be called until blocktree is ready.
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;

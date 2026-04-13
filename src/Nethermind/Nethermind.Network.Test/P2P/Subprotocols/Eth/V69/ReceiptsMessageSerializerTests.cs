@@ -20,10 +20,7 @@ public class ReceiptsMessageSerializerTests
 {
     private class EmptyTxReceipt : TxReceipt
     {
-        public EmptyTxReceipt()
-        {
-            Logs = []; // Logs are always assumed non-null in decoders
-        }
+        public EmptyTxReceipt() => Logs = []; // Logs are always assumed non-null in decoders
     }
 
     private static readonly object[] TestData =

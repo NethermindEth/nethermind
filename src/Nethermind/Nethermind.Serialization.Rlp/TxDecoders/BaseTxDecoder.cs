@@ -96,10 +96,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         transaction.Data = decoderContext.DecodeByteArrayMemory(_dataRlpLimit);
     }
 
-    protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext)
-    {
-        transaction.GasPrice = decoderContext.DecodeUInt256();
-    }
+    protected virtual void DecodeGasPrice(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
 
     protected Signature? DecodeSignature(Transaction transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -122,10 +119,7 @@ public abstract class BaseTxDecoder<T>(TxType txType, Func<T>? transactionFactor
         stream.Encode(transaction.Data);
     }
 
-    protected virtual void EncodeGasPrice(Transaction transaction, RlpStream stream)
-    {
-        stream.Encode(transaction.GasPrice);
-    }
+    protected virtual void EncodeGasPrice(Transaction transaction, RlpStream stream) => stream.Encode(transaction.GasPrice);
 
     protected virtual int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) =>
         GetPayloadLength(transaction) + GetSignatureLength(transaction.Signature, forSigning, isEip155Enabled, chainId);

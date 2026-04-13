@@ -26,10 +26,7 @@ namespace Nethermind.Wallet
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
         public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
 

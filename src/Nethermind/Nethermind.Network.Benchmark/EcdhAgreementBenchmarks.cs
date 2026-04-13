@@ -19,10 +19,7 @@ namespace Nethermind.Network.Benchmarks
     public class EcdhAgreementBenchmarks
     {
         [GlobalSetup]
-        public void Setup()
-        {
-            Check(Old(), Current());
-        }
+        public void Setup() => Check(Old(), Current());
 
         private void Check(byte[] a, byte[] b)
         {

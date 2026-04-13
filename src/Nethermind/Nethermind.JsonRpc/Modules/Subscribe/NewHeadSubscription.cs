@@ -37,15 +37,12 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} will track BlockAddedToMain");
         }
 
-        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
-        {
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
-            });
-        }
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => ScheduleAction(async () =>
+                                                                                                 {
+                                                                                                     using JsonRpcResult result = CreateSubscriptionMessage(new BlockForRpc(e.Block, _includeTransactions, _specProvider));
+                                                                                                     await JsonRpcDuplexClient.SendJsonRpcResult(result);
+                                                                                                     if (_logger.IsTrace) _logger.Trace($"NewHeads subscription {Id} printed new block");
+                                                                                                 });
 
         public override string Type => SubscriptionType.EthSubscription.NewHeads;
 

@@ -12,10 +12,7 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
     private readonly ITrieNodeResolver _baseResolver = baseResolver;
     private readonly ReadFlags _defaultFlags = defaultFlags;
 
-    public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash)
-    {
-        return _baseResolver.FindCachedOrUnknown(treePath, hash);
-    }
+    public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => _baseResolver.FindCachedOrUnknown(treePath, hash);
 
     public byte[]? TryLoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None)
     {
@@ -37,10 +34,7 @@ public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadF
         return _baseResolver.LoadRlp(treePath, hash, _defaultFlags);
     }
 
-    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address)
-    {
-        return new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
-    }
+    public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 address) => new TrieNodeResolverWithReadFlags(_baseResolver.GetStorageTrieNodeResolver(address), _defaultFlags);
 
     public INodeStorage.KeyScheme Scheme => _baseResolver.Scheme;
 }

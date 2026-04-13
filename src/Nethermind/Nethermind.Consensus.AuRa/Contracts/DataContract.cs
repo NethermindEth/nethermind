@@ -20,19 +20,13 @@ DataContract<T>.TryGetChangesFromBlockDelegate tryGetChangesFromBlock) : IDataCo
         public DataContract(
             Func<BlockHeader, IEnumerable<T>> getAll,
             Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock)
-            : this(getAll, GetTryGetChangesFromBlock(getChangesFromBlock))
-        {
-            IncrementalChanges = true;
-        }
+            : this(getAll, GetTryGetChangesFromBlock(getChangesFromBlock)) => IncrementalChanges = true;
 
-        private static TryGetChangesFromBlockDelegate GetTryGetChangesFromBlock(Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock)
-        {
-            return (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
-            {
-                items = getChangesFromBlock(blockHeader, receipts).ToArray();
-                return items.Any();
-            };
-        }
+        private static TryGetChangesFromBlockDelegate GetTryGetChangesFromBlock(Func<BlockHeader, TxReceipt[], IEnumerable<T>> getChangesFromBlock) => (BlockHeader blockHeader, TxReceipt[] receipts, out IEnumerable<T> items) =>
+                                                                                                                                                                {
+                                                                                                                                                                    items = getChangesFromBlock(blockHeader, receipts).ToArray();
+                                                                                                                                                                    return items.Any();
+                                                                                                                                                                };
 
         public IEnumerable<T> GetAllItemsFromBlock(BlockHeader blockHeader) => _getAll(blockHeader);
 

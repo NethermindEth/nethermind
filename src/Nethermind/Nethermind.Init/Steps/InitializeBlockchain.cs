@@ -33,10 +33,7 @@ namespace Nethermind.Init.Steps
         private readonly INethermindApi _api = api;
         protected readonly ITxGossipPolicy _txGossipPolicy = txGossipPolicy;
 
-        public async Task Execute(CancellationToken _)
-        {
-            await InitBlockchain();
-        }
+        public async Task Execute(CancellationToken _) => await InitBlockchain();
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         protected virtual Task InitBlockchain()

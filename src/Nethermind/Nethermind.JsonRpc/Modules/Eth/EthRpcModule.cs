@@ -97,25 +97,13 @@ public partial class EthRpcModule(
         return ResultWrapper<string>.Success(highestVersion.ToHexString());
     }
 
-    public ResultWrapper<SyncingResult> eth_syncing()
-    {
-        return ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
-    }
+    public ResultWrapper<SyncingResult> eth_syncing() => ResultWrapper<SyncingResult>.Success(_ethSyncingInfo.GetFullInfo());
 
-    public ResultWrapper<byte[]> eth_snapshot()
-    {
-        return ResultWrapper<byte[]>.Fail("eth_snapshot not supported");
-    }
+    public ResultWrapper<byte[]> eth_snapshot() => ResultWrapper<byte[]>.Fail("eth_snapshot not supported");
 
-    public ResultWrapper<Address> eth_coinbase()
-    {
-        return ResultWrapper<Address>.Success(Address.Zero);
-    }
+    public ResultWrapper<Address> eth_coinbase() => ResultWrapper<Address>.Success(Address.Zero);
 
-    public async Task<ResultWrapper<UInt256?>> eth_gasPrice()
-    {
-        return ResultWrapper<UInt256?>.Success(await _gasPriceOracle.GetGasPriceEstimate());
-    }
+    public async Task<ResultWrapper<UInt256?>> eth_gasPrice() => ResultWrapper<UInt256?>.Success(await _gasPriceOracle.GetGasPriceEstimate());
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()
     {
@@ -139,10 +127,7 @@ public partial class EthRpcModule(
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
-    {
-        return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
-    }
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null) => _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
 
     public ResultWrapper<IEnumerable<Address>> eth_accounts()
     {
@@ -409,16 +394,10 @@ public partial class EthRpcModule(
         new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize)
             .ExecuteTx(transactionCall, blockParameter, stateOverride);
 
-    public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects)
-    {
-        return GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
-    }
+    public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) => GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
 
     public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
-        bool returnFullTransactionObjects)
-    {
-        return GetBlock(blockParameter, returnFullTransactionObjects);
-    }
+        bool returnFullTransactionObjects) => GetBlock(blockParameter, returnFullTransactionObjects);
 
     protected virtual ResultWrapper<BlockForRpc?> GetBlock(BlockParameter blockParameter, bool returnFullTransactionObjects)
     {
@@ -540,16 +519,10 @@ public partial class EthRpcModule(
         return ResultWrapper<TransactionForRpc?>.Success(transactionModel);
     }
 
-    public ResultWrapper<BlockForRpc?> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex)
-    {
-        return GetUncle(new BlockParameter(blockHash), positionIndex);
-    }
+    public ResultWrapper<BlockForRpc?> eth_getUncleByBlockHashAndIndex(Hash256 blockHash, UInt256 positionIndex) => GetUncle(new BlockParameter(blockHash), positionIndex);
 
     public ResultWrapper<BlockForRpc?> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
-        UInt256 positionIndex)
-    {
-        return GetUncle(blockParameter, positionIndex);
-    }
+        UInt256 positionIndex) => GetUncle(blockParameter, positionIndex);
 
     private ResultWrapper<BlockForRpc?> GetUncle(BlockParameter blockParameter, UInt256 positionIndex)
     {
@@ -781,10 +754,7 @@ public partial class EthRpcModule(
         }
     }
 
-    protected void RecoverTxSenderIfNeeded(Transaction transaction)
-    {
-        transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
-    }
+    protected void RecoverTxSenderIfNeeded(Transaction transaction) => transaction.SenderAddress ??= _blockchainBridge.RecoverTxSender(transaction);
 
     private static IEnumerable<FilterLog> GetLogs(IEnumerable<FilterLog> logs, CancellationTokenSource cancellationTokenSource)
     {

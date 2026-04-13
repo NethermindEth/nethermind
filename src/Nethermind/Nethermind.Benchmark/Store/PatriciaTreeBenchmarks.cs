@@ -403,22 +403,13 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public void LargeSetOnly()
-        {
-            DoSetOnlyRepeatedly(_largerEntryCount);
-        }
+        public void LargeSetOnly() => DoSetOnlyRepeatedly(_largerEntryCount);
 
         [Benchmark]
-        public void LargeBulkSet()
-        {
-            DoBulkSetRepeatedly(_largerEntryCount);
-        }
+        public void LargeBulkSet() => DoBulkSetRepeatedly(_largerEntryCount);
 
         [Benchmark]
-        public void LargeBulkSetNoParallel()
-        {
-            DoBulkSetRepeatedlyNoParallel(_largerEntryCount);
-        }
+        public void LargeBulkSetNoParallel() => DoBulkSetRepeatedlyNoParallel(_largerEntryCount);
 
         [Benchmark]
         public void LargeBulkSetPreSorted()
@@ -443,52 +434,28 @@ namespace Nethermind.Benchmarks.Store
 
 
         [Benchmark]
-        public void LargeBulkSetPreSortedNoParallel()
-        {
-            DoBulkSetRepeatedly(_largerEntryCount);
-        }
+        public void LargeBulkSetPreSortedNoParallel() => DoBulkSetRepeatedly(_largerEntryCount);
 
         [Benchmark]
-        public void RepeatedSet8()
-        {
-            DoSetOnlyRepeatedly(8);
-        }
+        public void RepeatedSet8() => DoSetOnlyRepeatedly(8);
 
         [Benchmark]
-        public void RepeatedBulkSet8()
-        {
-            DoBulkSetRepeatedly(8);
-        }
+        public void RepeatedBulkSet8() => DoBulkSetRepeatedly(8);
 
         [Benchmark]
-        public void RepeatedSet64()
-        {
-            DoSetOnlyRepeatedly(64);
-        }
+        public void RepeatedSet64() => DoSetOnlyRepeatedly(64);
 
         [Benchmark]
-        public void RepeatedBulkSet64()
-        {
-            DoBulkSetRepeatedly(64);
-        }
+        public void RepeatedBulkSet64() => DoBulkSetRepeatedly(64);
 
         [Benchmark]
-        public void RepeatedSet512()
-        {
-            DoSetOnlyRepeatedly(512);
-        }
+        public void RepeatedSet512() => DoSetOnlyRepeatedly(512);
 
         [Benchmark]
-        public void RepeatedBulkSetNoParallel512()
-        {
-            DoBulkSetRepeatedlyNoParallel(512);
-        }
+        public void RepeatedBulkSetNoParallel512() => DoBulkSetRepeatedlyNoParallel(512);
 
         [Benchmark]
-        public void RepeatedBulkSet512()
-        {
-            DoBulkSetRepeatedly(512);
-        }
+        public void RepeatedBulkSet512() => DoBulkSetRepeatedly(512);
 
         private void DoSetOnlyRepeatedly(int repeatBatchSize)
         {
@@ -599,10 +566,7 @@ namespace Nethermind.Benchmarks.Store
             nameof(LargeHash),
             nameof(LargeHashNoParallel),
         ])]
-        public void CleanupLargeUncommittedTree()
-        {
-            _largeUncommittedFullTree.Dispose();
-        }
+        public void CleanupLargeUncommittedTree() => _largeUncommittedFullTree.Dispose();
 
         [Benchmark]
         public void LargeCommit()

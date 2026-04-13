@@ -17,10 +17,7 @@ public abstract class RefCountingDisposable : IDisposable
 
     protected PaddedValue _leases;
 
-    protected RefCountingDisposable(int initialCount = Single)
-    {
-        _leases.Value = initialCount;
-    }
+    protected RefCountingDisposable(int initialCount = Single) => _leases.Value = initialCount;
 
     public void AcquireLease()
     {
@@ -31,10 +28,7 @@ public abstract class RefCountingDisposable : IDisposable
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowCouldNotAcquire()
-        {
-            throw new InvalidOperationException("The lease cannot be acquired");
-        }
+        static void ThrowCouldNotAcquire() => throw new InvalidOperationException("The lease cannot be acquired");
     }
 
     protected bool TryAcquireLease()
@@ -116,10 +110,7 @@ public abstract class RefCountingDisposable : IDisposable
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowOverDisposed()
-        {
-            throw new ObjectDisposedException("The lease has already been disposed");
-        }
+        static void ThrowOverDisposed() => throw new ObjectDisposedException("The lease has already been disposed");
     }
 
     protected abstract void CleanUp();

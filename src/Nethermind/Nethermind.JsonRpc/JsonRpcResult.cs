@@ -44,10 +44,7 @@ namespace Nethermind.JsonRpc
             public JsonRpcResponse Response { get; } = response;
             public RpcReport Report { get; } = report;
 
-            public void Dispose()
-            {
-                Response?.Dispose();
-            }
+            public void Dispose() => Response?.Dispose();
         }
 
         public void Dispose()

@@ -44,10 +44,7 @@ namespace Nethermind.State
         }
 
         public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
-            : base(trieStore, rootHash, true, logManager)
-        {
-            TrieType = TrieType.Storage;
-        }
+            : base(trieStore, rootHash, true, logManager) => TrieType = TrieType.Storage;
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -133,31 +130,19 @@ namespace Nethermind.State
             return rlp.DecodeByteArray();
         }
 
-        public void Commit()
-        {
-            Commit(false, WriteFlags.None);
-        }
+        public void Commit() => Commit(false, WriteFlags.None);
 
-        public void Clear()
-        {
-            RootHash = EmptyTreeHash;
-        }
+        public void Clear() => RootHash = EmptyTreeHash;
 
         public bool WasEmptyTree => RootHash == EmptyTreeHash;
 
-        public byte[] Get(in UInt256 index)
-        {
-            return Get(index, null);
-        }
+        public byte[] Get(in UInt256 index) => Get(index, null);
 
         public void HintGet(in UInt256 index, byte[]? value)
         {
         }
 
-        public byte[] Get(in ValueHash256 hash)
-        {
-            return GetArray(in hash, null);
-        }
+        public byte[] Get(in ValueHash256 hash) => GetArray(in hash, null);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
@@ -181,10 +166,7 @@ namespace Nethermind.State
             }
         }
 
-        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
-        {
-            SetInternal(in key, value, rlpEncode);
-        }
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true) => SetInternal(in key, value, rlpEncode);
 
         private void SetInternal(in ValueHash256 hash, byte[] value, bool rlpEncode = true)
         {

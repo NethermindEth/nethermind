@@ -66,10 +66,7 @@ public class SnapServer : ISnapServer
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
     }
 
-    private bool IsRootMissing(Hash256 stateRoot)
-    {
-        return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
-    }
+    private bool IsRootMissing(Hash256 stateRoot) => (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {

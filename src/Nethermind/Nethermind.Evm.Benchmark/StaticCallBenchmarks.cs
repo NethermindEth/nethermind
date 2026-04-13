@@ -125,9 +125,6 @@ namespace Nethermind.Evm.Benchmark
         }
 
         [Benchmark]
-        public void No_machine_running()
-        {
-            _stateProvider.Reset();
-        }
+        public void No_machine_running() => _stateProvider.Reset();
     }
 }

@@ -115,10 +115,7 @@ public class ReceiptsMessageSerializerTests
     }
 
     [Test]
-    public void Roundtrip_with_null_top_level()
-    {
-        Test(null);
-    }
+    public void Roundtrip_with_null_top_level() => Test(null);
 
     [Test]
     public void Roundtrip_with_nulls()

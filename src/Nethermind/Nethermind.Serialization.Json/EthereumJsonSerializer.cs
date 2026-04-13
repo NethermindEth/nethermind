@@ -48,30 +48,15 @@ namespace Nethermind.Serialization.Json
             RefreshInstanceOptions();
         }
 
-        public object Deserialize(string json, Type type)
-        {
-            return JsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
-        }
+        public object Deserialize(string json, Type type) => JsonSerializer.Deserialize(json, type, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(Stream stream)
-        {
-            return JsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
-        }
+        public T Deserialize<T>(Stream stream) => JsonSerializer.Deserialize<T>(stream, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(string json)
-        {
-            return JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
-        }
+        public T Deserialize<T>(string json) => JsonSerializer.Deserialize<T>(json, GetSerializerOptions(indented: false));
 
-        public T Deserialize<T>(ref Utf8JsonReader json)
-        {
-            return JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
-        }
+        public T Deserialize<T>(ref Utf8JsonReader json) => JsonSerializer.Deserialize<T>(ref json, GetSerializerOptions(indented: false));
 
-        public string Serialize<T>(T value, bool indented = false)
-        {
-            return JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
-        }
+        public string Serialize<T>(T value, bool indented = false) => JsonSerializer.Serialize<T>(value, GetSerializerOptions(indented));
 
         private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> instanceConverters = null, int maxDepth = DefaultMaxDepth)
         {
@@ -174,10 +159,7 @@ namespace Nethermind.Serialization.Json
         private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: true);
         private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 16384, leaveOpen: false);
 
-        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
-        {
-            return new CountingStreamPipeWriter(stream, leaveOpen ? optionsLeaveOpen : options);
-        }
+        private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen) => new(stream, leaveOpen ? optionsLeaveOpen : options);
 
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
@@ -225,10 +207,7 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false)
-        {
-            JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
-        }
+        public static void SerializeToStream<T>(Stream stream, T value, bool indented = false) => JsonSerializer.Serialize(stream, value, indented ? JsonOptionsIndented : JsonOptions);
 
         private JsonSerializerOptions GetSerializerOptions(bool indented)
         {

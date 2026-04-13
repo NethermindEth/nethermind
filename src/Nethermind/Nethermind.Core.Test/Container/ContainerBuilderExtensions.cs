@@ -22,16 +22,13 @@ public static class ContainerBuilderExtensions
     /// <param name="configurer"></param>
     /// <typeparam name="T"></typeparam>
     /// <returns></returns>
-    public static ContainerBuilder UpdateSingleton<T>(this ContainerBuilder builder, Action<ContainerBuilder> configurer) where T : class
-    {
-        return builder.AddSingletonWithAccessToPreviousRegistration<T>((ctx, factory) =>
-        {
-            ILifetimeScope parentLifetime = ctx.Resolve<ILifetimeScope>();
-            ILifetimeScope innerLifetime = parentLifetime.BeginLifetimeScope(configurer);
-            parentLifetime.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
-            return factory(innerLifetime);
-        });
-    }
+    public static ContainerBuilder UpdateSingleton<T>(this ContainerBuilder builder, Action<ContainerBuilder> configurer) where T : class => builder.AddSingletonWithAccessToPreviousRegistration<T>((ctx, factory) =>
+                                                                                                                                                  {
+                                                                                                                                                      ILifetimeScope parentLifetime = ctx.Resolve<ILifetimeScope>();
+                                                                                                                                                      ILifetimeScope innerLifetime = parentLifetime.BeginLifetimeScope(configurer);
+                                                                                                                                                      parentLifetime.Disposer.AddInstanceForAsyncDisposal(innerLifetime);
+                                                                                                                                                      return factory(innerLifetime);
+                                                                                                                                                  });
 
     /// <summary>
     /// Create another singleton registration for T with access to a factory function for its exact previous registration. Useful as
@@ -82,23 +79,17 @@ public static class ContainerBuilderExtensions
     }
 
     public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
-        Action<Block, IWorldState> postProcessor)
-    {
-        return builder.AddScoped<IGenesisPostProcessor, IWorldState>((worldState) =>
-        {
-            return new FunctionalGenesisPostProcessor((block) =>
-            {
-                postProcessor(block, worldState);
-            });
-        });
-    }
+        Action<Block, IWorldState> postProcessor) => builder.AddScoped<IGenesisPostProcessor, IWorldState>((worldState) =>
+                                                          {
+                                                              return new FunctionalGenesisPostProcessor((block) =>
+                                                              {
+                                                                  postProcessor(block, worldState);
+                                                              });
+                                                          });
 
     public static ContainerBuilder WithGenesisPostProcessor(this ContainerBuilder builder,
-        Action<Block, IWorldState, ISpecProvider> postProcessor)
-    {
-        return builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor((block) =>
-            {
-                postProcessor(block, worldState, specProvider);
-            }));
-    }
+        Action<Block, IWorldState, ISpecProvider> postProcessor) => builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) => new FunctionalGenesisPostProcessor((block) =>
+                                                                             {
+                                                                                 postProcessor(block, worldState, specProvider);
+                                                                             }));
 }

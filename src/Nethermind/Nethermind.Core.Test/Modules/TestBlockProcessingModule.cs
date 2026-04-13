@@ -16,9 +16,7 @@ namespace Nethermind.Core.Test.Modules;
 
 public class TestBlockProcessingModule : Module
 {
-    protected override void Load(ContainerBuilder builder)
-    {
-        builder
+    protected override void Load(ContainerBuilder builder) => builder
             .AddSingleton<ITransactionComparerProvider, TransactionComparerProvider>()
             // NOTE: The ordering of block preprocessors is not guaranteed
             .AddComposite<IBlockPreprocessorStep, CompositeBlockPreprocessorStep>()
@@ -46,7 +44,6 @@ public class TestBlockProcessingModule : Module
             .AddSingleton<ISigner>(NullSigner.Instance)
 
             ;
-    }
 
     public class AutoBlockProducerFactory<T>(ILifetimeScope rootLifetime, IBlockProducerEnvFactory producerEnvFactory) : IBlockProducerFactory where T : IBlockProducer
     {

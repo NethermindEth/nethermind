@@ -108,14 +108,11 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport.FastBlocksBodies.Reset(0, _pivotNumber - _syncConfig.AncientBodiesBarrierCalc);
         }
 
-        private void ResetSyncStatusList()
-        {
-            _syncStatusList = new SyncStatusList(
+        private void ResetSyncStatusList() => _syncStatusList = new SyncStatusList(
                 _blockTree,
                 _pivotNumber,
                 _syncPointers.LowestInsertedBodyNumber,
                 _syncConfig.AncientBodiesBarrier);
-        }
 
         protected override SyncMode ActivationSyncModes { get; } = SyncMode.FastBodies & ~SyncMode.FastBlocks;
 

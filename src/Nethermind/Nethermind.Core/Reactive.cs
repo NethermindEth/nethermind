@@ -26,10 +26,7 @@ namespace Nethermind.Core
             /// <summary>
             /// Calls the disposal action if and only if the current instance hasn't been disposed yet.
             /// </summary>
-            public void Dispose()
-            {
-                Interlocked.Exchange(ref _dispose, null)?.Invoke();
-            }
+            public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
         }
     }
 }

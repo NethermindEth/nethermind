@@ -30,10 +30,7 @@ public sealed class SystemTransactionProcessor<TGasPolicy> : TransactionProcesso
         IVirtualMachine<TGasPolicy>? virtualMachine,
         ICodeInfoRepository? codeInfoRepository,
         ILogManager? logManager)
-        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
-    {
-        _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
-    }
+        : base(blobBaseFeeCalculator, specProvider, worldState, virtualMachine, codeInfoRepository, logManager) => _isAura = SpecProvider.SealEngine == SealEngineType.AuRa;
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {

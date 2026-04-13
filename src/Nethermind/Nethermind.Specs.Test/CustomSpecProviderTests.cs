@@ -11,16 +11,10 @@ namespace Nethermind.Specs.Test;
 public class CustomSpecProviderTests
 {
     [Test]
-    public void When_no_transitions_specified_throws_argument_exception()
-    {
-        Assert.Throws<ArgumentException>(static () => _ = new CustomSpecProvider());
-    }
+    public void When_no_transitions_specified_throws_argument_exception() => Assert.Throws<ArgumentException>(static () => _ = new CustomSpecProvider());
 
     [Test]
-    public void When_first_release_is_not_at_block_zero_then_throws_argument_exception()
-    {
-        Assert.Throws<ArgumentException>(static () => _ = new CustomSpecProvider(((ForkActivation)1, Byzantium.Instance)), "ordered");
-    }
+    public void When_first_release_is_not_at_block_zero_then_throws_argument_exception() => Assert.Throws<ArgumentException>(static () => _ = new CustomSpecProvider(((ForkActivation)1, Byzantium.Instance)), "ordered");
 
     [Test]
     public void When_only_one_release_is_specified_then_returns_that_release()

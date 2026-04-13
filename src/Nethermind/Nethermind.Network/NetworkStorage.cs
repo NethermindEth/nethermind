@@ -156,10 +156,7 @@ namespace Nethermind.Network
             }
         }
 
-        public bool AnyPendingChange()
-        {
-            return _updateCounter > 0 || _removeCounter > 0;
-        }
+        public bool AnyPendingChange() => _updateCounter > 0 || _removeCounter > 0;
 
         private static NetworkNode GetNode(byte[] networkNodeRaw)
         {

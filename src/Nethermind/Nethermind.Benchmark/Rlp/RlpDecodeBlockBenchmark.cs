@@ -35,21 +35,12 @@ namespace Nethermind.Benchmarks.Rlp
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _block = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _block = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public Block Improved()
-        {
-            return Serialization.Rlp.Rlp.Decode<Block>(_block);
-        }
+        public Block Improved() => Serialization.Rlp.Rlp.Decode<Block>(_block);
 
         [Benchmark]
-        public Block Current()
-        {
-            return Serialization.Rlp.Rlp.Decode<Block>(_block);
-        }
+        public Block Current() => Serialization.Rlp.Rlp.Decode<Block>(_block);
     }
 }

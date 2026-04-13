@@ -42,21 +42,12 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        public int Read(long index, Span<byte> element)
-        {
-            return RandomAccess.Read(_file, element, GetPosition(index));
-        }
+        public int Read(long index, Span<byte> element) => RandomAccess.Read(_file, element, GetPosition(index));
 
-        public IFileReader CreateFileReader()
-        {
-            return new FileReader(_path, _elementSize);
-        }
+        public IFileReader CreateFileReader() => new FileReader(_path, _elementSize);
 
         private long GetPosition(long index) => index * _elementSize;
 
-        public void Dispose()
-        {
-            _file.Dispose();
-        }
+        public void Dispose() => _file.Dispose();
     }
 }

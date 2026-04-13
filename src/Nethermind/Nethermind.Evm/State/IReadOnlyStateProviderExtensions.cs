@@ -41,13 +41,10 @@ namespace Nethermind.Evm.State
             this IWorldState stateProvider,
             IReleaseSpec spec,
             Address sender,
-            Func<Address, bool>? isDelegatedCode = null)
-        {
-            return spec.IsEip3607Enabled
+            Func<Address, bool>? isDelegatedCode = null) => spec.IsEip3607Enabled
             && stateProvider.IsContract(sender)
             && (!spec.IsEip7702Enabled
                 || (!isDelegatedCode?.Invoke(sender) ?? !Eip7702Constants.IsDelegatedCode(stateProvider.GetCode(sender))));
-        }
     }
 
 }

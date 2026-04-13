@@ -106,10 +106,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         }
 
         [DoesNotReturn]
-        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex)
-        {
-            throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
-        }
+        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
 
         protected internal void Send<T>(T message) where T : P2PMessage
         {
@@ -157,10 +154,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        protected void ReceivedProtocolInitMsg(MessageBase msg)
-        {
-            _initCompletionSource?.TrySetResult(msg);
-        }
+        protected void ReceivedProtocolInitMsg(MessageBase msg) => _initCompletionSource?.TrySetResult(msg);
 
         protected void ReportIn(MessageBase msg, int size)
         {

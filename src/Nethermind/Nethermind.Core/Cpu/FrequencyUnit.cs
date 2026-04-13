@@ -31,8 +31,5 @@ public class FrequencyUnit
         HertzAmount = hertzAmount;
     }
 
-    public Frequency ToFrequency(long value = 1L)
-    {
-        return new Frequency(value, this);
-    }
+    public Frequency ToFrequency(long value = 1L) => new(value, this);
 }

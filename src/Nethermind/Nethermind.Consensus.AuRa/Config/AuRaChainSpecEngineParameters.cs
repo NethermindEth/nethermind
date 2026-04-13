@@ -87,10 +87,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
         spec.Eip158IgnoredAccount = Address.SystemUser;
     }
 
-    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
-    {
-        timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
-    }
+    public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps) => timestamps.AddRange(RewriteBytecodeTimestamp.Keys);
 
     static AuRaParameters.Validator LoadValidator(AuRaValidatorJson validatorJson, int level = 0)
     {
@@ -122,10 +119,7 @@ public class AuRaChainSpecEngineParameters : IChainSpecEngineParameters
 
     private class StepDurationJsonConverter : JsonConverter<SortedDictionary<long, long>>
     {
-        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options)
-        {
-            throw new NotSupportedException();
-        }
+        public override void Write(Utf8JsonWriter writer, SortedDictionary<long, long> value, JsonSerializerOptions options) => throw new NotSupportedException();
 
         public override SortedDictionary<long, long> Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

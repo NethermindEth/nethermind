@@ -23,10 +23,7 @@ public class SubscriptionFactory : ISubscriptionFactory
 {
     private readonly ConcurrentDictionary<string, CustomSubscriptionType> _subscriptionConstructors;
 
-    public SubscriptionFactory()
-    {
-        _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType>();
-    }
+    public SubscriptionFactory() => _subscriptionConstructors = new ConcurrentDictionary<string, CustomSubscriptionType>();
 
     public Subscription CreateSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
     {

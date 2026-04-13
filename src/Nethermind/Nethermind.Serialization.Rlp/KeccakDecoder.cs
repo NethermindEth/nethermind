@@ -15,9 +15,6 @@ namespace Nethermind.Serialization.Rlp
 
         public override int GetLength(Hash256 item, RlpBehaviors rlpBehaviors) => Rlp.LengthOf(item);
 
-        public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            stream.Encode(item);
-        }
+        public override void Encode(RlpStream stream, Hash256 item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => stream.Encode(item);
     }
 }

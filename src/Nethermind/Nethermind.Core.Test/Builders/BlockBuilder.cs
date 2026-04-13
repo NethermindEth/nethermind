@@ -168,10 +168,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithParent(Block block)
-        {
-            return WithParent(block.Header);
-        }
+        public BlockBuilder WithParent(Block block) => WithParent(block.Header);
 
         public BlockBuilder WithPostMergeRules()
         {

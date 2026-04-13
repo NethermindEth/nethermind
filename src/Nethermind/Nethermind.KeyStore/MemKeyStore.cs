@@ -26,67 +26,31 @@ namespace Nethermind.KeyStore
                     new KeyValuePair<Address, PrivateKey>(pk.Address, pk)));
         private readonly string _ketStoreDir = ketStoreDir;
 
-        public (KeyStoreItem KeyData, Result Result) Verify(string keyJson)
-        {
-            throw new System.NotImplementedException();
-        }
+        public (KeyStoreItem KeyData, Result Result) Verify(string keyJson) => throw new System.NotImplementedException();
 
-        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
-        {
-            return _privateKeys.TryGetValue(address, out PrivateKey value) ? (value, Result.Success) : (null, Result.Fail("Can't unlock key."));
-        }
+        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password) => _privateKeys.TryGetValue(address, out PrivateKey value) ? (value, Result.Success) : (null, Result.Fail("Can't unlock key."));
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password)
-        {
-            return _privateKeys.TryGetValue(address, out PrivateKey value)
+        public (ProtectedPrivateKey PrivateKey, Result Result) GetProtectedKey(Address address, SecureString password) => _privateKeys.TryGetValue(address, out PrivateKey value)
                 ? (new ProtectedPrivateKey(value, _ketStoreDir), Result.Success)
                 : (null, Result.Fail("Can't unlock key."));
-        }
 
-        public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address)
-        {
-            throw new System.NotImplementedException();
-        }
+        public (KeyStoreItem KeyData, Result Result) GetKeyData(Address address) => throw new System.NotImplementedException();
 
-        public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
-        {
-            return (new ReadOnlyCollection<Address>(_privateKeys.Keys.ToList()), Result.Success);
-        }
+        public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses() => (new ReadOnlyCollection<Address>(_privateKeys.Keys.ToList()), Result.Success);
 
-        public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
-        {
-            throw new System.NotImplementedException();
-        }
+        public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password) => throw new System.NotImplementedException();
 
-        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password)
-        {
-            throw new System.NotImplementedException();
-        }
+        public (ProtectedPrivateKey PrivateKey, Result Result) GenerateProtectedKey(SecureString password) => throw new System.NotImplementedException();
 
-        public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
-        {
-            throw new System.NotImplementedException();
-        }
+        public Result StoreKey(Address address, KeyStoreItem keyStoreItem) => throw new System.NotImplementedException();
 
-        public Result StoreKey(PrivateKey key, SecureString password)
-        {
-            throw new System.NotImplementedException();
-        }
+        public Result StoreKey(PrivateKey key, SecureString password) => throw new System.NotImplementedException();
 
-        public Result DeleteKey(Address address)
-        {
-            throw new System.NotImplementedException();
-        }
+        public Result DeleteKey(Address address) => throw new System.NotImplementedException();
 
-        public Result StoreKey(Address address, byte[] keyContent, SecureString password)
-        {
-            throw new NotImplementedException();
-        }
+        public Result StoreKey(Address address, byte[] keyContent, SecureString password) => throw new NotImplementedException();
 
-        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password)
-        {
-            throw new NotImplementedException();
-        }
+        public (byte[] Key, Result Result) GetKeyBytes(Address address, SecureString password) => throw new NotImplementedException();
 
         public int Version { get; }
         public int CryptoVersion { get; }

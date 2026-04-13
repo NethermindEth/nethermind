@@ -28,16 +28,11 @@ public static class NettyMemoryEstimator
 {
     private const uint PageSize = 8192;
 
-    public static void SetPageSize()
-    {
+    public static void SetPageSize() =>
         // For some reason needs to be half page size to get page size
         Environment.SetEnvironmentVariable("io.netty.allocator.pageSize", (PageSize / 2).ToString((IFormatProvider?)null));
-    }
 
-    public static long Estimate(uint arenaCount, int arenaOrder)
-    {
-        return arenaCount * (1L << arenaOrder) * PageSize;
-    }
+    public static long Estimate(uint arenaCount, int arenaOrder) => arenaCount * (1L << arenaOrder) * PageSize;
 }
 
 [RunnerStepDependencies(
@@ -98,10 +93,7 @@ public class InitializeNetwork : IStep
         _logger = logManager.GetClassLogger<InitializeNetwork>();
     }
 
-    public virtual Task Execute(CancellationToken cancellationToken)
-    {
-        return Initialize(cancellationToken);
-    }
+    public virtual Task Execute(CancellationToken cancellationToken) => Initialize(cancellationToken);
 
     private async Task Initialize(CancellationToken cancellationToken)
     {
@@ -288,9 +280,7 @@ public class InitializeNetwork : IStep
         }
     }
 
-    protected virtual IProtocolsManager CreateProtocolManager()
-    {
-        return new ProtocolsManager(
+    protected virtual IProtocolsManager CreateProtocolManager() => new ProtocolsManager(
             _api.SyncPeerPool!,
             _api.TxPool!,
             _discoveryApp,
@@ -300,5 +290,4 @@ public class InitializeNetwork : IStep
             _peerStorage,
             _protocolHandlerFactories,
             _api.LogManager);
-    }
 }

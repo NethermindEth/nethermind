@@ -245,10 +245,7 @@ namespace Nethermind.Xdc
             _writeRoundInfo = false;
         }
 
-        private XdcBlockHeader GetParentForRound()
-        {
-            return _blockTree.Head.Header as XdcBlockHeader;
-        }
+        private XdcBlockHeader GetParentForRound() => _blockTree.Head.Header as XdcBlockHeader;
 
         /// <summary>
         /// Build block with parentQC.

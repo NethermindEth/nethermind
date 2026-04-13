@@ -171,10 +171,7 @@ public class ProgressLoggerTests
         iLogger.Received(1).Info("Progress              1 /        100 (  1.00 %) [⡆                                    ] queue       99 | skipped      90 Blk/s | current      10 Blk/s");
     }
 
-    private ProgressLogger CreateProgress()
-    {
-        return new("", LimboLogs.Instance);
-    }
+    private ProgressLogger CreateProgress() => new("", LimboLogs.Instance);
 
     private (ProgressLogger, ManualTimestamper) CreateProgressWithManualTimestamper()
     {

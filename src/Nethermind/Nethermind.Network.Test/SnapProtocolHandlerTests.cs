@@ -121,20 +121,11 @@ public class SnapProtocolHandlerTests
             }
         }
 
-        public void RecordedMessageSizesShouldIncrease()
-        {
-            _recordedResponseBytesLength[^1].Should().BeGreaterThan(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldIncrease() => _recordedResponseBytesLength[^1].Should().BeGreaterThan(_recordedResponseBytesLength[^2]);
 
-        public void RecordedMessageSizesShouldDecrease()
-        {
-            _recordedResponseBytesLength[^1].Should().BeLessThan(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldDecrease() => _recordedResponseBytesLength[^1].Should().BeLessThan(_recordedResponseBytesLength[^2]);
 
-        public void RecordedMessageSizesShouldNotChange()
-        {
-            _recordedResponseBytesLength[^1].Should().Be(_recordedResponseBytesLength[^2]);
-        }
+        public void RecordedMessageSizesShouldNotChange() => _recordedResponseBytesLength[^1].Should().Be(_recordedResponseBytesLength[^2]);
     }
 
     [Test]
@@ -168,10 +159,7 @@ public class SnapProtocolHandlerTests
     [TestCase(1L, 1L)]
     [TestCase(0L, 1L)]
     [TestCase(-1L, 1L)]
-    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected)
-    {
-        Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
-    }
+    public void ClampResponseBytes_clamps_to_valid_range(long input, long expected) => Assert.That(SnapMessageLimits.ClampResponseBytes(input), Is.EqualTo(expected));
 
     [Test]
     [Explicit]

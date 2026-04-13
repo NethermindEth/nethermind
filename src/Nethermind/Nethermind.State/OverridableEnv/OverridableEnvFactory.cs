@@ -60,10 +60,7 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
 
         private class Scope(OverridableEnv env) : IDisposable
         {
-            public void Dispose()
-            {
-                env.Reset();
-            }
+            public void Dispose() => env.Reset();
         }
 
         private void Reset()
@@ -84,10 +81,8 @@ public class OverridableEnvFactory(IWorldStateManager worldStateManager, ILifeti
                 .AddScoped<IOverridableCodeInfoRepository>(_codeInfoRepository)
             ;
 
-        public void Dispose()
-        {
+        public void Dispose() =>
             // Note: This is the env's dispose, not the scope dispose.
             childLifetimeScope.Dispose();
-        }
     }
 }

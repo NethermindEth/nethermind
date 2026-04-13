@@ -18,10 +18,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly string _registryKey = registryKey;
         private Hash256 _currentHashAddress = Keccak.Zero;
 
-        protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null)
-        {
-            return GenerateTransaction<T>(GetContractAddress(header), transactionData, sender, gasLimit);
-        }
+        protected override Transaction GenerateTransaction<T>(Address? contractAddress, byte[] transactionData, Address sender, long gasLimit = DefaultContractGasLimit, BlockHeader header = null) => GenerateTransaction<T>(GetContractAddress(header), transactionData, sender, gasLimit);
 
         private Address GetContractAddress(BlockHeader? header)
         {

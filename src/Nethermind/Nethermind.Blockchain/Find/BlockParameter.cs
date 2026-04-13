@@ -38,10 +38,7 @@ namespace Nethermind.Blockchain.Find
 
         public bool RequireCanonical { get; }
 
-        public BlockParameter(BlockParameterType type)
-        {
-            Type = type;
-        }
+        public BlockParameter(BlockParameterType type) => Type = type;
 
         public BlockParameter(long number)
         {
@@ -138,21 +135,18 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [SkipLocalsInit]
-        public override BlockParameter? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override BlockParameter? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
         {
-            return reader.TokenType switch
-            {
-                JsonTokenType.String => !reader.HasValueSequence ?
-                                            reader.ValueSpan.Length <= 66 ?
-                                                ReadStringFormat(reader.ValueSpan) :
-                                                ReadStringComplex(ref reader, options) :
-                                            ReadStringFormatValueSequence(ref reader, options),
-                JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
-                JsonTokenType.Null => BlockParameter.Latest,
-                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
-                _ => throw new FormatException("unknown block parameter type")
-            };
-        }
+            JsonTokenType.String => !reader.HasValueSequence ?
+                                        reader.ValueSpan.Length <= 66 ?
+                                            ReadStringFormat(reader.ValueSpan) :
+                                            ReadStringComplex(ref reader, options) :
+                                        ReadStringFormatValueSequence(ref reader, options),
+            JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
+            JsonTokenType.Null => BlockParameter.Latest,
+            JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
+            _ => throw new FormatException("unknown block parameter type")
+        };
 
         private BlockParameter ReadObjectFormat(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
@@ -294,20 +288,17 @@ namespace Nethermind.JsonRpc.Data
         private static void ThrowInvalidFormatting()
             => throw new FormatException("unknown block parameter type");
 
-        public static BlockParameter GetBlockParameter(string? value)
+        public static BlockParameter GetBlockParameter(string? value) => value switch
         {
-            return value switch
-            {
-                null => BlockParameter.Latest,
-                not null when string.IsNullOrWhiteSpace(value) => BlockParameter.Latest,
-                not null when value.Equals("latest", StringComparison.OrdinalIgnoreCase) => BlockParameter.Latest,
-                not null when value.Equals("earliest", StringComparison.OrdinalIgnoreCase) => BlockParameter.Earliest,
-                not null when value.Equals("pending", StringComparison.OrdinalIgnoreCase) => BlockParameter.Pending,
-                not null when value.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
-                not null when value.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
-                { Length: 66 } when value.StartsWith("0x") => new BlockParameter(new Hash256(value)),
-                _ => new BlockParameter(LongConverter.FromString(value))
-            };
-        }
+            null => BlockParameter.Latest,
+            not null when string.IsNullOrWhiteSpace(value) => BlockParameter.Latest,
+            not null when value.Equals("latest", StringComparison.OrdinalIgnoreCase) => BlockParameter.Latest,
+            not null when value.Equals("earliest", StringComparison.OrdinalIgnoreCase) => BlockParameter.Earliest,
+            not null when value.Equals("pending", StringComparison.OrdinalIgnoreCase) => BlockParameter.Pending,
+            not null when value.Equals("finalized", StringComparison.OrdinalIgnoreCase) => BlockParameter.Finalized,
+            not null when value.Equals("safe", StringComparison.OrdinalIgnoreCase) => BlockParameter.Safe,
+            { Length: 66 } when value.StartsWith("0x") => new BlockParameter(new Hash256(value)),
+            _ => new BlockParameter(LongConverter.FromString(value))
+        };
     }
 }

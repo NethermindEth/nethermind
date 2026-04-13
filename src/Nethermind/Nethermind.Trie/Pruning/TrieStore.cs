@@ -180,10 +180,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void IncrementCommittedNodesCount()
-    {
-        Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
-    }
+    private void IncrementCommittedNodesCount() => Metrics.CommittedNodesCount = Interlocked.Increment(ref _committedNodesCount);
 
     public int PersistedNodesCount
     {
@@ -195,10 +192,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private void IncrementPersistedNodesCount()
-    {
-        Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
-    }
+    private void IncrementPersistedNodesCount() => Metrics.PersistedNodeCount = Interlocked.Increment(ref _persistedNodesCount);
 
     public long CachedNodesCount
     {
@@ -242,10 +236,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(long blockNumber, in TrieNode node)
-        {
-            _logger.Trace($"Committing {node} at {blockNumber}");
-        }
+        void Trace(long blockNumber, in TrieNode node) => _logger.Trace($"Committing {node} at {blockNumber}");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnknownHash(TrieNode node) => throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
@@ -516,10 +507,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         return rlp;
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak)
-        {
-            throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
-        }
+        static void ThrowMissingNode(Hash256? address, in TreePath path, Hash256 keccak) => throw new MissingTrieNodeException($"Node A:{address} P:{path} H:{keccak} is missing from the DB", address, path, keccak);
     }
 
     public IReadOnlyTrieStore AsReadOnly() => new ReadOnlyTrieStore(this);
@@ -539,10 +527,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             : FindCachedOrUnknown(key, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
-    {
-        return isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
-    }
+    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
     // Used only in tests
     public void Dump()
@@ -553,11 +538,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    private TrieStoreState CaptureCurrentState()
-    {
-        return new TrieStoreState(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
+    private TrieStoreState CaptureCurrentState() => new(PersistedMemoryUsedByDirtyCache, DirtyMemoryUsedByDirtyCache,
             LatestCommittedBlockNumber, LastPersistedBlockNumber);
-    }
 
     public void Prune()
     {
@@ -1024,10 +1006,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         FlushCommitBufferNoLock();
     }
 
-    public void WaitForPruning()
-    {
-        _pruningTask.Wait();
-    }
+    public void WaitForPruning() => _pruningTask.Wait();
 
     private readonly INodeStorage _nodeStorage;
 
@@ -1213,11 +1192,8 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         }
     }
 
-    public bool IsNoLongerNeeded(long lastCommit)
-    {
-        return lastCommit < LastPersistedBlockNumber
+    public bool IsNoLongerNeeded(long lastCommit) => lastCommit < LastPersistedBlockNumber
                && lastCommit < LatestCommittedBlockNumber - _maxDepth;
-    }
 
     private void AnnounceReorgBoundaries()
     {
@@ -1454,10 +1430,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
         internal TrieNode? StateRoot;
         private int _concurrency = Environment.ProcessorCount;
 
-        public void Dispose()
-        {
-            trieStore.FinishBlockCommit(commitSet, StateRoot);
-        }
+        public void Dispose() => trieStore.FinishBlockCommit(commitSet, StateRoot);
 
         public ICommitter GetTrieCommitter(Hash256? address, TrieNode? root, WriteFlags writeFlags)
         {
@@ -1656,15 +1629,9 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
-        public void Reset(long minCommitBlockNumber)
-        {
-            _minCommitBlockNumber = minCommitBlockNumber;
-        }
+        public void Reset(long minCommitBlockNumber) => _minCommitBlockNumber = minCommitBlockNumber;
 
-        public void EnqueueCommitSet(BlockCommitSet set)
-        {
-            _commitSetQueueBuffer.Enqueue(set);
-        }
+        public void EnqueueCommitSet(BlockCommitSet set) => _commitSetQueueBuffer.Enqueue(set);
 
         public void FlushToDirtyNodes()
         {

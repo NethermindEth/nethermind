@@ -86,10 +86,7 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [GlobalCleanup]
-        public void TearDown()
-        {
-            _container.Dispose();
-        }
+        public void TearDown() => _container.Dispose();
 
         [Benchmark]
         public void Current()

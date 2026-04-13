@@ -11,10 +11,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator;
         public static readonly UInt256 MaxDifficulty;
 
-        static AuraDifficultyCalculator()
-        {
-            MaxDifficulty = UInt256.UInt128MaxValue;
-        }
+        static AuraDifficultyCalculator() => MaxDifficulty = UInt256.UInt128MaxValue;
 
         public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L)
         {

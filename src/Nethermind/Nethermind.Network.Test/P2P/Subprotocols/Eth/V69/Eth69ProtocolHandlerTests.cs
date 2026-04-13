@@ -265,8 +265,7 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void On_init_sends_a_status_message()
-    {
+    public void On_init_sends_a_status_message() =>
         // init is called in Setup
         _session.Received(1).DeliverMessage(Arg.Is<StatusMessage69>(m =>
             m.ProtocolVersion == 69
@@ -274,7 +273,6 @@ public class Eth69ProtocolHandlerTests
             && m.GenesisHash == _genesisBlock.Hash
             && m.LatestBlockHash == _genesisBlock.Hash
             && m.EarliestBlock == 0));
-    }
 
     private void HandleIncomingStatusMessage()
     {

@@ -228,9 +228,6 @@ namespace Nethermind.Blockchain.Filters
             public Hash256[]? Topics { get; init; }
         }
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

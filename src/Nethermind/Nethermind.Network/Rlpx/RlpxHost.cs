@@ -329,8 +329,7 @@ namespace Nethermind.Network.Rlpx
             _ = connectTask.Result.DisconnectAsync();
         }
 
-        private void OnChannelCloseCompleted(Task _, object? state)
-        {
+        private void OnChannelCloseCompleted(Task _, object? state) =>
             // The close completion is completed before actual closing or remaining packet is processed.
             // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
             // add some delay to account for whatever is holding the network pipeline.
@@ -340,7 +339,6 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
-        }
 
         private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
         {
@@ -414,10 +412,7 @@ namespace Nethermind.Network.Rlpx
                 _session.MsgDelivered += _refreshNodeFilter;
             }
 
-            public void AttachDisconnected()
-            {
-                _session.Disconnected += _onDisconnected;
-            }
+            public void AttachDisconnected() => _session.Disconnected += _onDisconnected;
 
             public void Detach()
             {

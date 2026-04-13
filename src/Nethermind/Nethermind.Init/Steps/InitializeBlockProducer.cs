@@ -60,20 +60,14 @@ namespace Nethermind.Init.Steps
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
         {
-            public IBlockProducer InitBlockProducer()
-            {
-                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory);
-            }
+            public IBlockProducer InitBlockProducer() => consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory);
         }
 
         private class ConsensusWrapperToBlockProducerRunnerFactoryAdapter(
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerRunnerFactory baseBlockProducerRunnerFactory) : IBlockProducerRunnerFactory
         {
-            public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-            {
-                return consensusWrapperPlugin.InitBlockProducerRunner(baseBlockProducerRunnerFactory, blockProducer);
-            }
+            public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => consensusWrapperPlugin.InitBlockProducerRunner(baseBlockProducerRunnerFactory, blockProducer);
         }
     }
 }

@@ -61,10 +61,7 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
         }
     }
 
-    public void UpdateEgressMac(byte[] input)
-    {
-        _egressMac.Update(input);
-    }
+    public void UpdateEgressMac(byte[] input) => _egressMac.Update(input);
 
     public void UpdateIngressMac(byte[] input, bool isHeader)
     {

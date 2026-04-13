@@ -17,11 +17,9 @@ internal class XdcSealer(ISigner signer) : ISealer
     private static readonly XdcHeaderDecoder _xdcHeaderDecoder = new();
     public Address Address => signer.Address;
 
-    public bool CanSeal(long blockNumber, Hash256 parentHash)
-    {
+    public bool CanSeal(long blockNumber, Hash256 parentHash) =>
         //We might want to add more logic here in the future
-        return true;
-    }
+        true;
 
     public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
     {

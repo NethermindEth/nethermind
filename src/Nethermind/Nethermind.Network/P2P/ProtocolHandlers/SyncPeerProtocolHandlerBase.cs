@@ -173,15 +173,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers;
         }
 
-        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
-        {
-            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
-        }
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
-        public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
-        {
-            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
-        }
+        public virtual Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
 
         public abstract void NotifyOfNewBlock(Block block, SendBlockMode mode);
 
@@ -203,10 +197,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false)
-        {
-            SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
-        }
+        public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx = false) => SendNewTransactionsCore(TxsToSendAndMarkAsNotified(txs, sendFullTx), sendFullTx);
 
         private IEnumerable<Transaction> TxsToSendAndMarkAsNotified(IEnumerable<Transaction> txs, bool sendFullTx)
         {
@@ -353,15 +344,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new BlockBodiesMessage(blocks));
         }
 
-        protected void Handle(BlockHeadersMessage message, long size)
-        {
-            _headersRequests.Handle(message.BlockHeaders, size);
-        }
+        protected void Handle(BlockHeadersMessage message, long size) => _headersRequests.Handle(message.BlockHeaders, size);
 
-        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
-        {
-            _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
-        }
+        protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
@@ -438,10 +423,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected abstract void OnDisposed();
 
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-        {
-            Dispose();
-        }
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) => Dispose();
 
         public override void Dispose()
         {
@@ -474,10 +456,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private Dictionary<string, object>? _protocolHandlers;
         private Dictionary<string, object> ProtocolHandlers => _protocolHandlers ??= new Dictionary<string, object>();
 
-        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
-        {
-            ProtocolHandlers[protocol] = protocolHandler;
-        }
+        public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class => ProtocolHandlers[protocol] = protocolHandler;
 
         public bool TryGetSatelliteProtocol<T>(string protocol, out T? protocolHandler) where T : class
         {

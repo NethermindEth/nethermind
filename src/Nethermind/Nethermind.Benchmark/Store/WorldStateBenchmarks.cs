@@ -96,10 +96,7 @@ public class WorldStateBenchmarks
     }
 
     [GlobalCleanup]
-    public void Teardown()
-    {
-        _container.Dispose();
-    }
+    public void Teardown() => _container.Dispose();
 
     [Benchmark]
     public void AccountRead()

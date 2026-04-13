@@ -23,10 +23,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     [TestCase(null)]
     [TestCase(new byte[0])]
     [TestCase(new byte[] { 1 })]
-    public void Test_roundtrip(byte[]? bytes)
-    {
-        TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
-    }
+    public void Test_roundtrip(byte[]? bytes) => TestConverter(bytes, static (before, after) => Bytes.AreEqual(before, after), new ByteArrayConverter());
 
     [Test]
     public void Test_roundtrip_large()
