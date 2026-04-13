@@ -13,21 +13,16 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Blockchain.Contracts
 {
-    public abstract class CallableContract : Contract
+    /// <summary>
+    /// Creates contract
+    /// </summary>
+    /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
+    /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
+    /// <param name="contractAddress">Address where contract is deployed.</param>
+    public abstract class CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : Contract(abiEncoder, contractAddress)
     {
-        private readonly ITransactionProcessor _transactionProcessor;
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
         public const long UnlimitedGas = long.MaxValue;
-
-        /// <summary>
-        /// Creates contract
-        /// </summary>
-        /// <param name="transactionProcessor">Transaction processor on which all <see cref="Call(Nethermind.Core.BlockHeader,Nethermind.Core.Transaction)"/> should be run on.</param>
-        /// <param name="abiEncoder">Binary interface encoder/decoder.</param>
-        /// <param name="contractAddress">Address where contract is deployed.</param>
-        protected CallableContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress) : base(abiEncoder, contractAddress)
-        {
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-        }
 
         private byte[] Call(BlockHeader header, string functionName, Transaction transaction) => CallCore(_transactionProcessor, header, functionName, transaction);
 

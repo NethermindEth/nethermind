@@ -19,39 +19,26 @@ using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
-    public class ParityRpcModule : IParityRpcModule
+    public class ParityRpcModule(
+        IEcdsa ecdsa,
+        ITxPool txPool,
+        IBlockFinder blockFinder,
+        IReceiptFinder receiptFinder,
+        IEnode enode,
+        ISignerStore signerStore,
+        IKeyStore keyStore,
+        ISpecProvider specProvider,
+        IPeerManager peerManager) : IParityRpcModule
     {
-        private readonly IEcdsa _ecdsa;
-        private readonly ITxPool _txPool;
-        private readonly IBlockFinder _blockFinder;
-        private readonly IReceiptFinder _receiptFinder;
-        private readonly IEnode _enode;
-        private readonly ISignerStore _signerStore;
-        private readonly IKeyStore _keyStore;
-        private readonly ISpecProvider _specProvider;
-        private readonly IPeerManager _peerManager;
-
-        public ParityRpcModule(
-            IEcdsa ecdsa,
-            ITxPool txPool,
-            IBlockFinder blockFinder,
-            IReceiptFinder receiptFinder,
-            IEnode enode,
-            ISignerStore signerStore,
-            IKeyStore keyStore,
-            ISpecProvider specProvider,
-            IPeerManager peerManager)
-        {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-            _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
-            _enode = enode ?? throw new ArgumentNullException(nameof(enode));
-            _signerStore = signerStore ?? throw new ArgumentNullException(nameof(signerStore));
-            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-        }
+        private readonly IEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly ITxPool _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        private readonly IReceiptFinder _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
+        private readonly IEnode _enode = enode ?? throw new ArgumentNullException(nameof(enode));
+        private readonly ISignerStore _signerStore = signerStore ?? throw new ArgumentNullException(nameof(signerStore));
+        private readonly IKeyStore _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IPeerManager _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
 
         public ResultWrapper<ParityTransaction[]> parity_pendingTransactions(Address? address = null)
         {

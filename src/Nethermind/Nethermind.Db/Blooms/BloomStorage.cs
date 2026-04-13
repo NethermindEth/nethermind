@@ -248,28 +248,18 @@ namespace Nethermind.Db.Blooms
 
         public IBloomEnumeration GetBlooms(long fromBlock, long toBlock) => new BloomEnumeration(_storageLevels, Math.Max(fromBlock, MinBlockNumber), Math.Min(toBlock, MaxBlockNumber));
 
-        private class BloomStorageLevel : IDisposable
+        private class BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics) : IDisposable
         {
             // ReSharper disable InconsistentNaming
-            private readonly byte Level;
-            public readonly int LevelElementSize;
-            private readonly int LevelMultiplier;
+            private readonly byte Level = level;
+            public readonly int LevelElementSize = levelElementSize;
+            private readonly int LevelMultiplier = levelMultiplier;
             public readonly Average Average = new();
             // ReSharper restore InconsistentNaming
 
-            private readonly IFileStore _fileStore;
-            private readonly bool _migrationStatistics;
-            private readonly LruCache<long, Bloom> _cache;
-
-            public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
-            {
-                _fileStore = fileStore;
-                Level = level;
-                LevelElementSize = levelElementSize;
-                LevelMultiplier = levelMultiplier;
-                _migrationStatistics = migrationStatistics;
-                _cache = new LruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
-            }
+            private readonly IFileStore _fileStore = fileStore;
+            private readonly bool _migrationStatistics = migrationStatistics;
+            private readonly LruCache<long, Bloom> _cache = new(levelMultiplier, levelMultiplier, "blooms");
 
             public void Store(params IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
             {
@@ -346,19 +336,12 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        private class BloomEnumeration : IBloomEnumeration
+        private class BloomEnumeration(BloomStorage.BloomStorageLevel[] storageLevels, long fromBlock, long toBlock) : IBloomEnumeration
         {
-            private readonly BloomStorageLevel[] _storageLevels;
-            private readonly long _fromBlock;
-            private readonly long _toBlock;
+            private readonly BloomStorageLevel[] _storageLevels = storageLevels;
+            private readonly long _fromBlock = fromBlock;
+            private readonly long _toBlock = toBlock;
             private BloomEnumerator _current;
-
-            public BloomEnumeration(BloomStorageLevel[] storageLevels, long fromBlock, long toBlock)
-            {
-                _storageLevels = storageLevels;
-                _fromBlock = fromBlock;
-                _toBlock = toBlock;
-            }
 
             public IEnumerator<Bloom> GetEnumerator() => _current = new BloomEnumerator(_storageLevels, _fromBlock, _toBlock);
 

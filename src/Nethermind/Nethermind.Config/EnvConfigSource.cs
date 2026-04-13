@@ -7,17 +7,12 @@ using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
-    public class EnvConfigSource : IConfigSource
+    public class EnvConfigSource(IEnvironment environmentWrapper) : IConfigSource
     {
-        private readonly IEnvironment _environmentWrapper;
+        private readonly IEnvironment _environmentWrapper = environmentWrapper;
 
         public EnvConfigSource() : this(new EnvironmentWrapper())
         {
-        }
-
-        public EnvConfigSource(IEnvironment environmentWrapper)
-        {
-            _environmentWrapper = environmentWrapper;
         }
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)

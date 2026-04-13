@@ -110,39 +110,25 @@ public class AccessList : IEnumerable<(Address Address, AccessList.StorageKeysEn
         public readonly void Dispose() { }
     }
 
-    public readonly struct StorageKeysEnumerable : IEnumerable<UInt256>
+    public readonly struct StorageKeysEnumerable(AccessList accessList, int index, int count) : IEnumerable<UInt256>
     {
-        private readonly AccessList _accessList;
-        private readonly int _index;
-        private readonly int _count;
+        private readonly AccessList _accessList = accessList;
+        private readonly int _index = index;
+        private readonly int _count = count;
 
         public int Count => _count;
-
-        public StorageKeysEnumerable(AccessList accessList, int index, int count)
-        {
-            _accessList = accessList;
-            _index = index;
-            _count = count;
-        }
 
         StorageKeysEnumerator GetEnumerator() => new(_accessList, _index, _count);
         IEnumerator<UInt256> IEnumerable<UInt256>.GetEnumerator() => GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    public struct StorageKeysEnumerator : IEnumerator<UInt256>
+    public struct StorageKeysEnumerator(AccessList accessList, int index, int count) : IEnumerator<UInt256>
     {
-        private readonly AccessList _accessList;
-        private readonly int _startingIndex;
-        private readonly int _count;
+        private readonly AccessList _accessList = accessList;
+        private readonly int _startingIndex = index;
+        private readonly int _count = count;
         private int _index = -1;
-
-        public StorageKeysEnumerator(AccessList accessList, int index, int count)
-        {
-            _accessList = accessList;
-            _startingIndex = index;
-            _count = count;
-        }
 
         public bool MoveNext() => ++_index < _count;
         public void Reset() => _index = -1;

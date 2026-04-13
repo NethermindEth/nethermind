@@ -11,18 +11,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.HealthChecks
 {
-    public class NodeHealthCheck : IHealthCheck
+    public class NodeHealthCheck(
+        INodeHealthService nodeHealthService,
+        ILogManager logManager) : IHealthCheck
     {
-        private readonly INodeHealthService _nodeHealthService;
-        private readonly ILogger _logger;
-
-        public NodeHealthCheck(
-            INodeHealthService nodeHealthService,
-            ILogManager logManager)
-        {
-            _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
-            _logger = logManager.GetClassLogger<NodeHealthCheck>();
-        }
+        private readonly INodeHealthService _nodeHealthService = nodeHealthService ?? throw new ArgumentNullException(nameof(nodeHealthService));
+        private readonly ILogger _logger = logManager.GetClassLogger<NodeHealthCheck>();
 
         public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
         {

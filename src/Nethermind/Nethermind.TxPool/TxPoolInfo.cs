@@ -6,16 +6,10 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool
 {
-    public class TxPoolInfo
+    public class TxPoolInfo(Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pending,
+        Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queued)
     {
-        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Pending { get; }
-        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Queued { get; }
-
-        public TxPoolInfo(Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> pending,
-            Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> queued)
-        {
-            Pending = pending;
-            Queued = queued;
-        }
+        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Pending { get; } = pending;
+        public Dictionary<AddressAsKey, IDictionary<ulong, Transaction>> Queued { get; } = queued;
     }
 }

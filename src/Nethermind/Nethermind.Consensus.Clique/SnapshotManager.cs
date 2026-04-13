@@ -21,33 +21,23 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class SnapshotManager : ISnapshotManager
+    public class SnapshotManager(
+        ICliqueConfig cliqueConfig,
+        [KeyFilter(DbNames.Blocks)] IDb blocksDb,
+        IBlockTree blockTree,
+        IEthereumEcdsa ecdsa,
+        ILogManager logManager
+        ) : ISnapshotManager
     {
         private static readonly byte[] _snapshotBytes = Encoding.UTF8.GetBytes("snapshot-");
-        private readonly IBlockTree _blockTree;
-        private readonly ICliqueConfig _cliqueConfig;
-        private readonly ILogger _logger;
-        private readonly LruCache<ValueHash256, Address> _signatures;
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly IDb _blocksDb;
+        private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        private readonly ICliqueConfig _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
+        private readonly ILogger _logger = logManager?.GetClassLogger<SnapshotManager>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly LruCache<ValueHash256, Address> _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly IDb _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
-
-        public SnapshotManager(
-            ICliqueConfig cliqueConfig,
-            [KeyFilter(DbNames.Blocks)] IDb blocksDb,
-            IBlockTree blockTree,
-            IEthereumEcdsa ecdsa,
-            ILogManager logManager
-        )
-        {
-            _logger = logManager?.GetClassLogger<SnapshotManager>() ?? throw new ArgumentNullException(nameof(logManager));
-            _cliqueConfig = cliqueConfig ?? throw new ArgumentNullException(nameof(cliqueConfig));
-            _signatures = new(Clique.InMemorySignatures, Clique.InMemorySignatures, "signatures");
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        }
 
         public Address GetBlockSealer(BlockHeader header)
         {

@@ -11,22 +11,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Runner.JsonRpc;
 
-internal sealed class HostingApplication : IHttpApplication<HostingApplication.Context>
+internal sealed class HostingApplication(
+    RequestDelegate application,
+    ILogManager logManager,
+    HttpContextFactory httpContextFactory) : IHttpApplication<HostingApplication.Context>
 {
-    private readonly ILogger _logger;
-    private readonly RequestDelegate _application;
-    private readonly HttpContextFactory? _httpContextFactory;
-
-    public HostingApplication(
-        RequestDelegate application,
-        ILogManager logManager,
-        HttpContextFactory httpContextFactory)
-    {
-        _logger = logManager.GetClassLogger<HostingApplication>();
-        //_logManager = logManager;
-        _application = application;
-        _httpContextFactory = httpContextFactory;
-    }
+    private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
+    private readonly RequestDelegate _application = application;
+    private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
 
     // Set up the request
     public Context CreateContext(IFeatureCollection contextFeatures)

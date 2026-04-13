@@ -8,7 +8,7 @@ using System.Globalization;
 
 namespace Nethermind.Core.Cpu;
 
-public readonly struct Frequency
+public readonly struct Frequency(double hertz)
 {
     public static readonly Frequency Zero = new(0.0);
 
@@ -20,12 +20,7 @@ public readonly struct Frequency
 
     public static readonly Frequency GHz = FrequencyUnit.GHz.ToFrequency(1L);
 
-    public double Hertz { get; }
-
-    public Frequency(double hertz)
-    {
-        Hertz = hertz;
-    }
+    public double Hertz { get; } = hertz;
 
     public Frequency(double value, FrequencyUnit unit)
         : this(value * (double)unit.HertzAmount)

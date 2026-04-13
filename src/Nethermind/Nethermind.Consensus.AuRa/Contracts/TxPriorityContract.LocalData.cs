@@ -14,13 +14,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
 {
     public partial class TxPriorityContract
     {
-        public class LocalDataSource : FileLocalDataSource<LocalData>
+        public class LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500) : FileLocalDataSource<LocalData>(filePath, jsonSerializer, fileSystem, logManager, interval)
         {
-            public LocalDataSource(string filePath, IJsonSerializer jsonSerializer, IFileSystem fileSystem, ILogManager logManager, int interval = 500)
-                : base(filePath, jsonSerializer, fileSystem, logManager, interval)
-            {
-            }
-
             public ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataSource() => new LocalDataSource<Address>(this, LocalData.GetWhitelist);
             public ILocalDataSource<IEnumerable<Destination>> GetPrioritiesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetPriorities);
             public ILocalDataSource<IEnumerable<Destination>> GetMinGasPricesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetMinGasPrices);

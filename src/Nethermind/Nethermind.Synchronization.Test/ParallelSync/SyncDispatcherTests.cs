@@ -24,15 +24,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync;
 [Parallelizable(ParallelScope.All)]
 public class SyncDispatcherTests
 {
-    private class TestSyncPeerPool : ISyncPeerPool
+    private class TestSyncPeerPool(int peerCount = 1) : ISyncPeerPool
     {
-        private readonly SemaphoreSlim _peerSemaphore;
+        private readonly SemaphoreSlim _peerSemaphore = new(peerCount, peerCount);
         private readonly Lock _lock = new();
-
-        public TestSyncPeerPool(int peerCount = 1)
-        {
-            _peerSemaphore = new SemaphoreSlim(peerCount, peerCount);
-        }
 
         public async Task<SyncPeerAllocation> Allocate(
             IPeerAllocationStrategy peerAllocationStrategy,
@@ -126,16 +121,10 @@ public class SyncDispatcherTests
         }
     }
 
-    private class TestBatch
+    private class TestBatch(int start, int length)
     {
-        public TestBatch(int start, int length)
-        {
-            Start = start;
-            Length = length;
-        }
-
-        public int Start { get; }
-        public int Length { get; }
+        public int Start { get; } = start;
+        public int Length { get; } = length;
         public int[]? Result { get; set; }
     }
 
@@ -160,15 +149,9 @@ public class SyncDispatcherTests
         }
     }
 
-    private class TestSyncFeed : SyncFeed<TestBatch>
+    private class TestSyncFeed(bool isMultiFeed = true, int max = 64) : SyncFeed<TestBatch>
     {
-        public TestSyncFeed(bool isMultiFeed = true, int max = 64)
-        {
-            IsMultiFeed = isMultiFeed;
-            Max = max;
-        }
-
-        public int Max { get; }
+        public int Max { get; } = max;
         public int HighestRequested { get; private set; }
 
         public readonly HashSet<int> _results = new();
@@ -214,7 +197,7 @@ public class SyncDispatcherTests
             return _handleResponseCalled.Task;
         }
 
-        public override bool IsMultiFeed { get; }
+        public override bool IsMultiFeed { get; } = isMultiFeed;
         public override AllocationContexts Contexts => AllocationContexts.All;
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {

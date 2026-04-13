@@ -16,18 +16,12 @@ using System;
 
 namespace Nethermind.Xdc.Contracts;
 
-internal class MasternodeVotingContract : Contract, IMasternodeVotingContract
+internal class MasternodeVotingContract(
+    IAbiEncoder abiEncoder,
+    Address contractAddress,
+    IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory) : Contract(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition()), IMasternodeVotingContract
 {
-    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory;
-
-    public MasternodeVotingContract(
-        IAbiEncoder abiEncoder,
-        Address contractAddress,
-        IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory)
-        : base(abiEncoder, contractAddress ?? throw new ArgumentNullException(nameof(contractAddress)), CreateAbiDefinition())
-    {
-        this.readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
-    }
+    private readonly IReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
 
     private static AbiDefinition CreateAbiDefinition()
     {

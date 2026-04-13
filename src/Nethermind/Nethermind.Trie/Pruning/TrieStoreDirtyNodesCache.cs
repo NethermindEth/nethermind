@@ -464,21 +464,14 @@ internal class TrieStoreDirtyNodesCache
         Interlocked.Exchange(ref _count, 0);
     }
 
-    internal readonly struct Key : IEquatable<Key>
+    internal readonly struct Key(Hash256? address, in TreePath path, Hash256 keccak) : IEquatable<Key>
     {
         internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
-        public readonly Hash256? Address;
+        public readonly Hash256? Address = address;
         // Direct member rather than property for large struct, so members are called directly,
         // rather than struct copy through the property. Could also return a ref through property.
-        public readonly TreePath Path;
-        public Hash256 Keccak { get; }
-
-        public Key(Hash256? address, in TreePath path, Hash256 keccak)
-        {
-            Address = address;
-            Path = path;
-            Keccak = keccak;
-        }
+        public readonly TreePath Path = path;
+        public Hash256 Keccak { get; } = keccak;
 
         [SkipLocalsInit]
         public override int GetHashCode()

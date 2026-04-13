@@ -6,14 +6,9 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.Runner.Logging
 {
-    public class CustomMicrosoftLogger : ILogger
+    public class CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger) : ILogger
     {
-        private readonly Nethermind.Logging.ILogger _logger;
-
-        public CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger)
-        {
-            _logger = logger;
-        }
+        private readonly Nethermind.Logging.ILogger _logger = logger;
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
         {

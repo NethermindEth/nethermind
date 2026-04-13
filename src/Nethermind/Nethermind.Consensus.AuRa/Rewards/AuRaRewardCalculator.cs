@@ -104,16 +104,10 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
 
-        public class AuRaRewardCalculatorSource : IRewardCalculatorSource
+        public class AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder) : IRewardCalculatorSource
         {
-            private readonly AuRaChainSpecEngineParameters _auRaParameters;
-            private readonly IAbiEncoder _abiEncoder;
-
-            public AuRaRewardCalculatorSource(AuRaChainSpecEngineParameters auRaParameters, IAbiEncoder abiEncoder)
-            {
-                _auRaParameters = auRaParameters;
-                _abiEncoder = abiEncoder;
-            }
+            private readonly AuRaChainSpecEngineParameters _auRaParameters = auRaParameters;
+            private readonly IAbiEncoder _abiEncoder = abiEncoder;
 
             public IRewardCalculator Get(ITransactionProcessor processor) => new AuRaRewardCalculator(_auRaParameters, _abiEncoder, processor);
         }

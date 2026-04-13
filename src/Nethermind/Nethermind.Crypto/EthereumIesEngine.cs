@@ -23,28 +23,21 @@ namespace Nethermind.Crypto;
 ///  * Hash the MAC key before use
 ///  * Include the encryption IV in the MAC computation
 /// </summary>
-public sealed class EthereumIesEngine
+/// <remarks>
+/// Initializes a new instance of the <see cref="EthereumIesEngine"/> class.
+/// </remarks>
+/// <param name="mac">The message authentication code generator for the message.</param>
+/// <param name="hash">The hash function.</param>
+/// <param name="cipher">The block cipher to use for encryption/decryption.</param>
+public sealed class EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlockCipher cipher)
 {
     private bool _forEncryption;
     private byte[] _kdfKey;
-    private readonly Sha256Digest _hash;
-    private readonly HMac _mac;
-    private readonly BufferedBlockCipher _cipher;
+    private readonly Sha256Digest _hash = hash;
+    private readonly HMac _mac = mac;
+    private readonly BufferedBlockCipher _cipher = cipher;
     private IesWithCipherParameters _iesParameters;
     private byte[] _iv;
-
-    /// <summary>
-    /// Initializes a new instance of the <see cref="EthereumIesEngine"/> class.
-    /// </summary>
-    /// <param name="mac">The message authentication code generator for the message.</param>
-    /// <param name="hash">The hash function.</param>
-    /// <param name="cipher">The block cipher to use for encryption/decryption.</param>
-    public EthereumIesEngine(HMac mac, Sha256Digest hash, BufferedBlockCipher cipher)
-    {
-        _mac = mac;
-        _hash = hash;
-        _cipher = cipher;
-    }
 
     /// <summary>
     /// Initializes the engine for encryption or decryption.

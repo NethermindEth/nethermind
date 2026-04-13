@@ -8,16 +8,10 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
-public class MergeRpcRewardCalculator : IRewardCalculator
+public class MergeRpcRewardCalculator(IRewardCalculator beforeTheMerge, IPoSSwitcher poSSwitcher) : IRewardCalculator
 {
-    private readonly IRewardCalculator _beforeTheMerge;
-    private readonly IPoSSwitcher _poSSwitcher;
-
-    public MergeRpcRewardCalculator(IRewardCalculator beforeTheMerge, IPoSSwitcher poSSwitcher)
-    {
-        _beforeTheMerge = beforeTheMerge;
-        _poSSwitcher = poSSwitcher;
-    }
+    private readonly IRewardCalculator _beforeTheMerge = beforeTheMerge;
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
 
     public BlockReward[] CalculateRewards(Block block)
     {

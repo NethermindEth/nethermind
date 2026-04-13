@@ -16,37 +16,25 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuRaSealValidator : ISealValidator
+    public class AuRaSealValidator(
+        AuRaChainSpecEngineParameters parameters,
+        IAuRaStepCalculator stepCalculator,
+        IBlockTree blockTree,
+        IValidatorStore validatorStore,
+        IValidSealerStrategy validSealerStrategy,
+        IEthereumEcdsa ecdsa,
+        Lazy<IReportingValidator> reportingValidator,
+        ILogManager logManager) : ISealValidator
     {
-        private readonly AuRaChainSpecEngineParameters _parameters;
-        private readonly IAuRaStepCalculator _stepCalculator;
-        private readonly IBlockTree _blockTree;
-        private readonly IValidatorStore _validatorStore;
-        private readonly IValidSealerStrategy _validSealerStrategy;
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ILogger _logger;
+        private readonly AuRaChainSpecEngineParameters _parameters = parameters;
+        private readonly IAuRaStepCalculator _stepCalculator = stepCalculator;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly IValidatorStore _validatorStore = validatorStore;
+        private readonly IValidSealerStrategy _validSealerStrategy = validSealerStrategy;
+        private readonly IEthereumEcdsa _ecdsa = ecdsa;
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly ReceivedSteps _receivedSteps = new();
-        private readonly Lazy<IReportingValidator> _reportingValidator;
-
-        public AuRaSealValidator(
-            AuRaChainSpecEngineParameters parameters,
-            IAuRaStepCalculator stepCalculator,
-            IBlockTree blockTree,
-            IValidatorStore validatorStore,
-            IValidSealerStrategy validSealerStrategy,
-            IEthereumEcdsa ecdsa,
-            Lazy<IReportingValidator> reportingValidator,
-            ILogManager logManager)
-        {
-            _parameters = parameters;
-            _stepCalculator = stepCalculator;
-            _blockTree = blockTree;
-            _validatorStore = validatorStore;
-            _validSealerStrategy = validSealerStrategy;
-            _ecdsa = ecdsa;
-            _reportingValidator = reportingValidator;
-            _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly Lazy<IReportingValidator> _reportingValidator = reportingValidator;
 
         private IReportingValidator ReportingValidator => _reportingValidator.Value;
 
@@ -174,16 +162,10 @@ namespace Nethermind.Consensus.AuRa
         {
             private McsLock _lock = new();
 
-            private readonly struct AuthorBlock : IEquatable<AuthorBlock>
+            private readonly struct AuthorBlock(Address author, Hash256 block) : IEquatable<AuthorBlock>
             {
-                public AuthorBlock(Address author, Hash256 block)
-                {
-                    Author = author;
-                    Block = block;
-                }
-
-                public Address Author { get; }
-                public Hash256 Block { get; }
+                public Address Author { get; } = author;
+                public Hash256 Block { get; } = block;
 
                 public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
                 public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);
@@ -192,16 +174,10 @@ namespace Nethermind.Consensus.AuRa
                 public static bool operator !=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
             }
 
-            private class AuthorBlockForStep
+            private class AuthorBlockForStep(in long step, ReceivedSteps.AuthorBlock? authorBlock)
             {
-                public AuthorBlockForStep(in long step, AuthorBlock? authorBlock)
-                {
-                    Step = step;
-                    AuthorBlock = authorBlock;
-                }
-
-                public long Step { get; }
-                public AuthorBlock? AuthorBlock { get; set; }
+                public long Step { get; } = step;
+                public AuthorBlock? AuthorBlock { get; set; } = authorBlock;
                 public ISet<AuthorBlock> AuthorBlocks { get; set; }
             }
 

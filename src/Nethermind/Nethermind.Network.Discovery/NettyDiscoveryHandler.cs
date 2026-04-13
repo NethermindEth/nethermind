@@ -17,36 +17,26 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery;
 
-public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
+public class NettyDiscoveryHandler(
+    IDiscoveryMsgListener? discoveryManager,
+    IChannel? channel,
+    IMessageSerializationService? msgSerializationService,
+    ITimestamper? timestamper,
+    ILogManager? logManager,
+    NodeFilter? inboundMessageFilter = null) : NettyDiscoveryBaseHandler(logManager), IMsgSender
 {
     private static readonly TimeSpan MaxFutureExpirationOffset = TimeSpan.FromHours(1);
     private static readonly TimeSpan DefaultInboundMessageWindow = TimeSpan.FromMilliseconds(100);
     private const int DefaultInboundMessageBurstPerIp = 4;
     private const int DefaultInboundMessageFilterSize = 8_192;
-    private readonly ILogger _logger;
-    private readonly IDiscoveryMsgListener _discoveryMsgListener;
-    private readonly IChannel _channel;
-    private readonly IMessageSerializationService _msgSerializationService;
-    private readonly ITimestamper _timestamper;
-    private readonly NodeFilter[] _inboundMessageFilters;
-
-    public NettyDiscoveryHandler(
-        IDiscoveryMsgListener? discoveryManager,
-        IChannel? channel,
-        IMessageSerializationService? msgSerializationService,
-        ITimestamper? timestamper,
-        ILogManager? logManager,
-        NodeFilter? inboundMessageFilter = null) : base(logManager)
-    {
-        _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
-        _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
-        _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-        _inboundMessageFilters = inboundMessageFilter is null
+    private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+    private readonly IChannel _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+    private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
+    private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
+    private readonly NodeFilter[] _inboundMessageFilters = inboundMessageFilter is null
             ? CreateDefaultInboundMessageFilters()
             : [inboundMessageFilter];
-    }
 
     public override void ChannelActive(IChannelHandlerContext context)
     {

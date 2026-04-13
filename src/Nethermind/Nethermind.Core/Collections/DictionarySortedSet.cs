@@ -49,14 +49,9 @@ public class DictionarySortedSet<TKey, TValue> : EnhancedSortedSet<KeyValuePair<
     public bool ContainsKey(TKey key) => Contains(new KeyValuePair<TKey, TValue>(key, default));
 #pragma warning restore 8604
 
-    private sealed class KeyValuePairKeyOnlyComparer : Comparer<KeyValuePair<TKey, TValue>>
+    private sealed class KeyValuePairKeyOnlyComparer(IComparer<TKey>? keyComparer = null) : Comparer<KeyValuePair<TKey, TValue>>
     {
-        private readonly IComparer<TKey> _keyComparer;
-
-        public KeyValuePairKeyOnlyComparer(IComparer<TKey>? keyComparer = null)
-        {
-            _keyComparer = keyComparer ?? Comparer<TKey>.Default;
-        }
+        private readonly IComparer<TKey> _keyComparer = keyComparer ?? Comparer<TKey>.Default;
 
         public override int Compare(KeyValuePair<TKey, TValue> x, KeyValuePair<TKey, TValue> y)
             => _keyComparer.Compare(x.Key, y.Key);

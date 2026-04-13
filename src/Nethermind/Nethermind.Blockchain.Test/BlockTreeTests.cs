@@ -2007,15 +2007,10 @@ public class BlockTreeTests
         }
     }
 
-    private class TestBlockTreeVisitor : IBlockTreeVisitor
+    private class TestBlockTreeVisitor(ManualResetEvent manualResetEvent) : IBlockTreeVisitor
     {
-        private readonly ManualResetEvent _manualResetEvent;
+        private readonly ManualResetEvent _manualResetEvent = manualResetEvent;
         private bool _wait = true;
-
-        public TestBlockTreeVisitor(ManualResetEvent manualResetEvent)
-        {
-            _manualResetEvent = manualResetEvent;
-        }
 
         public bool PreventsAcceptingNewBlocks => true;
         public long StartLevelInclusive => 0;

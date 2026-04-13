@@ -20,19 +20,12 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
 
-public class TrieStoreScopeProvider : IWorldStateScopeProvider
+public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager) : IWorldStateScopeProvider
 {
-    private readonly ITrieStore _trieStore;
-    private readonly ILogManager _logManager;
+    private readonly ITrieStore _trieStore = trieStore;
+    private readonly ILogManager _logManager = logManager;
     protected StateTree _backingStateTree;
-    private readonly KeyValueWithBatchingBackedCodeDb _codeDb;
-
-    public TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatching codeDb, ILogManager logManager)
-    {
-        _trieStore = trieStore;
-        _logManager = logManager;
-        _codeDb = new KeyValueWithBatchingBackedCodeDb(codeDb);
-    }
+    private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
 
     protected virtual StateTree CreateStateTree()
     {
@@ -58,7 +51,7 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
         return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
     }
 
-    private class TrieStoreWorldStateBackendScope : IWorldStateScopeProvider.IScope
+    private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
         public void Dispose()
         {
@@ -88,22 +81,13 @@ public class TrieStoreScopeProvider : IWorldStateScopeProvider
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
-        internal StateTree _backingStateTree;
+        internal StateTree _backingStateTree = backingStateTree;
         private readonly Dictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = new();
-        private readonly TrieStoreScopeProvider _scopeProvider;
-        private readonly IWorldStateScopeProvider.ICodeDb _codeDb1;
-        private readonly IDisposable _trieStoreCloser;
-        private readonly ILogManager _logManager;
-
-        public TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager)
-        {
-            _backingStateTree = backingStateTree;
-            _logManager = logManager;
-            _scopeProvider = scopeProvider;
-            _codeDb1 = codeDb;
-            _trieStoreCloser = trieStoreCloser;
-        }
+        private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
+        private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
+        private readonly IDisposable _trieStoreCloser = trieStoreCloser;
+        private readonly ILogManager _logManager = logManager;
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
         {

@@ -140,18 +140,11 @@ namespace Nethermind.Consensus.AuRa.Validators
         }
         public override string ToString() => $"{nameof(ReportingContractBasedValidator)} [ {_contractValidator} ]";
 
-        internal class PersistentReport : IEquatable<PersistentReport>
+        internal class PersistentReport(Address maliciousValidator, in UInt256 blockNumber, byte[] proof) : IEquatable<PersistentReport>
         {
-            public Address MaliciousValidator { get; }
-            public UInt256 BlockNumber { get; }
-            public byte[] Proof { get; }
-
-            public PersistentReport(Address maliciousValidator, in UInt256 blockNumber, byte[] proof)
-            {
-                MaliciousValidator = maliciousValidator;
-                BlockNumber = blockNumber;
-                Proof = proof;
-            }
+            public Address MaliciousValidator { get; } = maliciousValidator;
+            public UInt256 BlockNumber { get; } = blockNumber;
+            public byte[] Proof { get; } = proof;
 
             public bool Equals(PersistentReport other)
             {

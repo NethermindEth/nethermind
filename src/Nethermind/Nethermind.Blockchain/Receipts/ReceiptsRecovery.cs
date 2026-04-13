@@ -10,18 +10,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class ReceiptsRecovery : IReceiptsRecovery
+    public class ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true) : IReceiptsRecovery
     {
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ISpecProvider _specProvider;
-        private readonly bool _reinsertReceiptOnRecover;
-
-        public ReceiptsRecovery(IEthereumEcdsa? ecdsa, ISpecProvider? specProvider, bool reinsertReceiptOnRecover = true)
-        {
-            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
-        }
+        private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly bool _reinsertReceiptOnRecover = reinsertReceiptOnRecover;
 
         public ReceiptsRecoveryResult TryRecover(ReceiptRecoveryBlock block, TxReceipt[] receipts, bool forceRecoverSender = true)
         {
@@ -70,23 +63,15 @@ namespace Nethermind.Blockchain.Receipts
             return (receipts[0].BlockHash is null || (forceRecoverSender && receipts[0].Sender is null));
         }
 
-        private class RecoveryContext : IReceiptsRecovery.IRecoveryContext
+        private class RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa) : IReceiptsRecovery.IRecoveryContext
         {
-            private readonly IReleaseSpec _releaseSpec;
-            private ReceiptRecoveryBlock _block;
-            private readonly bool _forceRecoverSender;
-            private readonly IEthereumEcdsa _ecdsa;
+            private readonly IReleaseSpec _releaseSpec = releaseSpec;
+            private ReceiptRecoveryBlock _block = block;
+            private readonly bool _forceRecoverSender = forceRecoverSender;
+            private readonly IEthereumEcdsa _ecdsa = ecdsa;
 
             private long _gasUsedBefore = 0;
             private int _transactionIndex = 0;
-
-            public RecoveryContext(IReleaseSpec releaseSpec, ReceiptRecoveryBlock block, bool forceRecoverSender, IEthereumEcdsa ecdsa)
-            {
-                _releaseSpec = releaseSpec;
-                _block = block;
-                _forceRecoverSender = forceRecoverSender;
-                _ecdsa = ecdsa;
-            }
 
             public void RecoverReceiptData(TxReceipt receipt)
             {

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#pragma warning disable IDE0290 // Test step classes have unused DI parameters by design
+
 using System;
 using System.Collections.Generic;
 using System.Threading;

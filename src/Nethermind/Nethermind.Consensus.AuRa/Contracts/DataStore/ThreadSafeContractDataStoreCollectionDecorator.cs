@@ -7,15 +7,10 @@ using System.Threading;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
-    public class ThreadSafeContractDataStoreCollectionDecorator<T> : IDictionaryContractDataStoreCollection<T>
+    public class ThreadSafeContractDataStoreCollectionDecorator<T>(IContractDataStoreCollection<T> inner) : IDictionaryContractDataStoreCollection<T>
     {
-        private readonly IContractDataStoreCollection<T> _inner;
+        private readonly IContractDataStoreCollection<T> _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         private readonly Lock _lock = new();
-
-        public ThreadSafeContractDataStoreCollectionDecorator(IContractDataStoreCollection<T> inner)
-        {
-            _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        }
 
         public void Clear()
         {

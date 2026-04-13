@@ -8,21 +8,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class SubscriptionManager : ISubscriptionManager
+    public class SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager) : ISubscriptionManager
     {
-        private readonly ISubscriptionFactory _subscriptionFactory;
-        private readonly ILogger _logger;
+        private readonly ISubscriptionFactory _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
+        private readonly ILogger _logger = logManager?.GetClassLogger<SubscriptionManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
         private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
             new();
-
-        public SubscriptionManager(ISubscriptionFactory? subscriptionFactory, ILogManager? logManager)
-        {
-            _subscriptionFactory = subscriptionFactory ?? throw new ArgumentNullException(nameof(subscriptionFactory));
-            _logger = logManager?.GetClassLogger<SubscriptionManager>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
         {

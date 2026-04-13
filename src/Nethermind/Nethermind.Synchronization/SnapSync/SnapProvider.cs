@@ -18,24 +18,16 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapProvider : ISnapProvider
+    public class SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager) : ISnapProvider
     {
-        private readonly IDb _codeDb;
-        private readonly ILogger _logger;
+        private readonly IDb _codeDb = codeDb;
+        private readonly ILogger _logger = logManager.GetClassLogger<SnapProvider>();
 
-        private readonly ProgressTracker _progressTracker;
-        private readonly ISnapTrieFactory _trieFactory;
+        private readonly ProgressTracker _progressTracker = progressTracker;
+        private readonly ISnapTrieFactory _trieFactory = trieFactory;
 
         // This is actually close to 97% effective.
         private readonly AssociativeKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16);
-
-        public SnapProvider(ProgressTracker progressTracker, [KeyFilter(DbNames.Code)] IDb codeDb, ISnapTrieFactory trieFactory, ILogManager logManager)
-        {
-            _codeDb = codeDb;
-            _progressTracker = progressTracker;
-            _trieFactory = trieFactory;
-            _logger = logManager.GetClassLogger<SnapProvider>();
-        }
 
         public bool CanSync() => _progressTracker.CanSync();
 

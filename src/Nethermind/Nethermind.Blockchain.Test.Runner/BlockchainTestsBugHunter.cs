@@ -10,16 +10,10 @@ using Nethermind.Logging.NLog;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class BlockchainTestsBugHunter : BlockchainTestBase, IBlockchainTestRunner
+    public class BlockchainTestsBugHunter(ITestSourceLoader testsSource) : BlockchainTestBase, IBlockchainTestRunner
     {
-        private ITestSourceLoader _testsSource;
-        private ConsoleColor _defaultColor;
-
-        public BlockchainTestsBugHunter(ITestSourceLoader testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-            _defaultColor = Console.ForegroundColor;
-        }
+        private ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+        private ConsoleColor _defaultColor = Console.ForegroundColor;
 
         public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
         {

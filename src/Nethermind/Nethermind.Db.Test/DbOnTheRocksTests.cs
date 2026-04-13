@@ -304,18 +304,13 @@ namespace Nethermind.Db.Test
     [TestFixture(true)]
     [TestFixture(false)]
     [Parallelizable(ParallelScope.None)]
-    public class DbOnTheRocksDbTests
+    public class DbOnTheRocksDbTests(bool useColumnDb)
     {
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
         private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
-        private readonly bool _useColumnDb = false;
-
-        public DbOnTheRocksDbTests(bool useColumnDb)
-        {
-            _useColumnDb = useColumnDb;
-        }
+        private readonly bool _useColumnDb = useColumnDb;
 
         [SetUp]
         public void Setup()
@@ -645,21 +640,17 @@ namespace Nethermind.Db.Test
         }
     }
 
-    class CorruptedDbOnTheRocks : DbOnTheRocks
+    class CorruptedDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        IList<string>? columnFamilies = null,
+        RocksDbSharp.Native? rocksDbNative = null,
+        IFileSystem? fileSystem = null
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        public CorruptedDbOnTheRocks(
-            string basePath,
-            DbSettings dbSettings,
-            IDbConfig dbConfig,
-            IRocksDbConfigFactory rocksDbConfigFactory,
-            ILogManager logManager,
-            IList<string>? columnFamilies = null,
-            RocksDbSharp.Native? rocksDbNative = null,
-            IFileSystem? fileSystem = null
-        ) : base(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
-        {
-        }
-
         protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
         {
             throw new RocksDbSharpException("Corruption: test corruption");
