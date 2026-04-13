@@ -35,7 +35,7 @@ internal class SubnetSnapshotManagerTests
 
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         _blockTree = Substitute.For<IBlockTree>();
-        _snapshotManager = new SubnetSnapshotManager(_snapshotDb, _blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>());
+        _snapshotManager = new SubnetSnapshotManager(_snapshotDb, _blockTree, Substitute.For<IMasternodeVotingContract>(), Substitute.For<ISpecProvider>(), penaltyHandler);
     }
 
     [Test]
@@ -71,7 +71,7 @@ internal class SubnetSnapshotManagerTests
         // Act
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        SubnetSnapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        Snapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
 
         // Assert
         Assert.Throws<ArgumentException>(() => _snapshotManager.StoreSnapshot(snapshot));
@@ -92,14 +92,15 @@ internal class SubnetSnapshotManagerTests
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         penaltyHandler.HandlePenalties(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<Address[]>()).Returns(penalties);
 
-        SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), specProvider);
+        SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, Substitute.For<IMasternodeVotingContract>(), specProvider, penaltyHandler);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
             .WithNumber(gapNumber).TestObject;
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
+        blockTree.WasProcessed(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
 
-        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(header)));
+        blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
         result.Should().BeOfType<SubnetSnapshot>();
 
