@@ -118,7 +118,7 @@ internal class EraReaderTests
 
         ValueHash256 expectedRoot = calculator.ComputeRoot();
 
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
         verifiedRoot.Should().Be(expectedRoot,
@@ -157,7 +157,7 @@ internal class EraReaderTests
     public async Task GetBlockByNumber_WithSlimEncodedReceipts_BloomIsReconstructedFromLogs()
     {
         using TestEraFile file = await TestEraFile.Create(preMergeCount: 1, postMergeCount: 0);
-        using EraReader sut = new EraReader(file.FilePath);
+        using EraReader sut = new(file.FilePath);
 
         (_, TxReceipt[] receipts) = await sut.GetBlockByNumber(0);
 
