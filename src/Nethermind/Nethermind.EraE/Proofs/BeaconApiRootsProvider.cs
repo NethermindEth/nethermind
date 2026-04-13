@@ -8,27 +8,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
-public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
+public sealed class BeaconApiRootsProvider(
+    Uri baseUrl,
+    HttpClient? httpClient = null,
+    TimeSpan? requestTimeout = null,
+    int maxRetries = 3,
+    ILogManager? logManager = null)
+    : IBeaconRootsProvider
 {
-    private readonly BeaconApiHttpClient _client;
-    private readonly Uri _baseUrl;
-    private readonly int _maxRetries;
+    private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
+
     // Completed results only — written once per slot, then read-only
     private readonly ConcurrentDictionary<long, (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)> _cache = new();
     // In-flight fetches — prevents redundant parallel beacon node calls for the same slot
     private readonly ConcurrentDictionary<long, Lazy<Task<(ValueHash256, ValueHash256)?>>> _inFlight = new();
-
-    public BeaconApiRootsProvider(
-        Uri baseUrl,
-        HttpClient? httpClient = null,
-        TimeSpan? requestTimeout = null,
-        int maxRetries = 3,
-        ILogManager? logManager = null)
-    {
-        _baseUrl = baseUrl;
-        _client = new BeaconApiHttpClient(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
-        _maxRetries = maxRetries;
-    }
 
     public void Dispose() => _client.Dispose();
 
@@ -72,18 +65,18 @@ public sealed class BeaconApiRootsProvider : IBeaconRootsProvider
                 return default;
 
             return (blockRoot.Value, stateRoot.Value);
-        }, _maxRetries, cancellationToken);
+        }, maxRetries, cancellationToken);
 
     private async Task<ValueHash256?> FetchBlockRootAsync(long slot, CancellationToken cancellationToken)
     {
-        Uri uri = new(_baseUrl, $"/eth/v1/beacon/headers/{slot}");
+        Uri uri = new(baseUrl, $"/eth/v1/beacon/headers/{slot}");
         using JsonDocument? document = await _client.GetAsync(uri, cancellationToken).ConfigureAwait(false);
         return document is null ? null : ExtractHash(document.RootElement, ["data", "root"]);
     }
 
     private async Task<ValueHash256?> FetchStateRootAsync(long slot, CancellationToken cancellationToken)
     {
-        Uri uri = new(_baseUrl, $"/eth/v1/beacon/states/{slot}/root");
+        Uri uri = new(baseUrl, $"/eth/v1/beacon/states/{slot}/root");
         using JsonDocument? document = await _client.GetAsync(uri, cancellationToken).ConfigureAwait(false);
         return document is null ? null : ExtractHash(document.RootElement, ["data", "root"]);
     }

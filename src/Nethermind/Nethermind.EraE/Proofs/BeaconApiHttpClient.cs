@@ -7,25 +7,16 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
-internal sealed class BeaconApiHttpClient : IDisposable
+internal sealed class BeaconApiHttpClient(HttpClient? httpClient, TimeSpan requestTimeout, ILogger logger = default)
+    : IDisposable
 {
-    private readonly HttpClient _httpClient;
-    private readonly bool _ownsHttpClient;
-    private readonly TimeSpan _requestTimeout;
-    private readonly ILogger _logger;
-
-    public BeaconApiHttpClient(HttpClient? httpClient, TimeSpan requestTimeout, ILogger logger = default)
-    {
-        _ownsHttpClient = httpClient is null;
-        _httpClient = httpClient ?? new HttpClient();
-        _requestTimeout = requestTimeout;
-        _logger = logger;
-    }
+    private readonly HttpClient _httpClient = httpClient ?? new HttpClient();
+    private readonly bool _ownsHttpClient = httpClient is null;
 
     public async Task<JsonDocument?> GetAsync(Uri uri, CancellationToken cancellationToken)
     {
         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(_requestTimeout);
+        cts.CancelAfter(requestTimeout);
 
         using HttpRequestMessage request = new(HttpMethod.Get, uri);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -40,7 +31,7 @@ internal sealed class BeaconApiHttpClient : IDisposable
 
             // 404 is expected for missed slots; other 4xx (401, 403, 429) indicate misconfiguration or quota issues.
             if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
-                _logger.Warn($"Beacon API returned {(int)response.StatusCode} for {uri}. Beacon roots will not be included for this slot.");
+                logger.Warn($"Beacon API returned {(int)response.StatusCode} for {uri}. Beacon roots will not be included for this slot.");
 
             return null;
         }
