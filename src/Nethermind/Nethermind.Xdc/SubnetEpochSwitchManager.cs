@@ -16,7 +16,6 @@ internal class SubnetEpochSwitchManager(
     ISnapshotManager snapshotManager)
     : BaseEpochSwitchManager(xdcSpecProvider, tree, snapshotManager)
 {
-
     // Subnet epoch switches are block-number-based, not round-based;
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
