@@ -129,8 +129,8 @@ namespace Nethermind.Merge.Plugin.Test
         private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
             ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
-            using var overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
-            using var childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
+            using IOverridableWorldScope overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
+            using ILifetimeScope childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
 
             return CreateBlockRequestInScope(childContainer, parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions, parentBeaconBlockRoot);
         }
@@ -144,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
             Block? block = blockRequest.TryGetBlock().Block;
 
-            using (var _ = worldState.BeginScope(parent.TryGetBlock().Block?.Header))
+            using (IDisposable _ = worldState.BeginScope(parent.TryGetBlock().Block?.Header))
             {
                 IWithdrawalProcessor withdrawalProcessor = childContainer.Resolve<IWithdrawalProcessor>();
 
@@ -177,7 +177,7 @@ namespace Nethermind.Merge.Plugin.Test
             IWorldState globalWorldState = chain.MainWorldState;
             using (globalWorldState.BeginScope(parent.TryGetBlock().Block!.Header))
             {
-                var blockHashStore = new BlockhashStore(globalWorldState);
+                BlockhashStore blockHashStore = new(globalWorldState);
                 blockHashStore.ApplyBlockhashStateChanges(block!.Header, chain.SpecProvider.GetSpec(block.Header));
                 chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
@@ -223,8 +223,8 @@ namespace Nethermind.Merge.Plugin.Test
             ExecutionPayload currentBlock = parent;
             ExecutionPayload[] blockRequests = new ExecutionPayload[count];
 
-            using var overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
-            using var childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
+            using IOverridableWorldScope overridableEnv = chain.WorldStateManager.CreateOverridableWorldScope();
+            using ILifetimeScope childContainer = chain.Container.BeginLifetimeScope(builder => builder.AddSingleton(overridableEnv.WorldState));
 
             for (int i = 0; i < count; i++)
             {

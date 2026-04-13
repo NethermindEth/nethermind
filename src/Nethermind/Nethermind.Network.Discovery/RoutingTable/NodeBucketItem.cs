@@ -5,17 +5,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable;
 
-public class NodeBucketItem
+public class NodeBucketItem(Node? node, DateTime lastContactTime)
 {
-    public NodeBucketItem(Node? node, DateTime lastContactTime)
-    {
-        Node = node;
-        LastContactTime = lastContactTime;
-    }
+    public Node? Node { get; } = node;
 
-    public Node? Node { get; }
-
-    public DateTime LastContactTime { get; private set; }
+    public DateTime LastContactTime { get; private set; } = lastContactTime;
 
     public bool IsBonded(DateTime utcNow) => LastContactTime > utcNow - TimeSpan.FromDays(2);
 

@@ -19,7 +19,7 @@ namespace Nethermind.Wallet.Test
 {
     public class AccountUnlockerTests
     {
-        private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        private static readonly List<(string Name, string Content)> _files = new()
         {
             ("TestingFileF1", "PF1"),
             ("TestingFileF2", "PF2")
@@ -93,7 +93,7 @@ namespace Nethermind.Wallet.Test
 
             IWallet wallet = Substitute.For<IWallet>();
 
-            AccountUnlocker unlocker = new AccountUnlocker(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
+            AccountUnlocker unlocker = new(keyStoreConfig, wallet, LimboLogs.Instance, new KeyStorePasswordProvider(keyStoreConfig));
             unlocker.UnlockAccounts();
 
             for (int index = 0; index < test.UnlockAccounts.Length; index++)

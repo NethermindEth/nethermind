@@ -48,20 +48,15 @@ public class SyncPeerPoolTests
         }
     }
 
-    private class SimpleSyncPeerMock : ISyncPeer
+    private class SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock") : ISyncPeer
     {
         public string Name => "SimpleMock";
-        public SimpleSyncPeerMock(PublicKey publicKey, string description = "simple mock")
-        {
-            Node = new Node(publicKey, "127.0.0.1", 30303);
-            ClientId = description;
-        }
 
         public Hash256 HeadHash { get; set; } = null!;
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
-        public Node Node { get; }
-        public string ClientId { get; }
+        public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
+        public string ClientId { get; } = description;
         public long HeadNumber { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
@@ -507,7 +502,7 @@ public class SyncPeerPoolTests
     public async Task Will_remove_peer_if_times_out_on_init()
     {
         await using Context ctx = new();
-        SimpleSyncPeerMock peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
         peer.SetHeaderResponseTime(int.MaxValue);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
@@ -520,7 +515,7 @@ public class SyncPeerPoolTests
     public async Task It_is_fine_to_fail_init()
     {
         await using Context ctx = new();
-        SimpleSyncPeerMock peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
         peer.SetHeaderFailure(true);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
@@ -594,12 +589,12 @@ public class SyncPeerPoolTests
         await using Context ctx = new();
         await SetupPeers(ctx, 1);
 
-        var thePeer = ctx.Pool.InitializedPeers.First();
+        PeerInfo thePeer = ctx.Pool.InitializedPeers.First();
         INodeStats nodeStat = Substitute.For<INodeStats>();
         ctx.Stats.GetOrAdd(thePeer.SyncPeer.Node).Returns(nodeStat);
         nodeStat.GetCurrentRequestLimit(RequestType.Headers).Returns(999);
 
-        var limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
+        int? limit = await ctx.Pool.EstimateRequestLimit(RequestType.Headers, new BySpeedStrategy(TransferSpeedType.Headers, true), AllocationContexts.Headers, default);
 
         limit.Should().Be(999);
     }
@@ -608,10 +603,10 @@ public class SyncPeerPoolTests
     public async Task When_no_peer_will_cancel_on_cancellation_token()
     {
         await using Context ctx = new();
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using CancellationTokenSource cts = new();
         cts.CancelAfter(100);
 
-        var result = await ctx.Pool.AllocateAndRun(
+        IOwnedReadOnlyList<BlockHeader>? result = await ctx.Pool.AllocateAndRun(
             static (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
             BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
 

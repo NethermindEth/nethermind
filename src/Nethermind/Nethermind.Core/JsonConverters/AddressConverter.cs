@@ -17,7 +17,7 @@ public class AddressConverter : JsonConverter<Address>
         Type typeToConvert,
         JsonSerializerOptions options)
     {
-        var bytes = ByteArrayConverter.Convert(ref reader);
+        byte[]? bytes = ByteArrayConverter.Convert(ref reader);
         return bytes is null ? null : new Address(bytes);
     }
 

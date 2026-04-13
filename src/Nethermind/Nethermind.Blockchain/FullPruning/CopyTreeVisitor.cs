@@ -20,30 +20,20 @@ namespace Nethermind.Blockchain.FullPruning
     /// <remarks>
     /// During visiting of the state trie at specified state root it copies the existing trie into <see cref="IPruningContext"/>.
     /// </remarks>
-    public class CopyTreeVisitor<TContext> : ICopyTreeVisitor, ITreeVisitor<TContext> where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
+    public class CopyTreeVisitor<TContext>(
+        INodeStorage nodeStorage,
+        WriteFlags writeFlags,
+        ILogManager logManager,
+        CancellationToken cancellationToken) : ICopyTreeVisitor, ITreeVisitor<TContext> where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
     {
-        private readonly ILogger _logger;
-        private readonly Stopwatch _stopwatch;
+        private readonly ILogger _logger = logManager.GetClassLogger(typeof(CopyTreeVisitor<>));
+        private readonly Stopwatch _stopwatch = new();
         private bool _finished = false;
-        private readonly WriteFlags _writeFlags;
-        private readonly CancellationToken _cancellationToken;
+        private readonly WriteFlags _writeFlags = writeFlags;
+        private readonly CancellationToken _cancellationToken = cancellationToken;
         private const int Million = 1_000_000;
-        private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
-        private readonly VisitorProgressTracker _progressTracker;
-
-        public CopyTreeVisitor(
-            INodeStorage nodeStorage,
-            WriteFlags writeFlags,
-            ILogManager logManager,
-            CancellationToken cancellationToken)
-        {
-            _cancellationToken = cancellationToken;
-            _writeFlags = writeFlags;
-            _logger = logManager.GetClassLogger(typeof(CopyTreeVisitor<>));
-            _stopwatch = new Stopwatch();
-            _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
-            _progressTracker = new VisitorProgressTracker("Full Pruning", logManager);
-        }
+        private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher = new(nodeStorage);
+        private readonly VisitorProgressTracker _progressTracker = new("Full Pruning", logManager);
 
         public bool IsFullDbScan => true;
 

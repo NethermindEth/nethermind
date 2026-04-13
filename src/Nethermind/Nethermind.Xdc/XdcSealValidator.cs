@@ -65,7 +65,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
             }
 
             //TODO init masternodes by reading from most recent checkpoint
-            (masternodes, var penaltiesAddresses) = masternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
+            (masternodes, Address[] penaltiesAddresses) = masternodesCalculator.CalculateNextEpochMasternodes(xdcHeader.Number, xdcHeader.ParentHash, xdcSpec);
             if (!xdcHeader.ValidatorsAddress.SequenceEqual(masternodes))
             {
                 error = "Validators does not match what's stored in snapshot minus its penalty.";

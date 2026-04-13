@@ -65,7 +65,7 @@ public class EncodingTest
     {
         // Regression test: Generated Decode for bitvector fields called the bitlist overload
         // which strips a sentinel bit, corrupting the bit count.
-        BitArray original = new BitArray(10);
+        BitArray original = new(10);
         original[0] = true;
         original[3] = true;
         original[9] = true;

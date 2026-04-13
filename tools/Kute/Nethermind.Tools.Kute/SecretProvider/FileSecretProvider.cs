@@ -21,7 +21,7 @@ public sealed class FileSecretProvider : ISecretProvider
     {
         get
         {
-            var content = File.ReadAllText(_filePath).Trim();
+            string content = File.ReadAllText(_filePath).Trim();
             if (!content.All(IsHex))
             {
                 throw new ArgumentException($"{content} is not a Hex string");

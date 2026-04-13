@@ -10,30 +10,20 @@ using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
-    public class PostMergeBlockProducerFactory
+    public class PostMergeBlockProducerFactory(
+        ISpecProvider specProvider,
+        ISealEngine sealEngine,
+        ITimestamper timestamper,
+        IBlocksConfig blocksConfig,
+        ILogManager logManager,
+        IGasLimitCalculator? gasLimitCalculator = null)
     {
-        protected readonly ISpecProvider _specProvider;
-        protected readonly ISealEngine _sealEngine;
-        protected readonly ITimestamper _timestamper;
-        protected readonly IBlocksConfig _blocksConfig;
-        protected readonly ILogManager _logManager;
-        protected readonly IGasLimitCalculator? _gasLimitCalculator;
-
-        public PostMergeBlockProducerFactory(
-            ISpecProvider specProvider,
-            ISealEngine sealEngine,
-            ITimestamper timestamper,
-            IBlocksConfig blocksConfig,
-            ILogManager logManager,
-            IGasLimitCalculator? gasLimitCalculator = null)
-        {
-            _specProvider = specProvider;
-            _sealEngine = sealEngine;
-            _timestamper = timestamper;
-            _blocksConfig = blocksConfig;
-            _logManager = logManager;
-            _gasLimitCalculator = gasLimitCalculator;
-        }
+        protected readonly ISpecProvider _specProvider = specProvider;
+        protected readonly ISealEngine _sealEngine = sealEngine;
+        protected readonly ITimestamper _timestamper = timestamper;
+        protected readonly IBlocksConfig _blocksConfig = blocksConfig;
+        protected readonly ILogManager _logManager = logManager;
+        protected readonly IGasLimitCalculator? _gasLimitCalculator = gasLimitCalculator;
 
         public virtual PostMergeBlockProducer Create(
             IBlockProducerEnv producerEnv,

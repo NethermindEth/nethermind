@@ -7,16 +7,10 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
+public class TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags) : ITrieNodeResolver
 {
-    private readonly ITrieNodeResolver _baseResolver;
-    private readonly ReadFlags _defaultFlags;
-
-    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags)
-    {
-        _baseResolver = baseResolver;
-        _defaultFlags = defaultFlags;
-    }
+    private readonly ITrieNodeResolver _baseResolver = baseResolver;
+    private readonly ReadFlags _defaultFlags = defaultFlags;
 
     public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash)
     {

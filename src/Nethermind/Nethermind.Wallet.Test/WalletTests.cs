@@ -53,7 +53,7 @@ public class WalletTests
                         IKeyStoreConfig config = new KeyStoreConfig();
                         config.KeyStoreDirectory = _keyStorePath.Path;
                         ISymmetricEncrypter encrypter = new AesEncrypter(config, LimboLogs.Instance);
-                        ProtectedKeyStoreWallet wallet = new ProtectedKeyStoreWallet(
+                        ProtectedKeyStoreWallet wallet = new(
                             new FileKeyStore(config, new EthereumJsonSerializer(), encrypter, new CryptoRandom(),
                                 LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                             new ProtectedPrivateKeyFactory(new CryptoRandom(),
@@ -76,7 +76,7 @@ public class WalletTests
         }
     }
 
-    private readonly ConcurrentDictionary<WalletType, Context> _cachedWallets = new ConcurrentDictionary<WalletType, Context>();
+    private readonly ConcurrentDictionary<WalletType, Context> _cachedWallets = new();
     private readonly ConcurrentQueue<Context> _wallets = new();
 
     [OneTimeSetUp]
@@ -85,7 +85,7 @@ public class WalletTests
         // by pre-caching wallets we make the tests do lot less work
         Parallel.ForEach(WalletTypes, walletType =>
         {
-            Context cachedWallet = new Context(walletType);
+            Context cachedWallet = new(walletType);
             _cachedWallets.TryAdd(walletType, cachedWallet);
             _wallets.Enqueue(cachedWallet);
         });
@@ -125,7 +125,7 @@ public class WalletTests
         {
             byte[] keyBytes = new byte[32];
             keyBytes[31] = (byte)i;
-            PrivateKey key = new PrivateKey(keyBytes);
+            PrivateKey key = new(keyBytes);
             TestContext.Out.Write(key.Address.Bytes.ToHexString() + Environment.NewLine);
             Assert.That(ctx.Wallet.GetAccounts().Any(a => a == key.Address), Is.True, $"{i}");
         }
@@ -136,12 +136,12 @@ public class WalletTests
     [Test]
     public void Can_sign_on_networks_with_chain_id([ValueSource(nameof(WalletTypes))] WalletType walletType, [Values(0ul, 1ul, 40000ul, ulong.MaxValue / 3)] ulong chainId)
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(chainId);
+        EthereumEcdsa ecdsa = new(chainId);
         Context ctx = _cachedWallets[walletType];
         for (int i = 1; i <= (walletType == WalletType.Memory ? 10 : 3); i++)
         {
             Address signerAddress = ctx.Wallet.GetAccounts()[0];
-            Transaction tx = new Transaction();
+            Transaction tx = new();
             tx.SenderAddress = signerAddress;
 
             ctx.Wallet.Sign(tx, chainId);

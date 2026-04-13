@@ -15,21 +15,15 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network
 {
-    public class NetworkStorage : INetworkStorage
+    public class NetworkStorage(IFullDb? fullDb, ILogManager? logManager) : INetworkStorage
     {
         private readonly Lock _lock = new();
-        private readonly IFullDb _fullDb;
-        private readonly ILogger _logger;
+        private readonly IFullDb _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
+        private readonly ILogger _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
-
-        public NetworkStorage(IFullDb? fullDb, ILogManager? logManager)
-        {
-            _fullDb = fullDb ?? throw new ArgumentNullException(nameof(fullDb));
-            _logger = logManager?.GetClassLogger<NetworkStorage>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public int PersistedNodesCount => GetPersistedNodes().Length;
 

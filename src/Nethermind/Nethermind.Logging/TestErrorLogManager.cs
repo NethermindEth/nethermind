@@ -17,14 +17,9 @@ public class TestErrorLogManager : ILogManager
 
     public ILogger GetLogger(string loggerName) => new(new TestErrorLogger(_errors));
 
-    public class TestErrorLogger : InterfaceLogger
+    public class TestErrorLogger(ConcurrentQueue<TestErrorLogManager.Error> errors) : InterfaceLogger
     {
-        private readonly ConcurrentQueue<Error> _errors;
-
-        public TestErrorLogger(ConcurrentQueue<Error> errors)
-        {
-            _errors = errors;
-        }
+        private readonly ConcurrentQueue<Error> _errors = errors;
 
         public void Info(string text) { }
         public void Warn(string text) { }

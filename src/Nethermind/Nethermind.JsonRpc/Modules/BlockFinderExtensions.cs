@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc.Modules
 
         public static bool IsBlockPruned(this IBlockFinder blockFinder, BlockParameter blockParameter)
         {
-            var requestedBlock = blockParameter.BlockNumber;
+            long? requestedBlock = blockParameter.BlockNumber;
             if (requestedBlock is null)
             {
                 SearchResult<BlockHeader> headerResult = blockFinder.SearchForHeader(blockParameter);

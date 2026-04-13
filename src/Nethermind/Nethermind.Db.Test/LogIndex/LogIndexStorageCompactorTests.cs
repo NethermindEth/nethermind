@@ -60,7 +60,7 @@ public class LogIndexStorageCompactorTests
     public async Task TryEnqueue_During_Compact_Does_Not_Run_Compact_Concurrently()
     {
         const int compactionDistance = 10;
-        var compactionDelay = TimeSpan.FromMilliseconds(200);
+        TimeSpan compactionDelay = TimeSpan.FromMilliseconds(200);
 
         ILogIndexStorage storage = MockStorage(min: 0, max: 0);
         FakeDb db = new(compactionDelay);
@@ -87,7 +87,7 @@ public class LogIndexStorageCompactorTests
     public async Task ForceAsync_Does_Not_Run_Compact_Concurrently(bool duringCompact)
     {
         const int compactionDistance = 10;
-        var compactionDelay = TimeSpan.FromMilliseconds(200);
+        TimeSpan compactionDelay = TimeSpan.FromMilliseconds(200);
 
         ILogIndexStorage storage = MockStorage(min: 0, max: 0);
         FakeDb db = new(compactionDelay);

@@ -11,19 +11,19 @@ namespace Nethermind.Core.Cpu;
 
 public class TimeUnit : IEquatable<TimeUnit>
 {
-    public static readonly TimeUnit Nanosecond = new TimeUnit("ns", "Nanosecond", 1L);
+    public static readonly TimeUnit Nanosecond = new("ns", "Nanosecond", 1L);
 
-    public static readonly TimeUnit Microsecond = new TimeUnit("μs", "Microsecond", 1000L);
+    public static readonly TimeUnit Microsecond = new("μs", "Microsecond", 1000L);
 
-    public static readonly TimeUnit Millisecond = new TimeUnit("ms", "Millisecond", 1000000L);
+    public static readonly TimeUnit Millisecond = new("ms", "Millisecond", 1000000L);
 
-    public static readonly TimeUnit Second = new TimeUnit("s", "Second", 1000000000L);
+    public static readonly TimeUnit Second = new("s", "Second", 1000000000L);
 
-    public static readonly TimeUnit Minute = new TimeUnit("m", "Minute", Second.NanosecondAmount * 60);
+    public static readonly TimeUnit Minute = new("m", "Minute", Second.NanosecondAmount * 60);
 
-    public static readonly TimeUnit Hour = new TimeUnit("h", "Hour", Minute.NanosecondAmount * 60);
+    public static readonly TimeUnit Hour = new("h", "Hour", Minute.NanosecondAmount * 60);
 
-    public static readonly TimeUnit Day = new TimeUnit("d", "Day", Hour.NanosecondAmount * 24);
+    public static readonly TimeUnit Day = new("d", "Day", Hour.NanosecondAmount * 24);
 
     public static readonly TimeUnit[] All = new TimeUnit[7] { Nanosecond, Microsecond, Millisecond, Second, Minute, Hour, Day };
 

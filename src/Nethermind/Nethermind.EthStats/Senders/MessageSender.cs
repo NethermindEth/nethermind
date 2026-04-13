@@ -9,16 +9,10 @@ using Websocket.Client;
 
 namespace Nethermind.EthStats.Senders
 {
-    public class MessageSender : IMessageSender
+    public class MessageSender(string instanceId, ILogManager logManager) : IMessageSender
     {
-        private readonly string _instanceId;
-        private readonly ILogger _logger;
-
-        public MessageSender(string instanceId, ILogManager logManager)
-        {
-            _instanceId = instanceId;
-            _logger = logManager.GetClassLogger<MessageSender>();
-        }
+        private readonly string _instanceId = instanceId;
+        private readonly ILogger _logger = logManager.GetClassLogger<MessageSender>();
 
         public Task SendAsync<T>(IWebsocketClient? client, T message, string? type = null) where T : IMessage
         {

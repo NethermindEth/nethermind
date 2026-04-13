@@ -119,7 +119,7 @@ namespace Nethermind.Trie
 
                         if (!isStorage && visitor.ExpectAccounts)
                         {
-                            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(node.Value.AsSpan());
+                            Rlp.ValueDecoderContext decoderContext = new(node.Value.AsSpan());
                             if (!_accountDecoder.TryDecodeStruct(ref decoderContext, out AccountStruct account))
                             {
                                 throw new InvalidDataException("Non storage leaf should be an account");
@@ -189,7 +189,7 @@ namespace Nethermind.Trie
 
         private long VisitAllSingleThread(TrieNode currentNode, ref TreePath path, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, bool isStorage, long subtreeSizeHint)
         {
-            RefList16<TrieNode?> output = new RefList16<TrieNode>(TrieNode.BranchesCount);
+            RefList16<TrieNode?> output = new(TrieNode.BranchesCount);
             int childCount = currentNode.ResolveAllChildBranch(nodeResolver, ref path, output.AsSpan());
             subtreeSizeHint /= childCount;
             long actualSubtreeSize = 0;
@@ -216,10 +216,10 @@ namespace Nethermind.Trie
 
         private long VisitAllMultiThread(TrieNode node, TreePath path, in TNodeContext nodeContext, ITrieNodeResolver trieNodeResolver, bool isStorage, long subtreeSizeHint)
         {
-            RefList16<Task<long>> tasks = new RefList16<Task<long>>(0);
+            RefList16<Task<long>> tasks = new(0);
 
             // we need to preallocate children
-            RefList16<TrieNode?> output = new RefList16<TrieNode?>(TrieNode.BranchesCount);
+            RefList16<TrieNode?> output = new(TrieNode.BranchesCount);
             int childCount = node.ResolveAllChildBranch(trieNodeResolver, ref path, output.AsSpan());
 
             subtreeSizeHint /= childCount;

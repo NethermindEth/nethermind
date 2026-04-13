@@ -48,7 +48,7 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        var callTransactionModel = blockStateCall.Calls[i];
+                        TransactionForRpc callTransactionModel = blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;

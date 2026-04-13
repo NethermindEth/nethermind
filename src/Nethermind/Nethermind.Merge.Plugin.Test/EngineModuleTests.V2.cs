@@ -885,7 +885,7 @@ public partial class EngineModuleTests
         )> PayloadBodiesByRangeNullTrimTestCases()
     {
         Block block = Build.A.Block.TestObject;
-        ExecutionPayloadBodyV1Result result = new ExecutionPayloadBodyV1Result(Array.Empty<Transaction>(), null);
+        ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
         yield return (
             _ => null,

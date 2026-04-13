@@ -76,15 +76,9 @@ public class SubscriptionFactory : ISubscriptionFactory
     private static CustomSubscriptionType CreateSubscriptionType(Func<IJsonRpcDuplexClient, Subscription> customSubscriptionDelegate) =>
         new(((client, _) => customSubscriptionDelegate(client)));
 
-    private readonly struct CustomSubscriptionType
+    private readonly struct CustomSubscriptionType(Func<IJsonRpcDuplexClient, object, Subscription> constructor, Type? paramType = null)
     {
-        public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; }
-        public Type? ParamType { get; }
-
-        public CustomSubscriptionType(Func<IJsonRpcDuplexClient, object, Subscription> constructor, Type? paramType = null)
-        {
-            Constructor = constructor;
-            ParamType = paramType;
-        }
+        public Func<IJsonRpcDuplexClient, object, Subscription> Constructor { get; } = constructor;
+        public Type? ParamType { get; } = paramType;
     }
 }

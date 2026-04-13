@@ -361,7 +361,7 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-        var response = new ArrayPoolList<TxReceipt[]?>(batch!.Infos.Length, batch!.Infos.Length);
+        ArrayPoolList<TxReceipt[]?> response = new(batch!.Infos.Length, batch!.Infos.Length);
 
         // default receipts that we use when constructing receipt root for tests have stats code 0
         // so by using 1 here we create a different tx root
@@ -380,7 +380,7 @@ public class ReceiptsSyncFeedTests
 
     private static void FillBatchResponses(ReceiptsSyncBatch batch)
     {
-        var response = new ArrayPoolList<TxReceipt[]?>(batch.Infos.Length, batch.Infos.Length);
+        ArrayPoolList<TxReceipt[]?> response = new(batch.Infos.Length, batch.Infos.Length);
         for (int i = 0; i < response.Count; i++)
         {
             response[i] = new[] { Build.A.Receipt.TestObject };

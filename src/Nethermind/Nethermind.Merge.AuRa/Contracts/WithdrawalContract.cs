@@ -16,15 +16,12 @@ namespace Nethermind.Merge.AuRa.Contracts;
 /// <see href="https://github.com/gnosischain/specs/blob/master/execution/withdrawals.md#specification">specification</see>
 /// of the Gnosis Chain withdrawals.
 /// </summary>
-public class WithdrawalContract : CallableContract, IWithdrawalContract
+public class WithdrawalContract(
+    ITransactionProcessor transactionProcessor,
+    IAbiEncoder abiEncoder,
+    Address contractAddress) : CallableContract(transactionProcessor, abiEncoder, contractAddress), IWithdrawalContract
 {
     private const long GasLimit = 30_000_000L;
-
-    public WithdrawalContract(
-        ITransactionProcessor transactionProcessor,
-        IAbiEncoder abiEncoder,
-        Address contractAddress)
-        : base(transactionProcessor, abiEncoder, contractAddress) { }
 
     public void ExecuteWithdrawals(BlockHeader blockHeader, UInt256 failedMaxCount, IList<ulong> amounts, IList<Address> addresses)
     {

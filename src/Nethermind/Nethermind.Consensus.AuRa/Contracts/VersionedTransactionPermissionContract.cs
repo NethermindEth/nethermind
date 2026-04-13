@@ -13,26 +13,21 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Contracts
 {
-    public class VersionedTransactionPermissionContract : VersionedContract<ITransactionPermissionContract>
-    {
-        public VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
-            Address contractAddress,
-            long activation,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            LruCache<ValueHash256, UInt256> cache,
-            ILogManager logManager,
-            ISpecProvider specProvider)
-            : base(
-                CreateAllVersions(abiEncoder,
+    public class VersionedTransactionPermissionContract(IAbiEncoder abiEncoder,
+        Address contractAddress,
+        long activation,
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
+        LruCache<ValueHash256, UInt256> cache,
+        ILogManager logManager,
+        ISpecProvider specProvider) : VersionedContract<ITransactionPermissionContract>(
+            CreateAllVersions(abiEncoder,
                     contractAddress,
                     readOnlyTxProcessorSource,
                     specProvider),
-                cache,
-                activation,
-                logManager)
-        {
-        }
-
+            cache,
+            activation,
+            logManager)
+    {
         private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)

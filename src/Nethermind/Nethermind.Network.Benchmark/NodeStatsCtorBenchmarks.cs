@@ -35,7 +35,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public long LightRep()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node);
+            NodeStatsLight stats = new(_node);
             return stats.CurrentNodeReputation(_now);
         }
     }

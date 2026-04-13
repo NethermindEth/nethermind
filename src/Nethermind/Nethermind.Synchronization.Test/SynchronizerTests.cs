@@ -125,7 +125,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
             int filled = 0;
             bool started = false;
-            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
+            ArrayPoolList<BlockHeader> result = new(maxBlocks, maxBlocks);
             foreach (Block block in Blocks)
             {
                 if (block.Number == number)

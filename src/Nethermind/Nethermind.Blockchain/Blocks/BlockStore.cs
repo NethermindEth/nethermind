@@ -69,7 +69,7 @@ public class BlockStore([KeyFilter(DbNames.Blocks)] IDb blockDb, IHeaderDecoder 
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        var b = blockDb.Get(dbKey);
+        byte[] b = blockDb.Get(dbKey);
         if (b is not null) return b;
         return blockDb.Get(blockHash);
     }

@@ -64,7 +64,7 @@ internal class VotesManager(
         long epochSwitchNumber = epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber;
         long gapNumber = epochSwitchNumber == 0 ? 0 : Math.Max(0, epochSwitchNumber - epochSwitchNumber % spec.EpochLength - spec.Gap);
 
-        var vote = new Vote(blockInfo, (ulong)gapNumber, isMyVote: true);
+        Vote vote = new(blockInfo, (ulong)gapNumber, isMyVote: true);
         // Sets signature and signer for the vote
         Sign(vote);
 
@@ -123,7 +123,7 @@ internal class VotesManager(
 
             // At this point, the QC should be processed for this *round*.
             // Ensure this runs only once per round:
-            var round = vote.ProposedBlockInfo.Round;
+            ulong round = vote.ProposedBlockInfo.Round;
             if (!_qcBuildStartedByRound.TryAdd(round, 0))
                 return Task.CompletedTask;
             OnVotePoolThresholdReached(validSignatures, vote);
@@ -135,7 +135,7 @@ internal class VotesManager(
     {
         _votePool.EndRound(round);
 
-        foreach (var key in _qcBuildStartedByRound.Keys)
+        foreach (ulong key in _qcBuildStartedByRound.Keys)
             if (key <= round) _qcBuildStartedByRound.TryRemove(key, out _);
     }
 
@@ -186,8 +186,8 @@ internal class VotesManager(
 
     public Task OnReceiveVote(Vote vote)
     {
-        var voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
-        var currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
+        long voteBlockNumber = vote.ProposedBlockInfo.BlockNumber;
+        long currentBlockNumber = _blockTree.Head?.Number ?? throw new InvalidOperationException("Failed to get current block number");
         if (Math.Abs(voteBlockNumber - currentBlockNumber) > _maxBlockDistance)
         {
             // Discarded propagated vote, too far away
@@ -248,9 +248,9 @@ internal class VotesManager(
 
     private Signature[] GetValidSignatures(IEnumerable<Vote> votes, Address[] masternodes)
     {
-        var masternodeSet = new HashSet<Address>(masternodes);
-        var signatures = new List<Signature>();
-        foreach (var vote in votes)
+        HashSet<Address> masternodeSet = new(masternodes);
+        List<Signature> signatures = new();
+        foreach (Vote vote in votes)
         {
             if (vote.Signer is null)
             {
