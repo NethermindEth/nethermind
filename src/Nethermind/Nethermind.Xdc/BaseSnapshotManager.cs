@@ -13,7 +13,6 @@ using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -39,7 +38,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     )
     {
         _blockTree = blockTree;
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
+        _blockTree.BlockAddedToMain += OnBlockAddedToMain;
         _snapshotDb = snapshotDb;
         _votingContract = votingContract;
         _specProvider = specProvider;
@@ -48,9 +47,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotCache = new LruCache<Hash256, TSnapshot>(128, 128, cacheName);
     }
 
-    protected IBlockTree BlockTree => _blockTree;
     protected IMasternodeVotingContract VotingContract => _votingContract;
-    protected ISpecProvider SpecProvider => _specProvider;
     protected IPenaltyHandler PenaltyHandler => _penaltyHandler;
 
     // Explicit interface implementation to return base Snapshot type
@@ -72,7 +69,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     public TSnapshot? GetSnapshotByGapNumber(long gapNumber)
     {
-        var gapBlockHeader = _blockTree.FindHeader(gapNumber) as XdcBlockHeader;
+        XdcBlockHeader gapBlockHeader = _blockTree.FindHeader(gapNumber) as XdcBlockHeader;
 
         if (gapBlockHeader is null)
             return null;
@@ -98,7 +95,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
 
     public TSnapshot? GetSnapshotByBlockNumber(long blockNumber, IXdcReleaseSpec spec)
     {
-        var gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
+        long gapBlockNum = Math.Max(0, blockNumber - blockNumber % spec.EpochLength - spec.Gap);
         return GetSnapshotByGapNumber(gapBlockNum);
     }
 
@@ -114,43 +111,22 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
-
-    public abstract (Address[] Masternodes, Address[] PenalizedNodes) CalculateNextEpochMasternodes(
-        long blockNumber,
-        Hash256 parentHash,
-        IXdcReleaseSpec spec);
-
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
+        if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
+            return;
         UpdateMasterNodes((XdcBlockHeader)e.Block.Header);
     }
 
     private void UpdateMasterNodes(XdcBlockHeader header)
     {
-        ulong round;
-        if (header.IsGenesis)
-            round = 0;
-        else
-            round = header.ExtraConsensusData.BlockRound;
-
-        // Could consider dropping the round parameter here, since the consensus parameters used here should not change
-        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header, round);
+        IXdcReleaseSpec spec = _specProvider.GetXdcSpec(header);
         if (!ISnapshotManager.IsTimeForSnapshot(header.Number, spec))
             return;
 
-        Address[] candidates;
-        if (header.IsGenesis)
-            candidates = spec.GenesisMasterNodes;
-        else
-            candidates = _votingContract.GetCandidatesByStake(header);
-
-        TSnapshot snapshot = CreateSnapshot(header, candidates, spec);
+        TSnapshot snapshot = CreateSnapshot(header, spec);
         StoreSnapshot(snapshot);
     }
 
-    /// <summary>
-    /// Creates a snapshot for the given header and candidates.
-    /// Derived classes implement this to create their specific snapshot type.
-    /// </summary>
-    protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, Address[] candidates, IXdcReleaseSpec spec);
+    protected abstract TSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec);
 }
