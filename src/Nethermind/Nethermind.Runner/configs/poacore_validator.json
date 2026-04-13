@@ -16,7 +16,8 @@
     "PivotNumber": 13200000,
     "PivotHash": "0xa7a12fb5ec74204dbeed8630a5c762fa5875ea1e492d8199a15807316d4a8347",
     "PivotTotalDifficulty": "4491727243356387717716544818000000000000000000",
-    "UseGethLimitsInFastBlocks": false
+    "UseGethLimitsInFastBlocks": false,
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "EthStats": {
     "Name": "Nethermind POA Core"
@@ -30,10 +31,12 @@
   "Merge": {
     "Enabled": false
   },
-  "Mining": {
+  "Mining":
+  {
     "Enabled": true
   },
-  "Receipt": {
+  "Receipt":
+  {
     "StoreReceipts": false
   }
 }

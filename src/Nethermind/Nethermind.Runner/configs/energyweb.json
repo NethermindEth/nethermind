@@ -16,7 +16,8 @@
     "PivotNumber": 37360000,
     "PivotHash": "0x4fc22fa52dee1520d18188925eb93a1c653e7d3fc993180b8c48025084e4afd0",
     "PivotTotalDifficulty": "12712949228166260994991675333650860379607509175",
-    "UseGethLimitsInFastBlocks": false
+    "UseGethLimitsInFastBlocks": false,
+    "FastSyncCatchUpHeightDelta": 10000000000
   },
   "EthStats": {
     "Name": "Nethermind Energy Web"
