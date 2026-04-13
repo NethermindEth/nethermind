@@ -71,7 +71,7 @@ public class StateCompositionPlugin : INethermindPlugin
         stateHolder.RestoreFromSnapshot(snap);
 
         Metrics.UpdateFromCumulativeStats(snap.Stats);
-        Metrics.UpdateFromDepthStats(stateHolder.CurrentDepthStats);
+        Metrics.UpdateDepthDistribution(stateHolder.CurrentDepthStats);
         Metrics.StateCompIncrementalBlock = snap.BlockNumber;
         Metrics.StateCompDiffsSinceBaseline = snap.DiffsSinceBaseline;
 

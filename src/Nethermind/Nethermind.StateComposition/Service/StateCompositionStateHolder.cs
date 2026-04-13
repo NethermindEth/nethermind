@@ -52,7 +52,7 @@ internal sealed class StateCompositionStateHolder
 
     /// <summary>
     /// Returns a cloned snapshot of the current depth stats under the holder's lock.
-    /// Callers (RPC + Metrics.UpdateFromDepthStats) iterate all 10 long[16] fields;
+    /// Callers (RPC + Metrics.UpdateDepthDistribution) iterate all 10 long[16] fields;
     /// returning a clone eliminates torn reads from concurrent ApplyDelta calls.
     /// </summary>
     public CumulativeDepthStats CurrentDepthStats

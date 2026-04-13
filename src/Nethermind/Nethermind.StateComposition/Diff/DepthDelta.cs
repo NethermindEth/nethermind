@@ -27,7 +27,7 @@ public sealed class DepthDelta
 
     /// <summary>
     /// Returns true when every array element and both scalars are zero.
-    /// Used to skip the 149-setter <see cref="Metrics.UpdateFromDepthStats"/> call
+    /// Used to skip the <see cref="Metrics.UpdateDepthDistribution"/> republish
     /// on blocks that do not change the depth distribution.
     /// </summary>
     public bool IsEmpty()
