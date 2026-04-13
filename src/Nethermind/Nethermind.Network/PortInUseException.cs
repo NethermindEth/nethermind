@@ -8,16 +8,13 @@ using Nethermind.Config;
 
 namespace Nethermind.Network;
 
-public class PortInUseException : IOException
-{
-    public PortInUseException(Exception exception, params int[] ports) : base(
-        $"{GetReason(ports)} " +
+public class PortInUseException(Exception exception, params int[] ports) : IOException(
+    $"{GetReason(ports)} " +
         "If you intend to run 2 or more nodes on one machine, ensure you have changed all configured ports under: " +
         $"{"\n\t" + string.Join("\n\t", ConfigExtensions.GetPortOptionNames())}",
-        exception
+    exception
     )
-    { }
-
+{
     public PortInUseException(Exception exception, params string[] urls) : this(exception, GetPorts(urls)) { }
 
     private static int[] GetPorts(string[] urls) => urls.Select(static u => new Uri(u).Port).ToArray();

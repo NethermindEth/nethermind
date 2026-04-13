@@ -44,7 +44,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             ILogManager logManager) =>
-            new ContractDataStore<T>(collection, dataContract, blockTree, receiptFinder, logManager);
+            new(collection, dataContract, blockTree, receiptFinder, logManager);
 
         private static ContractDataStoreWithLocalData<T> CreateContractDataStoreWithLocalData(
             IDictionaryContractDataStoreCollection<T> collection,
@@ -53,7 +53,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
             IReceiptFinder receiptFinder,
             ILogManager logManager,
             ILocalDataSource<IEnumerable<T>> localDataSource) =>
-            new ContractDataStoreWithLocalData<T>(
+            new(
                 collection,
                 dataContract ?? new EmptyDataContract<T>(),
                 blockTree,

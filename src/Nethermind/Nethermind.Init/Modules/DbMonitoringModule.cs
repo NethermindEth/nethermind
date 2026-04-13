@@ -45,7 +45,7 @@ public class DbMonitoringModule : Module
 
     public class DbTracker
     {
-        private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new ConcurrentDictionary<string, IDbMeta>();
+        private readonly ConcurrentDictionary<string, IDbMeta> _createdDbs = new();
         private readonly int _intervalSec;
         private readonly HyperClockCacheWrapper _sharedBlockCache;
         private long _lastDbMetricsUpdate = 0;

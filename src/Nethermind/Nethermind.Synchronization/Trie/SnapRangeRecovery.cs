@@ -53,7 +53,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                             if (peer == null) return null;
                             try
                             {
-                                var result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                                IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
                                     fullPath,
                                     cts.Token);
                                 if (result is not null) return result;
@@ -93,11 +93,11 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ValueHash256 queryPath,
         CancellationToken cancellationToken)
     {
-        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out var snapProtocol)) return null;
+        if (!peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer snapProtocol)) return null;
 
         // Sometimes the start path for the missing node and the actual full path that the trie is working on is not the same.
         // So we change the query to match the missing node path.
-        TreePath queryPathTreePath = new TreePath(queryPath, 64);
+        TreePath queryPathTreePath = new(queryPath, 64);
         if (!queryPathTreePath.StartsWith(startingPath))
         {
             queryPath = startingPath.Append(0, 64 - startingPath.Length).Path;
@@ -105,7 +105,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
         if (address == null)
         {
-            AccountRange accountRange = new AccountRange(
+            AccountRange accountRange = new(
                 rootHash,
                 queryPath,
                 queryPath);
@@ -129,12 +129,12 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         }
         else
         {
-            StorageRange storageRange = new StorageRange()
+            StorageRange storageRange = new()
             {
                 RootHash = rootHash,
                 Accounts = new ArrayPoolList<PathWithAccount>(1)
                 {
-                    new PathWithAccount()
+                    new()
                     {
                         Path = address,
                     },
@@ -172,7 +172,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         ArrayPoolList<(TreePath, byte[])> result = new(1);
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
-        Dictionary<ValueHash256, byte[]> nodes = new Dictionary<ValueHash256, byte[]>();
+        Dictionary<ValueHash256, byte[]> nodes = new();
         for (int i = 0; i < proofs.Count; i++)
         {
             byte[] proof = proofs[i].ToArray();
@@ -180,8 +180,8 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         }
         nodes[ValueKeccak.Compute(value)] = value;
 
-        TreePath slotPathAsTreePath = new TreePath(slotPath, 64);
-        Stack<(TreePath, Hash256)> checkStack = new Stack<(TreePath, Hash256)>();
+        TreePath slotPathAsTreePath = new(slotPath, 64);
+        Stack<(TreePath, Hash256)> checkStack = new();
         checkStack.Push((startingPath, startingNodeHash));
 
         while (checkStack.TryPop(out (TreePath, Hash256) item))
@@ -210,7 +210,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
 
             result.Add((currentPath, rlp));
 
-            TrieNode node = new TrieNode(NodeType.Unknown, rlp);
+            TrieNode node = new(NodeType.Unknown, rlp);
             node.ResolveNode(emptyResolver, currentPath);
 
             if (_logger.IsTrace) _logger.Trace($"Traversing path {currentPath} with hash {currentHash}");

@@ -774,7 +774,7 @@ namespace Nethermind.Trie
             int onlyChildIdx = -1;
             TrieNode? onlyChildNode = null;
             path.AppendMut(0);
-            var iterator = node.CreateChildIterator();
+            TrieNode.ChildIterator iterator = node.CreateChildIterator();
             for (int i = 0; i < TrieNode.BranchesCount; i++)
             {
                 path.SetLast(i);

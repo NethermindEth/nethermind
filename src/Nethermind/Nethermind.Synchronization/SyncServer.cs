@@ -507,7 +507,7 @@ namespace Nethermind.Synchronization
             }
 
             using ArrayPoolList<PeerInfo> allPeers = _pool.AllPeers.ToPooledList(_pool.PeerCount);
-            var counter = 0;
+            int counter = 0;
 
             ParallelUnbalancedWork.For(0, allPeers.Count,
                 (i) =>

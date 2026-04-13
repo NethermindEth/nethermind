@@ -49,7 +49,7 @@ public class ReceiptTrieTests
     {
         TxReceipt receipt1 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
         TxReceipt receipt2 = Build.A.Receipt.WithAllFieldsFilled.TestObject;
-        using var pool = new TrackingCappedArrayPool();
+        using TrackingCappedArrayPool pool = new();
         ReceiptTrie trie = new(MainnetSpecProvider.Instance.GetSpec((ForkActivation)1),
             [receipt1, receipt2], _decoder, pool, true);
         byte[][] proof = trie.BuildProof(0);

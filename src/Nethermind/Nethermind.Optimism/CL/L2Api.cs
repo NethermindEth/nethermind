@@ -32,9 +32,9 @@ public class L2Api(
 
     public async Task<L2Block> GetBlockByNumber(ulong number)
     {
-        var block = await RetryGetBlock(new((long)number));
+        BlockForRpc? block = await RetryGetBlock(new((long)number));
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
-        var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
+        PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
             Hash = block.Hash,
@@ -92,9 +92,9 @@ public class L2Api(
 
     public async Task<L2Block> GetHeadBlock()
     {
-        var block = await RetryGetBlock(BlockParameter.Latest);
+        BlockForRpc? block = await RetryGetBlock(BlockParameter.Latest);
         ArgumentNullException.ThrowIfNull(block); // We cannot get null here
-        var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
+        PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
             Hash = block.Hash,
@@ -106,12 +106,12 @@ public class L2Api(
 
     public async Task<L2Block?> GetFinalizedBlock()
     {
-        var block = await RetryGetBlock(BlockParameter.Finalized);
+        BlockForRpc? block = await RetryGetBlock(BlockParameter.Finalized);
         if (block is null) // Fresh instance of EL might return UnknownBlockError
         {
             return null;
         }
-        var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
+        PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
             Hash = block.Hash,
@@ -123,12 +123,12 @@ public class L2Api(
 
     public async Task<L2Block?> GetSafeBlock()
     {
-        var block = await RetryGetBlock(BlockParameter.Safe);
+        BlockForRpc? block = await RetryGetBlock(BlockParameter.Safe);
         if (block is null) // Fresh instance of EL might return UnknownBlockError
         {
             return null;
         }
-        var payloadAttributes = PayloadAttributesFromBlockForRpc(block);
+        PayloadAttributesRef payloadAttributes = PayloadAttributesFromBlockForRpc(block);
         return new L2Block
         {
             Hash = block.Hash,
@@ -141,7 +141,7 @@ public class L2Api(
     public Task<AccountProof?> GetProof(Address accountAddress, HashSet<UInt256> storageKeys, long blockNumber)
     {
         // TODO: Retry logic
-        var result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
+        ResultWrapper<AccountProof> result = l2EthRpc.eth_getProof(accountAddress, storageKeys, new BlockParameter(blockNumber));
         if (result.Result.ResultType != ResultType.Success)
         {
             return Task.FromResult<AccountProof?>(null);
@@ -179,7 +179,7 @@ public class L2Api(
 
     private async Task<BlockForRpc?> RetryGetBlock(BlockParameter blockParameter)
     {
-        var result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
+        ResultWrapper<BlockForRpc>? result = l2EthRpc.eth_getBlockByNumber(blockParameter, true);
         while (result?.Result.ResultType != ResultType.Success && result?.ErrorCode != ErrorCodes.UnknownBlockError)
         {
             if (_logger.IsWarn) _logger.Warn($"Unable to get L2 block by parameter: {blockParameter}. Error: {result?.Result.Error}");
@@ -196,7 +196,7 @@ public class L2Api(
 
     private async Task<T> RetryEngineApi<T>(Func<Task<JsonRpc.ResultWrapper<T>>> rpcCall, Func<string?, string> getErrorMessage)
     {
-        var result = await rpcCall();
+        ResultWrapper<T> result = await rpcCall();
         while (result?.Result.ResultType != ResultType.Success)
         {
             if (_logger.IsWarn) _logger.Warn(getErrorMessage(result!.Result.Error));

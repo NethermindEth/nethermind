@@ -98,7 +98,7 @@ public class OptimismCLP2P : IDisposable
     {
         try
         {
-            if (TryValidateAndDecodePayload(msg, out var payload))
+            if (TryValidateAndDecodePayload(msg, out ExecutionPayloadV3? payload))
             {
                 if (_logger.IsTrace) _logger.Trace($"Received payload prom p2p: {payload}");
                 if ((ulong)payload.BlockNumber <= _headNumber)
@@ -150,7 +150,7 @@ public class OptimismCLP2P : IDisposable
                         await UpdateHead();
                     }
 
-                    foreach (var missingPayload in missingPayloads.AsEnumerable().Reverse())
+                    foreach (ExecutionPayloadV3? missingPayload in missingPayloads.AsEnumerable().Reverse())
                     {
                         if ((ulong)missingPayload.BlockNumber <= _headNumber)
                         {
@@ -190,7 +190,7 @@ public class OptimismCLP2P : IDisposable
     {
         // TODO: Remove nullable annotations if possible
         (_, BlockId finalized, _) = await _executionEngineManager.GetCurrentBlocks();
-        var currentFinalized = finalized.Number != 0 ? finalized.Number : (ulong?)null;
+        ulong? currentFinalized = finalized.Number != 0 ? finalized.Number : (ulong?)null;
 
         if (_headNumber is not null && currentFinalized > _headNumber)
         {
@@ -317,7 +317,7 @@ public class OptimismCLP2P : IDisposable
             await _router.StartAsync(_localPeer, token);
 
             _peerStore = _serviceProvider.GetService<PeerStore>()!;
-            foreach (var multiaddress in _staticPeerList)
+            foreach (Multiaddress multiaddress in _staticPeerList)
             {
                 _peerStore.Discover([multiaddress]);
             }
@@ -335,7 +335,7 @@ public class OptimismCLP2P : IDisposable
 
     private MessageId CalculateMessageId(Message message)
     {
-        var sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
         sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
         sha256.AppendData(message.Data.Span);

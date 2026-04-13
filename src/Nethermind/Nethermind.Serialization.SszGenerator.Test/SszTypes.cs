@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public Test2()
         {
             int[] x = [];
-            Merkleizer merkleizer = new Merkleizer(Merkle.NextPowerOfTwoExponent(14));
+            Merkleizer merkleizer = new(Merkle.NextPowerOfTwoExponent(14));
             merkleizer.Feed(x);
         }
 

@@ -210,7 +210,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList();
@@ -308,8 +308,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        var abiEncoder = new AbiEncoder();
-        var errorSignature = new AbiSignature(
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new(
             "Error",
             AbiType.String
         );
@@ -359,8 +359,8 @@ public partial class EthRpcModuleTests
     )]
     public async Task Eth_call_with_state_override(string name, string transactionJson, string stateOverrideJson, string expectedResult)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
@@ -386,16 +386,16 @@ public partial class EthRpcModuleTests
     )]
     public async Task Eth_call_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
-        var resultOverrideBefore = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        string resultOverrideBefore = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        var resultNoOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+        string resultNoOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
 
-        var resultOverrideAfter = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        string resultOverrideAfter = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         using (new AssertionScope())
         {
@@ -452,7 +452,7 @@ public partial class EthRpcModuleTests
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
         // Returns gas available at start of execution as a 32-byte uint256
-        var stateOverride = JsonSerializer.Deserialize<object>(
+        object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
         // Request 100K gas — should be capped to 50K by GasCap

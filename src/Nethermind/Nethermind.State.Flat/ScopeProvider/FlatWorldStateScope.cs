@@ -255,7 +255,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                     if (account is null)
                     {
                         if (storageRoot == Keccak.EmptyTreeHash) continue;
-                        using var wb = CreateStorageWriteBatch(entry.Item1, 0);
+                        using IWorldStateScopeProvider.IStorageWriteBatch wb = CreateStorageWriteBatch(entry.Item1, 0);
                         wb.Clear();
                         continue;
                     }

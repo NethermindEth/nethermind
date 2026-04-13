@@ -461,7 +461,7 @@ namespace Nethermind.Store.Test.Proofs
 
             AccountProofCollector accountProofCollector = new(
                 TestItem.AddressA.ToAccountPath.ToCommitment().Bytes,
-                new ValueHash256[] { new ValueHash256(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
+                new ValueHash256[] { new(Bytes.FromHexString("3000000000000000000000000000000000000000000000000000000000000000")) }
             );
             tree.Accept(accountProofCollector, tree.RootHash);
             AccountProof proof = accountProofCollector.BuildResult();

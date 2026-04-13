@@ -15,15 +15,25 @@ namespace Nethermind.Db.Rocks;
 /// implementing `ISortedKeyValueStore` implementation themselves.
 /// This tends to call `DbOnTheRocks` back though.
 /// </summary>
-public class RocksDbReader : ISortedKeyValueStore
+/// <remarks>
+/// Constructor that accepts pre-created <see cref="ReadOptions"/> instead of a factory.
+/// Used by <see cref="ColumnsDb{T}.ColumnDbSnapshot"/> to share a single pair of ReadOptions
+/// across all column readers, avoiding per-reader native handle allocation and finalizer pressure.
+/// </remarks>
+public class RocksDbReader(DbOnTheRocks mainDb,
+    ReadOptions options,
+    ReadOptions hintCacheMissOptions,
+    Func<ReadOptions> readOptionsFactory,
+    DbOnTheRocks.IteratorManager? iteratorManager = null,
+    ColumnFamilyHandle? columnFamily = null) : ISortedKeyValueStore
 {
-    private readonly DbOnTheRocks _mainDb;
-    private readonly Func<ReadOptions> _readOptionsFactory;
-    private readonly DbOnTheRocks.IteratorManager? _iteratorManager;
-    private readonly ColumnFamilyHandle? _columnFamily;
+    private readonly DbOnTheRocks _mainDb = mainDb;
+    private readonly Func<ReadOptions> _readOptionsFactory = readOptionsFactory;
+    private readonly DbOnTheRocks.IteratorManager? _iteratorManager = iteratorManager;
+    private readonly ColumnFamilyHandle? _columnFamily = columnFamily;
 
-    private readonly ReadOptions _options;
-    private readonly ReadOptions _hintCacheMissOptions;
+    private readonly ReadOptions _options = options;
+    private readonly ReadOptions _hintCacheMissOptions = hintCacheMissOptions;
 
     public RocksDbReader(DbOnTheRocks mainDb,
         Func<ReadOptions> readOptionsFactory,
@@ -32,26 +42,6 @@ public class RocksDbReader : ISortedKeyValueStore
         : this(mainDb, readOptionsFactory(), readOptionsFactory(), readOptionsFactory, iteratorManager, columnFamily)
     {
         _hintCacheMissOptions.SetFillCache(false);
-    }
-
-    /// <summary>
-    /// Constructor that accepts pre-created <see cref="ReadOptions"/> instead of a factory.
-    /// Used by <see cref="ColumnsDb{T}.ColumnDbSnapshot"/> to share a single pair of ReadOptions
-    /// across all column readers, avoiding per-reader native handle allocation and finalizer pressure.
-    /// </summary>
-    public RocksDbReader(DbOnTheRocks mainDb,
-        ReadOptions options,
-        ReadOptions hintCacheMissOptions,
-        Func<ReadOptions> readOptionsFactory,
-        DbOnTheRocks.IteratorManager? iteratorManager = null,
-        ColumnFamilyHandle? columnFamily = null)
-    {
-        _mainDb = mainDb;
-        _readOptionsFactory = readOptionsFactory;
-        _iteratorManager = iteratorManager;
-        _columnFamily = columnFamily;
-        _options = options;
-        _hintCacheMissOptions = hintCacheMissOptions;
     }
 
     public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)

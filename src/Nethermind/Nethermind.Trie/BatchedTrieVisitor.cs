@@ -292,7 +292,7 @@ public class BatchedTrieVisitor<TNodeContext>
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
 
-            var theStack = _partitions[partitionIdx];
+            CompactStack<Job> theStack = _partitions[partitionIdx];
             lock (theStack)
             {
                 theStack.Push(new Job(keccak, nodeContext, ctx));

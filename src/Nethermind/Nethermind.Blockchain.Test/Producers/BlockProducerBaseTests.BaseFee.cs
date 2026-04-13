@@ -132,7 +132,7 @@ public partial class BlockProducerBaseTests
                     IsServiceTransaction = serviceTransaction
                 };
 
-                var (_, result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
+                (Core.Crypto.Hash256 _, AcceptTxResult? result) = await _testRpcBlockchain.TxSender.SendTransaction(tx, TxHandlingOptions.None);
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
                 return this;
             }

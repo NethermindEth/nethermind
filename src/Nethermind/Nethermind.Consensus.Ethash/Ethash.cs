@@ -122,7 +122,7 @@ namespace Nethermind.Consensus.Ethash
 
         public static Hash256 GetSeedHash(uint epoch)
         {
-            ValueHash256 seed = new ValueHash256();
+            ValueHash256 seed = new();
             for (uint i = 0; i < epoch; i++)
             {
                 seed = ValueKeccak.Compute(seed.Bytes);

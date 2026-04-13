@@ -4,7 +4,9 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 namespace Nethermind.Xdc.Spec;
 
@@ -78,15 +80,15 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
     {
-        var xdcSpec = new XdcReleaseSpec();
+        XdcReleaseSpec xdcSpec = new();
 
-        var baseType = typeof(ReleaseSpec);
-        var properties = baseType.GetProperties();
-        foreach (var property in properties)
+        Type baseType = typeof(ReleaseSpec);
+        PropertyInfo[] properties = baseType.GetProperties();
+        foreach (PropertyInfo property in properties)
         {
             if (property.CanRead && property.CanWrite)
             {
-                var value = property.GetValue(spec);
+                object value = property.GetValue(spec);
                 property.SetValue(xdcSpec, value);
             }
         }

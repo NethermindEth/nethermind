@@ -68,7 +68,7 @@ public abstract class StateSyncFeedTestsBase(
 
     protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
     {
-        StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
+        StorageTree remoteStorageTree = new(trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, LimboLogs.Instance);
         for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, [(byte)j, i]);
 
         remoteStorageTree.Commit();
@@ -80,11 +80,11 @@ public abstract class StateSyncFeedTestsBase(
         SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
         for (int i = 0; i < defaultPeerCount; i++)
         {
-            Node node = new Node(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
+            Node node = new(TestItem.PublicKeys[i], $"127.0.0.{i}", 30302, true)
             {
                 EthDetails = "eth68",
             };
-            SyncPeerMock mock = new SyncPeerMock(remote.StateDb, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
+            SyncPeerMock mock = new(remote.StateDb, remote.CodeDb, node: node, maxRandomizedLatencyMs: defaultPeerMaxRandomLatency);
             mockMutator?.Invoke(mock);
             syncPeers[i] = mock;
         }
@@ -243,9 +243,9 @@ public abstract class StateSyncFeedTestsBase(
             Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth68" };
             _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
 
-            PruningConfig pruningConfig = new PruningConfig();
-            TestFinalizedStateProvider testFinalizedStateProvider = new TestFinalizedStateProvider(pruningConfig.PruningBoundary);
-            TrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+            PruningConfig pruningConfig = new();
+            TestFinalizedStateProvider testFinalizedStateProvider = new(pruningConfig.PruningBoundary);
+            TrieStore trieStore = new(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                 Persist.EveryBlock, testFinalizedStateProvider, pruningConfig, LimboLogs.Instance);
             _stateDb = trieStore.TrieNodeRlpStore;
             _snapServer = new SnapServer(

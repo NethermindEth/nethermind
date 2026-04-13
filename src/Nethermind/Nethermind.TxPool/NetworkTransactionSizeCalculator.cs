@@ -6,14 +6,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.TxPool;
 
-public class NetworkTransactionSizeCalculator : ITransactionSizeCalculator
+public class NetworkTransactionSizeCalculator(TxDecoder txDecoder) : ITransactionSizeCalculator
 {
-    private readonly TxDecoder _txDecoder;
-
-    public NetworkTransactionSizeCalculator(TxDecoder txDecoder)
-    {
-        _txDecoder = txDecoder;
-    }
+    private readonly TxDecoder _txDecoder = txDecoder;
 
     public int GetLength(Transaction tx, bool shouldCountBlobs)
     {

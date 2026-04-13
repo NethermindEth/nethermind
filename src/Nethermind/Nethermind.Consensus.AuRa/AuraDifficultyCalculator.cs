@@ -6,19 +6,14 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa
 {
-    public class AuraDifficultyCalculator : IDifficultyCalculator
+    public class AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator) : IDifficultyCalculator
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
+        private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator;
         public static readonly UInt256 MaxDifficulty;
 
         static AuraDifficultyCalculator()
         {
             MaxDifficulty = UInt256.UInt128MaxValue;
-        }
-
-        public AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator)
-        {
-            _auRaStepCalculator = auRaStepCalculator;
         }
 
         public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L)

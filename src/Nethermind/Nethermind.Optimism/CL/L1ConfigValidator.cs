@@ -8,16 +8,10 @@ using Nethermind.Optimism.CL.L1Bridge;
 
 namespace Nethermind.Optimism.CL;
 
-public class L1ConfigValidator : IL1ConfigValidator
+public class L1ConfigValidator(IEthApi ethApi, ILogManager logManager) : IL1ConfigValidator
 {
-    private readonly IEthApi _ethApi;
-    private readonly ILogger _logger;
-
-    public L1ConfigValidator(IEthApi ethApi, ILogManager logManager)
-    {
-        _ethApi = ethApi;
-        _logger = logManager.GetClassLogger<L1ConfigValidator>();
-    }
+    private readonly IEthApi _ethApi = ethApi;
+    private readonly ILogger _logger = logManager.GetClassLogger<L1ConfigValidator>();
 
     public async Task<bool> Validate(ulong expectedChainId, ulong genesisNumber, Hash256 expectedGenesisHash)
     {
@@ -30,7 +24,7 @@ public class L1ConfigValidator : IL1ConfigValidator
 
         // TODO: `IEthApi.GetBlockByNumber` currently does not support `fullTxs = false` when deserializing,
         // so we're forced to use `fullTxs = true` despite not needing it.
-        var genesisBlock = await _ethApi.GetBlockByNumber(genesisNumber, true);
+        L1Block? genesisBlock = await _ethApi.GetBlockByNumber(genesisNumber, true);
         if (genesisBlock is null)
         {
             if (_logger.IsWarn) _logger.Warn("Failed to get L1 genesis block");

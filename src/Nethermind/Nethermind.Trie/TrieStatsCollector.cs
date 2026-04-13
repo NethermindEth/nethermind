@@ -12,7 +12,7 @@ namespace Nethermind.Trie
 {
     public class TrieStatsCollector : ITreeVisitor<TrieStatsCollector.Context>
     {
-        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new ClockCache<ValueHash256, int>(1024 * 8);
+        private readonly ClockCache<ValueHash256, int> _existingCodeHash = new(1024 * 8);
         private readonly IKeyValueStore _codeKeyValueStore;
 
         private readonly ILogger _logger;

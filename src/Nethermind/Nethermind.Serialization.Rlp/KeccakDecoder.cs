@@ -6,12 +6,10 @@ using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public sealed class KeccakDecoder : RlpValueDecoder<Hash256>
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
+    public sealed class KeccakDecoder() : RlpValueDecoder<Hash256>
     {
         public static readonly KeccakDecoder Instance = new();
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(KeccakDecoder))]
-        public KeccakDecoder() { }
 
         protected override Hash256? DecodeInternal(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => decoderContext.DecodeKeccak();
 

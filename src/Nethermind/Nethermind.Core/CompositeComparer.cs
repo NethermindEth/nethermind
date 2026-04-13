@@ -9,17 +9,12 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core
 {
-    public class CompositeComparer<T> : IComparer<T>
+    public class CompositeComparer<T>(IEnumerable<IComparer<T>> comparers) : IComparer<T>
     {
-        internal readonly List<IComparer<T>> _comparers;
+        internal readonly List<IComparer<T>> _comparers = new(comparers);
 
         public CompositeComparer(params IComparer<T>[] comparers) : this((IEnumerable<IComparer<T>>)comparers)
         {
-        }
-
-        public CompositeComparer(IEnumerable<IComparer<T>> comparers)
-        {
-            _comparers = new List<IComparer<T>>(comparers);
         }
 
         public CompositeComparer<T> FirstBy(IComparer<T> comparer)

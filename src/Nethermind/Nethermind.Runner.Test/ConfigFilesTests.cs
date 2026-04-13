@@ -35,7 +35,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
     {
         foreach (string configFile in Resolve(configWildcard))
         {
-            var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
+            string configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
             Assert.That(File.Exists(configPath), Is.True);
         }
     }
@@ -369,7 +369,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
 
             foreach (int commaIndex in commaIndexes)
             {
-                var nextChar = content.ElementAt(commaIndex + 1);
+                char nextChar = content.ElementAt(commaIndex + 1);
                 Assert.That(nextChar, Is.Not.EqualTo('}'), $"Additional comma found in {filePath}");
             }
         }

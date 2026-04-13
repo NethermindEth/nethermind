@@ -890,7 +890,8 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[1.37.0-unstable, )",
-          "Nethermind.Init": "[1.37.0-unstable, )"
+          "Nethermind.Init": "[1.37.0-unstable, )",
+          "ZstdSharp.Port": "[0.8.7, )"
         }
       },
       "nethermind.jsonrpc": {

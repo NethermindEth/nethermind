@@ -43,10 +43,10 @@ namespace Nethermind.Network.Benchmarks
 
         private void SetupAll(bool useLimboOutput = false)
         {
-            var secrets = NetTestVectors.GetSecretsPair();
+            (EncryptionSecrets A, EncryptionSecrets B) secrets = NetTestVectors.GetSecretsPair();
 
-            FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
-            FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
+            FrameCipher frameCipher = new(secrets.A.AesSecret);
+            FrameMacProcessor frameMacProcessor = new(TestItem.IgnoredPublicKey, secrets.A);
             _zeroSplitter = new TestZeroSplitter();
             _zeroSplitter.DisableFraming();
             _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor);

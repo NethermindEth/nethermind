@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -52,7 +53,7 @@ public class BlockFinderExtensionsTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BlockParameter_ToString_ReturnsBlockHash()
     {
-        var hash = TestItem.KeccakA;
+        Hash256 hash = TestItem.KeccakA;
         new BlockParameter(hash).ToString().Should().Be(hash.ToString());
     }
 
@@ -68,7 +69,7 @@ public class BlockFinderExtensionsTests
         // Mock the underlying method that will be called
         blockFinder.FindBlock(50, BlockTreeLookupOptions.None).Returns((Block?)null);
 
-        BlockParameter blockParameter = new BlockParameter(50);
+        BlockParameter blockParameter = new(50);
         SearchResult<Block> result = blockFinder.SearchForBlock(blockParameter);
 
         result.IsError.Should().BeTrue();

@@ -48,7 +48,7 @@ public class StateSyncAllocationStrategyTests
                 x[1] = null;
                 return false;
             });
-        PeerInfo peerInfo = new PeerInfo(syncPeer);
+        PeerInfo peerInfo = new(syncPeer);
 
         return _strategy.Allocate(null, new List<PeerInfo>() { peerInfo }, Substitute.For<INodeStatsManager>(),
             Substitute.For<IBlockTree>()) == peerInfo;

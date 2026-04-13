@@ -59,7 +59,7 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
                 return;
             }
 
-            using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
+            using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] array);
 
             buffer.ReadBytes(buffer.Offset, buffer.Size, array, 0);
             ByteArrayConverter.Convert(writer, array.AsSpan(0, size), skipLeadingZeros: false);

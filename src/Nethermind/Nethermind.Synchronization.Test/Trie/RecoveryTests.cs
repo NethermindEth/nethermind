@@ -50,7 +50,7 @@ public class RecoveryTests
     [SetUp]
     public void SetUp()
     {
-        TrieNode node = new TrieNode(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new CappedArray<byte>([0])));
+        TrieNode node = new(new LeafData(Nibbles.BytesToNibbleBytes(Bytes.FromHexString("34000000000000000000000000000000000000000000000000000000000000")), new CappedArray<byte>([0])));
         _path = TreePath.FromNibble([1, 2]);
         _nodeRlp = node.RlpEncode(Substitute.For<ITrieNodeResolver>(), ref _path).ToArray()!;
         _returnedRlp = _nodeRlp;
@@ -171,7 +171,7 @@ public class RecoveryTests
         _syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(c =>
         {
             AllocationContexts allocationContexts = (AllocationContexts)c[1];
-            var alloc = new SyncPeerAllocation(peers[0], allocationContexts);
+            SyncPeerAllocation alloc = new(peers[0], allocationContexts);
             return alloc;
         });
         return recovery.Recover(_rootHash, _storageHash, _path, _hash, _fullPath);

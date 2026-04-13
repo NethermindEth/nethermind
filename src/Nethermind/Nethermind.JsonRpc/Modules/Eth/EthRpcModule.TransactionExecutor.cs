@@ -146,9 +146,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 long operationGas = result.OperationGas;
                 if (result.AccessList is not null)
                 {
-                    var oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long oldIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     transaction.AccessList = result.AccessList;
-                    var newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
+                    long newIntrinsicCost = IntrinsicGasCalculator.AccessListCost(transaction, Berlin.Instance);
                     long updatedAccessListCost = newIntrinsicCost - oldIntrinsicCost;
                     if (gas > operationGas)
                     {

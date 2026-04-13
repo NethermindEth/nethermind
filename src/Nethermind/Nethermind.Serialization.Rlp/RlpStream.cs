@@ -257,7 +257,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -274,7 +274,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
                 for (int i = 0; i < keccaks.Length; i++)
                 {
@@ -291,9 +291,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);
@@ -310,9 +310,9 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                var length = Rlp.LengthOf(keccaks);
+                int length = Rlp.LengthOf(keccaks);
                 StartSequence(length);
-                var count = keccaks.Count;
+                int count = keccaks.Count;
                 for (int i = 0; i < count; i++)
                 {
                     Encode(keccaks[i]);

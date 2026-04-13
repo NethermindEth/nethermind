@@ -6,13 +6,8 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
-    public class NodeEventArgs : EventArgs
+    public class NodeEventArgs(Node node) : EventArgs
     {
-        public Node Node { get; }
-
-        public NodeEventArgs(Node node)
-        {
-            Node = node;
-        }
+        public Node Node { get; } = node;
     }
 }

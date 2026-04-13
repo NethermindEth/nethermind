@@ -34,54 +34,36 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// <remarks>
 /// May initiate a new payload creation.
 /// </remarks>
-public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
+public class ForkchoiceUpdatedHandler(
+    IBlockTree blockTree,
+    IManualBlockFinalizationManager manualBlockFinalizationManager,
+    IPoSSwitcher poSSwitcher,
+    IPayloadPreparationService payloadPreparationService,
+    IBlockProcessingQueue processingQueue,
+    IBlockCacheService blockCacheService,
+    IInvalidChainTracker invalidChainTracker,
+    IMergeSyncController mergeSyncController,
+    IBeaconPivot beaconPivot,
+    IPeerRefresher peerRefresher,
+    ISpecProvider specProvider,
+    ISyncPeerPool syncPeerPool,
+    IMergeConfig mergeConfig,
+    ILogManager logManager) : IForkchoiceUpdatedHandler
 {
-    protected readonly IBlockTree _blockTree;
-    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager;
-    private readonly IPoSSwitcher _poSSwitcher;
-    private readonly IPayloadPreparationService _payloadPreparationService;
-    private readonly IBlockProcessingQueue _processingQueue;
-    private readonly IBlockCacheService _blockCacheService;
-    private readonly IInvalidChainTracker _invalidChainTracker;
-    private readonly IMergeSyncController _mergeSyncController;
-    private readonly IBeaconPivot _beaconPivot;
-    private readonly ILogger _logger;
-    private readonly IPeerRefresher _peerRefresher;
-    private readonly ISpecProvider _specProvider;
-    private readonly bool _simulateBlockProduction;
-    private readonly ISyncPeerPool _syncPeerPool;
-
-    public ForkchoiceUpdatedHandler(
-        IBlockTree blockTree,
-        IManualBlockFinalizationManager manualBlockFinalizationManager,
-        IPoSSwitcher poSSwitcher,
-        IPayloadPreparationService payloadPreparationService,
-        IBlockProcessingQueue processingQueue,
-        IBlockCacheService blockCacheService,
-        IInvalidChainTracker invalidChainTracker,
-        IMergeSyncController mergeSyncController,
-        IBeaconPivot beaconPivot,
-        IPeerRefresher peerRefresher,
-        ISpecProvider specProvider,
-        ISyncPeerPool syncPeerPool,
-        IMergeConfig mergeConfig,
-        ILogManager logManager)
-    {
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
-        _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        _payloadPreparationService = payloadPreparationService;
-        _processingQueue = processingQueue;
-        _blockCacheService = blockCacheService;
-        _invalidChainTracker = invalidChainTracker;
-        _mergeSyncController = mergeSyncController;
-        _beaconPivot = beaconPivot;
-        _peerRefresher = peerRefresher;
-        _specProvider = specProvider;
-        _syncPeerPool = syncPeerPool;
-        _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
-        _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
-    }
+    protected readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+    private readonly IManualBlockFinalizationManager _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
+    private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
+    private readonly IPayloadPreparationService _payloadPreparationService = payloadPreparationService;
+    private readonly IBlockProcessingQueue _processingQueue = processingQueue;
+    private readonly IBlockCacheService _blockCacheService = blockCacheService;
+    private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
+    private readonly IMergeSyncController _mergeSyncController = mergeSyncController;
+    private readonly IBeaconPivot _beaconPivot = beaconPivot;
+    private readonly ILogger _logger = logManager.GetClassLogger<ForkchoiceUpdatedHandler>();
+    private readonly IPeerRefresher _peerRefresher = peerRefresher;
+    private readonly ISpecProvider _specProvider = specProvider;
+    private readonly bool _simulateBlockProduction = mergeConfig.SimulateBlockProduction;
+    private readonly ISyncPeerPool _syncPeerPool = syncPeerPool;
 
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {

@@ -176,7 +176,7 @@ public class JsonRpcProcessorTests(bool returnErrors)
         result.Should().HaveCount(1);
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
-        var resultList = await result[0].BatchedResponses!.ToListAsync();
+        List<JsonRpcResult.Entry> resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.That(resultList.All(r => r.Response != _errorResponse), Is.True);
         result.DisposeItems();

@@ -86,16 +86,16 @@ public class MetricsTests
         TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
         metricsController.UpdateAllMetrics();
 
-        var updater = metricsController._individualUpdater;
-        var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
-        var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
-        var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
-        var keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
-        var keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
-        var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
-        var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
-        var keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
-        var keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
+        Dictionary<string, MetricsController.IMetricUpdater> updater = metricsController._individualUpdater;
+        string keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
+        string keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
+        string keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+        string keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
+        string keyOldDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OldDictionaryMetrics)}";
+        string keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
+        string keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
+        string keySummary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.SomeObservation)}";
+        string keyHistogram = $"{nameof(TestMetrics)}.{nameof(TestMetrics.HistogramObservation)}";
 
         Assert.That(updater.Keys, Has.Member(keyDefault));
         Assert.That(updater.Keys, Has.Member(keySpecial));

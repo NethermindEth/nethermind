@@ -240,7 +240,7 @@ public class Startup : IStartup
 
         if (healthChecksConfig.Enabled)
         {
-            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
+            ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
             app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
@@ -418,7 +418,7 @@ public class Startup : IStartup
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
-        using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
 
         jsonWriter.WriteStartObject();
         jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);

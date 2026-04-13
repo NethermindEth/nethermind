@@ -61,7 +61,7 @@ public class OptimismPlugin(ChainSpec chainSpec) : IConsensusPlugin
     {
         StepDependencyException.ThrowIfNull(_api);
 
-        OptimismGasLimitCalculator gasLimitCalculator = new OptimismGasLimitCalculator();
+        OptimismGasLimitCalculator gasLimitCalculator = new();
 
         IBlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
