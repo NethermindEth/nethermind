@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
+using Nethermind.Evm;
 using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
@@ -554,7 +555,9 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
         TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
 
-        Assert.That(receipt.Error, Is.EqualTo("revert message"));
+        // Raw revert bytes without an Error(string) selector — GetErrorMessage returns null,
+        // so Error falls back to the Revert sentinel.
+        Assert.That(receipt.Error, Is.EqualTo(TransactionSubstate.Revert));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }
