@@ -46,8 +46,6 @@ public class SszContainerTests
         handler!.RunInvalid(ssz);
     }
 
-    // --- Helpers ---
-
     private interface IContainerHandler
     {
         void RunValid(byte[] ssz, UInt256 expectedRoot);
