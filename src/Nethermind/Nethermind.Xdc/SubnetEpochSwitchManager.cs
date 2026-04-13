@@ -18,13 +18,13 @@ internal class SubnetEpochSwitchManager(
 {
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(header);
         return header.Number % xdcSpec.EpochLength == 0;
     }
 
     public override bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent)
     {
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(parent);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(parent);
         return (parent.Number + 1) % xdcSpec.EpochLength == 0;
     }
 
@@ -38,8 +38,8 @@ internal class SubnetEpochSwitchManager(
 
     public override EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
     {
-        // https://github.com/XinFinOrg/XDC-Subnet/blob/master/consensus/XDPoS/engines/engine_v2/timeout.go
-        XdcSubnetBlockHeader xdcHeader = (XdcSubnetBlockHeader)_tree.Head?.Header;
+        // subnet seems not to use this
+        XdcSubnetBlockHeader xdcHeader = (XdcSubnetBlockHeader)Tree.Head?.Header;
         if (xdcHeader is null)
             return null;
 

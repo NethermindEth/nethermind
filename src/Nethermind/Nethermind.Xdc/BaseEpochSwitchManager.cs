@@ -15,11 +15,11 @@ namespace Nethermind.Xdc;
 
 internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager) : IEpochSwitchManager
 {
-    protected ISpecProvider _xdcSpecProvider { get; } = xdcSpecProvider;
-    protected IBlockTree _tree { get; } = tree;
-    protected ISnapshotManager _snapshotManager { get; } = snapshotManager;
-    protected LruCache<ulong, BlockRoundInfo> _round2EpochBlockInfo { get; set; } = new(XdcConstants.InMemoryRound2Epochs, nameof(_round2EpochBlockInfo));
-    protected LruCache<ValueHash256, EpochSwitchInfo> _epochSwitches { get; set; } = new(XdcConstants.InMemoryEpochs, nameof(_epochSwitches));
+    protected ISpecProvider XdcSpecProvider { get; } = xdcSpecProvider;
+    protected IBlockTree Tree { get; } = tree;
+    protected ISnapshotManager SnapshotManager { get; } = snapshotManager;
+    protected LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; set; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
+    protected LruCache<ValueHash256, EpochSwitchInfo> EpochSwitches { get; set; } = new(XdcConstants.InMemoryEpochs, nameof(EpochSwitches));
 
     public abstract bool IsEpochSwitchAtBlock(XdcBlockHeader header);
 
@@ -27,16 +27,17 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
-        if (_epochSwitches.TryGet(header.Hash, out EpochSwitchInfo epochSwitchInfo))
+        Hash256 headerHash = header.Hash;
+        if (EpochSwitches.TryGet(headerHash, out EpochSwitchInfo epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
 
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(header);
 
         while (!IsEpochSwitchAtBlock(header))
         {
-            header = (XdcBlockHeader)_tree.FindHeader(header.ParentHash);
+            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash);
         }
 
         Address[] masterNodes;
@@ -55,7 +56,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
             masterNodes = header.ValidatorsAddress.Value.ToArray();
         }
 
-        Snapshot snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
+        Snapshot snap = SnapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
         if (snap is null)
         {
             return null;
@@ -81,7 +82,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
             epochSwitchInfo.EpochSwitchParentBlockInfo = header.ExtraConsensusData.QuorumCert.ProposedBlockInfo;
         }
 
-        _epochSwitches.Set(header.Hash, epochSwitchInfo);
+        EpochSwitches.Set(headerHash, epochSwitchInfo);
         return epochSwitchInfo;
     }
 
@@ -89,12 +90,12 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
     public EpochSwitchInfo? GetEpochSwitchInfo(Hash256 hash)
     {
-        if (_epochSwitches.TryGet(hash, out EpochSwitchInfo epochSwitchInfo))
+        if (EpochSwitches.TryGet(hash, out EpochSwitchInfo epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
 
-        XdcBlockHeader h = (XdcBlockHeader)_tree.FindHeader(hash);
+        XdcBlockHeader h = (XdcBlockHeader)Tree.FindHeader(hash);
         if (h is null)
         {
             return null;

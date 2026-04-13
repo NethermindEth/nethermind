@@ -27,7 +27,7 @@ internal class EpochSwitchManager(
     **/
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(header);
 
         if (header.Number < xdcSpec.SwitchBlock)
         {
@@ -56,7 +56,7 @@ internal class EpochSwitchManager(
 
         if (parentRound < epochStartRound)
         {
-            _round2EpochBlockInfo.Set(round, new BlockRoundInfo(header.Hash, round, header.Number));
+            Round2EpochBlockInfo.Set(round, new BlockRoundInfo(header.Hash, round, header.Number));
             return true;
         }
 
@@ -68,7 +68,7 @@ internal class EpochSwitchManager(
     **/
     public override bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent)
     {
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(parent);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(parent);
 
         ulong epochNumber = (ulong)xdcSpec.SwitchEpoch + currentRound / (ulong)xdcSpec.EpochLength;
 
@@ -137,7 +137,7 @@ internal class EpochSwitchManager(
 
         for (ulong r = estRound; r < estRound + (ulong)epoch; r++)
         {
-            if (_round2EpochBlockInfo.TryGet(r, out BlockRoundInfo blockInfo))
+            if (Round2EpochBlockInfo.TryGet(r, out BlockRoundInfo blockInfo))
             {
                 epochSwitchInCache.Add(blockInfo);
             }
@@ -154,7 +154,7 @@ internal class EpochSwitchManager(
 
         foreach (BlockRoundInfo blockInfo in epochSwitchInCache)
         {
-            BlockHeader header = _tree.FindHeader(blockInfo.BlockNumber);
+            BlockHeader header = Tree.FindHeader(blockInfo.BlockNumber);
             if (header is null)
             {
                 continue;
@@ -172,7 +172,7 @@ internal class EpochSwitchManager(
     {
         while (start < end)
         {
-            XdcBlockHeader header = (XdcBlockHeader)_tree.FindHeader((start + end) / 2);
+            XdcBlockHeader header = (XdcBlockHeader)Tree.FindHeader((start + end) / 2);
             if (header is null)
             {
                 epochBlockInfo = null;
@@ -231,7 +231,7 @@ internal class EpochSwitchManager(
 
     public override EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
     {
-        XdcBlockHeader headOfChainHeader = (XdcBlockHeader)_tree.Head.Header;
+        XdcBlockHeader headOfChainHeader = (XdcBlockHeader)Tree.Head.Header;
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headOfChainHeader);
         if (epochSwitchInfo is null)
@@ -239,7 +239,7 @@ internal class EpochSwitchManager(
             return null;
         }
 
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(headOfChainHeader);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headOfChainHeader);
 
         ulong epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
         ulong tempTCEpoch = (ulong)xdcSpec.SwitchEpoch + epochRound / (ulong)xdcSpec.EpochLength;
@@ -261,12 +261,12 @@ internal class EpochSwitchManager(
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        XdcBlockHeader headHeader = _tree.Head?.Header as XdcBlockHeader;
+        XdcBlockHeader headHeader = Tree.Head?.Header as XdcBlockHeader;
         if (headHeader is null)
         {
             return null;
         }
-        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(headHeader);
+        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headHeader);
 
         EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headHeader);
         if (epochSwitchInfo is null)
@@ -307,7 +307,7 @@ internal class EpochSwitchManager(
 
         if (closeEpochNum >= epochNumber - targetEpoch)
         {
-            XdcBlockHeader estBlockHeader = (XdcBlockHeader)_tree.FindHeader(estBlockNum);
+            XdcBlockHeader estBlockHeader = (XdcBlockHeader)Tree.FindHeader(estBlockNum);
             if (estBlockHeader is null)
             {
                 return null;
