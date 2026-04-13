@@ -334,13 +334,13 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
-        var dbValue = debugBridge.GetDbValue(dbName, key);
+        byte[] dbValue = debugBridge.GetDbValue(dbName, key);
         return ResultWrapper<byte[]>.Success(dbValue);
     }
 
     public ResultWrapper<object> debug_getConfigValue(string category, string name)
     {
-        var configValue = debugBridge.GetConfigValue(category, name);
+        object configValue = debugBridge.GetConfigValue(category, name);
         return ResultWrapper<object>.Success(configValue);
     }
 
@@ -503,7 +503,7 @@ public class DebugRpcModule(
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
-        var simulatePayload = new SimulatePayload<TransactionForRpc>
+        SimulatePayload<TransactionForRpc> simulatePayload = new()
         {
             BlockStateCalls = bundles.Select(bundle => new BlockStateCall<TransactionForRpc>
             {

@@ -35,14 +35,14 @@ public class TimeoutCertificateManagerTests
     public void VerifyTC_NullSignatures_Throws()
     {
         TimeoutCertificateManager tcManager = BuildTimeoutCertificateManager();
-        var tc = new TimeoutCertificate(1, null!, 0);
+        TimeoutCertificate tc = new(1, null!, 0);
         Assert.That(() => tcManager.VerifyTimeoutCertificate(tc, out _), Throws.ArgumentNullException);
     }
 
     [Test]
     public void VerifyTC_SnapshotMissing_ReturnsFalse()
     {
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
+        TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
                     .Returns((Snapshot?)null);
@@ -51,7 +51,7 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
-        var tcManager = new TimeoutCertificateManager(
+        TimeoutCertificateManager tcManager = new(
             new XdcConsensusContext(),
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
@@ -62,7 +62,7 @@ public class TimeoutCertificateManagerTests
 
             Substitute.For<ISigner>());
 
-        var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
+        bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
         Assert.That(err, Does.Contain("Failed to get snapshot"));
     }
@@ -70,7 +70,7 @@ public class TimeoutCertificateManagerTests
     [Test]
     public void VerifyTC_EmptyCandidates_ReturnsFalse()
     {
-        var tc = new TimeoutCertificate(1, Array.Empty<Signature>(), 0);
+        TimeoutCertificate tc = new(1, Array.Empty<Signature>(), 0);
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.GetSnapshotByGapNumber(Arg.Any<long>())
             .Returns(new Snapshot(0, Hash256.Zero, Array.Empty<Address>()));
@@ -81,7 +81,7 @@ public class TimeoutCertificateManagerTests
             .Returns(new Block(header));
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(new XdcReleaseSpec() { V2Configs = [new V2ConfigParams()] });
-        var tcManager = new TimeoutCertificateManager(
+        TimeoutCertificateManager tcManager = new(
             new XdcConsensusContext(),
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
@@ -92,14 +92,14 @@ public class TimeoutCertificateManagerTests
 
             Substitute.For<ISigner>());
 
-        var ok = tcManager.VerifyTimeoutCertificate(tc, out var err);
+        bool ok = tcManager.VerifyTimeoutCertificate(tc, out string? err);
         Assert.That(ok, Is.False);
         Assert.That(err, Does.Contain("Empty master node"));
     }
 
     public static IEnumerable<TestCaseData> TcCases()
     {
-        var keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new();
         PrivateKey[] keys = keyBuilder.Generate(20).ToArray();
         IEnumerable<Address> masterNodes = keys.Select(k => k.Address);
 
@@ -129,7 +129,7 @@ public class TimeoutCertificateManagerTests
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
 
         IEpochSwitchManager epochSwitchManager = Substitute.For<IEpochSwitchManager>();
-        var epochSwitchInfo = new EpochSwitchInfo(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10));
+        EpochSwitchInfo epochSwitchInfo = new(masternodes, [], [], new BlockRoundInfo(Hash256.Zero, 1, 10));
         epochSwitchManager
             .GetEpochSwitchInfo(Arg.Any<XdcBlockHeader>())
             .Returns(epochSwitchInfo);
@@ -150,10 +150,10 @@ public class TimeoutCertificateManagerTests
         blockTree.Head.Returns(new Block(header, new BlockBody()));
         blockTree.FindHeader(Arg.Any<long>()).Returns(header);
 
-        var context = new XdcConsensusContext();
+        XdcConsensusContext context = new();
         ISigner signer = Substitute.For<ISigner>();
 
-        var tcManager = new TimeoutCertificateManager(context, Substitute.For<ITimeoutTimer>(),
+        TimeoutCertificateManager tcManager = new(context, Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
             blockTree, signer);
 
@@ -164,10 +164,10 @@ public class TimeoutCertificateManagerTests
     [TestCase(6UL)]
     public async Task HandleTimeoutVote_RoundDoesNotMatchCurrentRound_ShouldReturnEarly(ulong round)
     {
-        var ctx = new XdcConsensusContext() { CurrentRound = 5 };
-        var tcManager = BuildTimeoutCertificateManager(ctx);
+        XdcConsensusContext ctx = new() { CurrentRound = 5 };
+        TimeoutCertificateManager tcManager = BuildTimeoutCertificateManager(ctx);
         // dummy timeout message, only care about the round
-        var timeout = new Timeout(round, null, 0);
+        Timeout timeout = new(round, null, 0);
         await tcManager.HandleTimeoutVote(timeout);
         Assert.That(tcManager.GetTimeoutsCount(timeout), Is.EqualTo(0));
     }
@@ -178,9 +178,9 @@ public class TimeoutCertificateManagerTests
     [TestCase(500UL, 0UL, true, true)]     // Far away round but should get filtered in
     public void FilterTimeout_DifferentCases_ReturnsExpected(ulong round, ulong gap, bool correctSigner, bool expected)
     {
-        var keyBuilder = new PrivateKeyGenerator();
+        PrivateKeyGenerator keyBuilder = new();
         PrivateKey[] keys = keyBuilder.Generate(21).ToArray();
-        var masternodes = keys.Take(20).Select(k => k.Address).ToArray();
+        Address[] masternodes = keys.Take(20).Select(k => k.Address).ToArray();
         ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
         snapshotManager.GetSnapshotByGapNumber(0)
             .Returns(new Snapshot(0, Hash256.Zero, masternodes));
@@ -193,16 +193,16 @@ public class TimeoutCertificateManagerTests
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
         blockTree.Head.Returns(new Block(header, new BlockBody()));
 
-        var context = new XdcConsensusContext() { CurrentRound = 100 };
+        XdcConsensusContext context = new() { CurrentRound = 100 };
         ISigner signer = Substitute.For<ISigner>();
 
-        var tcManager = new TimeoutCertificateManager(context,
+        TimeoutCertificateManager tcManager = new(context,
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(), snapshotManager, epochSwitchManager, specProvider,
             blockTree, signer);
 
-        var key = correctSigner ? keys.First() : keys.Last();
-        var timeout = XdcTestHelper.BuildSignedTimeout(key, round, gap);
+        PrivateKey key = correctSigner ? keys.First() : keys.Last();
+        Timeout timeout = XdcTestHelper.BuildSignedTimeout(key, round, gap);
         Assert.That(tcManager.FilterTimeout(timeout), Is.EqualTo(expected));
     }
 
@@ -222,7 +222,7 @@ public class TimeoutCertificateManagerTests
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {
-        var ecdsa = new EthereumEcdsa(0);
+        EthereumEcdsa ecdsa = new(0);
         ValueHash256 msgHash = TimeoutCertificateManager.ComputeTimeoutMsgHash(round, gap);
         Signature[] signatures = keys.Select(k => ecdsa.Sign(k, msgHash)).ToArray();
         return new TimeoutCertificate(round, signatures, gap);

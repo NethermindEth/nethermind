@@ -21,7 +21,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
             throw new JsonException("Expected start of array");
         }
 
-        var traces = new List<GethLikeTxTrace>();
+        List<GethLikeTxTrace> traces = new();
 
         while (reader.Read())
         {
@@ -93,7 +93,7 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
 
         writer.WriteStartArray();
 
-        foreach (var trace in value.Traces)
+        foreach (GethLikeTxTrace trace in value.Traces)
         {
             writer.WriteStartObject();
 

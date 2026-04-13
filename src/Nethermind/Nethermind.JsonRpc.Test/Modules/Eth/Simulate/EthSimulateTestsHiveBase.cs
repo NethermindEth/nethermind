@@ -128,7 +128,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
                                 ]
                               }
                             """;
-        var serializer = new EthereumJsonSerializer();
+        EthereumJsonSerializer serializer = new();
         SimulatePayload<TransactionForRpc>? payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(data);
 
         TestRpcBlockchain chain = await TestRpcBlockchain

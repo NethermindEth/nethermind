@@ -43,10 +43,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task NetVersionSuccessTest()
         {
             Enode enode = new(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
-            var blockTree = Substitute.For<IBlockTree>();
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
             blockTree.NetworkId.Returns(TestBlockchainIds.NetworkId);
             blockTree.ChainId.Returns(TestBlockchainIds.ChainId);
-            var syncConfig = Substitute.For<ISyncConfig>();
+            ISyncConfig syncConfig = Substitute.For<ISyncConfig>();
             syncConfig.PivotHash.Returns(Keccak.MaxValue.ToString());
             ISyncServer syncServer = new SyncServer(
                 Substitute.For<IWorldStateManager>(),

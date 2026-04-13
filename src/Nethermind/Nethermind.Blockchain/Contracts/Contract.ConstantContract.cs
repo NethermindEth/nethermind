@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Contracts
 
             public (T1, T2) Call<T1, T2>(CallInfo callInfo)
             {
-                var objects = Call(callInfo);
+                object[] objects = Call(callInfo);
                 return ((T1)objects[0], (T2)objects[1]);
             }
 
@@ -82,17 +82,17 @@ namespace Nethermind.Blockchain.Contracts
             {
                 lock (_readOnlyTxProcessorSource)
                 {
-                    using var scope = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader);
+                    using IReadOnlyTxProcessingScope scope = _readOnlyTxProcessorSource.Build(callInfo.ParentHeader);
                     return CallRaw(callInfo, scope);
                 }
             }
 
             protected virtual object[] CallRaw(CallInfo callInfo, IReadOnlyTxProcessingScope scope)
             {
-                var transaction = GenerateTransaction(callInfo);
+                Transaction transaction = GenerateTransaction(callInfo);
                 if (_contract.ContractAddress is not null && scope.WorldState.IsContract(_contract.ContractAddress))
                 {
-                    var result = CallCore(callInfo, scope.TransactionProcessor, transaction);
+                    byte[] result = CallCore(callInfo, scope.TransactionProcessor, transaction);
                     return callInfo.Result = _contract.DecodeReturnData(callInfo.FunctionName, result);
                 }
                 else if (callInfo.MissingContractResult is not null)

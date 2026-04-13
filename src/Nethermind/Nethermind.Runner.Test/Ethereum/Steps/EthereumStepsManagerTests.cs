@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             await using IContainer container = CreateNethermindEnvironment();
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
         }
 
@@ -49,7 +49,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
 
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
 
             try
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
             try
             {
                 await stepsManager.InitializeAll(source.Token);
@@ -91,7 +91,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
 
             Func<Task> act = () => stepsManager.InitializeAll(source.Token);
             await act.Should().ThrowAsync<InvalidConfigurationException>();
@@ -105,7 +105,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
             await stepsManager.InitializeAll(source.Token);
 
             container.Resolve<StepWithLogManagerInConstructor>().WasExecuted.Should().BeTrue();
@@ -120,8 +120,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             );
 
             EthereumStepsManager stepsManager = container.Resolve<EthereumStepsManager>();
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            var act = async () => await stepsManager.InitializeAll(source.Token);
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(1));
+            Func<Task> act = async () => await stepsManager.InitializeAll(source.Token);
             await act.Should().ThrowAsync<StepDependencyException>();
         }
 
@@ -187,7 +187,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .AddSingleton<EthereumStepsManager>()
                 .AddSingleton<ILogManager>(LimboLogs.Instance);
 
-            foreach (var stepInfo in stepInfos)
+            foreach (StepInfo stepInfo in stepInfos)
             {
                 builder.AddStep(stepInfo);
             }
@@ -294,7 +294,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
     public class StepE : IStep
     {
-        public TaskCompletionSource Waiter = new TaskCompletionSource();
+        public TaskCompletionSource Waiter = new();
 
         public virtual Task Execute(CancellationToken cancellationToken)
         {

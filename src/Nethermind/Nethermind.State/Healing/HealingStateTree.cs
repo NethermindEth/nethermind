@@ -32,7 +32,7 @@ public sealed class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 return base.Get(rawKey, rootHash);
@@ -50,7 +50,7 @@ public sealed class HealingStateTree : StateTree
         }
         catch (MissingTrieNodeException e)
         {
-            Hash256 fullPath = new Hash256(rawKey);
+            Hash256 fullPath = new(rawKey);
             if (Recover(e.Path, e.Hash, fullPath))
             {
                 base.Set(rawKey, value);

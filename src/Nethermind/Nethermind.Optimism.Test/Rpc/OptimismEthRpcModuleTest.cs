@@ -50,7 +50,7 @@ public class OptimismEthRpcModuleTest
         txSender.SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast)
             .Returns(returnThis: (TestItem.KeccakA, AcceptTxResult.Accepted));
 
-        EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(chainId: TestBlockchainIds.ChainId);
+        EthereumEcdsa ethereumEcdsa = new(chainId: TestBlockchainIds.ChainId);
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
             .WithBlockchainBridge(bridge)
@@ -118,7 +118,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByHash", TestItem.KeccakA);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -192,7 +192,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionByHash", TestItem.KeccakA);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -261,7 +261,7 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -339,7 +339,7 @@ public class OptimismEthRpcModuleTest
                 opSpecHelper: Substitute.For<IOptimismSpecHelper>())
             .Build();
 
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {
@@ -441,7 +441,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getBlockReceipts", new BlockParameter(block.Number));
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": [
@@ -537,7 +537,7 @@ public class OptimismEthRpcModuleTest
 
 
         string serialized = await rpcBlockchain.TestEthRpc("eth_getTransactionReceipt", tx.Hash);
-        var expected = $$"""
+        string expected = $$"""
                          {
                             "jsonrpc":"2.0",
                             "result": {

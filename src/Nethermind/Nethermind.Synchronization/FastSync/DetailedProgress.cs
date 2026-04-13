@@ -157,7 +157,7 @@ namespace Nethermind.Synchronization.FastSync
             };
 
             int contentLength = GetLength(progress);
-            RlpStream stream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            RlpStream stream = new(Rlp.LengthOfSequence(contentLength));
             stream.StartSequence(contentLength);
             foreach (long entry in progress)
             {

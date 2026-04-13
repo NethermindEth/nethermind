@@ -106,7 +106,7 @@ namespace Nethermind.Network.Discovery
         public async Task RunDiscoveryPersistenceCommit(CancellationToken cancellationToken)
         {
             if (_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
-            using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMilliseconds(_persistenceInterval));
+            using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_persistenceInterval));
 
             while (!cancellationToken.IsCancellationRequested && await timer.WaitForNextTickAsync(cancellationToken))
             {

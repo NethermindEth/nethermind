@@ -33,7 +33,7 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TestCaseSource))]
     public void Roundtrip_ExecutionPayloadForm_for_shard_blobs((Transaction Tx, string Description) testCase)
     {
-        RlpStream rlpStream = new RlpStream(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
+        RlpStream rlpStream = new(_txDecoder.GetLength(testCase.Tx, RlpBehaviors.None));
         _txDecoder.Encode(rlpStream, testCase.Tx);
         Rlp.ValueDecoderContext ctx = new(rlpStream.Data);
         Transaction? decoded = _txDecoder.Decode(ref ctx);
@@ -46,10 +46,10 @@ public partial class ShardBlobTxDecoderTests
     [Test]
     public void TestDecodeTamperedBlob()
     {
-        var bytes = Bytes.FromHexString(
+        byte[] bytes = Bytes.FromHexString(
             "b8aa03f8a7018001808252089400000000000000000000000000000000000000000180c001f841a00100000000000000000000000000000000000000000000000000000000000000a0010000000000000000000000000000000000000000000000000000000000000080a00fb9ad625df88e2fea9e088b69a31497f0d9b767067db8c03fd2453d7092e7bfa0086f2930db968d992d0fb06ddc903ca5522ba38bedc0530eb28b61082897efa1");
 
-        var tryDecode = () =>
+        Func<Transaction> tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(bytes);
             return _txDecoder.Decode(ref ctx);
@@ -91,12 +91,12 @@ public partial class ShardBlobTxDecoderTests
     [TestCaseSource(nameof(TamperedTestCaseSource))]
     public void Tampered_Roundtrip_ExecutionPayloadForm_for_shard_blobs(Transaction tx)
     {
-        var stream = new RlpStream(_txDecoder.GetLength(tx, RlpBehaviors.None));
+        RlpStream stream = new(_txDecoder.GetLength(tx, RlpBehaviors.None));
         _txDecoder.Encode(stream, tx);
         // Tamper with sequence length
         {
-            var itemsLength = 0;
-            foreach (var array in tx.BlobVersionedHashes!)
+            int itemsLength = 0;
+            foreach (byte[]? array in tx.BlobVersionedHashes!)
             {
                 itemsLength += Rlp.LengthOf(array);
             }
@@ -108,7 +108,7 @@ public partial class ShardBlobTxDecoderTests
         }
 
         // Decoding should fail
-        var tryDecode = () =>
+        Func<Transaction> tryDecode = () =>
         {
             Rlp.ValueDecoderContext ctx = new(stream.Data);
             return _txDecoder.Decode(ref ctx);

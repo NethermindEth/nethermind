@@ -30,7 +30,7 @@ public class DictionarySortedSet<TKey, TValue> : EnhancedSortedSet<KeyValuePair<
     {
 #pragma warning disable 8604
         // fixed C# 9
-        if (TryGetValue(new KeyValuePair<TKey, TValue>(key, default), out var found))
+        if (TryGetValue(new KeyValuePair<TKey, TValue>(key, default), out KeyValuePair<TKey, TValue> found))
 #pragma warning restore 8604
         {
             value = found.Value;

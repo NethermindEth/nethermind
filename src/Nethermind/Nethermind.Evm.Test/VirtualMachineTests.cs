@@ -459,8 +459,8 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var copied = traces.Entries.Last().Memory[0];
-        var origin = traces.Entries.Last().Memory[1];
+        string copied = traces.Entries.Last().Memory[0];
+        string origin = traces.Entries.Last().Memory[1];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * ((data.Length + 31) / 32) + GasCostOf.Memory * 1), "gas");
         Assert.That(origin, Is.EqualTo(copied));
@@ -483,7 +483,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0101020304050607080000000000000000000000000000000000000000000000"), "memory state");
@@ -524,7 +524,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             MainnetSpecProvider.CancunActivation)
             .BuildResult();
 
-        var result = traces.Entries.Last().Memory[0];
+        string result = traces.Entries.Last().Memory[0];
 
         Assert.That(traces.Entries[^2].GasCost, Is.EqualTo(GasCostOf.VeryLow + GasCostOf.VeryLow * (SLICE_SIZE + 31) / 32), "gas");
         Assert.That(result, Is.EqualTo("0102030405060708080000000000000000000000000000000000000000000000"), "memory state");

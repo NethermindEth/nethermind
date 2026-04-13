@@ -516,7 +516,7 @@ namespace Nethermind.Core.Extensions
 
         public static string ToBitString(this BitArray bits)
         {
-            var sb = new StringBuilder();
+            StringBuilder sb = new();
 
             for (int i = 0; i < bits.Count; i++)
             {
@@ -1151,7 +1151,7 @@ namespace Nethermind.Core.Extensions
             {
                 ReadOnlySpan<byte> span = bytes[index..];
 
-                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out var bytesConsumed);
+                OperationStatus status = Rune.DecodeFromUtf8(span, out Rune rune, out int bytesConsumed);
                 if (status == OperationStatus.Done)
                 {
                     if (!IsControlCharacter(rune))

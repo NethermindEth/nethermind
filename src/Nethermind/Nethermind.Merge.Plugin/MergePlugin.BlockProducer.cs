@@ -52,7 +52,7 @@ namespace Nethermind.Merge.Plugin
                     ? baseRunnerFactory.InitBlockProducerRunner(preMergeBlockProducer)
                     : null;
 
-                StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
+                StandardBlockProducerRunner postMergeRunner = new(
                     _api.ManualBlockProductionTrigger, _api.BlockTree!, mergeBlockProducer);
 
                 return new MergeBlockProducerRunner(preMergeRunner, postMergeRunner, _poSSwitcher);

@@ -126,7 +126,7 @@ public abstract class RefCountingDisposable : IDisposable
 
     public override string ToString()
     {
-        var leases = Volatile.Read(ref _leases.Value);
+        long leases = Volatile.Read(ref _leases.Value);
         return leases == Disposing ? "Disposed" : $"Leases: {leases}";
     }
 

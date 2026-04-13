@@ -20,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public BlockReward[] CalculateRewards(Block block)
         {
-            _blockRewards.TryGetForActivation(block.Number, out var blockReward);
+            _blockRewards.TryGetForActivation(block.Number, out BlockRewardInfo blockReward);
             return new[] { new BlockReward(block.Beneficiary, blockReward.Reward) };
         }
 
@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 {
                     blockRewardInfos.Add(new BlockRewardInfo(0, 0));
                 }
-                foreach (var threshold in blockRewards)
+                foreach (KeyValuePair<long, UInt256> threshold in blockRewards)
                 {
                     blockRewardInfos.Add(new BlockRewardInfo(threshold.Key, threshold.Value));
                 }

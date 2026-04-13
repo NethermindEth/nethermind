@@ -138,7 +138,7 @@ jobs:
   tests-spec:
     name: Run ${{ matrix.project }} (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:

@@ -24,7 +24,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             public ILocalDataSource<IEnumerable<Address>> GetWhitelistLocalDataSource() => new LocalDataSource<Address>(this, LocalData.GetWhitelist);
             public ILocalDataSource<IEnumerable<Destination>> GetPrioritiesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetPriorities);
             public ILocalDataSource<IEnumerable<Destination>> GetMinGasPricesLocalDataSource() => new LocalDataSource<Destination>(this, LocalData.GetMinGasPrices);
-            protected override LocalData DefaultValue => new LocalData();
+            protected override LocalData DefaultValue => new();
         }
 
         private class LocalDataSource<T> : ILocalDataSource<IEnumerable<T>>

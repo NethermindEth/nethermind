@@ -145,7 +145,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 lock (_syncLock)
                 {
-                    foreach (var item in _resultLog)
+                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
                     {
                         if (item.result == AddRangeResult.OK)
                         {

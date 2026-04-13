@@ -99,7 +99,7 @@ public class EraStore : IEraStore
 
         bool hasEraFile = false;
         _epochs = new();
-        foreach (var file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
+        foreach (string file in EraPathUtils.GetAllEraFiles(directory, networkName, fileSystem))
         {
             string[] parts = Path.GetFileName(file).Split(_eraSeparator);
             int epoch;

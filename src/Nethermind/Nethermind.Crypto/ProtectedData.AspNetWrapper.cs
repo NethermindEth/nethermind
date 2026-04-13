@@ -25,13 +25,13 @@ namespace Nethermind.Crypto
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                IDataProtector protector = GetProtector(scope, optionalEntropy);
                 return protector.Protect(userData);
             }
 
             public byte[] Unprotect(byte[] encryptedData, byte[] optionalEntropy, DataProtectionScope scope)
             {
-                var protector = GetProtector(scope, optionalEntropy);
+                IDataProtector protector = GetProtector(scope, optionalEntropy);
                 return protector.Unprotect(encryptedData);
             }
 
@@ -54,14 +54,14 @@ namespace Nethermind.Crypto
 
             private static IDataProtector GetMachineProtector(byte[] optionalEntropy)
             {
-                var provider = DataProtectionProvider.Create(AppName);
-                var purpose = CreatePurpose(optionalEntropy);
+                IDataProtectionProvider provider = DataProtectionProvider.Create(AppName);
+                string purpose = CreatePurpose(optionalEntropy);
                 return provider.CreateProtector(purpose);
             }
 
             private static string CreatePurpose(byte[] optionalEntropy)
             {
-                var result = BaseName + Convert.ToBase64String(optionalEntropy);
+                string result = BaseName + Convert.ToBase64String(optionalEntropy);
                 return Uri.EscapeDataString(result);
             }
         }

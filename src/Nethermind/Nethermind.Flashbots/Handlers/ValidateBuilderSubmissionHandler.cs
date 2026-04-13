@@ -205,7 +205,7 @@ public class ValidateSubmissionHandler
             return false;
         }
 
-        using var scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
+        using Scope<ProcessingEnv> scope = _blockProcessorEnv.BuildAndOverride(parentHeader);
         IWorldState worldState = scope.Component.WorldState;
         IBlockProcessor blockProcessor = scope.Component.BlockProcessor;
 

@@ -87,7 +87,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         {
             if (chainSpec.Parameters.TransactionPermissionContract is not null)
             {
-                var txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
+                ITxFilter txPermissionFilter = CreateFilter(new PermissionBasedTxFilter(
                     new VersionedTransactionPermissionContract(abiEncoder,
                         chainSpec.Parameters.TransactionPermissionContract,
                         chainSpec.Parameters.TransactionPermissionContractTransition ?? 0,

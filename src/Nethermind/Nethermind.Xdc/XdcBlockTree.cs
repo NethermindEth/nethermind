@@ -18,7 +18,6 @@ namespace Nethermind.Xdc;
 
 internal class XdcBlockTree : BlockTree
 {
-    private const int MaxSearchDepth = 1024;
     private readonly IXdcConsensusContext _xdcConsensus;
 
     public XdcBlockTree(
@@ -51,13 +50,6 @@ internal class XdcBlockTree : BlockTree
         }
         if (finalizedBlockInfo.BlockNumber >= header.Number)
         {
-            return AddBlockResult.InvalidBlock;
-        }
-        if (header.Number - finalizedBlockInfo.BlockNumber > MaxSearchDepth)
-        {
-            //Theoretically very deep reorgs could happen, if the chain doesn't finalize for a long time
-            //TODO Maybe this needs to be revisited later
-            Logger.Warn($"Deep reorg past {MaxSearchDepth} blocks detected! Rejecting block {header.ToString(BlockHeader.Format.Full)}");
             return AddBlockResult.InvalidBlock;
         }
         BlockHeader current = header;

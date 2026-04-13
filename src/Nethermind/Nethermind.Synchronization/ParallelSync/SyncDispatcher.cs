@@ -27,7 +27,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly string _feedName;
         private ISyncPeerPool SyncPeerPool { get; }
 
-        private readonly CountdownEvent _activeTasks = new CountdownEvent(1);
+        private readonly CountdownEvent _activeTasks = new(1);
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly SemaphoreSlim _concurrentProcessingSemaphore;
         private readonly TimeSpan _emptyRequestDelay;
@@ -312,7 +312,7 @@ namespace Nethermind.Synchronization.ParallelSync
                         newDormantStateTask = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     }
 
-                    var previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
+                    TaskCompletionSource<object> previous = Interlocked.Exchange(ref _dormantStateTask, newDormantStateTask);
                     previous?.TrySetResult(null);
                 }
             }

@@ -41,7 +41,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
     private ILogger _logger;
 
     private ISpecProvider _specProvider { get; }
-    private readonly EthereumEcdsa _ethereumEcdsa = new EthereumEcdsa(0);
+    private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly static VoteDecoder _voteDecoder = new();
 
     public QuorumCertificate HighestKnownCertificate => _context.HighestQC;
@@ -54,7 +54,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
             _context.HighestQC = qc;
         }
 
-        var proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
+        XdcBlockHeader proposedBlockHeader = (XdcBlockHeader)_blockTree.FindHeader(qc.ProposedBlockInfo.Hash);
         if (proposedBlockHeader is null)
             throw new IncomingMessageBlockNotFoundException(qc.ProposedBlockInfo.Hash, qc.ProposedBlockInfo.BlockNumber);
 
@@ -148,7 +148,7 @@ internal class QuorumCertificateManager : IQuorumCertificateManager
         }
 
         _context.HighestCommitBlock = new BlockRoundInfo(grandParentHeader.Hash, grandParentHeader.ExtraConsensusData.BlockRound, grandParentHeader.Number);
-        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Full)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
+        _logger.Info($"Committed block {grandParentHeader.ToString(BlockHeader.Format.Short)} round={grandParentHeader.ExtraConsensusData.BlockRound}");
         //Mark grand parent as finalized
         _blockTree.ForkChoiceUpdated(grandParentHeader.Hash, grandParentHeader.Hash);
         error = null;

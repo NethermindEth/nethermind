@@ -18,7 +18,7 @@ namespace Nethermind.KeyStore.ConsoleHelpers
         public SecureString ReadSecret(string secretDisplayName)
         {
             _consoleWrapper.WriteLine($"{secretDisplayName}:");
-            SecureString secureString = new SecureString();
+            SecureString secureString = new();
             do
             {
                 ConsoleKeyInfo key = _consoleWrapper.ReadKey(true);

@@ -120,7 +120,7 @@ namespace Nethermind.Synchronization.Test
             IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             ISyncServer syncServer = Substitute.For<ISyncServer>();
-            StubSyncPeer syncPeer = new StubSyncPeer(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
+            StubSyncPeer syncPeer = new(initialized, protocolVersion, session, serializer, nodeStatsManager, syncServer);
 
             syncPeer.HeadNumber = head;
 

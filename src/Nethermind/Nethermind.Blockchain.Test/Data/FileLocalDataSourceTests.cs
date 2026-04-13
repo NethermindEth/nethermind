@@ -22,11 +22,11 @@ public class FileLocalDataSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void correctly_reads_existing_file()
     {
-        using (var tempFile = TempPath.GetTempFile())
+        using (TempPath tempFile = TempPath.GetTempFile())
         {
             File.WriteAllText(tempFile.Path, GenerateStringJson("A", "B", "C"));
             // var x = new EthereumJsonSerializer().Serialize(new string []{"A", "B", "C"});
-            using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
+            using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
             fileLocalDataSource.Data.Should().BeEquivalentTo("A", "B", "C");
         }
     }
@@ -35,14 +35,14 @@ public class FileLocalDataSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task correctly_updates_from_existing_file()
     {
-        using (var tempFile = TempPath.GetTempFile())
+        using (TempPath tempFile = TempPath.GetTempFile())
         {
             await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
             int interval = 30;
-            using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval))
+            using (FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval))
             {
                 int changedRaised = 0;
-                var handle = new SemaphoreSlim(0);
+                SemaphoreSlim handle = new(0);
                 fileLocalDataSource.Changed += (sender, args) =>
                 {
                     changedRaised++;
@@ -65,11 +65,11 @@ public class FileLocalDataSourceTests
     [Ignore("flaky test")]
     public async Task correctly_updates_from_new_file()
     {
-        using (var tempFile = TempPath.GetTempFile())
-        using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 10))
+        using (TempPath tempFile = TempPath.GetTempFile())
+        using (FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 10))
         {
             bool changedRaised = false;
-            var handle = new SemaphoreSlim(0);
+            SemaphoreSlim handle = new(0);
             fileLocalDataSource.Changed += (sender, args) =>
             {
                 changedRaised = true;
@@ -87,10 +87,10 @@ public class FileLocalDataSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void loads_default_when_failed_loading_file()
     {
-        using var tempFile = TempPath.GetTempFile();
+        using TempPath tempFile = TempPath.GetTempFile();
         using (File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
         {
-            using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
+            using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance);
             fileLocalDataSource.Data.Should().BeEquivalentTo(default);
         }
     }
@@ -100,14 +100,14 @@ public class FileLocalDataSourceTests
     [Ignore("Causing repeated pains on GitHub actions.")]
     public async Task retries_loading_file()
     {
-        using (var tempFile = TempPath.GetTempFile())
+        using (TempPath tempFile = TempPath.GetTempFile())
         {
             await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A", "B", "C"));
             int interval = 30;
-            using var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
-            using (var file = File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+            using FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, interval);
+            using (FileStream file = File.Open(tempFile.Path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
             {
-                using (var writer = new StreamWriter(file, leaveOpen: true))
+                using (StreamWriter writer = new(file, leaveOpen: true))
                 {
                     await writer.WriteAsync(GenerateStringJson("A", "B", "C", "D"));
                 }
@@ -127,13 +127,13 @@ public class FileLocalDataSourceTests
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task loads_default_when_deleted_file()
     {
-        using (var tempFile = TempPath.GetTempFile())
+        using (TempPath tempFile = TempPath.GetTempFile())
         {
             await File.WriteAllTextAsync(tempFile.Path, GenerateStringJson("A"));
-            using (var fileLocalDataSource = new FileLocalDataSource<string[]>(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 50))
+            using (FileLocalDataSource<string[]> fileLocalDataSource = new(tempFile.Path, new EthereumJsonSerializer(), new RealFileSystem(), LimboLogs.Instance, 50))
             {
                 int changedRaised = 0;
-                var handle = new SemaphoreSlim(0);
+                SemaphoreSlim handle = new(0);
                 fileLocalDataSource.Changed += (sender, args) =>
                 {
                     changedRaised++;

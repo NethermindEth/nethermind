@@ -191,7 +191,7 @@ public class TaikoModule : Module
             .AddDecorator<IGasPriceOracle>((ctx, defaultGasPriceOracle) =>
             {
                 ISpecProvider specProvider = ctx.Resolve<ISpecProvider>();
-                var taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
+                TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)specProvider.GenesisSpec;
 
                 if (!taikoSpec.UseSurgeGasPriceOracle)
                     return defaultGasPriceOracle;
@@ -208,7 +208,7 @@ public class TaikoModule : Module
                     throw new ArgumentException("TaikoInboxAddress must be provided in the Surge configuration to compute the gas price");
                 }
 
-                var l1RpcClient = new BasicJsonRpcClient(
+                BasicJsonRpcClient l1RpcClient = new(
                     new Uri(surgeConfig.L1EthApiEndpoint),
                     ctx.Resolve<IJsonSerializer>(),
                     ctx.Resolve<ILogManager>());

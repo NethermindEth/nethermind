@@ -29,13 +29,13 @@ public class TotalDifficultyStrategyTests
 
         for (int i = 0; i < headers.Count - 1; i++)
         {
-            var header = headers[i].Header;
-            var parent = headers[i + 1].Header;
+            BlockHeader header = headers[i].Header;
+            BlockHeader parent = headers[i + 1].Header;
 
             parent.TotalDifficulty = strategy.ParentTotalDifficulty(header);
         }
 
-        foreach (var (header, expectedTotalDifficulty) in headers)
+        foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
             header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
         }
@@ -62,13 +62,13 @@ public class TotalDifficultyStrategyTests
 
         for (int i = 0; i < headers.Count - 1; i++)
         {
-            var header = headers[i].Header;
-            var parent = headers[i + 1].Header;
+            BlockHeader header = headers[i].Header;
+            BlockHeader parent = headers[i + 1].Header;
 
             parent.TotalDifficulty = strategy.ParentTotalDifficulty(header);
         }
 
-        foreach (var (header, expectedTotalDifficulty) in headers)
+        foreach ((BlockHeader? header, UInt256 expectedTotalDifficulty) in headers)
         {
             header.TotalDifficulty.Should().Be(expectedTotalDifficulty);
         }

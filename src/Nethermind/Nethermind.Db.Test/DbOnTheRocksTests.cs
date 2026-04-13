@@ -30,7 +30,7 @@ namespace Nethermind.Db.Test
     public class DbOnTheRocksTests
     {
         private RocksDbConfigFactory _rocksdbConfigFactory;
-        private DbConfig _dbConfig = new DbConfig();
+        private DbConfig _dbConfig = new();
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
 
         [SetUp]
@@ -145,7 +145,7 @@ namespace Nethermind.Db.Test
 
             Action act = () =>
             {
-                var configFactory = new RocksDbConfigFactory(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+                RocksDbConfigFactory configFactory = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
                 using DbOnTheRocks _ = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, configFactory, LimboLogs.Instance);
             };
 
@@ -166,7 +166,7 @@ namespace Nethermind.Db.Test
             if (Directory.Exists(DbPath)) Directory.Delete(DbPath, true);
             long sharedCacheSize = 10.KiB;
 
-            using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)sharedCacheSize);
+            using HyperClockCacheWrapper cache = new((ulong)sharedCacheSize);
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
             if (explicitCache)
             {
@@ -176,7 +176,7 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
                 _rocksdbConfigFactory, LimboLogs.Instance, sharedCache: cache.Handle);
 
-            Random rng = new Random();
+            Random rng = new();
             byte[] buffer = new byte[1024];
             for (int i = 0; i < 100; i++)
             {
@@ -202,7 +202,7 @@ namespace Nethermind.Db.Test
             _dbConfig.BlocksDbRocksDbOptions = "block_based_table_factory.block_size=512;block_based_table_factory.prepopulate_block_cache=kFlushOnly;";
 
             long cacheSize = 10.KiB;
-            using HyperClockCacheWrapper cache = new HyperClockCacheWrapper((ulong)cacheSize);
+            using HyperClockCacheWrapper cache = new((ulong)cacheSize);
 
             IRocksDbConfigFactory rocksDbConfigFactory = Substitute.For<IRocksDbConfigFactory>();
             rocksDbConfigFactory.GetForDatabase(Arg.Any<string>(), Arg.Any<string?>())
@@ -224,7 +224,7 @@ namespace Nethermind.Db.Test
             using DbOnTheRocks db = new("testBlockCache", GetRocksDbSettings("testBlockCache", DbNames.Blocks), _dbConfig,
                 rocksDbConfigFactory, LimboLogs.Instance);
 
-            Random rng = new Random();
+            Random rng = new();
             byte[] buffer = new byte[1024];
             for (int i = 0; i < 100; i++)
             {
@@ -320,7 +320,7 @@ namespace Nethermind.Db.Test
         [SetUp]
         public void Setup()
         {
-            RocksDbConfigFactory rocksdbConfigFactory = new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+            RocksDbConfigFactory rocksdbConfigFactory = new(new DbConfig(), new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
 
             if (Directory.Exists(DbPath))
             {
@@ -506,7 +506,7 @@ namespace Nethermind.Db.Test
             {
                 sortedKeyValue.FirstKey.Should().BeEquivalentTo(new byte[] { 0, 0, 0 });
                 sortedKeyValue.LastKey.Should().BeEquivalentTo(new byte[] { (byte)(entryCount - 1), (byte)(entryCount - 1), (byte)(entryCount - 1) });
-                using var view = sortedKeyValueStore.GetViewBetween([0], [9]);
+                using ISortedView view = sortedKeyValueStore.GetViewBetween([0], [9]);
 
                 i = 0;
                 while (view.MoveNext())
@@ -521,7 +521,7 @@ namespace Nethermind.Db.Test
 
             CheckView(sortedKeyValue);
 
-            using var snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
+            using IKeyValueStoreSnapshot snapshot = ((IKeyValueStoreWithSnapshot)_db).CreateSnapshot();
             for (i = 0; i < entryCount; i++)
             {
                 _db[[i, i, i]] = [(byte)(i + 1), (byte)(i + 1), (byte)(i + 1)];
@@ -637,7 +637,7 @@ namespace Nethermind.Db.Test
                 // The "Next" lexicographical key is mathematically [01, 00, 00, 00].
 
                 // Resize array to fit the new leading '1'
-                var overflowKey = new byte[nextKey.Length + 1];
+                byte[] overflowKey = new byte[nextKey.Length + 1];
                 overflowKey[0] = 1;
                 // The rest are already 0 from default initialization, so we return.
                 return overflowKey;

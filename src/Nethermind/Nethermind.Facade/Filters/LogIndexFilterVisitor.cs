@@ -138,7 +138,7 @@ public class LogIndexFilterVisitor(ILogIndexStorage storage, LogFilter filter, i
     {
         IEnumerator<int> result = null;
 
-        var topicIndex = 0;
+        int topicIndex = 0;
         foreach (TopicExpression expression in topicsFilter.Expressions)
         {
             if (Visit(topicIndex++, expression) is not { } next)

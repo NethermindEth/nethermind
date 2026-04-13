@@ -22,11 +22,11 @@ public class OverlayTrieStoreTests
     public void TrieStore_OverlayExistingStore()
     {
         IDbProvider dbProvider = TestMemDbProvider.Init();
-        TestRawTrieStore existingStore = new TestRawTrieStore(dbProvider.StateDb);
+        TestRawTrieStore existingStore = new(dbProvider.StateDb);
 
-        PatriciaTree patriciaTree = new PatriciaTree(existingStore, LimboLogs.Instance);
+        PatriciaTree patriciaTree = new(existingStore, LimboLogs.Instance);
         {
-            using var _ = existingStore.BeginBlockCommit(0);
+            using IBlockCommitter _ = existingStore.BeginBlockCommit(0);
             patriciaTree.Set(TestItem.Keccaks[0].Bytes, TestItem.Keccaks[0].BytesToArray());
             patriciaTree.Set(TestItem.Keccaks[1].Bytes, TestItem.Keccaks[1].BytesToArray());
             patriciaTree.Commit();
@@ -38,7 +38,7 @@ public class OverlayTrieStoreTests
         ITrieStore overlayStore = new OverlayTrieStore(readOnlyDbProvider.GetDb<IDb>(DbNames.State), existingStore.AsReadOnly());
 
         // Modify the overlay tree
-        PatriciaTree overlaidTree = new PatriciaTree(overlayStore, LimboLogs.Instance);
+        PatriciaTree overlaidTree = new(overlayStore, LimboLogs.Instance);
         overlaidTree.RootHash = originalRoot;
         overlaidTree.Get(TestItem.Keccaks[0].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[0].BytesToArray());
         overlaidTree.Get(TestItem.Keccaks[1].Bytes).ToArray().Should().BeEquivalentTo(TestItem.Keccaks[1].BytesToArray());

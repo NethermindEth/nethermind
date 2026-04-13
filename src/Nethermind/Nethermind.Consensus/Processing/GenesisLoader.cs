@@ -38,7 +38,7 @@ namespace Nethermind.Consensus.Processing
 
         private void DoLoad()
         {
-            using var _ = worldState.BeginScope(IWorldState.PreGenesis);
+            using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
 
             Block genesis = genesisBuilder.Build();
 

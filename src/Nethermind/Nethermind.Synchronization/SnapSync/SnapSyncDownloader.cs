@@ -25,7 +25,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             ISyncPeer peer = peerInfo.SyncPeer;
 
-            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out var handler))
+            if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer handler))
             {
                 try
                 {

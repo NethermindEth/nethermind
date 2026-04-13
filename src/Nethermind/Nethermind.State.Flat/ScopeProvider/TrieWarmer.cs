@@ -52,7 +52,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
     private int _pendingWakeUpSlots = 0;
     private int _activeSecondaryWorker = 0;
     private int _shouldWakeUpPrimaryWorker = 0;
-    private readonly ManualResetEventSlim _primaryWorkerLatch = new ManualResetEventSlim();
+    private readonly ManualResetEventSlim _primaryWorkerLatch = new();
 
     // Use a full semaphore instead of the slim variant to reduce the spin used and prefer to not wake up thread until
     // needed. Only the main worker spin.

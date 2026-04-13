@@ -125,7 +125,7 @@ public class NettyDiscoveryHandler : NettyDiscoveryBaseHandler, IMsgSender
         EndPoint address = packet.Sender;
 
         int size = content.ReadableBytes;
-        using var handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
+        using ArrayPoolDisposableReturn handle = ArrayPoolDisposableReturn.Rent(size, out byte[] msgBytes);
 
         content.ReadBytes(msgBytes, 0, size);
 

@@ -93,7 +93,7 @@ namespace Nethermind.Consensus.Clique
                 long block = (long)decoderContext.DecodeUInt256();
                 Address address = decoderContext.DecodeAddress();
                 bool authorize = decoderContext.DecodeBool();
-                Vote vote = new Vote(signer, block, address, authorize);
+                Vote vote = new(signer, block, address, authorize);
                 votes.Add(vote);
             }
             return votes;
@@ -110,7 +110,7 @@ namespace Nethermind.Consensus.Clique
                 Address address = decoderContext.DecodeAddress();
                 int votes = decoderContext.DecodeInt();
                 bool authorize = decoderContext.DecodeBool();
-                Tally tallyItem = new Tally(authorize);
+                Tally tallyItem = new(authorize);
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;
             }

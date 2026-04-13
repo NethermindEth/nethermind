@@ -31,7 +31,7 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
     }
 
     private static KestrelMetricServerOptions LegacyOptions(string hostname, int port, string url, CollectorRegistry? registry, X509Certificate2? certificate) =>
-        new KestrelMetricServerOptions
+        new()
         {
             Hostname = hostname,
             Port = (ushort)port,
@@ -68,11 +68,11 @@ public sealed class NethermindKestrelMetricServer : MetricHandler
 
     protected override Task StartServer(CancellationToken cancel)
     {
-        var s = _certificate is null ? string.Empty : "s";
-        var hostAddress = $"http{s}://{_hostname}:{_port}";
+        string s = _certificate is null ? string.Empty : "s";
+        string hostAddress = $"http{s}://{_hostname}:{_port}";
 
         // If the caller needs to customize any of this, they can just set up their own web host and inject the middleware.
-        var host = new HostBuilder()
+        IHost host = new HostBuilder()
             .ConfigureWebHost(builder =>
             {
                 builder

@@ -172,7 +172,7 @@ public class MergePluginTests
     [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
-        JsonRpcConfig jsonRpcConfig = new JsonRpcConfig()
+        JsonRpcConfig jsonRpcConfig = new()
         {
             Enabled = false,
             EnabledModules = new string[] { "eth", "subscribe" },

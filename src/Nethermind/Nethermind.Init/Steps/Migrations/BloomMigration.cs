@@ -23,7 +23,7 @@ namespace Nethermind.Init.Steps.Migrations
 {
     public class BloomMigration : IDatabaseMigration
     {
-        private static readonly BlockHeader EmptyHeader = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
+        private static readonly BlockHeader EmptyHeader = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.Zero, 0L, 0L, 0UL, []);
 
         private readonly IApiWithNetwork _api;
         private readonly ILogger _logger;
@@ -31,7 +31,7 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly ProgressLogger _progressLogger;
         private long _migrateCount;
         private Average[]? _averages;
-        private readonly StringBuilder _builder = new StringBuilder();
+        private readonly StringBuilder _builder = new();
         private readonly IBloomConfig _bloomConfig;
 
         public BloomMigration(IApiWithNetwork api)
@@ -116,7 +116,7 @@ namespace Nethermind.Init.Steps.Migrations
 
             if (_logger.IsInfo) _logger.Info(GetLogMessage("started"));
 
-            using (Timer timer = new Timer(1000) { Enabled = true })
+            using (Timer timer = new(1000) { Enabled = true })
             {
                 timer.Elapsed += (_, _) =>
                 {

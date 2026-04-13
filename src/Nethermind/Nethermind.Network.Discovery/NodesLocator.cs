@@ -164,7 +164,7 @@ public class NodesLocator : INodesLocator
         }
 
         int nodesCountAfterDiscovery = 0;
-        var buckets = _nodeTable.Buckets;
+        NodeBucket[] buckets = _nodeTable.Buckets;
         for (int i = 0; i < buckets.Length; i++)
         {
             nodesCountAfterDiscovery += buckets[i].BondedItemsCount;

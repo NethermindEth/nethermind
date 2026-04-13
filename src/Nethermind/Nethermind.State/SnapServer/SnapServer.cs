@@ -43,7 +43,7 @@ public class SnapServer : ISnapServer
     // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
-    private readonly AccountDecoder _decoder = new AccountDecoder();
+    private readonly AccountDecoder _decoder = new();
     private readonly ILastNStateRootTracker? _lastNStateRootTracker;
 
     private const long HardResponseByteLimit = 2000000;
@@ -105,7 +105,7 @@ public class SnapServer : ISnapServer
                     try
                     {
                         byte[] accountPathBytes = requestedPath[0];
-                        Hash256 storagePath = new Hash256(
+                        Hash256 storagePath = new(
                             accountPathBytes.Length == Hash256.Size
                                 ? accountPathBytes
                                 : accountPathBytes.PadRight(Hash256.Size));
@@ -182,7 +182,7 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), EmptyByteArrayList.Instance);
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        AccountCollector accounts = new AccountCollector();
+        AccountCollector accounts = new();
         (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
             rootHash,
             startingHash,
@@ -241,7 +241,7 @@ public class SnapServer : ISnapServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
+            PathWithStorageCollector pathWithStorageCollector = new();
             (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
@@ -295,7 +295,7 @@ public class SnapServer : ISnapServer
         try
         {
             ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
-            Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(bytes);
+            Rlp.ValueDecoderContext rlpContext = new(bytes);
             return bytes.IsNullOrEmpty() ? null : _decoder.Decode(ref rlpContext);
         }
         catch (TrieNodeException)

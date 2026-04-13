@@ -19,7 +19,7 @@ namespace Nethermind.KeyStore
         public string Message { get; set; }
         public override SecureString GetPassword(Address address)
         {
-            var password = _consoleUtils.ReadSecret(Message);
+            SecureString password = _consoleUtils.ReadSecret(Message);
             if (password is null && AlternativeProvider is not null)
                 password = AlternativeProvider.GetPassword(address);
 

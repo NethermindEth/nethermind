@@ -216,7 +216,7 @@ namespace Nethermind.Blockchain.Test
                     higherPriorityTransactionsSelected.Transactions.Where(tx => tx.GetBlobCount() == 1)
                     .OrderByDescending(t => t.MaxFeePerGas).Take(5));
 
-                var rnd = new Random(12345);
+                Random rnd = new(12345);
                 for (int i = 0; i < 20; i++)
                 {
                     yield return new TestCaseData(higherPriorityTransactionsSelected)
@@ -284,7 +284,7 @@ namespace Nethermind.Blockchain.Test
                 }
                 {
                     ProperTransactionsSelectedTestCase blobTxs = CreateTestCase();
-                    var txs = new List<Transaction>();
+                    List<Transaction> txs = new();
 
                     UInt256 nonce = 1;
                     AddTxs(txCount: 5, blobsPerTx: 5, account: 0, txs, ref nonce);

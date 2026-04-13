@@ -42,7 +42,7 @@ public static class XdcSort
         ArgumentNullException.ThrowIfNull(less);
 
         int length = x.Count;
-        var data = new LessSwap<T>(x, less);
+        LessSwap<T> data = new(x, less);
         QuickSort_func(data, 0, length, MaxDepth(length));
     }
 

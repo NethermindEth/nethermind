@@ -163,7 +163,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx0, tx1, tx2, tx3).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header));
+            BlockExecutionContext blCtx = new(block.Header, SpecProvider.GetSpec(block.Header));
             _processor.Execute(tx0, blCtx, tracer0);
 
             TestAllTracerWithOutput tracer = CreateTracer();

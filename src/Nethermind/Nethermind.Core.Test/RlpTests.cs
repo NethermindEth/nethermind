@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test
             for (int i = 0; i < 128; i++)
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(1));
-                var data = Rlp.Encode(item);
+                Rlp data = Rlp.Encode(item);
                 Rlp.ValueDecoderContext rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
@@ -85,7 +85,7 @@ namespace Nethermind.Core.Test
             for (int i = 128; i < 256; i++)
             {
                 Assert.That(Rlp.LengthOf(item), Is.EqualTo(2));
-                var data = Rlp.Encode(item);
+                Rlp data = Rlp.Encode(item);
                 Rlp.ValueDecoderContext rlp = new(data.Bytes);
                 Assert.That(rlp.DecodeByte(), Is.EqualTo(item));
 
@@ -299,13 +299,13 @@ namespace Nethermind.Core.Test
             Random.Shared.NextBytes(randomBytes);
 
             int requiredLength = Rlp.LengthOf(randomBytes) * 3;
-            RlpStream stream = new RlpStream(requiredLength);
+            RlpStream stream = new(requiredLength);
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
             stream.Encode(randomBytes);
 
             Memory<byte> memory = stream.Data.ToArray();
-            Rlp.ValueDecoderContext context = new Rlp.ValueDecoderContext(memory, sliceValue);
+            Rlp.ValueDecoderContext context = new(memory, sliceValue);
 
             for (int i = 0; i < 3; i++)
             {
@@ -348,9 +348,9 @@ namespace Nethermind.Core.Test
             const long minusBit = 1L << 63;
             HashSet<long> seen = [];
 
-            for (var i = 0; i < sizeof(long) * 8; i++)
+            for (int i = 0; i < sizeof(long) * 8; i++)
             {
-                var pow2 = 1L << i;
+                long pow2 = 1L << i;
 
                 TryYield(pow2);
                 TryYield(pow2 - 1);
@@ -368,9 +368,9 @@ namespace Nethermind.Core.Test
 
         private static IEnumerable<ulong> ULongValues()
         {
-            for (var i = 0; i < sizeof(long) * 8; i++)
+            for (int i = 0; i < sizeof(long) * 8; i++)
             {
-                var pow2 = 1UL << i;
+                ulong pow2 = 1UL << i;
 
                 yield return pow2;
                 yield return pow2 - 1;
@@ -447,12 +447,12 @@ namespace Nethermind.Core.Test
             data[0] = (byte)prefix;
 
             Rlp.ValueDecoderContext ctx = new(data);
-            var (pLen, cLen) = ctx.PeekPrefixAndContentLength();
+            (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
             pLen.Should().Be(expectedPrefixLen, $"ValueDecoderContext prefix length for {prefix}");
             cLen.Should().Be(expectedContentLen, $"ValueDecoderContext content length for {prefix}");
 
             ValueRlpStream vrs = new(data);
-            var (pLen2, cLen2) = vrs.PeekPrefixAndContentLength();
+            (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
             pLen2.Should().Be(expectedPrefixLen, $"ValueRlpStream prefix length for {prefix}");
             cLen2.Should().Be(expectedContentLen, $"ValueRlpStream content length for {prefix}");
         }
@@ -465,12 +465,12 @@ namespace Nethermind.Core.Test
             byte[] data = BuildLongFormRlp(prefix, contentLength);
 
             Rlp.ValueDecoderContext ctx = new(data);
-            var (pLen, cLen) = ctx.PeekPrefixAndContentLength();
+            (int pLen, int cLen) = ctx.PeekPrefixAndContentLength();
             pLen.Should().Be(1 + lengthOfLength, $"ValueDecoderContext prefix length for {prefix}");
             cLen.Should().Be(contentLength, $"ValueDecoderContext content length for {prefix}");
 
             ValueRlpStream vrs = new(data);
-            var (pLen2, cLen2) = vrs.PeekPrefixAndContentLength();
+            (int pLen2, int cLen2) = vrs.PeekPrefixAndContentLength();
             pLen2.Should().Be(1 + lengthOfLength, $"ValueRlpStream prefix length for {prefix}");
             cLen2.Should().Be(contentLength, $"ValueRlpStream content length for {prefix}");
         }
