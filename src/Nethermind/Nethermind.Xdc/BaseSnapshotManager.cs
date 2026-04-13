@@ -25,12 +25,10 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
     private readonly IBlockTree _blockTree;
     private readonly IMasternodeVotingContract _votingContract;
     private readonly ISpecProvider _specProvider;
-    private readonly IPenaltyHandler _penaltyHandler;
 
     protected BaseSnapshotManager(
         IDb snapshotDb,
         IBlockTree blockTree,
-        IPenaltyHandler penaltyHandler,
         IMasternodeVotingContract votingContract,
         ISpecProvider specProvider,
         BaseSnapshotDecoder<TSnapshot> snapshotDecoder,
@@ -42,13 +40,11 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotDb = snapshotDb;
         _votingContract = votingContract;
         _specProvider = specProvider;
-        _penaltyHandler = penaltyHandler;
         _snapshotDecoder = snapshotDecoder;
         _snapshotCache = new LruCache<Hash256, TSnapshot>(128, 128, cacheName);
     }
 
     protected IMasternodeVotingContract VotingContract => _votingContract;
-    protected IPenaltyHandler PenaltyHandler => _penaltyHandler;
 
     // Explicit interface implementation to return base Snapshot type
     Snapshot? ISnapshotManager.GetSnapshotByGapNumber(long gapNumber) => GetSnapshotByGapNumber(gapNumber);

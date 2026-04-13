@@ -14,8 +14,8 @@ namespace Nethermind.Xdc;
 
 internal class SnapshotManager : BaseSnapshotManager<Snapshot>
 {
-    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, new SnapshotDecoder(), "XDC Snapshot cache")
+    public SnapshotManager(IDb snapshotDb, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
+        : base(snapshotDb, blockTree, votingContract, specProvider, new SnapshotDecoder(), "XDC Snapshot cache")
     {
     }
 

@@ -14,9 +14,11 @@ namespace Nethermind.Xdc;
 
 internal class SubnetSnapshotManager : BaseSnapshotManager<SubnetSnapshot>
 {
+    private IPenaltyHandler PenaltyHandler { get; }
     public SubnetSnapshotManager(IDb snapshotDb, IBlockTree blockTree, IPenaltyHandler penaltyHandler, IMasternodeVotingContract votingContract, ISpecProvider specProvider)
-        : base(snapshotDb, blockTree, penaltyHandler, votingContract, specProvider, new SubnetSnapshotDecoder(), "XDC Subnet Snapshot cache")
+        : base(snapshotDb, blockTree, votingContract, specProvider, new SubnetSnapshotDecoder(), "XDC Subnet Snapshot cache")
     {
+        PenaltyHandler = penaltyHandler;
     }
 
     protected override SubnetSnapshot CreateSnapshot(XdcBlockHeader header, IXdcReleaseSpec spec)

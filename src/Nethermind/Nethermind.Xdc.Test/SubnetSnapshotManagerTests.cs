@@ -54,7 +54,7 @@ internal class SubnetSnapshotManagerTests
         // Arrange
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new SubnetSnapshot(gapBlock, header.Hash!, [Address.FromNumber(1)], [Address.FromNumber(2)]);
+        SubnetSnapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)], [Address.FromNumber(2)]);
         _snapshotManager.StoreSnapshot(snapshot);
         _blockTree.FindHeader(gapBlock).Returns(header);
 
@@ -71,7 +71,7 @@ internal class SubnetSnapshotManagerTests
         // Act
         const int gapBlock = 0;
         XdcBlockHeader header = Build.A.XdcBlockHeader().TestObject;
-        var snapshot = new Snapshot(gapBlock, header.Hash!, [Address.FromNumber(1)]);
+        SubnetSnapshot snapshot = new(gapBlock, header.Hash!, [Address.FromNumber(1)]);
 
         // Assert
         Assert.Throws<ArgumentException>(() => _snapshotManager.StoreSnapshot(snapshot));
@@ -92,7 +92,7 @@ internal class SubnetSnapshotManagerTests
         IPenaltyHandler penaltyHandler = Substitute.For<IPenaltyHandler>();
         penaltyHandler.HandlePenalties(Arg.Any<long>(), Arg.Any<Hash256>(), Arg.Any<Address[]>()).Returns(penalties);
 
-        SubnetSnapshotManager snapshotManager = new SubnetSnapshotManager(new MemDb(), blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), specProvider);
+        SubnetSnapshotManager snapshotManager = new(new MemDb(), blockTree, penaltyHandler, Substitute.For<IMasternodeVotingContract>(), specProvider);
 
         XdcBlockHeader header = Build.A.XdcBlockHeader()
             .WithGeneratedExtraConsensusData(1)
