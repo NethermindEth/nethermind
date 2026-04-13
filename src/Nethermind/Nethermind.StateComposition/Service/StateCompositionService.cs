@@ -266,8 +266,7 @@ internal partial class StateCompositionService : IDisposable
         // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
         // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
         Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
-        Metrics.UpdateFromDistribution(dist);
-        Metrics.UpdateFromDepthStats(_stateHolder.CurrentDepthStats);
+        Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
         Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
         Metrics.StateCompScanBlock = header.Number;
         Metrics.StateCompIncrementalBlock = header.Number;

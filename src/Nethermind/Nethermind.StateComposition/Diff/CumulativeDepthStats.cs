@@ -15,7 +15,7 @@ namespace Nethermind.StateComposition.Diff;
 ///
 /// Physical-depth storage: arrays are indexed by physical depth [0..15].
 /// The Geth +1 shift for ValueNodeCount is applied only at presentation time
-/// in <see cref="Metrics.UpdateFromDepthStats"/> — never stored here.
+/// in <see cref="Metrics.UpdateDepthDistribution"/> — never stored here.
 ///
 /// AccountShortNodes[d] = extensions + leaves at physical depth d (matches Geth ShortNode convention).
 /// AccountValueNodes[d] = leaves at physical depth d (unshifted).

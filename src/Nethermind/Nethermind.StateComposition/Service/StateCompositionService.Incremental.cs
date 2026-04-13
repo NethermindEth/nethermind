@@ -52,10 +52,10 @@ internal partial class StateCompositionService
             _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot, diff.DepthDelta);
 
             Metrics.UpdateFromCumulativeStats(updated);
-            // Skip the 149-setter publish when the depth distribution did not change.
+            // Skip the labeled-gauge republish when the depth distribution did not change.
             // Gauges retain their last published value, which is correct — nothing changed.
             if (_config.TrackDepthIncrementally && diff.DepthDelta?.IsEmpty() != true)
-                Metrics.UpdateFromDepthStats(_stateHolder.CurrentDepthStats);
+                Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
             Metrics.StateCompIncrementalBlock = head.Number;
             Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
             Metrics.StateCompDiffsApplied++;
