@@ -20,6 +20,32 @@ namespace Nethermind.Blockchain;
 
 public static class BlockTraceDumper
 {
+    public static string GetDiagnosticFilePath(string name) =>
+        Path.Combine(Path.GetTempPath(), name);
+
+    public static string GetInvalidBlockRlpFileName(Hash256 blockHash) =>
+        $"block_{blockHash}.rlp";
+
+    public static string GetReceiptsTraceFileName(Hash256 blockHash, bool isSuccess) =>
+        $"receipts_{blockHash}_{GetTraceState(isSuccess)}.txt";
+
+    public static string GetParityTraceFileName(Hash256 blockHash, bool isSuccess) =>
+        $"parityStyle_{blockHash}_{GetTraceState(isSuccess)}.txt";
+
+    public static string GetGethTraceFileName(Hash256 blockHash, bool isSuccess) =>
+        $"gethStyle_{blockHash}_{GetTraceState(isSuccess)}.txt";
+
+    public static IEnumerable<string> GetInvalidBlockDiagnosticPaths(Hash256 blockHash)
+    {
+        yield return GetDiagnosticFilePath(GetInvalidBlockRlpFileName(blockHash));
+        yield return GetDiagnosticFilePath(GetReceiptsTraceFileName(blockHash, isSuccess: false));
+        yield return GetDiagnosticFilePath(GetReceiptsTraceFileName(blockHash, isSuccess: true));
+        yield return GetDiagnosticFilePath(GetParityTraceFileName(blockHash, isSuccess: false));
+        yield return GetDiagnosticFilePath(GetParityTraceFileName(blockHash, isSuccess: true));
+        yield return GetDiagnosticFilePath(GetGethTraceFileName(blockHash, isSuccess: false));
+        yield return GetDiagnosticFilePath(GetGethTraceFileName(blockHash, isSuccess: true));
+    }
+
     public static void LogDiagnosticRlp(
         Block block,
         ILogger logger,
@@ -32,7 +58,7 @@ public static class BlockTraceDumper
             Hash256 blockHash = block.Hash;
             if (toFile)
             {
-                string fileName = $"block_{blockHash}.rlp";
+                string fileName = GetInvalidBlockRlpFileName(blockHash);
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 diagnosticFile.Write(rlp.Bytes);
                 if (logger.IsInfo)
@@ -59,7 +85,7 @@ public static class BlockTraceDumper
         {
             if (blockTracer is BlockReceiptsTracer receiptsTracer)
             {
-                fileName = $"receipts_{blockHash}_{state}.txt";
+                fileName = GetReceiptsTraceFileName(new Hash256(blockHash), isSuccess);
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
@@ -69,7 +95,7 @@ public static class BlockTraceDumper
 
             if (blockTracer is GethLikeBlockMemoryTracer gethTracer)
             {
-                fileName = $"gethStyle_{blockHash}_{state}.txt";
+                fileName = GetGethTraceFileName(new Hash256(blockHash), isSuccess);
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<GethLikeTxTrace> trace = gethTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
@@ -79,7 +105,7 @@ public static class BlockTraceDumper
 
             if (blockTracer is ParityLikeBlockTracer parityTracer)
             {
-                fileName = $"parityStyle_{blockHash}_{state}.txt";
+                fileName = GetParityTraceFileName(new Hash256(blockHash), isSuccess);
                 using FileStream diagnosticFile = GetFileStream(fileName);
                 IReadOnlyCollection<ParityLikeTxTrace> trace = parityTracer.BuildResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, trace, true);
@@ -121,9 +147,11 @@ public static class BlockTraceDumper
 
     private static FileStream GetFileStream(string name) =>
         new(
-            Path.Combine(Path.GetTempPath(), name),
+            GetDiagnosticFilePath(name),
             FileMode.Create,
             FileAccess.Write);
+
+    private static string GetTraceState(bool isSuccess) => isSuccess ? "success" : "failed";
 
     public static void LogTraceFailure(IBlockTracer blockTracer, BlockHeader? parent, Exception exception, ILogger logger)
     {

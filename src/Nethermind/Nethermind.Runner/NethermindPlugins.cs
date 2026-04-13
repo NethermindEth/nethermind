@@ -18,6 +18,7 @@ public static class NethermindPlugins
         typeof(Nethermind.Flashbots.Flashbots),
         typeof(Nethermind.HealthChecks.HealthChecksPlugin),
         typeof(Nethermind.Hive.HivePlugin),
+        typeof(Nethermind.InvalidChainDump.InvalidChainDumpPlugin),
         typeof(Nethermind.Init.Snapshot.SnapshotPlugin),
         typeof(Nethermind.Merge.AuRa.AuRaMergePlugin),
         typeof(Nethermind.Merge.Plugin.MergePlugin),
