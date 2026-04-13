@@ -934,12 +934,16 @@ public unsafe class EvmOpcodesBenchmark
 
     public class EvmOpcodesBenchmarkConfig : ManualConfig
     {
+        private static int GetEnvInt(string name, int defaultValue) =>
+            int.TryParse(Environment.GetEnvironmentVariable(name), out int v) ? v : defaultValue;
+
         public EvmOpcodesBenchmarkConfig()
         {
             // 3 process launches x 15 measurement iterations = 45 data points.
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
             // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
             // because the runner's DashboardConfig.AddJob is commented out.
+            // Override defaults via BENCHMARK_LAUNCH_COUNT, BENCHMARK_WARMUP_COUNT, BENCHMARK_ITERATION_COUNT.
             AddJob(Job.Default
                 .WithRuntime(CoreRuntime.Core10_0)
                 .WithGcForce(true)
@@ -947,9 +951,9 @@ public unsafe class EvmOpcodesBenchmark
                 .WithEnvironmentVariable("DOTNET_gcConcurrent", "0")
                 .WithInvocationCount(1)
                 .WithUnrollFactor(1)
-                .WithLaunchCount(3)
-                .WithWarmupCount(15)
-                .WithIterationCount(15));
+                .WithLaunchCount(GetEnvInt("BENCHMARK_LAUNCH_COUNT", 3))
+                .WithWarmupCount(GetEnvInt("BENCHMARK_WARMUP_COUNT", 15))
+                .WithIterationCount(GetEnvInt("BENCHMARK_ITERATION_COUNT", 15)));
             HideColumns(Column.Method);
             AddColumn(StatisticColumn.Min);
             AddColumn(StatisticColumn.Max);
