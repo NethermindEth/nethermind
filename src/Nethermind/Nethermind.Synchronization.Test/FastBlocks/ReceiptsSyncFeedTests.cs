@@ -132,7 +132,7 @@ public class ReceiptsSyncFeedTests
     }
 
     private ReceiptsSyncFeed CreateFeed() =>
-        new ReceiptsSyncFeed(
+        new(
             _specProvider,
             _blockTree,
             _receiptStorage,

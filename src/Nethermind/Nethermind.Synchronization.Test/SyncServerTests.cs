@@ -703,7 +703,7 @@ public class SyncServerTests
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null) =>
-            new SyncServer(
+            new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,

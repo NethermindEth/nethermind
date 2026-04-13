@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash) =>
-            new StorageRange()
+            new()
             {
                 StartingHash = startingHash,
                 Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }

@@ -724,10 +724,8 @@ public class SyncPeerPoolTests
         return peers;
     }
 
-    private async Task WaitForPeersInitialization(Context ctx)
-    {
+    private async Task WaitForPeersInitialization(Context ctx) =>
         await WaitFor(() => ctx.Pool.AllPeers.All(p => p.IsInitialized));
-    }
 
     private async Task WaitFor(Func<bool> isConditionMet)
     {

@@ -180,8 +180,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncConfig.FastSyncCatchUpHeightDelta = FastSyncCatchUpHeightDelta;
                 }
 
-                private void AddPeeringSetup(string name, params ISyncPeer[] peers)
-                {
+                private void AddPeeringSetup(string name, params ISyncPeer[] peers) =>
                     _peeringSetups.Add(() =>
                     {
                         foreach (ISyncPeer syncPeer in peers)
@@ -191,7 +190,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                         return name;
                     });
-                }
 
                 private ISyncPeer AddPeer(BlockHeader header, bool isInitialized = true, string clientType = "Nethermind")
                 {

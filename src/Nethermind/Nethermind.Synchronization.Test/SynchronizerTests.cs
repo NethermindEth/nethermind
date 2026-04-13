@@ -437,10 +437,8 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             await Container.DisposeAsync();
         }
 
-        public async ValueTask DisposeAsync()
-        {
+        public async ValueTask DisposeAsync() =>
             await StopAsync();
-        }
 
         public SyncingContext WaitALittle()
         {
@@ -464,15 +462,13 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     }
 
     [Test, Retry(3)]
-    public async Task Init_condition_are_as_expected()
-    {
+    public async Task Init_condition_are_as_expected() =>
         await When.Syncing
             .AfterProcessingGenesis()
             .BestKnownNumberIs(0)
             .Genesis.BlockIsKnown()
             .BestSuggested.BlockIsSameAsGenesis()
             .StopAsync();
-    }
 
     [Test, Retry(3)]
     public async Task Can_sync_with_one_peer_straight()

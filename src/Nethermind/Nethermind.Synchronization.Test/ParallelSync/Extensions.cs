@@ -19,7 +19,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             };
 
         public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver) =>
-            new FastBlocksFinishedState(syncProgressResolver);
+            new(syncProgressResolver);
 
         internal class FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
         {

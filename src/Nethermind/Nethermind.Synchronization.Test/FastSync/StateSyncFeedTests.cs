@@ -107,7 +107,7 @@ namespace Nethermind.Synchronization.Test.FastSync
         }
 
         private static Hash256 HashKey(byte[] k) =>
-            new Hash256(k[^32..]);
+            new(k[^32..]);
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
