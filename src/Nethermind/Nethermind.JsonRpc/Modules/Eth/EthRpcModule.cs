@@ -439,7 +439,7 @@ public partial class EthRpcModule(
             return ResultWrapper<BlockForRpc?>.Success(null);
         }
 
-        BlockForRpc blockForRpc = new BlockForRpc(block, returnFullTransactionObjects, _specProvider);
+        BlockForRpc blockForRpc = new(block, returnFullTransactionObjects, _specProvider);
         if (blockParameter.Type == BlockParameterType.Pending)
         {
             blockForRpc.Hash = null;
