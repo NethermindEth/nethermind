@@ -3,9 +3,11 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Contracts;
 using Nethermind.Xdc.RLP;
 using Nethermind.Xdc.Spec;
@@ -14,7 +16,7 @@ using System;
 
 namespace Nethermind.Xdc;
 
-internal class SnapshotManager : BaseSnapshotManager<Snapshot>
+internal class SnapshotManager : ISnapshotManager
 {
     private readonly LruCache<Hash256, Snapshot> _snapshotCache = new(128, 128, "XDC Snapshot cache");
 

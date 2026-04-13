@@ -13,18 +13,11 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal abstract class BaseEpochSwitchManager : IEpochSwitchManager
+internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager) : IEpochSwitchManager
 {
-    protected BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager)
-    {
-        _xdcSpecProvider = xdcSpecProvider;
-        _tree = tree;
-        _snapshotManager = snapshotManager;
-    }
-
-    protected ISpecProvider _xdcSpecProvider { get; }
-    protected IBlockTree _tree { get; }
-    protected ISnapshotManager _snapshotManager { get; }
+    protected ISpecProvider _xdcSpecProvider { get; } = xdcSpecProvider;
+    protected IBlockTree _tree { get; } = tree;
+    protected ISnapshotManager _snapshotManager { get; } = snapshotManager;
     protected LruCache<ulong, BlockRoundInfo> _round2EpochBlockInfo { get; set; } = new(XdcConstants.InMemoryRound2Epochs, nameof(_round2EpochBlockInfo));
     protected LruCache<ValueHash256, EpochSwitchInfo> _epochSwitches { get; set; } = new(XdcConstants.InMemoryEpochs, nameof(_epochSwitches));
 
@@ -34,12 +27,12 @@ internal abstract class BaseEpochSwitchManager : IEpochSwitchManager
 
     public EpochSwitchInfo? GetEpochSwitchInfo(XdcBlockHeader header)
     {
-        if (_epochSwitches.TryGet(header.Hash, out var epochSwitchInfo))
+        if (_epochSwitches.TryGet(header.Hash, out EpochSwitchInfo epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
 
-        var xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
+        IXdcReleaseSpec xdcSpec = _xdcSpecProvider.GetXdcSpec(header);
 
         while (!IsEpochSwitchAtBlock(header))
         {
@@ -62,7 +55,7 @@ internal abstract class BaseEpochSwitchManager : IEpochSwitchManager
             masterNodes = header.ValidatorsAddress.Value.ToArray();
         }
 
-        var snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
+        Snapshot snap = _snapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
         if (snap is null)
         {
             return null;
@@ -71,7 +64,7 @@ internal abstract class BaseEpochSwitchManager : IEpochSwitchManager
         Address[] penalties = ResolvePenalties(header, snap, xdcSpec);
         Address[] candidates = snap.NextEpochCandidates;
 
-        var standbyNodes = Array.Empty<Address>();
+        Address[] standbyNodes = Array.Empty<Address>();
 
         if (masterNodes.Length != candidates.Length)
         {
@@ -96,7 +89,7 @@ internal abstract class BaseEpochSwitchManager : IEpochSwitchManager
 
     public EpochSwitchInfo? GetEpochSwitchInfo(Hash256 hash)
     {
-        if (_epochSwitches.TryGet(hash, out var epochSwitchInfo))
+        if (_epochSwitches.TryGet(hash, out EpochSwitchInfo epochSwitchInfo))
         {
             return epochSwitchInfo;
         }
