@@ -762,7 +762,7 @@ namespace Nethermind.Blockchain
                 return level.BlockInfos[0].BlockHash;
             }
 
-            bool IsPostMerge(Block? block) => SpecProvider.TerminalTotalDifficulty is { } ttd
+            bool IsPostMerge(Block? block) => _specProvider.TerminalTotalDifficulty is { } ttd
                                               && (block?.TotalDifficulty ?? UInt256.Zero) >= ttd;
 
             // Post-merge: TD never increases, so the best-TD fallback cannot distinguish canonical from orphaned.
