@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
-using Nethermind.Evm;
 using Nethermind.Specs;
 
 namespace Nethermind.Evm.Test;
@@ -557,7 +556,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
 
         // Raw revert bytes without an Error(string) selector — GetErrorMessage returns null,
         // so Error falls back to the Revert sentinel.
-        Assert.That(receipt.Error, Is.EqualTo(TransactionSubstate.Revert));
+        Assert.That(receipt.Error, Is.EqualTo(Nethermind.Evm.TransactionSubstate.Revert));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }
