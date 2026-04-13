@@ -52,7 +52,7 @@ public class TestBlockProcessingModule : Module
     {
         public IBlockProducer InitBlockProducer()
         {
-            IBlockProducerEnv env = producerEnvFactory.Create();
+            IBlockProducerEnv env = producerEnvFactory.CreatePersistent();
             ILifetimeScope innerScope = rootLifetime.BeginLifetimeScope((builder) => builder
                 // Block producer specific things is in `IBlockProducerEnvFactory`.
                 // Yea, it can be added as `AddScoped` too and then mapped out, but its clearer this way.

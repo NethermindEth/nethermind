@@ -13,7 +13,7 @@ namespace Nethermind.Core
 
         public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals);
 
-        public static BlockBody WithOneTransactionOnly(Transaction tx) => new(new[] { tx }, null, null);
+        public static BlockBody WithOneTransactionOnly(Transaction tx) => new([tx], null);
 
         public Transaction[] Transactions { get; internal set; } = transactions ?? [];
 
