@@ -370,6 +370,9 @@ namespace Nethermind.Synchronization.ParallelSync
             //  earlier than this condition below which would cause a hang.
             bool notReachedFullSyncTransition = best.Header < best.TargetBlock - TotalSyncLag;
 
+            // Long range catch-up (switching back to fast/state sync when far behind) was removed.
+            // Replaying blocks in full sync is faster and doesn't depend on snap endpoints.
+            // Fast sync now only activates during initial sync when state was never downloaded.
             bool stateNotDownloadedYet = !best.StateDownloaded;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
 

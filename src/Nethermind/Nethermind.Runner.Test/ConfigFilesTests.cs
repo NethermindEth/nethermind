@@ -197,7 +197,9 @@ public class ConfigFilesTests : ConfigFileTestsBase
     [TestCase("mainnet ^archive", true)]
     public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
     {
+#pragma warning disable CS0612 // Type or member is obsolete
         Test<ISyncConfig, long?>(configWildcard, static c => c.FastSyncCatchUpHeightDelta, stickToFullSyncAfterFastSync ? 10_000_000_000 : 8192);
+#pragma warning restore CS0612
     }
 
     [TestCase("^spaceneth.json")]
