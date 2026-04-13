@@ -84,8 +84,8 @@ class SszType
     public bool IsStruct { get; set; }
 
     public bool HasNone { get; set; }
-    public IEnumerable<SszProperty>? UnionMembers { get => Kind == Kind.Union ? Members.Where(x => x.Name != "Selector") : null; }
-    public SszProperty? Selector { get => Members.FirstOrDefault(x => x.Name == "Selector"); }
+    public IEnumerable<SszProperty>? UnionMembers => Kind == Kind.Union ? Members.Where(x => x.Name != "Selector") : null;
+    public SszProperty? Selector => Members.FirstOrDefault(x => x.Name == "Selector");
 
     private int? length = null;
 
@@ -153,19 +153,15 @@ class SszType
         return result;
     }
 
-    private static string? GetNamespace(ITypeSymbol syntaxNode)
-    {
-        return syntaxNode.ContainingNamespace?.ToString();
-    }
+    private static string? GetNamespace(ITypeSymbol syntaxNode) =>
+        syntaxNode.ContainingNamespace?.ToString();
 
-    private static string GetTypeName(ITypeSymbol syntaxNode)
-    {
-        return string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
-    }
-    public override string ToString()
-    {
-        return $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
-    }
+    private static string GetTypeName(ITypeSymbol syntaxNode) =>
+        string.IsNullOrEmpty(syntaxNode.ContainingNamespace?.ToString()) ? syntaxNode.ToString() : syntaxNode.Name.Replace(syntaxNode.ContainingNamespace!.ToString() + ".", "");
+
+    public override string ToString() =>
+        $"type({Kind},{Name},{(IsVariable ? "v" : "f")})";
+
 
     private static bool GetIsCollectionItselfValue(ITypeSymbol typeSymbol)
     {
