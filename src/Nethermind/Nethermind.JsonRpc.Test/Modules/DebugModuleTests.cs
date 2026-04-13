@@ -95,14 +95,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_block_rlp_by_hash()
+    public async Task Get_raw_block_by_hash()
     {
         BlockDecoder decoder = new();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
         _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcSuccessResponse;
+        using JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -119,7 +119,6 @@ public class DebugModuleTests
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase("debug_getBlockRlp", 1)]
     [TestCase("debug_getRawBlock", "0x1")]
     public async Task Get_block_rlp(string method, object parameter)
     {
@@ -148,7 +147,6 @@ public class DebugModuleTests
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
-    [TestCase("debug_getBlockRlp", 1)]
     [TestCase("debug_getRawBlock", "0x1")]
     public async Task Get_block_rlp_when_missing(string method, object parameter)
     {
@@ -161,12 +159,12 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task Get_block_rlp_by_hash_when_missing()
+    public async Task Get_raw_block_by_hash_when_missing()
     {
         _debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
         DebugRpcModule rpcModule = CreateDebugRpcModule(_debugBridge);
-        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", Keccak.Zero) as JsonRpcErrorResponse;
+        using JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", Keccak.Zero) as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
     }

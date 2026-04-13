@@ -311,12 +311,6 @@ public class DebugRpcModule(
         throw new NotImplementedException();
     }
 
-    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
-        GetBlockRlpOrFail(new BlockParameter(blockNumber));
-
-    public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
-        GetBlockRlpOrFail(new BlockParameter(hash));
-
     public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)
     {
         throw new NotImplementedException();
