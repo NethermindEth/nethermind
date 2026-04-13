@@ -17,7 +17,12 @@ class SszProperty
 
         SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
 
-        SszProperty result = new() { Name = prop.Name, Type = type };
+        SszProperty result = new()
+        {
+            Name = prop.Name,
+            Type = type,
+            IsArrayProperty = prop.Type is IArrayTypeSymbol,
+        };
 
         AttributeData? fieldAttr = GetAttribute(attributes, nameof(SszFieldAttribute));
         if (fieldAttr is not null)
@@ -72,6 +77,7 @@ class SszProperty
 
     public required string Name { get; init; }
     public required SszType Type { get; init; }
+    public bool IsArrayProperty { get; init; }
     public int? FieldIndex { get; set; }
     public byte? SelectorValue { get; set; }
     public bool IsProgressiveList { get; set; }

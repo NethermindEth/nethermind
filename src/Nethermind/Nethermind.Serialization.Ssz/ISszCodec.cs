@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Ssz;
@@ -18,8 +17,8 @@ public interface ISszCodec<T> where T : ISszCodec<T>
     /// <summary>Returns the SSZ byte length of <paramref name="value"/>.</summary>
     static abstract int GetLength(T value);
 
-    /// <summary>Returns the total SSZ byte length of the collection <paramref name="items"/>, including offset table.</summary>
-    static abstract int GetLength(IReadOnlyCollection<T>? items);
+    /// <summary>Returns the total SSZ byte length of <paramref name="items"/>, including the offset table.</summary>
+    static abstract int GetLength(ReadOnlySpan<T> items);
 
     /// <summary>Decodes <paramref name="data"/> into <paramref name="value"/>.</summary>
     static abstract void Decode(ReadOnlySpan<byte> data, out T value);
@@ -34,20 +33,20 @@ public interface ISszCodec<T> where T : ISszCodec<T>
     static abstract void Encode(Span<byte> data, T value);
 
     /// <summary>Encodes the collection <paramref name="items"/> to a freshly allocated SSZ buffer.</summary>
-    static abstract byte[] Encode(IReadOnlyCollection<T>? items);
+    static abstract byte[] Encode(ReadOnlySpan<T> items);
 
     /// <summary>Encodes the collection <paramref name="items"/> into <paramref name="data"/>, which must already be sized for the result.</summary>
-    static abstract void Encode(Span<byte> data, IReadOnlyCollection<T>? items);
+    static abstract void Encode(Span<byte> data, ReadOnlySpan<T> items);
 
     /// <summary>Computes the SSZ hash-tree root of <paramref name="value"/>.</summary>
     static abstract void Merkleize(T value, out UInt256 root);
 
     /// <summary>Computes the hash-tree root of <paramref name="items"/> as an SSZ vector.</summary>
-    static abstract void MerkleizeVector(IReadOnlyList<T>? items, out UInt256 root);
+    static abstract void MerkleizeVector(ReadOnlySpan<T> items, out UInt256 root);
 
     /// <summary>Computes the hash-tree root of <paramref name="items"/> as an SSZ list with the given <paramref name="limit"/>.</summary>
-    static abstract void MerkleizeList(IReadOnlyList<T>? items, ulong limit, out UInt256 root);
+    static abstract void MerkleizeList(ReadOnlySpan<T> items, ulong limit, out UInt256 root);
 
     /// <summary>Computes the hash-tree root of <paramref name="items"/> as an SSZ progressive list (unbounded).</summary>
-    static abstract void MerkleizeProgressiveList(IReadOnlyList<T>? items, out UInt256 root);
+    static abstract void MerkleizeProgressiveList(ReadOnlySpan<T> items, out UInt256 root);
 }
