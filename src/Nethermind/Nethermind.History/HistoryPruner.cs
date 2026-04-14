@@ -432,6 +432,7 @@ public class HistoryPruner : IHistoryPruner
 
         if (!_enabled || !PruningIntervalHasElapsed())
         {
+            _logger.Warn($"Skipping historical block pruning enabled={_enabled} pruningIntervalHasElapsed={PruningIntervalHasElapsed()}.");
             return false;
         }
 
@@ -441,6 +442,7 @@ public class HistoryPruner : IHistoryPruner
         }
 
         cutoffTimestamp = CalculateCutoffTimestamp();
+        _logger.Warn("Historical block pruning cut off timestamp is " + cutoffTimestamp);
         return cutoffTimestamp is not null && (_lastPrunedTimestamp is null || cutoffTimestamp > _lastPrunedTimestamp);
     }
 
