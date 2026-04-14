@@ -20,10 +20,8 @@ public class EraETestModule(bool useRealValidator = false) : Module
 {
     public const string TestNetwork = "abc";
 
-    public static ContainerBuilder BuildContainerBuilder()
-    {
-        return new ContainerBuilder().AddModule(new EraETestModule());
-    }
+    public static ContainerBuilder BuildContainerBuilder() =>
+        new ContainerBuilder().AddModule(new EraETestModule());
 
     public static ContainerBuilder BuildContainerBuilderWithBlockTreeOfLength(int length)
     {
