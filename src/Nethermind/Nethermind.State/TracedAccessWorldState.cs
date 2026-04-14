@@ -340,9 +340,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private bool? AccountExistsCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+        if (accountChanges is not null && (accountChanges.NonceChanges.Count == 1 || accountChanges.BalanceChanges.Count == 1))
         {
-            // if nonce is changed in this tx must exist
+            // if nonce or balance is changed in this tx must exist
             // could have been created this tx
             return true;
         }
