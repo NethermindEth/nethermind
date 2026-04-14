@@ -18,8 +18,7 @@ namespace Ethereum.HexPrefix.Test
         public static IEnumerable<HexPrefixTest> LoadTests() =>
             TestLoader.LoadFromFile<Dictionary<string, HexPrefixTestJson>, HexPrefixTest>(
                 "hexencodetest.json",
-                c => c.Select(p => new HexPrefixTest(
-                    p.Key, p.Value.Seq.Select(x => (byte)x).ToArray(), p.Value.Term, p.Value.Out)));
+                c => c.Select(p => new HexPrefixTest(p.Key, p.Value.Seq.Select(x => (byte)x).ToArray(), p.Value.Term, p.Value.Out)));
 
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)

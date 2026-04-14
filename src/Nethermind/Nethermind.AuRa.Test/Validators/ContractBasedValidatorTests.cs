@@ -653,9 +653,7 @@ public class ContractBasedValidatorTests
     }
 
     private bool CheckTransaction(Transaction t, (Address Sender, byte[] TransactionData) transactionInfo) =>
-        t.SenderAddress == transactionInfo.Sender &&
-        t.To == _contractAddress &&
-        t.Data.AsArray() == transactionInfo.TransactionData;
+        t.SenderAddress == transactionInfo.Sender && t.To == _contractAddress && t.Data.AsArray() == transactionInfo.TransactionData;
 
     public class ConsecutiveInitiateChangeTestParameters
     {

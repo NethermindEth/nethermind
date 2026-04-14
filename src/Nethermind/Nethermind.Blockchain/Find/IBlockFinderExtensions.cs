@@ -25,8 +25,7 @@ namespace Nethermind.Blockchain.Find
             return finder.FindBlock(block.Header.ParentHash, options, blockNumber: block.Header.Number - 1);
         }
 
-        public static Block? FindParent(
-            this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
+        public static Block? FindParent(this IBlockFinder finder, BlockHeader blockHeader, BlockTreeLookupOptions options)
         {
             if (blockHeader.ParentHash is null)
             {
