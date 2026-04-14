@@ -69,7 +69,7 @@ namespace Nethermind.Synchronization.FastSync
                 NodeDataType.Storage when priority <= 0.5f => StorageItemsPriority0,
                 NodeDataType.Storage when priority <= 1.5f => StorageItemsPriority1,
                 NodeDataType.Storage => StorageItemsPriority2,
-                _ => throw new ArgumentOutOfRangeException()
+                _ => throw new ArgumentOutOfRangeException(nameof(stateSyncItem), stateSyncItem.NodeDataType, "Unknown node data type.")
             };
 
             selectedCollection.Push(stateSyncItem);

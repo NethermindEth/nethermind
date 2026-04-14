@@ -16,7 +16,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
+using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
@@ -37,6 +37,7 @@ using Nethermind.Taiko.BlockTransactionExecutors;
 using Nethermind.Taiko.Config;
 using Nethermind.Taiko.Rpc;
 using Nethermind.Taiko.Tdx;
+using Nethermind.Taiko.Precompiles;
 using Nethermind.Taiko.TaikoSpec;
 
 namespace Nethermind.Taiko;
@@ -61,41 +62,58 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
         _api.BlockPreprocessor.AddFirst(new MergeProcessingRecoveryStep(_api.Context.Resolve<IPoSSwitcher>()));
 
-        InitializeL1SloadIfEnabled();
+        InitializeL1Precompiles();
 
         return Task.CompletedTask;
     }
 
-    private void InitializeL1SloadIfEnabled()
+    private void InitializeL1Precompiles()
     {
         ArgumentNullException.ThrowIfNull(_api?.SpecProvider);
 
-        TaikoReleaseSpec taikoSpec = (TaikoReleaseSpec)_api.SpecProvider.GetFinalSpec();
-        ILogger logger = _api.Context.Resolve<ILogManager>().GetClassLogger<TaikoPlugin>();
+        if (_api.SpecProvider.GetFinalSpec() is not TaikoReleaseSpec taikoSpec)
+            throw new InvalidOperationException("TaikoPlugin requires TaikoChainSpecBasedSpecProvider");
 
-        if (!taikoSpec.IsRip7728Enabled)
-        {
-            if (logger.IsInfo) logger.Info("L1SLOAD (RIP-7728) is disabled in chainspec");
+        ILogManager logManager = _api.Context.Resolve<ILogManager>();
+        ILogger logger = logManager.GetClassLogger<TaikoPlugin>();
+
+        bool sloadEnabled = taikoSpec.IsRip7728Enabled;
+        bool staticCallEnabled = taikoSpec.IsL1StaticCallEnabled;
+
+        if (logger.IsInfo) logger.Info($"L1SLOAD (RIP-7728): {(sloadEnabled ? "enabled" : "disabled")}");
+        if (logger.IsInfo) logger.Info($"L1STATICCALL: {(staticCallEnabled ? "enabled" : "disabled")}");
+
+        if (!sloadEnabled && !staticCallEnabled)
             return;
-        }
-
-        if (logger.IsInfo) logger.Info("L1SLOAD (RIP-7728) is enabled in chainspec");
 
         ISurgeConfig surgeConfig = _api.Context.Resolve<ISurgeConfig>();
 
         if (string.IsNullOrEmpty(surgeConfig.L1EthApiEndpoint))
-            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1SLOAD precompile");
+            throw new ArgumentException($"{nameof(surgeConfig.L1EthApiEndpoint)} must be provided in the Surge configuration to use L1 precompiles");
 
-        if (logger.IsInfo) logger.Info($"L1SLOAD: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
+        if (logger.IsInfo) logger.Info($"L1 precompiles: using L1 endpoint: {surgeConfig.L1EthApiEndpoint}");
 
-        JsonRpcL1StorageProvider storageProvider = new(
-            surgeConfig.L1EthApiEndpoint,
+        // Single RPC client shared by both L1 precompile providers. Process-lifetime scope.
+        IJsonRpcClient l1RpcClient = new BasicJsonRpcClient(
+            new Uri(surgeConfig.L1EthApiEndpoint),
             _api.Context.Resolve<IJsonSerializer>(),
-            _api.Context.Resolve<ILogManager>());
+            logManager,
+            L1PrecompileConstants.L1RpcTimeout);
+        _api.DisposeStack.Push((IDisposable)l1RpcClient);
 
-        L1SloadPrecompile.L1StorageProvider = storageProvider;
-        L1SloadPrecompile.Logger = _api.Context.Resolve<ILogManager>().GetClassLogger<L1SloadPrecompile>();
-        if (logger.IsInfo) logger.Info("L1SLOAD: precompile fully initialized");
+        if (sloadEnabled)
+        {
+            L1SloadPrecompile.L1StorageProvider = new JsonRpcL1StorageProvider(l1RpcClient, logManager);
+            L1SloadPrecompile.Logger = logManager.GetClassLogger<L1SloadPrecompile>();
+            if (logger.IsInfo) logger.Info("L1SLOAD: precompile initialized");
+        }
+
+        if (staticCallEnabled)
+        {
+            L1StaticCallPrecompile.L1CallProvider = new JsonRpcL1CallProvider(l1RpcClient, logManager);
+            L1StaticCallPrecompile.Logger = logManager.GetClassLogger<L1StaticCallPrecompile>();
+            if (logger.IsInfo) logger.Info("L1STATICCALL: precompile initialized");
+        }
     }
 
     public bool MustInitialize => true;
@@ -123,6 +141,8 @@ public class TaikoModule : Module
             .AddSingleton<NethermindApi, TaikoNethermindApi>()
             .AddModule(new BaseMergePluginModule())
 
+            .AddSingleton<IPrecompileProvider, TaikoPrecompileProvider>()
+            .AddScoped<IVirtualMachine, TaikoEthereumVirtualMachine>()
             .AddSingleton<ISpecProvider, TaikoChainSpecBasedSpecProvider>()
             .Map<TaikoChainSpecEngineParameters, ChainSpec>(chainSpec =>
                 chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<TaikoChainSpecEngineParameters>())

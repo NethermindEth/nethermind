@@ -420,7 +420,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (value is null)
             {
-                throw new ArgumentNullException();
+                throw new ArgumentNullException(nameof(value));
             }
 
             return !_cacheMap.ContainsKey(key);

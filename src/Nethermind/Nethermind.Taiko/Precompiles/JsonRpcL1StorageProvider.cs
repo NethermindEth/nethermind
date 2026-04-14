@@ -7,34 +7,32 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Evm.Precompiles;
 
-namespace Nethermind.Taiko;
+namespace Nethermind.Taiko.Precompiles;
 
 /// <summary>
-/// JsonRpc-based implementation of IL1StorageProvider that uses eth_getStorageAt
-/// RPC to retrieve L1 storage values.
+/// Does not own <paramref name="rpcClient"/> — caller (TaikoPlugin) manages its lifetime.
 /// </summary>
-public class JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer jsonSerializer, ILogManager logManager) : IL1StorageProvider
+public class JsonRpcL1StorageProvider(IJsonRpcClient rpcClient, ILogManager logManager) : IL1StorageProvider
 {
-    private readonly IJsonRpcClient _rpcClient = new BasicJsonRpcClient(new Uri(l1EthApiEndpoint), jsonSerializer, logManager);
     private readonly ILogger _logger = logManager.GetClassLogger<JsonRpcL1StorageProvider>();
 
-    public UInt256? GetStorageValue(Address contractAddress, UInt256 storageKey, UInt256 blockNumber)
+    public UInt256? GetStorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey)
     {
         try
         {
             if (_logger.IsDebug) _logger.Debug($"L1SLOAD: sending eth_getStorageAt — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
 
-            string? response = _rpcClient.Post<string>("eth_getStorageAt", new object[]
+            // Sync-over-async: IPrecompile.Run() is synchronous by design.
+            // Acceptable for devnet; async precompile pipeline needed for production load.
+            string? response = rpcClient.Post<string>("eth_getStorageAt", new object[]
             {
                 contractAddress.ToString(),
                 storageKey.ToHexString(true),
                 blockNumber.ToHexString(true)
             }).GetAwaiter().GetResult();
 
-            if (response == null)
+            if (response is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"L1SLOAD: eth_getStorageAt returned null — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}");
                 return null;
@@ -46,8 +44,9 @@ public class JsonRpcL1StorageProvider(string l1EthApiEndpoint, IJsonSerializer j
         }
         catch (Exception ex)
         {
-            if (_logger.IsError) _logger.Error($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey}, block={blockNumber}, error={ex}");
+            if (_logger.IsError) _logger.Error($"L1SLOAD: eth_getStorageAt exception — contract={contractAddress}, key={storageKey.ToHexString(true)}, block={blockNumber.ToHexString(true)}, error={ex}");
             return null;
         }
     }
+
 }

@@ -902,6 +902,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
 
         state.Gas = gas;
 
+        return ExecutePrecompileCall(state, precompile, callData, spec);
+    }
+
+    /// <summary>
+    /// Executes a precompile's <see cref="IPrecompile.Run"/> method after base and data gas have been deducted.
+    /// Subclasses may override this to support precompile variants that compute and report their own dynamic
+    /// gas consumption after execution.
+    /// </summary>
+    protected virtual CallResult ExecutePrecompileCall(
+        VmState<TGasPolicy> state,
+        IPrecompile precompile,
+        ReadOnlyMemory<byte> callData,
+        IReleaseSpec spec)
+    {
         try
         {
             Result<byte[]> output = precompile.Run(callData, spec);
@@ -927,19 +941,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             if (_logger.IsError) LogExecutionException(precompile, exception);
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogExecutionException(IPrecompile precompile, Exception exception)
-            => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
-            => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        static string GetErrorString(IPrecompile precompile, string? error)
-            => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void LogExecutionException(IPrecompile precompile, Exception exception)
+        => _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
+        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected static string GetErrorString(IPrecompile precompile, string? error)
+        => $"Precompile {precompile.GetStaticName()} failed with error: {error}";
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,

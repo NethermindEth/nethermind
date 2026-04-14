@@ -83,7 +83,7 @@ public class TransactionForRpcTests
                 SetCodeTransactionForRpcTests.ValidateSchema(json);
                 break;
             default:
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(transaction), transaction.Type, "Unknown transaction type.");
         }
     }
 
