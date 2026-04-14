@@ -197,10 +197,7 @@ public class EraReader(E2StoreReader e2) : IAsyncEnumerable<(Block, TxReceipt[])
         return RlpDecoderExtensions.DecodeArray(_receiptDecoder, ref ctx, RlpBehaviors.None);
     }
 
-    public ValueHash256 CalculateChecksum()
-    {
-        return _fileReader.CalculateChecksum();
-    }
+    public ValueHash256 CalculateChecksum() => _fileReader.CalculateChecksum();
 
     public void Dispose() => _fileReader.Dispose();
 

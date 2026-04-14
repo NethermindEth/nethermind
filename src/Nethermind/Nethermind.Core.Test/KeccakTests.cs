@@ -95,10 +95,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void CompareSameInstance()
-        {
-            Keccak.Zero.CompareTo(Keccak.Zero).Should().Be(0);
-        }
+        public void CompareSameInstance() => Keccak.Zero.CompareTo(Keccak.Zero).Should().Be(0);
 
         [Test]
         public void Span()

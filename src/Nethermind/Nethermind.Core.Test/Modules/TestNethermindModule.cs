@@ -24,10 +24,7 @@ public class TestNethermindModule(IConfigProvider configProvider, ChainSpec chai
 {
     private readonly IReleaseSpec? _releaseSpec;
 
-    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider())
-    {
-        _releaseSpec = releaseSpec;
-    }
+    public TestNethermindModule(IReleaseSpec? releaseSpec = null) : this(new ConfigProvider()) => _releaseSpec = releaseSpec;
 
     public TestNethermindModule(params IConfig[] configs) : this(new ConfigProvider(configs))
     {

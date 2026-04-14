@@ -90,10 +90,7 @@ public class ProofRpcModuleTests(bool createZeroAccount, bool useNonZeroGasPrice
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _container.Dispose();
-    }
+    public void TearDown() => _container.Dispose();
 
     [TestCase(true)]
     [TestCase(false)]

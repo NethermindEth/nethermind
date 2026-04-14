@@ -142,10 +142,7 @@ namespace Nethermind.Db.Blooms
 
         public IEnumerable<Average> Averages => _storageLevels.Select(static l => l.Average);
 
-        public void Store(long blockNumber, Bloom bloom)
-        {
-            Store([(blockNumber, bloom)]);
-        }
+        public void Store(long blockNumber, Bloom bloom) => Store([(blockNumber, bloom)]);
 
         public void Store(IReadOnlyList<(long BlockNumber, Bloom Bloom)> blooms)
         {
@@ -233,10 +230,7 @@ namespace Nethermind.Db.Blooms
             }
         }
 
-        private void Set(Hash256 key, long value)
-        {
-            _bloomInfoDb.PutSpan(key.Bytes, value.ToBigEndianSpanWithoutLeadingZeros(out _));
-        }
+        private void Set(Hash256 key, long value) => _bloomInfoDb.PutSpan(key.Bytes, value.ToBigEndianSpanWithoutLeadingZeros(out _));
 
         public void Dispose()
         {
@@ -330,10 +324,7 @@ namespace Nethermind.Db.Blooms
                 _fileStore.Write(GetBucket(blockNumber), bloom.Bytes);
             }
 
-            public void Dispose()
-            {
-                _fileStore?.Dispose();
-            }
+            public void Dispose() => _fileStore?.Dispose();
         }
 
         private class BloomEnumeration(BloomStorage.BloomStorageLevel[] storageLevels, long fromBlock, long toBlock) : IBloomEnumeration

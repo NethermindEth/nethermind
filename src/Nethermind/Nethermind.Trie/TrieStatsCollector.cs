@@ -30,32 +30,23 @@ namespace Nethermind.Trie
             public readonly bool IsStorage => OldStyleTrieVisitContext.IsStorage;
             public readonly int Level => OldStyleTrieVisitContext.Level;
 
-            public readonly Context Add(ReadOnlySpan<byte> nibblePath)
+            public readonly Context Add(ReadOnlySpan<byte> nibblePath) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.Add(nibblePath),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibblePath)
-                };
-            }
+                PathContext = PathContext.Add(nibblePath),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibblePath)
+            };
 
-            public readonly Context Add(byte nibble)
+            public readonly Context Add(byte nibble) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.Add(nibble),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibble)
-                };
-            }
+                PathContext = PathContext.Add(nibble),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.Add(nibble)
+            };
 
-            public readonly Context AddStorage(in ValueHash256 storage)
+            public readonly Context AddStorage(in ValueHash256 storage) => new()
             {
-                return new Context()
-                {
-                    PathContext = PathContext.AddStorage(storage),
-                    OldStyleTrieVisitContext = OldStyleTrieVisitContext.AddStorage(storage)
-                };
-            }
+                PathContext = PathContext.AddStorage(storage),
+                OldStyleTrieVisitContext = OldStyleTrieVisitContext.AddStorage(storage)
+            };
         }
 
         public bool ExpectAccounts { get; }
@@ -81,10 +72,7 @@ namespace Nethermind.Trie
         {
         }
 
-        public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode)
-        {
-            return true;
-        }
+        public bool ShouldVisit(in Context nodeContext, in ValueHash256 nextNode) => true;
 
         public void VisitMissingNode(in Context nodeContext, in ValueHash256 nodeHash)
         {
@@ -191,14 +179,8 @@ namespace Nethermind.Trie
             _progressTracker.OnNodeVisited(context.Path, context.IsStorage, isLeaf);
         }
 
-        private static void IncrementLevel(Context context, long[] levels)
-        {
-            Interlocked.Increment(ref levels[context.Level]);
-        }
+        private static void IncrementLevel(Context context, long[] levels) => Interlocked.Increment(ref levels[context.Level]);
 
-        public void Finish()
-        {
-            _progressTracker.Finish();
-        }
+        public void Finish() => _progressTracker.Finish();
     }
 }

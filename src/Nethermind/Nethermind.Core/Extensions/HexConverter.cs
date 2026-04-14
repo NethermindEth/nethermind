@@ -733,37 +733,25 @@ namespace Nethermind.Core.Extensions
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AllCharsInVectorAreAscii(Vector128<ushort> vec)
-        {
-            return (vec & Vector128.Create(unchecked((ushort)~0x007F))) == Vector128<ushort>.Zero;
-        }
+        private static bool AllCharsInVectorAreAscii(Vector128<ushort> vec) => (vec & Vector128.Create(unchecked((ushort)~0x007F))) == Vector128<ushort>.Zero;
 
         /// <summary>
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AllCharsInVectorAreAscii(Vector128<byte> vec)
-        {
-            return (vec & Vector128.Create(unchecked((byte)~0x7F))) == Vector128<byte>.Zero;
-        }
+        private static bool AllCharsInVectorAreAscii(Vector128<byte> vec) => (vec & Vector128.Create(unchecked((byte)~0x7F))) == Vector128<byte>.Zero;
 
         /// <summary>
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AllCharsInVectorAreAscii(Vector256<byte> vec)
-        {
-            return (vec & Vector256.Create(unchecked((byte)~0x7F))) == Vector256<byte>.Zero;
-        }
+        private static bool AllCharsInVectorAreAscii(Vector256<byte> vec) => (vec & Vector256.Create(unchecked((byte)~0x7F))) == Vector256<byte>.Zero;
 
         /// <summary>
         /// Returns true iff the Vector128 represents 8 ASCII UTF-16 characters in machine endianness.
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool AllCharsInVectorAreAscii(Vector512<byte> vec)
-        {
-            return (vec & Vector512.Create(unchecked((byte)~0x7F))) == Vector512<byte>.Zero;
-        }
+        private static bool AllCharsInVectorAreAscii(Vector512<byte> vec) => (vec & Vector512.Create(unchecked((byte)~0x7F))) == Vector512<byte>.Zero;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Vector128<byte> AddSaturate(Vector128<byte> left, Vector128<byte> right)
@@ -827,16 +815,10 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte FromChar(char c)
-        {
-            return c >= CharToHexLookup.Length ? (byte)0xFF : CharToHexLookup[c];
-        }
+        public static byte FromChar(char c) => c >= CharToHexLookup.Length ? (byte)0xFF : CharToHexLookup[c];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static byte FromUpperChar(char c)
-        {
-            return c > 71 ? (byte)0xFF : CharToHexLookup[c];
-        }
+        public static byte FromUpperChar(char c) => c > 71 ? (byte)0xFF : CharToHexLookup[c];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int FromLowerChar(int c)
@@ -882,16 +864,10 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsHexUpperChar(int c)
-        {
-            return (uint)(c - '0') <= 9 || (uint)(c - 'A') <= ('F' - 'A');
-        }
+        public static bool IsHexUpperChar(int c) => (uint)(c - '0') <= 9 || (uint)(c - 'A') <= ('F' - 'A');
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool IsHexLowerChar(int c)
-        {
-            return (uint)(c - '0') <= 9 || (uint)(c - 'a') <= ('f' - 'a');
-        }
+        public static bool IsHexLowerChar(int c) => (uint)(c - '0') <= 9 || (uint)(c - 'a') <= ('f' - 'a');
 
         /// <summary>Map from an ASCII char to its hex value, e.g. arr['b'] == 11. 0xFF means it's not a hex digit.</summary>
         public static ReadOnlySpan<byte> CharToHexLookup => new byte[]

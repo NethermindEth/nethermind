@@ -56,10 +56,7 @@ internal sealed class HostingApplication(
     }
 
     // Execute the request
-    public Task ProcessRequestAsync(Context context)
-    {
-        return _application(context.HttpContext!);
-    }
+    public Task ProcessRequestAsync(Context context) => _application(context.HttpContext!);
 
     // Clean up the request
     public void DisposeContext(Context context, Exception? exception)
@@ -83,9 +80,6 @@ internal sealed class HostingApplication(
         public HttpContext? HttpContext { get; set; }
         public IDisposable? Scope { get; set; }
 
-        public void Reset()
-        {
-            Scope = null;
-        }
+        public void Reset() => Scope = null;
     }
 }

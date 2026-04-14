@@ -302,10 +302,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public virtual async Task getPayloadV2_should_fail_on_unknown_payload()
-    {
+    public virtual async Task getPayloadV2_should_fail_on_unknown_payload() =>
         await GetPayload_should_fail_on_unknown_payload(2);
-    }
 
     [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
     public virtual async Task

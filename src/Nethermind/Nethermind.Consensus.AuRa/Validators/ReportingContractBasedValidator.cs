@@ -62,10 +62,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private IReportingValidatorContract ValidatorContract { get; }
 
-        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause)
-        {
-            Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
-        }
+        public void ReportMalicious(Address validator, long blockNumber, byte[] proof, IReportingValidator.MaliciousCause cause) => Report(ReportType.Malicious, validator, blockNumber, proof, cause, CreateReportMaliciousTransaction);
 
         private Transaction CreateReportMaliciousTransaction(Address validator, long blockNumber, byte[] proof)
         {
@@ -93,10 +90,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             return transaction;
         }
 
-        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause)
-        {
-            Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
-        }
+        public void ReportBenign(Address validator, long blockNumber, IReportingValidator.BenignCause cause) => Report(ReportType.Benign, validator, blockNumber, [], cause.ToString(), CreateReportBenignTransaction);
 
         private Transaction CreateReportBenignTransaction(Address validator, long blockNumber, byte[] proof) => ValidatorContract.ReportBenign(validator, (UInt256)blockNumber);
 
@@ -208,10 +202,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] Validators => _contractValidator.Validators;
 
-        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
-        {
-            _contractValidator.OnBlockProcessingStart(block, options);
-        }
+        public void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None) => _contractValidator.OnBlockProcessingStart(block, options);
 
         public void OnBlockProcessingEnd(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {

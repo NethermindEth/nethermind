@@ -368,10 +368,7 @@ public class ArrayPoolListTests
     [Explicit("Crashes the test runner")]
     public void Finalizer_throws_if_not_disposed()
     {
-        static void CreateAndDrop()
-        {
-            _ = new ArrayPoolList<int>(1);
-        }
+        static void CreateAndDrop() => _ = new ArrayPoolList<int>(1);
 
         bool exception = false;
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>

@@ -209,14 +209,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
-        {
-            return TxTrie.CalculateProof(txs, index);
-        }
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
-        {
-            return ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
-        }
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
     }
 }

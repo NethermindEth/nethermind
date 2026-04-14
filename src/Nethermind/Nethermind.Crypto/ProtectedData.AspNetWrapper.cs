@@ -30,12 +30,9 @@ namespace Nethermind.Crypto
                 return protector.Unprotect(encryptedData);
             }
 
-            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
-            {
-                return scope == DataProtectionScope.CurrentUser
+            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy) => scope == DataProtectionScope.CurrentUser
                     ? GetUserProtector(optionalEntropy)
                     : GetMachineProtector(optionalEntropy);
-            }
 
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {

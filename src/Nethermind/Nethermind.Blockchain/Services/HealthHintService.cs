@@ -21,9 +21,6 @@ namespace Nethermind.Blockchain.Services
             return blockProcessorHint;
         }
 
-        public ulong? MaxSecondsIntervalForProducingBlocksHint()
-        {
-            return HealthHintConstants.InfinityHint;
-        }
+        public ulong? MaxSecondsIntervalForProducingBlocksHint() => HealthHintConstants.InfinityHint;
     }
 }

@@ -27,10 +27,7 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark(Baseline = true)]
-        public ParameterInfo[] Current()
-        {
-            return MethodInfo.GetParameters();
-        }
+        public ParameterInfo[] Current() => MethodInfo.GetParameters();
 
         [Benchmark]
         public ParameterInfo[] Cached()
@@ -50,10 +47,8 @@ namespace Nethermind.JsonRpc.Benchmark
         }
 
         [Benchmark]
-        public ParameterInfo[] Cached_concurrent()
-        {
+        public ParameterInfo[] Cached_concurrent() =>
             // ReSharper disable once InconsistentlySynchronizedField
-            return _concurrentParamsCache.GetOrAdd(MethodInfo, mi => mi.GetParameters());
-        }
+            _concurrentParamsCache.GetOrAdd(MethodInfo, mi => mi.GetParameters());
     }
 }

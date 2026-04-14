@@ -62,10 +62,8 @@ namespace Nethermind.Synchronization.Test
         }
 
         [TearDown]
-        public async Task TearDown()
-        {
-            await _container.DisposeAsync();
-        }
+        public Task TearDown() =>
+            _container.DisposeAsync().AsTask();
 
         private IDb _stateDb => _container.Resolve<IDbProvider>().StateDb;
         private IBlockTree _blockTree = null!;

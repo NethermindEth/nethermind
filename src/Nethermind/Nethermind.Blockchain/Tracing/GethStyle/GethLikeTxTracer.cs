@@ -32,10 +32,9 @@ public abstract class GethLikeTxTracer : TxTracer
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
 
-    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
-    {
+    public override void MarkAsSuccess(
+        Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
         Trace.ReturnValue = output;
-    }
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
@@ -43,21 +42,18 @@ public abstract class GethLikeTxTracer : TxTracer
         Trace.ReturnValue = output ?? [];
     }
 
-    protected static string? GetErrorDescription(EvmExceptionType evmExceptionType)
+    protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
-        return evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "BadInstruction",
-            EvmExceptionType.StackOverflow => "StackOverflow",
-            EvmExceptionType.StackUnderflow => "StackUnderflow",
-            EvmExceptionType.OutOfGas => "OutOfGas",
-            EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
-            EvmExceptionType.AccessViolation => "AccessViolation",
-            EvmExceptionType.StaticCallViolation => "StaticCallViolation",
-            _ => "Error"
-        };
-    }
+        EvmExceptionType.None => null,
+        EvmExceptionType.BadInstruction => "BadInstruction",
+        EvmExceptionType.StackOverflow => "StackOverflow",
+        EvmExceptionType.StackUnderflow => "StackUnderflow",
+        EvmExceptionType.OutOfGas => "OutOfGas",
+        EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
+        EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        _ => "Error"
+    };
 
     public virtual GethLikeTxTrace BuildResult() => Trace;
 }
@@ -98,10 +94,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options) : GethL
         }
     }
 
-    public override void SetOperationMemorySize(ulong newSize)
-    {
-        CurrentTraceEntry?.UpdateMemorySize(newSize);
-    }
+    public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
 
     public override void SetOperationStack(TraceStack stack)
     {

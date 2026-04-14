@@ -4,9 +4,6 @@ namespace Nethermind.Crypto
     {
         private readonly PrivateKey _privateKey = privateKey;
 
-        public PrivateKey Generate()
-        {
-            return _privateKey;
-        }
+        public PrivateKey Generate() => _privateKey;
     }
 }

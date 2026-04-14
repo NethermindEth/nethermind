@@ -29,28 +29,19 @@ namespace Nethermind.Core.Test
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void matches_previously_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
-        }
+        public void matches_previously_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
 
         [TestCase(1, 1)]
         [TestCase(1, 10)]
         [TestCase(10, 1)]
         [TestCase(10, 10)]
         [TestCase(100, 1)]
-        public void does_not_match_not_added_item(int count, int topicMax)
-        {
-            MatchingTest(() => GetLogEntries(count, topicMax),
+        public void does_not_match_not_added_item(int count, int topicMax) => MatchingTest(() => GetLogEntries(count, topicMax),
                 addedEntries => GetLogEntries(count, topicMax,
                 addedEntries.Sum(a => a.Topics.Length)), false);
-        }
 
         [Test]
-        public void empty_does_not_match_any_item()
-        {
-            MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
-        }
+        public void empty_does_not_match_any_item() => MatchingTest(Array.Empty<LogEntry>, static addedEntries => GetLogEntries(100, 10), false);
 
         public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
         {

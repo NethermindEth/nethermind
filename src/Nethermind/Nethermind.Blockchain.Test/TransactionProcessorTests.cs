@@ -60,10 +60,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [TearDown]
-    public void Teardown()
-    {
-        _stateCloser.Dispose();
-    }
+    public void Teardown() => _stateCloser.Dispose();
 
     [Test]
     public void Can_process_simple_transaction()

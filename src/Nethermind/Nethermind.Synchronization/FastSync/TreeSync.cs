@@ -402,10 +402,7 @@ namespace Nethermind.Synchronization.FastSync
             return (true, false);
         }
 
-        public void ResetStateRoot(SyncFeedState currentState)
-        {
-            ResetStateRoot(_blockNumber, _rootNode, currentState);
-        }
+        public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
@@ -505,10 +502,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public DetailedProgress GetDetailedProgress()
-        {
-            return _data;
-        }
+        public DetailedProgress GetDetailedProgress() => _data;
 
         private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool retry = false)
         {
@@ -752,7 +746,13 @@ namespace Nethermind.Synchronization.FastSync
             {
                 Account? account = verificationContext.GetAccount(updatedAddress);
 
-                if (account?.StorageRoot is not null
+                if (account?.StorageRoot == Keccak.EmptyTreeHash)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} is empty, ensuring flat storage cleared");
+                    _store.EnsureStorageEmpty(updatedAddress);
+                    dependentItem.Counter--;
+                }
+                else if (account?.StorageRoot is not null
                     && AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
@@ -979,6 +979,9 @@ namespace Nethermind.Synchronization.FastSync
                         }
                         else
                         {
+                            TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                            Hash256 address = finalPath.Path.ToCommitment();
+                            _store.EnsureStorageEmpty(address);
                             dependentItem.Counter--;
                         }
 

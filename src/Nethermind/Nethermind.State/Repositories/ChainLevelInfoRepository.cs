@@ -93,9 +93,6 @@ namespace Nethermind.State.Repositories
                 .ToPooledList(data.Length);
         }
 
-        void IClearableCache.ClearCache()
-        {
-            _blockInfoCache.Clear();
-        }
+        void IClearableCache.ClearCache() => _blockInfoCache.Clear();
     }
 }

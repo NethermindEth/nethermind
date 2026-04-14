@@ -247,10 +247,7 @@ internal static class RlpHelpers
         return result;
 
         [DoesNotReturn]
-        static void ThrowInvalidData()
-        {
-            throw new RlpException("Length starts with 0");
-        }
+        static void ThrowInvalidData() => throw new RlpException("Length starts with 0");
     }
 
     [DoesNotReturn, StackTraceHidden]

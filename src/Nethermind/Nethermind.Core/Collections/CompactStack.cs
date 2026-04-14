@@ -25,10 +25,7 @@ public class CompactStack<T>(ObjectPool<CompactStack<T>.Node>? nodePool = null)
     {
         private readonly int _nodeSize = nodeSize;
 
-        public Node Create()
-        {
-            return new Node(_nodeSize);
-        }
+        public Node Create() => new(_nodeSize);
 
         public bool Return(Node obj)
         {

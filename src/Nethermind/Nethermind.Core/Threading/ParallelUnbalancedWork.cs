@@ -124,10 +124,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
     /// Initializes a new instance of the <see cref="ParallelUnbalancedWork"/> class.
     /// </summary>
     /// <param name="data">The shared data for the parallel work.</param>
-    private ParallelUnbalancedWork(Data data)
-    {
-        _data = data;
-    }
+    private ParallelUnbalancedWork(Data data) => _data = data;
 
     /// <summary>
     /// Executes the parallel work item.
@@ -335,10 +332,7 @@ public class ParallelUnbalancedWork : IThreadPoolWorkItem
             /// Finalizes the thread-local data.
             /// </summary>
             /// <param name="value">The thread-local data to finalize.</param>
-            public void Finally(TValue value)
-            {
-                @finally?.Invoke(value);
-            }
+            public void Finally(TValue value) => @finally?.Invoke(value);
         }
     }
 }

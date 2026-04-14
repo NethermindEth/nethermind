@@ -234,10 +234,7 @@ namespace Nethermind.Db.FullPruning
             ClearOldDb(oldDb);
         }
 
-        protected virtual void ClearOldDb(IDb oldDb)
-        {
-            oldDb.Clear();
-        }
+        protected virtual void ClearOldDb(IDb oldDb) => oldDb.Clear();
 
         private void FinishPruning(PruningContext pruningContext, bool success)
         {
@@ -253,20 +250,11 @@ namespace Nethermind.Db.FullPruning
             public bool DuplicateReads { get; } = duplicateReads;
             private readonly FullPruningDb _db = db;
 
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-            {
-                _db.Duplicate(CloningDb, key, value, flags);
-            }
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => _db.Duplicate(CloningDb, key, value, flags);
 
-            public IWriteBatch StartWriteBatch()
-            {
-                return CloningDb.StartWriteBatch();
-            }
+            public IWriteBatch StartWriteBatch() => CloningDb.StartWriteBatch();
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return CloningDb.Get(key, flags);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => CloningDb.Get(key, flags);
 
             /// <inheritdoc />
             public void Commit()
@@ -276,10 +264,7 @@ namespace Nethermind.Db.FullPruning
             }
 
             /// <inheritdoc />
-            public void MarkStart()
-            {
-                Metrics.StateDbPruning = 1;
-            }
+            public void MarkStart() => Metrics.StateDbPruning = 1;
 
             public CancellationTokenSource CancellationTokenSource { get; } = new();
 

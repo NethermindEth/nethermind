@@ -64,10 +64,7 @@ namespace Nethermind.Blockchain.Filters
             AddBlock(e.Block);
         }
 
-        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e)
-        {
-            AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
-        }
+        private void OnTransactionProcessed(object sender, TxProcessedEventArgs e) => AddReceipts(e.TxReceipt, e.BlockHeader.Timestamp);
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
         {

@@ -48,10 +48,8 @@ public class SyncDispatcherTests
             public override UInt256? TotalDifficulty => totalDifficulty;
         }
 
-        public void Free(SyncPeerAllocation syncPeerAllocation)
-        {
+        public void Free(SyncPeerAllocation syncPeerAllocation) =>
             _peerSemaphore.Release();
-        }
 
         public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts contexts)
         {
@@ -66,15 +64,11 @@ public class SyncDispatcherTests
         }
 
         public Task<int?> EstimateRequestLimit(RequestType bodies, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts blocks,
-            CancellationToken token)
-        {
-            return Task.FromResult<int?>(null);
-        }
+            CancellationToken token) =>
+            Task.FromResult<int?>(null);
 
-        public void WakeUpAll()
-        {
+        public void WakeUpAll() =>
             throw new NotImplementedException();
-        }
 
         public IEnumerable<PeerInfo> AllPeers { get; } = Array.Empty<PeerInfo>();
         public IEnumerable<PeerInfo> InitializedPeers { get; } = Array.Empty<PeerInfo>();
@@ -102,15 +96,11 @@ public class SyncDispatcherTests
         {
         }
 
-        public Task StopAsync()
-        {
-            return Task.CompletedTask;
-        }
+        public Task StopAsync() =>
+            Task.CompletedTask;
 
-        public PeerInfo? GetPeer(Node node)
-        {
-            return null;
-        }
+        public PeerInfo? GetPeer(Node node) =>
+            null;
 
         public event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock = static delegate { };
 
@@ -159,15 +149,11 @@ public class SyncDispatcherTests
         private readonly ManualResetEvent _responseLock = new(true);
         private readonly TaskCompletionSource _handleResponseCalled = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public void LockResponse()
-        {
+        public void LockResponse() =>
             _responseLock.Reset();
-        }
 
-        public void UnlockResponse()
-        {
+        public void UnlockResponse() =>
             _responseLock.Set();
-        }
 
         public override SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
@@ -192,10 +178,8 @@ public class SyncDispatcherTests
             return SyncResponseHandlingResult.OK;
         }
 
-        public Task WaitForHandleResponse()
-        {
-            return _handleResponseCalled.Task;
-        }
+        public Task WaitForHandleResponse() =>
+            _handleResponseCalled.Task;
 
         public override bool IsMultiFeed { get; } = isMultiFeed;
         public override AllocationContexts Contexts => AllocationContexts.All;

@@ -200,10 +200,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepLong : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
-        {
-            await Task.Delay(100000, cancellationToken);
-        }
+        public async Task Execute(CancellationToken cancellationToken) => await Task.Delay(100000, cancellationToken);
 
         public StepLong(NethermindApi runnerContext)
         {
@@ -231,18 +228,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepWithSameBaseStep() : BaseStep
     {
-        public override Task Execute(CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public override Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public class StepForever : IStep
     {
-        public async Task Execute(CancellationToken cancellationToken)
-        {
-            await Task.Delay(100000, cancellationToken);
-        }
+        public async Task Execute(CancellationToken cancellationToken) => await Task.Delay(100000, cancellationToken);
 
         public StepForever(NethermindApi runnerContext)
         {
@@ -251,10 +242,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepA : IStep
     {
-        public Task Execute(CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
 
         public StepA(NethermindApi runnerContext)
         {
@@ -279,18 +267,12 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public abstract class StepC : IStep
     {
-        public virtual Task Execute(CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public virtual Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public abstract class StepD : IStep
     {
-        public virtual Task Execute(CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public virtual Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     [RunnerStepDependencies(dependencies: [], dependents: [typeof(StepB)])]
@@ -298,10 +280,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     {
         public TaskCompletionSource Waiter = new();
 
-        public virtual Task Execute(CancellationToken cancellationToken)
-        {
-            return Waiter.Task;
-        }
+        public virtual Task Execute(CancellationToken cancellationToken) => Waiter.Task;
     }
 
     /// <summary>
@@ -313,10 +292,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
 
-        public override async Task Execute(CancellationToken cancellationToken)
-        {
-            await Task.Run(static () => throw new TestException());
-        }
+        public override async Task Execute(CancellationToken cancellationToken) => await Task.Run(static () => throw new TestException());
     }
 
     public class StepCStandard : StepC
@@ -328,10 +304,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class FailedConstructorWithInvalidConfigurationStep : StepC
     {
-        public FailedConstructorWithInvalidConfigurationStep()
-        {
-            throw new InvalidConfigurationException("Invalid config", -1);
-        }
+        public FailedConstructorWithInvalidConfigurationStep() => throw new InvalidConfigurationException("Invalid config", -1);
     }
 
     class TestException : Exception

@@ -50,10 +50,8 @@ public class RbuilderRpcModuleTests
     }
 
     [TearDown]
-    public async Task TearDown()
-    {
+    public async Task TearDown() =>
         await _container.DisposeAsync();
-    }
 
     [Test]
     public async Task Test_getCodeByHash()

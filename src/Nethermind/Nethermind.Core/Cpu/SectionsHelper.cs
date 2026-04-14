@@ -30,16 +30,13 @@ internal static partial class SectionsHelper
         return values;
     }
 
-    public static List<Dictionary<string, string>> ParseSections(string? content, char separator)
-    {
+    public static List<Dictionary<string, string>> ParseSections(string? content, char separator) =>
         // wmic doubles the carriage return character due to a bug.
         // Therefore, the * quantifier should be used to workaround it.
-        return
-            ParseRegex().Split(content ?? "")
+        ParseRegex().Split(content ?? "")
                 .Select(s => ParseSection(s, separator))
                 .Where(s => s.Count > 0)
                 .ToList();
-    }
 
     [GeneratedRegex("(\r*\n){2,}")]
     private static partial Regex ParseRegex();

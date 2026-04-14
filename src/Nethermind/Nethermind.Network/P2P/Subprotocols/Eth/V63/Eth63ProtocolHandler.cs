@@ -75,10 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override string Name => "eth63";
 
-        protected virtual void Handle(ReceiptsMessage msg, long size)
-        {
-            _receiptsRequests.Handle((msg.TxReceipts, size), size);
-        }
+        protected virtual void Handle(ReceiptsMessage msg, long size) => _receiptsRequests.Handle((msg.TxReceipts, size), size);
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
@@ -97,10 +94,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
-        protected virtual void Handle(NodeDataMessage msg, int size)
-        {
-            _nodeDataRequests.Handle(msg.Data, size);
-        }
+        protected virtual void Handle(NodeDataMessage msg, int size) => _nodeDataRequests.Handle(msg.Data, size);
 
         public override Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {

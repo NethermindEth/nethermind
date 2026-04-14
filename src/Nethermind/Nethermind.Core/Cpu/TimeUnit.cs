@@ -40,10 +40,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         NanosecondAmount = nanosecondAmount;
     }
 
-    public TimeInterval ToInterval(long value = 1L)
-    {
-        return new TimeInterval(value, this);
-    }
+    public TimeInterval ToInterval(long value = 1L) => new(value, this);
 
     public static TimeUnit GetBestTimeUnit(params double[] values)
     {
@@ -65,10 +62,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         return All.Last();
     }
 
-    public static double Convert(double value, TimeUnit from, TimeUnit to)
-    {
-        return value * (double)from.NanosecondAmount / (double)(to ?? GetBestTimeUnit(value)).NanosecondAmount;
-    }
+    public static double Convert(double value, TimeUnit from, TimeUnit to) => value * (double)from.NanosecondAmount / (double)(to ?? GetBestTimeUnit(value)).NanosecondAmount;
 
     public bool Equals(TimeUnit? other)
     {
@@ -110,10 +104,7 @@ public class TimeUnit : IEquatable<TimeUnit>
         return Equals((TimeUnit)obj);
     }
 
-    public override int GetHashCode()
-    {
-        return (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
-    }
+    public override int GetHashCode() => (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
 
     public static bool operator ==(TimeUnit left, TimeUnit right)
     {

@@ -90,10 +90,7 @@ public class AssociativeCacheSingleOpBenchmarks : CacheBenchmarkBase
     public Account? AssociativeCache_Get_Hit() => _assoc.Get(in _keys[500]);
 
     [Benchmark]
-    public bool AssociativeCache_TryGetNoRefresh_Hit()
-    {
-        return _assoc.TryGetNoRefresh(in _keys[500], out _);
-    }
+    public bool AssociativeCache_TryGetNoRefresh_Hit() => _assoc.TryGetNoRefresh(in _keys[500], out _);
 
     // ==================== Get (Miss) ====================
 

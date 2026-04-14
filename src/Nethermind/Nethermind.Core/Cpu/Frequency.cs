@@ -27,50 +27,23 @@ public readonly struct Frequency(double hertz)
     {
     }
 
-    public TimeInterval ToResolution()
-    {
-        return TimeInterval.Second / Hertz;
-    }
+    public TimeInterval ToResolution() => TimeInterval.Second / Hertz;
 
-    public double ToHz()
-    {
-        return this / Hz;
-    }
+    public double ToHz() => this / Hz;
 
-    public double ToKHz()
-    {
-        return this / KHz;
-    }
+    public double ToKHz() => this / KHz;
 
-    public double ToMHz()
-    {
-        return this / MHz;
-    }
+    public double ToMHz() => this / MHz;
 
-    public double ToGHz()
-    {
-        return this / GHz;
-    }
+    public double ToGHz() => this / GHz;
 
-    public static Frequency FromHz(double value)
-    {
-        return Hz * value;
-    }
+    public static Frequency FromHz(double value) => Hz * value;
 
-    public static Frequency FromKHz(double value)
-    {
-        return KHz * value;
-    }
+    public static Frequency FromKHz(double value) => KHz * value;
 
-    public static Frequency FromMHz(double value)
-    {
-        return MHz * value;
-    }
+    public static Frequency FromMHz(double value) => MHz * value;
 
-    public static Frequency FromGHz(double value)
-    {
-        return GHz * value;
-    }
+    public static Frequency FromGHz(double value) => GHz * value;
 
     public static implicit operator Frequency(double value)
     {
@@ -124,28 +97,13 @@ public readonly struct Frequency(double hertz)
         return result2;
     }
 
-    public static bool TryParseHz(string s, out Frequency freq)
-    {
-        return TryParse(s, FrequencyUnit.Hz, out freq);
-    }
+    public static bool TryParseHz(string s, out Frequency freq) => TryParse(s, FrequencyUnit.Hz, out freq);
 
-    public static bool TryParseKHz(string s, out Frequency freq)
-    {
-        return TryParse(s, FrequencyUnit.KHz, out freq);
-    }
+    public static bool TryParseKHz(string s, out Frequency freq) => TryParse(s, FrequencyUnit.KHz, out freq);
 
-    public static bool TryParseMHz(string s, out Frequency freq)
-    {
-        return TryParse(s, FrequencyUnit.MHz, out freq);
-    }
+    public static bool TryParseMHz(string s, out Frequency freq) => TryParse(s, FrequencyUnit.MHz, out freq);
 
-    public static bool TryParseGHz(string s, out Frequency freq)
-    {
-        return TryParse(s, FrequencyUnit.GHz, out freq);
-    }
+    public static bool TryParseGHz(string s, out Frequency freq) => TryParse(s, FrequencyUnit.GHz, out freq);
 
-    public override string ToString()
-    {
-        return Hertz + " " + FrequencyUnit.Hz.Name;
-    }
+    public override string ToString() => Hertz + " " + FrequencyUnit.Hz.Name;
 }

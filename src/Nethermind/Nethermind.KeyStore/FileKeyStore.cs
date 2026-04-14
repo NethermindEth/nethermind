@@ -215,10 +215,7 @@ namespace Nethermind.KeyStore
             return (result == Result.Success ? new ProtectedPrivateKey(key, _config.KeyStoreDirectory, _cryptoRandom) : null, result);
         }
 
-        public Result StoreKey(Address address, KeyStoreItem keyStoreItem)
-        {
-            return PersistKey(address, keyStoreItem);
-        }
+        public Result StoreKey(Address address, KeyStoreItem keyStoreItem) => PersistKey(address, keyStoreItem);
 
         public Result StoreKey(Address address, byte[] keyContent, SecureString password)
         {
@@ -285,10 +282,7 @@ namespace Nethermind.KeyStore
             return StoreKey(address, keyStoreItem);
         }
 
-        public Result StoreKey(PrivateKey key, SecureString password)
-        {
-            return StoreKey(key.Address, key.KeyBytes, password);
-        }
+        public Result StoreKey(PrivateKey key, SecureString password) => StoreKey(key.Address, key.KeyBytes, password);
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
         {

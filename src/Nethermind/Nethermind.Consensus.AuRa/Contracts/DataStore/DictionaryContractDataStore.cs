@@ -61,10 +61,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
                 logManager,
                 localDataSource);
 
-        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore)
-        {
-            ContractDataStore = contractDataStore;
-        }
+        private DictionaryContractDataStore(ContractDataStore<T> contractDataStore) => ContractDataStore = contractDataStore;
 
         public bool TryGetValue(BlockHeader header, T key, out T value)
         {
@@ -75,9 +72,6 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         public IEnumerable<T> GetItemsFromContractAtBlock(BlockHeader blockHeader) => ContractDataStore.GetItemsFromContractAtBlock(blockHeader);
 
-        public void Dispose()
-        {
-            ContractDataStore?.Dispose();
-        }
+        public void Dispose() => ContractDataStore?.Dispose();
     }
 }

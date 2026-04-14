@@ -203,11 +203,9 @@ public sealed class BeaconHeadersSyncFeed(
         if (mergeWhenInserted) _chainMerged = true;
     }
 
-    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header)
-    {
+    protected override UInt256? DetermineParentTotalDifficulty(BlockHeader header) =>
         // Beacon header don't seem to care about TD.
-        return header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
+        header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
             ? header.TotalDifficulty - header.Difficulty
             : null;
-    }
 }

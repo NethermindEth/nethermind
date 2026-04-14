@@ -310,10 +310,7 @@ public class ChildCacheTests
     private TrieNodeCache.ChildCache _cache = null!;
 
     [SetUp]
-    public void SetUp()
-    {
-        _cache = new TrieNodeCache.ChildCache(1024);
-    }
+    public void SetUp() => _cache = new TrieNodeCache.ChildCache(1024);
 
     [Test]
     public void TryGet_ReturnsNotFound_WhenCacheEmpty()

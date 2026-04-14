@@ -40,15 +40,9 @@ namespace Nethermind.Wallet
             }
         }
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            throw new NotSupportedException();
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => throw new NotSupportedException();
 
-        public Address[] GetAccounts()
-        {
-            return _keys.Keys.ToArray();
-        }
+        public Address[] GetAccounts() => _keys.Keys.ToArray();
 
         public Address NewAccount(SecureString passphrase)
         {
@@ -110,10 +104,7 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _isUnlocked.TryGetValue(address, out bool unlocked) && unlocked;
 
-        private bool CheckPassword(Address address, SecureString passphrase)
-        {
-            return _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
-        }
+        private bool CheckPassword(Address address, SecureString passphrase) => _passwords[address] == AnyPassword || passphrase?.Unsecure() == _passwords[address];
 
         public Signature Sign(Hash256 message, Address address)
         {

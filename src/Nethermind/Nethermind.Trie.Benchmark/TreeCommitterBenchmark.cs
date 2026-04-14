@@ -11,10 +11,7 @@ namespace Nethermind.Trie.Benchmark
     [DryJob(RuntimeMoniker.NetCoreApp31)]
     public class TreeStoreBenchmark
     {
-        static TreeStoreBenchmark()
-        {
-            _ = LimboLogs.Instance.GetClassLogger<TreeStoreBenchmark>(); // lazy-init
-        }
+        static TreeStoreBenchmark() => _ = LimboLogs.Instance.GetClassLogger<TreeStoreBenchmark>(); // lazy-init
 
         // public readonly struct Param
         // {
@@ -55,10 +52,10 @@ namespace Nethermind.Trie.Benchmark
         [Benchmark]
         public TrieStore Trie_committer_with_one_node()
         {
-            TrieNode trieNode = new TrieNode(NodeType.Unknown); // 56B
+            TrieNode trieNode = new(NodeType.Unknown); // 56B
 
             ITrieNodeCache trieNodeCache = new TrieNodeCache(_logManager);
-            TrieStore treeStore = new TrieStore(
+            TrieStore treeStore = new(
                 trieNodeCache,
                 _whateverDb,
                 new DepthAndMemoryBased(128, 1.MB),

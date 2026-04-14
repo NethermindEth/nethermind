@@ -22,10 +22,7 @@ public class DebugTracerTests : VirtualMachineTestsBase
     private GethLikeTxMemoryTracer GethLikeTxTracer => new(Build.A.Transaction.TestObject, GethTraceOptions.Default);
 
     [SetUp]
-    public override void Setup()
-    {
-        base.Setup();
-    }
+    public override void Setup() => base.Setup();
 
     // Match VirtualMachine's AsAlignedSpan: the pinned DataStack array may not start
     // at a 32-byte boundary, so the VM applies an alignment offset we must replicate.

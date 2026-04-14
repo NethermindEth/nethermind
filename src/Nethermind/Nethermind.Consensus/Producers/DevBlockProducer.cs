@@ -54,10 +54,7 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public void Dispose()
-        {
-            BlockTree.NewHeadBlock -= OnNewHeadBlock;
-        }
+        public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;
 
         private class RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator) : IDifficultyCalculator
         {

@@ -14,10 +14,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 public class BlockRewardConverter : JsonConverter<SortedDictionary<long, UInt256>>
 {
     public override void Write(Utf8JsonWriter writer, SortedDictionary<long, UInt256> value,
-        JsonSerializerOptions options)
-    {
-        throw new NotSupportedException();
-    }
+        JsonSerializerOptions options) => throw new NotSupportedException();
 
     public override SortedDictionary<long, UInt256> Read(ref Utf8JsonReader reader, Type typeToConvert,
         JsonSerializerOptions options)

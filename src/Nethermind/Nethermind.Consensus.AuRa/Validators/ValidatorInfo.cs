@@ -8,10 +8,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 {
     public class ValidatorInfo(long finalizingBlockNumber, long previousFinalizingBlockNumber, Address[] validators)
     {
-        static ValidatorInfo()
-        {
-            Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
-        }
+        static ValidatorInfo() => Rlp.RegisterDecoder(typeof(ValidatorInfo), new ValidatorInfoDecoder());
 
         public long FinalizingBlockNumber { get; } = finalizingBlockNumber;
         public long PreviousFinalizingBlockNumber { get; } = previousFinalizingBlockNumber;

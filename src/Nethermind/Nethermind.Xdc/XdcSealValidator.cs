@@ -19,10 +19,7 @@ internal class XdcSealValidator(IMasternodesCalculator masternodesCalculator, IE
     private readonly EthereumEcdsa _ethereumEcdsa = new(0); //Ignore chainId since we don't sign transactions here
     private readonly XdcHeaderDecoder _headerDecoder = new();
 
-    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
-    {
-        return ValidateParams(parent, header, out _);
-    }
+    public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false) => ValidateParams(parent, header, out _);
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, out string error)
     {

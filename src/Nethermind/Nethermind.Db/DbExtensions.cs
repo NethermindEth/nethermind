@@ -9,10 +9,7 @@ namespace Nethermind.Db
 {
     public static class DbExtensions
     {
-        public static ReadOnlyDb AsReadOnly(this IDb db, bool createInMemoryWriteStore)
-        {
-            return new(db, createInMemoryWriteStore);
-        }
+        public static ReadOnlyDb AsReadOnly(this IDb db, bool createInMemoryWriteStore) => new(db, createInMemoryWriteStore);
 
         public static KeyValuePair<byte[], byte[]>[] MultiGet(this IDb db, IEnumerable<ValueHash256> keys)
         {

@@ -674,7 +674,7 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
             => throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(StateProvider)}");
 
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException();
+        static void ThrowUnknownChangeType() => throw new ArgumentOutOfRangeException("changeType", "Unknown change type.");
 
         [DoesNotReturn, StackTraceHidden]
         static void ThrowUnexpectedPosition(int currentPosition, int i, int forAssertion)
@@ -908,16 +908,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 internal static class Extensions
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-    {
-        trace.Add(address, new ChangeTrace(change));
-    }
+    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace.Add(address, new ChangeTrace(change));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-    {
-        trace[address] = new ChangeTrace(change, trace[address].After);
-    }
+    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)

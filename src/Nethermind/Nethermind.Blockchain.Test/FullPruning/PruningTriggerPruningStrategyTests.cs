@@ -29,10 +29,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         }
 
         [TearDown]
-        public void TearDown()
-        {
-            _strategy.Dispose();
-        }
+        public void TearDown() => _strategy.Dispose();
 
         [Test]
         public void DeleteObsoleteKeys_should_return_false_when_in_pruning()

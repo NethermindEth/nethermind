@@ -353,6 +353,33 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     [Test]
+    public void Verify_EmptyStorageRoot_DetectsOrphanedFlatStorage()
+    {
+        Address address = TestItem.AddressA;
+        // Account with EmptyTreeHash storage root (e.g. after self-destruct)
+        Account account = new(1, 0, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString);
+
+        _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        StateId toState = new(1, stateRoot);
+        WriteAccountToFlat(address, account, toState);
+
+        // Inject stale storage entries that should not exist
+        WriteStorageDirectToDb(address, 0, [0x01, 0x15, 0xe8]);
+        WriteStorageDirectToDb(address, 1, [0xab, 0xcd]);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        Assert.That(verifier.Stats.AccountCount, Is.EqualTo(1));
+        Assert.That(verifier.Stats.MismatchedAccount, Is.EqualTo(0));
+        Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(2), "Should detect 2 orphaned flat storage entries");
+    }
+
+    [Test]
     public void Verify_MixedScenario_DetectsAllIssues()
     {
         // Account A: in both, matches

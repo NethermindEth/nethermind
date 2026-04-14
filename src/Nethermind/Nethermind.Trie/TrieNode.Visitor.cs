@@ -22,11 +22,8 @@ namespace Nethermind.Trie
     partial class TrieNode
     {
         internal void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver,
-            ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext>
-        {
-            new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext)
+            ref TreePath path, TrieVisitContext trieVisitContext) where TNodeContext : struct, INodeContext<TNodeContext> => new TrieNodeTraverser<TNodeContext>(visitor, trieVisitContext)
                 .Start(this, nodeContext, nodeResolver, ref path);
-        }
     }
 
     public class TrieNodeTraverser<TNodeContext>(ITreeVisitor<TNodeContext> visitor, TrieVisitContext options) where TNodeContext : struct, INodeContext<TNodeContext>
@@ -38,10 +35,7 @@ namespace Nethermind.Trie
 
         private int _visitedNodes;
 
-        internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path)
-        {
-            _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
-        }
+        internal void Start(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path) => _ = Accept(node, nodeContext, nodeResolver, ref path, options.IsStorage, long.MaxValue);
 
         internal long Accept(TrieNode node, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, ref TreePath path, bool isStorage, long subtreeSizeHint)
         {

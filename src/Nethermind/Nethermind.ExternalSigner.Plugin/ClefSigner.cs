@@ -47,10 +47,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
     /// </summary>
     /// <param name="header">Clique header</param>
     /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
-    public Signature Sign(BlockHeader header)
-    {
-        return _clefWallet.Sign(header, Address);
-    }
+    public Signature Sign(BlockHeader header) => _clefWallet.Sign(header, Address);
 
     public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");
