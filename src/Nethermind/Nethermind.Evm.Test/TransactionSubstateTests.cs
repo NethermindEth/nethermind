@@ -15,7 +15,7 @@ namespace Nethermind.Evm.Test
     public class TransactionSubstateTests
     {
         [Test]
-        public void should_return_proper_revert_error_when_there_is_no_exception()
+        public void should_return_revert_sentinel_for_unknown_selector_with_abi_like_layout()
         {
             byte[] data =
             {
@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x0506070809");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         [Test]
@@ -47,11 +47,11 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x0506070809");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         [Test]
-        public void should_return_weird_revert_error_when_there_is_exception()
+        public void should_return_revert_sentinel_when_error_function_selector_has_malformed_encoding()
         {
             byte[] data = TransactionSubstate.ErrorFunctionSelector.Concat(Bytes.FromHexString("0x00000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000")).ToArray();
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
@@ -61,34 +61,14 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         [Test]
-        [Description($"Replace with {nameof(should_return_proper_revert_error_when_revert_custom_error)} once fixed")]
-        public void should_return_proper_revert_error_when_revert_custom_error_badly_implemented()
+        public void should_return_revert_sentinel_for_custom_error_selector()
         {
-            // See: https://github.com/NethermindEth/nethermind/issues/6024
-
-            string hex =
-                "0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000";
-            byte[] data = Bytes.FromHexString(hex);
-            ReadOnlyMemory<byte> readOnlyMemory = new(data);
-            TransactionSubstate transactionSubstate = new(
-                readOnlyMemory,
-                0,
-                new JournalSet<Address>(Address.EqualityComparer),
-                new JournalCollection<LogEntry>(),
-                true,
-                true);
-            transactionSubstate.Error.Should().Be("0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
-        }
-
-        [Test]
-        public void should_hex_encode_custom_error_selector_with_control_characters()
-        {
-            // keccak4("ActionFailed()") = 0x080a1c27 — the bytes happen to be valid UTF-8
-            // but contain control characters (\b, \n, FS) so must be hex-encoded, not returned raw.
+            // keccak4("ActionFailed()") = 0x080a1c27 — unknown selector, no ABI decoding possible.
+            // Error must be the Revert sentinel so only data, not message, carries the raw bytes.
             byte[] data = { 0x08, 0x0a, 0x1c, 0x27 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
@@ -98,7 +78,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x080a1c27");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
@@ -123,8 +103,8 @@ namespace Nethermind.Evm.Test
                 },
                 "Req::UnAuthAuditor");
 
-            // Invalid case
-            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "0x08c379a0ff");
+            // Malformed Error(string) payload — GetErrorMessage rejects it, falls back to Revert sentinel.
+            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, TransactionSubstate.Revert);
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
@@ -153,8 +133,8 @@ namespace Nethermind.Evm.Test
                 },
                 "unknown panic code (0xff)");
 
-            // Invalid case
-            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, "0xf0288c28");
+            // Unknown selector — custom error; falls back to Revert sentinel.
+            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, TransactionSubstate.Revert);
         }
 
         [Test]
@@ -176,7 +156,6 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        [Ignore("Badly implemented")]
         public void should_return_proper_revert_error_when_revert_custom_error()
         {
             byte[] data =
@@ -195,7 +174,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x41413231206469646e2774207061792070726566756e64");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
     }
 }
