@@ -22,9 +22,9 @@ internal class EpochSwitchManager(
         tree,
         snapshotManager)
 {
-    /**
-     * Determine if the given block is an epoch switch block.
-    **/
+    /// <summary>
+    /// Determine if the given block is an epoch switch block.
+    /// </summary>
     public override bool IsEpochSwitchAtBlock(XdcBlockHeader header)
     {
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(header);
@@ -63,9 +63,9 @@ internal class EpochSwitchManager(
         return false;
     }
 
-    /**
-     * Determine if an epoch switch occurs at the given round, based on the parent block.
-    **/
+    /// <summary>
+    /// Determine if an epoch switch occurs at the given round, based on the parent block.
+    /// </summary>
     public override bool IsEpochSwitchAtRound(ulong currentRound, XdcBlockHeader parent)
     {
         IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(parent);
