@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.StateComposition.Diff;
 
 namespace Nethermind.StateComposition.Data;
@@ -51,7 +53,12 @@ public readonly record struct TrieDiff(
     int EmptyAccountsRemoved,
 
     // Optional per-depth distribution delta. Null when TrackDepthIncrementally is disabled.
-    DepthDelta? DepthDelta = null
+    DepthDelta? DepthDelta = null,
+
+    // Per-account payloads that feed the incremental trackers in the state holder.
+    // Null on diffs that don't need them (tests, synthetic apply paths).
+    IReadOnlyList<SlotCountChange>? SlotCountChanges = null,
+    IReadOnlyList<CodeHashChange>? CodeHashChanges = null
 )
 {
     public int NetAccounts => AccountsAdded - AccountsRemoved;
@@ -62,4 +69,35 @@ public readonly record struct TrieDiff(
 
     public long NetAccountTrieBytes => AccountTrieBytesAdded - AccountTrieBytesRemoved;
     public long NetStorageTrieBytes => StorageTrieBytesAdded - StorageTrieBytesRemoved;
+}
+
+/// <summary>
+/// Net change in the storage-slot count for a single contract across one diff.
+/// <see cref="SlotDelta"/> is positive when slots were added, negative when removed.
+/// The state holder combines this with its per-address baseline to know which
+/// slot-histogram bucket a contract moved between.
+/// </summary>
+public readonly record struct SlotCountChange(ValueHash256 AddressHash, long SlotDelta);
+
+/// <summary>
+/// Per-account code-hash transition across one diff. The <see cref="ValueHash256"/>
+/// <c>default</c> sentinel represents "no code" — either the account never had code
+/// (gained it in this diff) or lost it entirely. Distinct from
+/// <see cref="Keccak.OfAnEmptyString"/> which is the empty-bytecode hash.
+/// </summary>
+public readonly record struct CodeHashChange(
+    ValueHash256 AddressHash,
+    ValueHash256 OldCodeHash,
+    ValueHash256 NewCodeHash)
+{
+    /// <summary>
+    /// Sentinel ValueHash256 used when an account has no code on one side of the diff.
+    /// Using <c>default</c> (all zeros) instead of <see cref="Keccak.OfAnEmptyString"/>
+    /// so that every "gained code" / "lost code" event is unambiguous, even if an
+    /// account temporarily has the empty-string code hash.
+    /// </summary>
+    public static ValueHash256 NoCode => default;
+
+    public bool HadCode => OldCodeHash != NoCode;
+    public bool HasCode => NewCodeHash != NoCode;
 }

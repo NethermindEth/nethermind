@@ -259,7 +259,11 @@ internal partial class StateCompositionService : IDisposable
         _stateHolder.SetBaseline(stats, dist);
         _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
         CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
-        _stateHolder.InitializeIncremental(cumulativeBaseline, header.Number, header.StateRoot!, dist);
+        _stateHolder.InitializeIncremental(
+            cumulativeBaseline, header.Number, header.StateRoot!, dist,
+            slotCountByAddress: stats.SlotCountByAddress,
+            codeHashRefcounts: stats.CodeHashRefcounts,
+            codeHashSizes: stats.CodeHashSizes);
 
         // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
         // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
@@ -275,7 +279,10 @@ internal partial class StateCompositionService : IDisposable
             _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
                 cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number,
                 // CurrentDepthStats already returns a clone under lock — no extra Clone() needed.
-                _stateHolder.CurrentDepthStats));
+                _stateHolder.CurrentDepthStats,
+                _stateHolder.CloneSlotCountByAddress(),
+                _stateHolder.CloneCodeHashRefcounts(),
+                _stateHolder.CloneCodeHashSizes()));
     }
 
     public void Dispose()

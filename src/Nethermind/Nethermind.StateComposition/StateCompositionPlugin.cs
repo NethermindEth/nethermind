@@ -32,12 +32,6 @@ public class StateCompositionPlugin : INethermindPlugin
     {
         _api = nethermindApi;
         _config = nethermindApi.Config<IStateCompositionConfig>();
-
-        // Force-instantiate the service so its constructor subscribes to
-        // IBlockTree.NewHeadBlock. Without this, lazy DI defers construction
-        // until the first RPC call and incremental diffs/metrics never fire.
-        // Runs in Init() (not InitRpcModules) so metrics and diffs work even
-        // when JSON-RPC is disabled.
         _api.Context.Resolve<StateCompositionService>();
 
         if (!_config.PersistSnapshots) return Task.CompletedTask;
@@ -48,7 +42,6 @@ public class StateCompositionPlugin : INethermindPlugin
         StateCompositionStateHolder stateHolder = _api.Context.Resolve<StateCompositionStateHolder>();
         IBlockTree blockTree = _api.Context.Resolve<IBlockTree>();
 
-        // Store returns null for both "no snapshot" and "undecodable snapshot" (it logs the latter).
         StateCompositionSnapshot? snapshot = store.ReadLatestSnapshot();
         if (snapshot is null)
         {

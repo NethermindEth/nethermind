@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Threading;
 using Nethermind.Core;
@@ -34,12 +35,13 @@ internal sealed class StateCompositionVisitor(
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
 
     /// <summary>
-    /// Visitor-wide dedup map for codeHash observations. Ensures each unique
-    /// bytecode contributes to <see cref="VisitorCounters.CodeBytes"/> exactly once
-    /// across all worker threads. Using byte as the value type because
-    /// ConcurrentDictionary has no Set analogue — content is irrelevant.
+    /// Visitor-wide dedup map for codeHash observations. Maps every unique code hash
+    /// seen during the scan to its bytecode length. The winner of <see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/>
+    /// resolves the length exactly once across all workers and writes it here; subsequent
+    /// threads observe the stored value without paying another <c>GetCode</c> lookup.
+    /// This dict doubles as the seed for the state holder's incremental code-size tracker.
     /// </summary>
-    private readonly ConcurrentDictionary<ValueHash256, byte> _seenCodeHashes = new();
+    private readonly ConcurrentDictionary<ValueHash256, int> _codeHashSizes = new();
 
     private VisitorCounters? _aggregated;
 
@@ -173,14 +175,20 @@ internal sealed class StateCompositionVisitor(
         {
             c.ContractsTotal++;
 
+            // Per-thread refcount: one increment per account observation. Summed across
+            // threads in MergeFrom to give the total number of accounts pointing at each
+            // distinct code hash. Seeds the state holder's incremental refcount tracker.
+            c.CodeHashRefcounts.TryGetValue(account.CodeHash, out int existing);
+            c.CodeHashRefcounts[account.CodeHash] = existing + 1;
+
             // Dedup by codeHash across all worker threads: only the first observer
             // of a given codeHash pays the lookup cost and contributes bytes. Proxies,
             // minimal clones, and factory-deployed contracts share bytecode and
             // therefore contribute 0 bytes on subsequent observations.
-            if (codeSizeLookup is not null && _seenCodeHashes.TryAdd(account.CodeHash, 0))
+            if (codeSizeLookup is not null && !_codeHashSizes.ContainsKey(account.CodeHash))
             {
                 int size = codeSizeLookup(account.CodeHash);
-                if (size > 0)
+                if (_codeHashSizes.TryAdd(account.CodeHash, size) && size > 0)
                     c.CodeBytes += size;
             }
         }
@@ -192,6 +200,22 @@ internal sealed class StateCompositionVisitor(
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
     {
         VisitorCounters agg = GetAggregated();
+
+        // Materialize the per-address slot count tracker from the merged
+        // SlotCountsByOwner list. Each owner appears at most once because each
+        // account is visited by exactly one worker thread.
+        Dictionary<ValueHash256, long> slotCountByAddress = new(agg.SlotCountsByOwner.Count);
+        foreach (KeyValuePair<ValueHash256, long> kvp in agg.SlotCountsByOwner)
+            slotCountByAddress[kvp.Key] = kvp.Value;
+
+        // Snapshot the visitor-wide code-hash size map into a plain dictionary so
+        // the state holder owns its own immutable copy.
+        Dictionary<ValueHash256, int> codeHashSizes = new(_codeHashSizes.Count);
+        foreach (KeyValuePair<ValueHash256, int> kvp in _codeHashSizes)
+            codeHashSizes[kvp.Key] = kvp.Value;
+
+        // Copy the merged refcount dict so later access is decoupled from the aggregate.
+        Dictionary<ValueHash256, int> codeHashRefcounts = new(agg.CodeHashRefcounts);
 
         return new StateCompositionStats
         {
@@ -216,6 +240,9 @@ internal sealed class StateCompositionVisitor(
             TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
             TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
+            SlotCountByAddress = slotCountByAddress,
+            CodeHashSizes = codeHashSizes,
+            CodeHashRefcounts = codeHashRefcounts,
         };
     }
 

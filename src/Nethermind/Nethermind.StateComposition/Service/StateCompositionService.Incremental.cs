@@ -47,8 +47,12 @@ internal partial class StateCompositionService
             TrieDiffWalker walker = new(resolver, _config.TrackDepthIncrementally);
 
             TrieDiff diff = walker.ComputeDiff(prevRoot, head.Header.StateRoot);
-            CumulativeSizeStats updated = _stateHolder.IncrementalStats!.Value.ApplyDiff(diff);
-            _stateHolder.UpdateIncremental(updated, head.Number, head.Header.StateRoot, diff.DepthDelta);
+            // Feed the code-hash tracker: it looks up bytecode size exactly once
+            // per newly-observed hash, so the cost is bounded by the number of
+            // distinct code hashes introduced in this diff.
+            CumulativeSizeStats updated = _stateHolder.ApplyIncrementalDiffAndUpdate(
+                diff, head.Number, head.Header.StateRoot,
+                hash => _stateReader.GetCode(hash)?.Length ?? 0);
 
             Metrics.UpdateFromCumulativeStats(updated);
             // Skip the labeled-gauge republish when the depth distribution did not change.
@@ -97,7 +101,10 @@ internal partial class StateCompositionService
             _stateHolder.DiffsSinceBaseline,
             _stateHolder.LastScanMetadata?.BlockNumber ?? 0,
             // CurrentDepthStats already returns a clone under lock.
-            _stateHolder.CurrentDepthStats));
+            _stateHolder.CurrentDepthStats,
+            _stateHolder.CloneSlotCountByAddress(),
+            _stateHolder.CloneCodeHashRefcounts(),
+            _stateHolder.CloneCodeHashSizes()));
 
         int blocksToKeep = _config.SnapshotBlocksToKeep;
         if (blocksToKeep <= 0) return;
