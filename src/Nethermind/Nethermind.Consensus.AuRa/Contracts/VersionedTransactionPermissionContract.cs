@@ -30,55 +30,41 @@ namespace Nethermind.Consensus.AuRa.Contracts
     {
         private static TransactionPermissionContractV1 CreateV1(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            return new(
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => new(
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource);
-        }
 
         private static TransactionPermissionContractV2 CreateV2(IAbiEncoder abiEncoder,
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-        {
-            return new(
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => new(
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource);
-        }
 
         private static TransactionPermissionContractV3 CreateV3(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new(
+            ISpecProvider specProvider) => new(
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource,
                 specProvider);
-        }
 
         private static TransactionPermissionContractV4 CreateV4(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new(
+            ISpecProvider specProvider) => new(
                 abiEncoder,
                 contractAddress,
                 readOnlyTxProcessorSource,
                 specProvider);
-        }
 
 
         private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider)
-        {
-            return new()
+            ISpecProvider specProvider) => new()
             {
                 {
                     UInt256.One,
@@ -107,6 +93,5 @@ namespace Nethermind.Consensus.AuRa.Contracts
                         specProvider)
                 },
             };
-        }
     }
 }

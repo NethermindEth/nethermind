@@ -53,15 +53,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return true;
         }
 
-        public void StopBeaconModeControl()
-        {
-            _isInBeaconModeControl = false;
-        }
+        public void StopBeaconModeControl() => _isInBeaconModeControl = false;
 
-        public void AllowBeaconHeaderSync()
-        {
-            _canInitBeaconHeaderSync = true;
-        }
+        public void AllowBeaconHeaderSync() => _canInitBeaconHeaderSync = true;
 
         public bool ShouldBeInBeaconHeaders()
         {
@@ -122,15 +116,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return null;
         }
 
-        public Hash256? GetFinalizedHash()
-        {
-            return _blockCacheService.FinalizedHash;
-        }
+        public Hash256? GetFinalizedHash() => _blockCacheService.FinalizedHash;
 
-        public Hash256? GetHeadBlockHash()
-        {
-            return _blockCacheService.HeadBlockHash;
-        }
+        public Hash256? GetHeadBlockHash() => _blockCacheService.HeadBlockHash;
     }
 
     public interface IMergeSyncController

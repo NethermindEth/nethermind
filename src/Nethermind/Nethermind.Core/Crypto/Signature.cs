@@ -118,10 +118,7 @@ namespace Nethermind.Core.Crypto
             return Equals((Signature)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
         public void Dispose() { }
         protected override void Dispose(bool disposing) { }

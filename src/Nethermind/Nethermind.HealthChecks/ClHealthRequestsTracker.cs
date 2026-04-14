@@ -58,13 +58,7 @@ public class ClHealthRequestsTracker(ITimestamper timestamper, IHealthChecksConf
         return !IsRequestTooOld(now, _latestForkchoiceUpdated) || !IsRequestTooOld(now, _latestNewPayload);
     }
 
-    public void OnForkchoiceUpdatedCalled()
-    {
-        _latestForkchoiceUpdated = timestamper.UtcNow;
-    }
+    public void OnForkchoiceUpdatedCalled() => _latestForkchoiceUpdated = timestamper.UtcNow;
 
-    public void OnNewPayloadCalled()
-    {
-        _latestNewPayload = timestamper.UtcNow;
-    }
+    public void OnNewPayloadCalled() => _latestNewPayload = timestamper.UtcNow;
 }

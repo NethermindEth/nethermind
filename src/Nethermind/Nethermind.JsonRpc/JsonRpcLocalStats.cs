@@ -176,10 +176,7 @@ public class JsonRpcLocalStats(ITimestamper timestamper, IJsonRpcConfig jsonRpcC
         }
     }
 
-    private void Swap()
-    {
-        (_currentStats, _previousStats) = (_previousStats, _currentStats);
-    }
+    private void Swap() => (_currentStats, _previousStats) = (_previousStats, _currentStats);
 
     [Pure]
     private static string PrepareReportLine(in string key, MethodStats methodStats) =>

@@ -51,9 +51,6 @@ namespace Nethermind.Serialization.Json
         public override void Write(
             Utf8JsonWriter writer,
             bool value,
-            JsonSerializerOptions options)
-        {
-            writer.WriteBooleanValue(value);
-        }
+            JsonSerializerOptions options) => writer.WriteBooleanValue(value);
     }
 }

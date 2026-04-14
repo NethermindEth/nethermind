@@ -135,10 +135,8 @@ public class BeaconHeadersSyncTests
             set => _remoteBlockTree = value;
         }
 
-        public void SetupRemoteBlockTreeOfLength(int chainLength)
-        {
+        public void SetupRemoteBlockTreeOfLength(int chainLength) =>
             RemoteBlockTree = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
-        }
     }
 
     [Test]

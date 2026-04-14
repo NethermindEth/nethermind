@@ -32,6 +32,8 @@ namespace Nethermind.State.SnapServer;
 
 public class SnapServer : ISnapServer
 {
+    public bool CanServe => true;
+
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
@@ -64,10 +66,7 @@ public class SnapServer : ISnapServer
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
     }
 
-    private bool IsRootMissing(Hash256 stateRoot)
-    {
-        return (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
-    }
+    private bool IsRootMissing(Hash256 stateRoot) => (!_store.HasRoot(stateRoot)) || _lastNStateRootTracker?.HasStateRoot(stateRoot) == false;
 
     public IByteArrayList? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, Hash256 rootHash, CancellationToken cancellationToken)
     {

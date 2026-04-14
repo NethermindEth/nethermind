@@ -43,10 +43,7 @@ public class FilterManagerTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _filterStore.Dispose();
-    }
+    public void TearDown() => _filterStore.Dispose();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task removing_filter_removes_data()

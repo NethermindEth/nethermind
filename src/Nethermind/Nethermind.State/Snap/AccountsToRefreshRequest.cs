@@ -16,15 +16,9 @@ namespace Nethermind.State.Snap
 
         public IOwnedReadOnlyList<AccountWithStorageStartingHash> Paths { get; set; }
 
-        public override string ToString()
-        {
-            return $"AccountsToRefreshRequest: ({RootHash}, {Paths.Count})";
-        }
+        public override string ToString() => $"AccountsToRefreshRequest: ({RootHash}, {Paths.Count})";
 
-        public void Dispose()
-        {
-            Paths?.Dispose();
-        }
+        public void Dispose() => Paths?.Dispose();
     }
 
     public class AccountWithStorageStartingHash

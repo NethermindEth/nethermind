@@ -34,26 +34,22 @@ namespace Nethermind.Merge.Plugin.Test
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
-            Hash256 safeBlockHash)
-        {
+            Hash256 safeBlockHash) =>
             Assert.Multiple(() =>
             {
                 Assert.That(blockFinder.HeadHash, Is.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.EqualTo(safeBlockHash));
             });
-        }
 
         private void AssertExecutionStatusNotChanged(IBlockFinder blockFinder, Hash256 headBlockHash,
-            Hash256 finalizedBlockHash, Hash256 safeBlockHash)
-        {
+            Hash256 finalizedBlockHash, Hash256 safeBlockHash) =>
             Assert.Multiple(() =>
             {
                 Assert.That(blockFinder.HeadHash, Is.Not.EqualTo(headBlockHash));
                 Assert.That(blockFinder.FinalizedHash, Is.Not.EqualTo(finalizedBlockHash));
                 Assert.That(blockFinder.SafeHash, Is.Not.EqualTo(safeBlockHash));
             });
-        }
 
         private async Task GetPayload_should_fail_on_unknown_payload(int version)
         {
@@ -81,11 +77,9 @@ namespace Nethermind.Merge.Plugin.Test
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader,
-            int blobCountPerTx = 0, IReleaseSpec? spec = null)
-        {
-            return BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
+            int blobCountPerTx = 0, IReleaseSpec? spec = null) =>
+            BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
                 count, value, out accountFrom, out parentHeader, blobCountPerTx, spec);
-        }
 
         private static Transaction[] BuildTransactions(
             IBlockTree blockTree,

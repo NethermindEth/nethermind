@@ -31,80 +31,35 @@ public readonly struct TimeInterval(double nanoseconds)
     {
     }
 
-    public Frequency ToFrequency()
-    {
-        return new Frequency(Second / this);
-    }
+    public Frequency ToFrequency() => new(Second / this);
 
-    public double ToNanoseconds()
-    {
-        return this / Nanosecond;
-    }
+    public double ToNanoseconds() => this / Nanosecond;
 
-    public double ToMicroseconds()
-    {
-        return this / Microsecond;
-    }
+    public double ToMicroseconds() => this / Microsecond;
 
-    public double ToMilliseconds()
-    {
-        return this / Millisecond;
-    }
+    public double ToMilliseconds() => this / Millisecond;
 
-    public double ToSeconds()
-    {
-        return this / Second;
-    }
+    public double ToSeconds() => this / Second;
 
-    public double ToMinutes()
-    {
-        return this / Minute;
-    }
+    public double ToMinutes() => this / Minute;
 
-    public double ToHours()
-    {
-        return this / Hour;
-    }
+    public double ToHours() => this / Hour;
 
-    public double ToDays()
-    {
-        return this / Day;
-    }
+    public double ToDays() => this / Day;
 
-    public static TimeInterval FromNanoseconds(double value)
-    {
-        return Nanosecond * value;
-    }
+    public static TimeInterval FromNanoseconds(double value) => Nanosecond * value;
 
-    public static TimeInterval FromMicroseconds(double value)
-    {
-        return Microsecond * value;
-    }
+    public static TimeInterval FromMicroseconds(double value) => Microsecond * value;
 
-    public static TimeInterval FromMilliseconds(double value)
-    {
-        return Millisecond * value;
-    }
+    public static TimeInterval FromMilliseconds(double value) => Millisecond * value;
 
-    public static TimeInterval FromSeconds(double value)
-    {
-        return Second * value;
-    }
+    public static TimeInterval FromSeconds(double value) => Second * value;
 
-    public static TimeInterval FromMinutes(double value)
-    {
-        return Minute * value;
-    }
+    public static TimeInterval FromMinutes(double value) => Minute * value;
 
-    public static TimeInterval FromHours(double value)
-    {
-        return Hour * value;
-    }
+    public static TimeInterval FromHours(double value) => Hour * value;
 
-    public static TimeInterval FromDays(double value)
-    {
-        return Day * value;
-    }
+    public static TimeInterval FromDays(double value) => Day * value;
 
     public static double operator /(TimeInterval a, TimeInterval b)
     {
@@ -161,10 +116,7 @@ public readonly struct TimeInterval(double nanoseconds)
         return a.Nanoseconds >= b.Nanoseconds;
     }
 
-    public string ToString(CultureInfo cultureInfo, string format = "N4", UnitPresentation? unitPresentation = null)
-    {
-        return ToString(null, cultureInfo, format, unitPresentation);
-    }
+    public string ToString(CultureInfo cultureInfo, string format = "N4", UnitPresentation? unitPresentation = null) => ToString(null, cultureInfo, format, unitPresentation);
 
     public string ToString(TimeUnit? timeUnit, CultureInfo cultureInfo, string format = "N4", UnitPresentation? unitPresentation = null)
     {
@@ -182,8 +134,5 @@ public readonly struct TimeInterval(double nanoseconds)
         return num.ToString(format, cultureInfo);
     }
 
-    public override string ToString()
-    {
-        return ToString(DefaultCultureInfo.Instance);
-    }
+    public override string ToString() => ToString(DefaultCultureInfo.Instance);
 }

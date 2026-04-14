@@ -24,15 +24,9 @@ public interface ICensorshipDetector
 
 public class NoopCensorshipDetector : ICensorshipDetector
 {
-    public IEnumerable<BlockNumberHash> GetCensoredBlocks()
-    {
-        return [];
-    }
+    public IEnumerable<BlockNumberHash> GetCensoredBlocks() => [];
 
-    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash)
-    {
-        return false;
-    }
+    public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => false;
 }
 
 public class CensorshipDetector : IDisposable, ICensorshipDetector
@@ -253,10 +247,7 @@ public class CensorshipDetector : IDisposable, ICensorshipDetector
 
     public bool BlockPotentiallyCensored(long blockNumber, ValueHash256 blockHash) => _potentiallyCensoredBlocks.Contains(new BlockNumberHash(blockNumber, blockHash));
 
-    public void Dispose()
-    {
-        _blockProcessor.BlockProcessing -= OnBlockProcessing;
-    }
+    public void Dispose() => _blockProcessor.BlockProcessing -= OnBlockProcessing;
 }
 
 public readonly record struct BlockCensorshipInfo(bool IsCensored, ValueHash256? ParentHash);

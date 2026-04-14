@@ -38,10 +38,7 @@ public class NettyDiscoveryHandler(
             ? CreateDefaultInboundMessageFilters()
             : [inboundMessageFilter];
 
-    public override void ChannelActive(IChannelHandlerContext context)
-    {
-        OnChannelActivated?.Invoke(this, EventArgs.Empty);
-    }
+    public override void ChannelActive(IChannelHandlerContext context) => OnChannelActivated?.Invoke(this, EventArgs.Empty);
 
     public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
     {
@@ -58,10 +55,7 @@ public class NettyDiscoveryHandler(
         _ = LogDisconnectFailureAsync(context.DisconnectAsync());
     }
 
-    public override void ChannelReadComplete(IChannelHandlerContext context)
-    {
-        context.Flush();
-    }
+    public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
 
     public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
@@ -200,33 +194,27 @@ public class NettyDiscoveryHandler(
         }
     }
 
-    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg)
+    private DiscoveryMsg Deserialize(MsgType type, ArraySegment<byte> msg) => type switch
     {
-        return type switch
-        {
-            MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
-            MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
-            MsgType.FindNode => _msgSerializationService.Deserialize<FindNodeMsg>(msg),
-            MsgType.Neighbors => _msgSerializationService.Deserialize<NeighborsMsg>(msg),
-            MsgType.EnrRequest => _msgSerializationService.Deserialize<EnrRequestMsg>(msg),
-            MsgType.EnrResponse => _msgSerializationService.Deserialize<EnrResponseMsg>(msg),
-            _ => throw new Exception($"Unsupported messageType: {type}")
-        };
-    }
+        MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
+        MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
+        MsgType.FindNode => _msgSerializationService.Deserialize<FindNodeMsg>(msg),
+        MsgType.Neighbors => _msgSerializationService.Deserialize<NeighborsMsg>(msg),
+        MsgType.EnrRequest => _msgSerializationService.Deserialize<EnrRequestMsg>(msg),
+        MsgType.EnrResponse => _msgSerializationService.Deserialize<EnrResponseMsg>(msg),
+        _ => throw new Exception($"Unsupported messageType: {type}")
+    };
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator)
+    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator) => msg.MsgType switch
     {
-        return msg.MsgType switch
-        {
-            MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
-            MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
-            MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
-            MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
-            MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
-            MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
-            _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
-        };
-    }
+        MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
+        MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
+        MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
+        MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
+        MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
+        MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
+        _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
+    };
 
     private bool ValidateMsg(DiscoveryMsg msg, MsgType type, EndPoint address, IChannelHandlerContext ctx, DatagramPacket packet, int size)
     {

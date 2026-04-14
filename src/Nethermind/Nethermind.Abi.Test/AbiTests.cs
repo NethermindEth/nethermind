@@ -316,10 +316,8 @@ public class AbiTests
     [TestCase(256 + 8, 19)]
     [TestCase(8, 128)]
     [TestCase(9, 8)]
-    public void Test_ufixed_exception(int length, int precision)
-    {
+    public void Test_ufixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUFixed(length, precision));
-    }
 
     [TestCase(0, 0)]
     [TestCase(0, 19)]
@@ -327,34 +325,26 @@ public class AbiTests
     [TestCase(256 + 8, 19)]
     [TestCase(8, 128)]
     [TestCase(9, 8)]
-    public void Test_fixed_exception(int length, int precision)
-    {
+    public void Test_fixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiFixed(length, precision));
-    }
 
     [TestCase(0)]
     [TestCase(7)]
     [TestCase(264)]
-    public void Test_int_exception(int length)
-    {
+    public void Test_int_exception(int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiInt(length));
-    }
 
     [TestCase(0)]
     [TestCase(7)]
     [TestCase(264)]
-    public void Test_uint_exception(int length)
-    {
+    public void Test_uint_exception(int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
-    }
 
     [TestCase("uint64[abc]")]
     [TestCase("bytes32[xyz]")]
     [TestCase("address[!@#]")]
-    public void Test_invalid_array_syntax_exception(string type)
-    {
+    public void Test_invalid_array_syntax_exception(string type) =>
         Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
-    }
 
     [TestCase(AbiEncodingStyle.IncludeSignature)]
     [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]

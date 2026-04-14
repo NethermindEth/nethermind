@@ -58,15 +58,9 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     }
 
     int _discoveryPort = 0;
-    private int AssignDiscoveryPort()
-    {
-        return Interlocked.Increment(ref _discoveryPort);
-    }
+    private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
     int _discoveryIp = 1;
-    private int AssignDiscoveryIp()
-    {
-        return Interlocked.Increment(ref _discoveryIp);
-    }
+    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
 
     [Test]
     [Retry(3)]

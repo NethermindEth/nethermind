@@ -15,9 +15,6 @@ namespace Nethermind.Merge.Plugin
         private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
         private readonly IRewardCalculatorSource _beforeTheMerge = beforeTheMerge ?? throw new ArgumentNullException(nameof(beforeTheMerge));
 
-        public IRewardCalculator Get(ITransactionProcessor processor)
-        {
-            return new MergeRewardCalculator(_beforeTheMerge.Get(processor), _poSSwitcher);
-        }
+        public IRewardCalculator Get(ITransactionProcessor processor) => new MergeRewardCalculator(_beforeTheMerge.Get(processor), _poSSwitcher);
     }
 }

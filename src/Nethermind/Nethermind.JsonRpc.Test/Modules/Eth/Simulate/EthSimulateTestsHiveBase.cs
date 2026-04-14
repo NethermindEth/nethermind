@@ -150,7 +150,7 @@ new object[] {"multicall-transaction-too-low-nonce-38010", true, "{\"blockStateC
         BlockForRpc parent = chain.EthRpcModule.eth_getBlockByNumber(new BlockParameter(blockNumber)).Data;
         SimulateBlockResult<SimulateCallResult> simulated = chain.EthRpcModule.eth_simulateV1(payload, new BlockParameter(blockNumber)).Data[0];
 
-        simulated.ParentHash.Should().Be(parent.Hash);
+        simulated.ParentHash.Should().Be(parent.Hash!);
         (simulated.Number - parent.Number).Should().Be(1);
         (simulated.Timestamp - parent.Timestamp).Should().Be((UInt256)secondsPerSlot);
     }

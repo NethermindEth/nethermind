@@ -158,10 +158,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         void LogTrace(Exception exception) => _logger.Trace($"Channel is not active - {exception.Message}");
     }
 
-    public override void HandlerAdded(IChannelHandlerContext context)
-    {
-        _context = context;
-    }
+    public override void HandlerAdded(IChannelHandlerContext context) => _context = context;
 
     public override void HandlerRemoved(IChannelHandlerContext context)
     {

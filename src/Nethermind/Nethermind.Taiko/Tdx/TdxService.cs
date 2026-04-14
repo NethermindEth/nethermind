@@ -87,10 +87,7 @@ public class TdxService : ITdxService
         return _guestInfo;
     }
 
-    public TdxGuestInfo? GetGuestInfo()
-    {
-        return _guestInfo;
-    }
+    public TdxGuestInfo? GetGuestInfo() => _guestInfo;
 
     public TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader)
     {

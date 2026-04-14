@@ -277,15 +277,9 @@ public class DiscoveryManager : IDiscoveryManager
 
     public event EventHandler<NodeEventArgs>? NodeDiscovered;
 
-    public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers()
-    {
-        return _nodeLifecycleManagers.Values.ToArray();
-    }
+    public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers() => _nodeLifecycleManagers.Values.ToArray();
 
-    public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query)
-    {
-        return _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
-    }
+    public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query) => _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
 
     private bool ValidatePingAddress(PingMsg msg)
     {
@@ -421,10 +415,7 @@ public class DiscoveryManager : IDiscoveryManager
 
         public int MessageType { get; } = messageType;
 
-        public bool Equals(MessageTypeKey other)
-        {
-            return SenderAddressHash.Equals(other.SenderAddressHash) && MessageType == other.MessageType;
-        }
+        public bool Equals(MessageTypeKey other) => SenderAddressHash.Equals(other.SenderAddressHash) && MessageType == other.MessageType;
 
         public override bool Equals(object? obj)
         {

@@ -25,10 +25,7 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
-    protected override IEvmMemory CreateEvmMemory()
-    {
-        return new EvmPooledMemory();
-    }
+    protected override IEvmMemory CreateEvmMemory() => new EvmPooledMemory();
 
     [TestCase(32, 1)]
     [TestCase(0, 0)]
@@ -427,10 +424,7 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void SetOperationMemory(TraceMemory memoryTrace)
-    {
-        lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
-    }
+    public void SetOperationMemory(TraceMemory memoryTrace) => lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(static mt => mt.Replace("0x", string.Empty))));
 
     public void SetOperationMemorySize(ulong newSize)
     {
@@ -452,75 +446,33 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) => throw new NotSupportedException();
 
-    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportBalanceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportCodeChange(Address address, byte[] before, byte[] after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportCodeChange(Address address, byte[] before, byte[] after) => throw new NotSupportedException();
 
-    public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportNonceChange(Address address, UInt256? before, UInt256? after) => throw new NotSupportedException();
 
-    public void ReportAccountRead(Address address)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportAccountRead(Address address) => throw new NotImplementedException();
 
-    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after) => throw new NotSupportedException();
 
-    public void ReportStorageRead(in StorageCell storageCell)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportStorageRead(in StorageCell storageCell) => throw new NotImplementedException();
 
-    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionError(EvmExceptionType exceptionType)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionError(EvmExceptionType exceptionType) => throw new NotSupportedException();
 
-    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => throw new NotSupportedException();
 
-    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new NotSupportedException();
 
-    public void ReportBlockHash(Hash256 blockHash)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportBlockHash(Hash256 blockHash) => throw new NotImplementedException();
 
-    public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
-    {
-        throw new NotSupportedException();
-    }
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) => throw new NotSupportedException();
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
     {
@@ -534,24 +486,15 @@ public class MyTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportExtraGasPressure(long extraGasPressure)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportExtraGasPressure(long extraGasPressure) => throw new NotImplementedException();
 
-    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells) => throw new NotImplementedException();
 
     public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
     {
     }
 
-    public void ReportFees(UInt256 fees, UInt256 burntFees)
-    {
-        throw new NotImplementedException();
-    }
+    public void ReportFees(UInt256 fees, UInt256 burntFees) => throw new NotImplementedException();
 
     public void Dispose() { }
 }

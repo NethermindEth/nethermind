@@ -15,17 +15,11 @@ public class ServiceStopper(ILogManager logManager) : IServiceStopper
     private ILogger _logger = logManager.GetClassLogger<ServiceStopper>();
 
 
-    public Task StopAllServices()
-    {
-        return Task.WhenAll(_stoppables.Select(async (stoppable) =>
-            await Task.Run( // Task run in the middle so that the log look nice.
-                async () => await Stop(stoppable))));
-    }
+    public Task StopAllServices() => Task.WhenAll(_stoppables.Select(async (stoppable) =>
+        await Task.Run( // Task run in the middle so that the log look nice.
+            async () => await Stop(stoppable))));
 
-    void IServiceStopper.AddStoppable(IStoppableService stoppableService)
-    {
-        _stoppables.Add(stoppableService);
-    }
+    void IServiceStopper.AddStoppable(IStoppableService stoppableService) => _stoppables.Add(stoppableService);
 
     private async Task Stop(IStoppableService stoppableService)
     {

@@ -16,10 +16,7 @@ namespace Nethermind.Core.Test.Caching
     [TestFixture]
     public class ClockCacheTests
     {
-        private static Cache Create()
-        {
-            return new Cache(Capacity)!;
-        }
+        private static Cache Create() => new Cache(Capacity)!;
 
         private const int Capacity = 32;
 

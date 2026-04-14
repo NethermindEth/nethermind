@@ -257,9 +257,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             return peer;
         }
 
-        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null)
-        {
-            return new ParityRpcModule(_ethereumEcdsa,
+        private IParityRpcModule CreateParityRpcModule(IPeerManager? peerManager = null) => new ParityRpcModule(_ethereumEcdsa,
                 _txPool,
                 _blockTree,
                 _receiptStorage,
@@ -268,7 +266,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 new MemKeyStore(new[] { TestItem.PrivateKeyA }, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())),
                 MainnetSpecProvider.Instance,
                 peerManager ?? Substitute.For<IPeerManager>());
-        }
 
         [Test]
         public async Task parity_pendingTransactions()

@@ -18,15 +18,9 @@ public class AccessListForRpc
 {
     private readonly IEnumerable<Item> _items;
 
-    public AccessListForRpc()
-    {
-        _items = Array.Empty<Item>();
-    }
+    public AccessListForRpc() => _items = Array.Empty<Item>();
 
-    private AccessListForRpc(IEnumerable<Item> items)
-    {
-        _items = items;
-    }
+    private AccessListForRpc(IEnumerable<Item> items) => _items = items;
 
     private class Item
     {
@@ -160,9 +154,6 @@ public class AccessListForRpc
         }
 
 
-        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, value._items, options);
-        }
+        public override void Write(Utf8JsonWriter writer, AccessListForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value._items, options);
     }
 }

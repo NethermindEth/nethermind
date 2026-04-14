@@ -187,13 +187,10 @@ public class DebugBridge : IDebugBridge
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 
-    public SyncReportSummary GetCurrentSyncStage()
+    public SyncReportSummary GetCurrentSyncStage() => new()
     {
-        return new SyncReportSummary
-        {
-            CurrentStage = _syncModeSelector.Current.ToString()
-        };
-    }
+        CurrentStage = _syncModeSelector.Current.ToString()
+    };
 
     public bool HaveNotSyncedHeadersYet() => _syncModeSelector.Current.HaveNotSyncedHeadersYet();
 

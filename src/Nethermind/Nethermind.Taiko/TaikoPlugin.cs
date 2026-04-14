@@ -120,15 +120,9 @@ public class TaikoPlugin(ChainSpec chainSpec) : IConsensusPlugin
 
     // IConsensusPlugin
 
-    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _)
-    {
-        throw new NotSupportedException();
-    }
+    public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer _) => throw new NotSupportedException();
 
-    public IBlockProducer InitBlockProducer()
-    {
-        throw new NotSupportedException();
-    }
+    public IBlockProducer InitBlockProducer() => throw new NotSupportedException();
 
     public string SealEngineType => Core.SealEngineType.Taiko;
 
@@ -245,7 +239,7 @@ public class TaikoModule : Module
         IRlpValueDecoder<Transaction> txDecoder,
         ILogManager logManager)
     {
-        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
+        IBlockProducerEnv blockProducerEnv = blockProducerEnvFactory.CreatePersistent();
 
         TaikoPayloadPreparationService payloadPreparationService = new(
             blockProducerEnv.ChainProcessor,
@@ -259,18 +253,12 @@ public class TaikoModule : Module
 
     private class TaikoBlockValidationModule : Module, IBlockValidationModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
-        }
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, TaikoBlockValidationTransactionExecutor>();
     }
 
     private class TaikoMainBlockProcessingModule : Module, IMainProcessingModule
     {
-        protected override void Load(ContainerBuilder builder)
-        {
-            builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
-        }
+        protected override void Load(ContainerBuilder builder) => builder.AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockInvalidTxExecutor>();
     }
 
 }

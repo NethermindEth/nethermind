@@ -76,10 +76,7 @@ public class NodeTable : INodeTable
         bucket.RefreshNode(node);
     }
 
-    public ClosestNodesEnumerator GetClosestNodes()
-    {
-        return new ClosestNodesEnumerator(Buckets, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesEnumerator GetClosestNodes() => new(Buckets, _discoveryConfig.BucketSize);
 
     public struct ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize) : IEnumerator<Node>, IEnumerable<Node>
     {
@@ -131,10 +128,7 @@ public class NodeTable : INodeTable
         readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
-    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
-    {
-        return GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId) => GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
 
     public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId, int bucketSize)
     {
@@ -190,10 +184,7 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public readonly void Dispose()
-        {
-            _sortedNodes.Dispose();
-        }
+        public readonly void Dispose() => _sortedNodes.Dispose();
 
         public readonly ClosestNodesFromNodeEnumerator GetEnumerator() => this;
         readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;

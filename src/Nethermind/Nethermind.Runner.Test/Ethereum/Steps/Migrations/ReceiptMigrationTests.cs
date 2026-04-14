@@ -140,10 +140,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps.Migrations
                 set => _outStorage.MigratedBlockNumber = value;
             }
 
-            public bool HasBlock(long blockNumber, Hash256 hash)
-            {
-                return _outStorage.HasBlock(blockNumber, hash);
-            }
+            public bool HasBlock(long blockNumber, Hash256 hash) => _outStorage.HasBlock(blockNumber, hash);
 
             public void EnsureCanonical(Block block)
             {

@@ -18,10 +18,8 @@ namespace Nethermind.Optimism.Test;
 public class OptimismReceiptTests
 {
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
-    }
 
     [Test]
     public void ContainsOperatorFeeParameters_PreIsthmus_IsNull()

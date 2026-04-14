@@ -33,10 +33,7 @@ public class L1SloadPrecompileTests
     }
 
     [Test]
-    public void BaseGasCost_Should_Return_FixedGasCost()
-    {
-        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.L1SloadFixedGasCost));
-    }
+    public void BaseGasCost_Should_Return_FixedGasCost() => Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.L1SloadFixedGasCost));
 
     [Test]
     public void DataGasCost_With_Invalid_Input_Length_Should_Return_0()
@@ -151,10 +148,7 @@ public class L1SloadPrecompileTests
     {
         private readonly UInt256? _returnValue;
 
-        private MockL1StorageProvider(UInt256? returnValue)
-        {
-            _returnValue = returnValue;
-        }
+        private MockL1StorageProvider(UInt256? returnValue) => _returnValue = returnValue;
 
         public UInt256? GetStorageValue(Address contractAddress, UInt256 blockNumber, UInt256 storageKey) => _returnValue;
 

@@ -43,10 +43,7 @@ internal class TransactionProcessorEip4844Tests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser?.Dispose();
-    }
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     [TestCaseSource(nameof(BalanceIsAffectedByBlobGasTestCaseSource))]
     [TestCaseSource(nameof(BalanceIsNotAffectedWhenNotEnoughFunds))]

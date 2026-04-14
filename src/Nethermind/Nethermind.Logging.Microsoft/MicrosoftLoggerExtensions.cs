@@ -7,29 +7,14 @@ namespace Nethermind.Logging.Microsoft
 {
     public static class MicrosoftLoggerExtensions
     {
-        public static bool IsError(this ILogger logger)
-        {
-            return logger.IsEnabled(LogLevel.Error);
-        }
+        public static bool IsError(this ILogger logger) => logger.IsEnabled(LogLevel.Error);
 
-        public static bool IsWarn(this ILogger logger)
-        {
-            return logger.IsEnabled(LogLevel.Warning);
-        }
+        public static bool IsWarn(this ILogger logger) => logger.IsEnabled(LogLevel.Warning);
 
-        public static bool IsInfo(this ILogger logger)
-        {
-            return logger.IsEnabled(LogLevel.Information);
-        }
+        public static bool IsInfo(this ILogger logger) => logger.IsEnabled(LogLevel.Information);
 
-        public static bool IsDebug(this ILogger logger)
-        {
-            return logger.IsEnabled(LogLevel.Debug);
-        }
+        public static bool IsDebug(this ILogger logger) => logger.IsEnabled(LogLevel.Debug);
 
-        public static bool IsTrace(this ILogger logger)
-        {
-            return logger.IsEnabled(LogLevel.Trace);
-        }
+        public static bool IsTrace(this ILogger logger) => logger.IsEnabled(LogLevel.Trace);
     }
 }

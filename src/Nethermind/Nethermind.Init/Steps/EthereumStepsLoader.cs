@@ -30,11 +30,8 @@ namespace Nethermind.Init.Steps
                 .Select(s => s!);
         }
 
-        private static bool HasConstructorWithParameter(Type type, Type parameterType)
-        {
-            return type.GetConstructors().Any(
+        private static bool HasConstructorWithParameter(Type type, Type parameterType) => type.GetConstructors().Any(
                 c => c.GetParameters().Select(p => p.ParameterType).Any(pType => pType == parameterType));
-        }
 
         private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase)
         {

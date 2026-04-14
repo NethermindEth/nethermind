@@ -15,20 +15,11 @@ public class Bytes32 : IEquatable<Bytes32>
 
     private readonly byte[] _bytes;
 
-    public Bytes32()
-    {
-        _bytes = new byte[Length];
-    }
+    public Bytes32() => _bytes = new byte[Length];
 
-    public static Bytes32 Wrap(byte[] bytes)
-    {
-        return new Bytes32(bytes);
-    }
+    public static Bytes32 Wrap(byte[] bytes) => new(bytes);
 
-    public byte[] Unwrap()
-    {
-        return _bytes;
-    }
+    public byte[] Unwrap() => _bytes;
 
     private Bytes32(byte[] bytes)
     {
@@ -54,10 +45,7 @@ public class Bytes32 : IEquatable<Bytes32>
 
     public static Bytes32 Zero { get; } = new Bytes32(new byte[Length]);
 
-    public ReadOnlySpan<byte> AsSpan()
-    {
-        return new ReadOnlySpan<byte>(_bytes);
-    }
+    public ReadOnlySpan<byte> AsSpan() => new(_bytes);
 
     public static bool operator ==(Bytes32 left, Bytes32 right)
     {
@@ -73,16 +61,11 @@ public class Bytes32 : IEquatable<Bytes32>
         return !(left == right);
     }
 
-    public override string ToString()
-    {
-        return _bytes.ToHexString(true);
-    }
+    public override string ToString() => _bytes.ToHexString(true);
 
-    public Bytes32 Xor(Bytes32 other)
-    {
+    public Bytes32 Xor(Bytes32 other) =>
         // if used much - optimize, for now leave this way
-        return new Bytes32(other._bytes.Xor(_bytes));
-    }
+        new(other._bytes.Xor(_bytes));
 
     public bool Equals(Bytes32? other)
     {
@@ -91,13 +74,7 @@ public class Bytes32 : IEquatable<Bytes32>
         return _bytes.SequenceEqual(other._bytes);
     }
 
-    public override bool Equals(object? obj)
-    {
-        return ReferenceEquals(this, obj) || obj is Bytes32 other && Equals(other);
-    }
+    public override bool Equals(object? obj) => ReferenceEquals(this, obj) || obj is Bytes32 other && Equals(other);
 
-    public override int GetHashCode()
-    {
-        return BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
-    }
+    public override int GetHashCode() => BinaryPrimitives.ReadInt32LittleEndian(AsSpan()[..4]);
 }

@@ -172,8 +172,5 @@ public class NodeBucket(int distance, int bucketSize, float dropFullBucketProbab
         }
     }
 
-    private NodeBucketItem GetEvictionCandidate()
-    {
-        return _items.Last();
-    }
+    private NodeBucketItem GetEvictionCandidate() => _items.Last();
 }

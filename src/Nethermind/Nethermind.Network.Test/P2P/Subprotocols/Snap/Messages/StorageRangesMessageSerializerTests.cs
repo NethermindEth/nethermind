@@ -117,21 +117,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
 
-        private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue)
+        private static StorageRangeMessage CreateMessageWithSingleSlotValue(byte[] slotRlpValue) => new()
         {
-            return new StorageRangeMessage
-            {
-                RequestId = MessageConstants.Random.NextLong(),
-                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+            RequestId = MessageConstants.Random.NextLong(),
+            Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
                 {
                     new ArrayPoolList<PathWithStorageSlot>(1)
                     {
                         new(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), slotRlpValue)
                     }
                 },
-                Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
-            };
-        }
+            Proofs = new ByteArrayListAdapter(ArrayPoolList<byte[]>.Empty())
+        };
 
         private static byte[] CreateStorageSlotValue(int length)
         {

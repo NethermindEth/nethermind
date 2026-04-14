@@ -26,21 +26,12 @@ namespace Nethermind.Benchmarks.Mining
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _header = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _header = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public (Hash256, ulong) Improved()
-        {
-            return _ethash.Mine(_header, 0UL);
-        }
+        public (Hash256, ulong) Improved() => _ethash.Mine(_header, 0UL);
 
         [Benchmark]
-        public (Hash256, ulong) Current()
-        {
-            return _ethash.Mine(_header, 0UL);
-        }
+        public (Hash256, ulong) Current() => _ethash.Mine(_header, 0UL);
     }
 }

@@ -62,9 +62,7 @@ public static class RpcTest
         return serialized;
     }
 
-    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule
-    {
-        return new ContainerBuilder()
+    private static IContainer CreateContainerForModule<T>(T module) where T : class, IRpcModule => new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()
             {
                 EnabledModules = [typeof(T).GetCustomAttribute<RpcModuleAttribute>()!.ModuleType]
@@ -72,7 +70,6 @@ public static class RpcTest
             .RegisterBoundedJsonRpcModule<T, AutoRpcModuleFactory<T>>(1, new JsonRpcConfig().Timeout)
             .AddScoped<T>(module)
             .Build();
-    }
 
     public static JsonRpcRequest BuildJsonRequest(string method, params object?[]? parameters)
     {

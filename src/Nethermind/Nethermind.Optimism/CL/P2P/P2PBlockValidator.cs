@@ -45,10 +45,7 @@ public class P2PBlockValidator(
         return currentCount > 5 ? ValidityStatus.Reject : ValidityStatus.Valid;
     }
 
-    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature)
-    {
-        return IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
-    }
+    public ValidityStatus ValidateSignature(ReadOnlySpan<byte> payloadData, Span<byte> signature) => IsSignatureValid(payloadData, signature) ? ValidityStatus.Valid : ValidityStatus.Reject;
 
     private bool IsTopicValid(P2PTopic topic)
     {

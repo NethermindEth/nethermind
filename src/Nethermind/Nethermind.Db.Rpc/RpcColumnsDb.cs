@@ -32,15 +32,9 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<T> ColumnKeys => Enum.GetValues<T>();
 
-        public IColumnsWriteBatch<T> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<T>(this);
-        }
+        public IColumnsWriteBatch<T> StartWriteBatch() => new InMemoryColumnWriteBatch<T>(this);
 
-        public IColumnDbSnapshot<T> CreateSnapshot()
-        {
-            throw new NotSupportedException("Snapshot not implemented");
-        }
+        public IColumnDbSnapshot<T> CreateSnapshot() => throw new NotSupportedException("Snapshot not implemented");
 
         public void Dispose() { }
         public void Flush(bool onlyWal = false) { }

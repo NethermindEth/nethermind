@@ -51,35 +51,17 @@ namespace Nethermind.Logging
                 TaskCreationOptions.LongRunning);
         }
 
-        private void Log(string text)
-        {
-            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
-        }
+        private void Log(string text) => _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Environment.CurrentManagedThreadId}] {_prefix}{text}");
 
-        public void Info(string text)
-        {
-            Log(text);
-        }
+        public void Info(string text) => Log(text);
 
-        public void Warn(string text)
-        {
-            Log(text);
-        }
+        public void Warn(string text) => Log(text);
 
-        public void Debug(string text)
-        {
-            Log(text);
-        }
+        public void Debug(string text) => Log(text);
 
-        public void Trace(string text)
-        {
-            Log(text);
-        }
+        public void Trace(string text) => Log(text);
 
-        public void Error(string text, Exception ex = null)
-        {
-            Log(ex is not null ? $"{text}, Exception: {ex}" : text);
-        }
+        public void Error(string text, Exception ex = null) => Log(ex is not null ? $"{text}, Exception: {ex}" : text);
 
         public bool IsInfo => (int)_logLevel >= 2;
         public bool IsWarn => (int)_logLevel >= 1;

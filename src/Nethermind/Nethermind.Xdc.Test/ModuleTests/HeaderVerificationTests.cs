@@ -39,10 +39,8 @@ internal class HeaderVerificationTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         xdcTestBlockchain?.Dispose();
-    }
 
     [Test]
     public void Block_With_Invalid_Qc_Fails()

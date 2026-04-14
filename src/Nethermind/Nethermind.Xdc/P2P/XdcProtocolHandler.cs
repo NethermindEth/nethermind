@@ -101,14 +101,8 @@ internal class XdcProtocolHandler(
         // We do not want to add ForkId to status message in XDPoS
     }
 
-    private void Handle(VoteMsg voteMsg)
-    {
-        _ = _votesManager.OnReceiveVote(voteMsg.Vote);
-    }
-    private void Handle(TimeoutMsg timeoutMsg)
-    {
-        _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
-    }
+    private void Handle(VoteMsg voteMsg) => _ = _votesManager.OnReceiveVote(voteMsg.Vote);
+    private void Handle(TimeoutMsg timeoutMsg) => _timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
     private void Handle(SyncInfoMsg syncInfoMsg)
     {
         if (!syncInfoManager.VerifySyncInfo(syncInfoMsg.SyncInfo, out string error))
@@ -134,10 +128,7 @@ internal class XdcProtocolHandler(
         Send(new TimeoutMsg() { Timeout = timeout });
     }
 
-    public void SendSyncInfo(SyncInfo syncInfo)
-    {
-        Send(new SyncInfoMsg() { SyncInfo = syncInfo });
-    }
+    public void SendSyncInfo(SyncInfo syncInfo) => Send(new SyncInfoMsg() { SyncInfo = syncInfo });
 
     private bool ShouldNotifyVote(Vote vote)
     {

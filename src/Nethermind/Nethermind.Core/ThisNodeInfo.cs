@@ -11,10 +11,7 @@ namespace Nethermind.Core
     {
         private static readonly ConcurrentDictionary<string, string> _nodeInfoItems = new();
 
-        public static void AddInfo(string infoDescription, string value)
-        {
-            _nodeInfoItems.TryAdd(infoDescription, value);
-        }
+        public static void AddInfo(string infoDescription, string value) => _nodeInfoItems.TryAdd(infoDescription, value);
 
         public static string BuildNodeInfoScreen()
         {

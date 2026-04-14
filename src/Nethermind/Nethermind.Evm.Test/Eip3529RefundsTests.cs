@@ -38,10 +38,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 212, 0, 1)]
         [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
         [TestCase("0x600060005560016000556000600055", 5918, 17800, 1)]
-        public void Before_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue)
-        {
-            Test(codeHex, gasUsed, refund, originalValue, false);
-        }
+        public void Before_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, false);
 
         [TestCase("0x60006000556000600055", 212, 0, 0)]
         [TestCase("0x60006000556001600055", 20112, 0, 0)]
@@ -60,10 +57,7 @@ namespace Nethermind.Evm.Test
         [TestCase("0x60016000556001600055", 212, 0, 1)]
         [TestCase("0x600160005560006000556001600055", 40118, 19900, 0)]
         [TestCase("0x600060005560016000556000600055", 5918, 7600, 1)]
-        public void After_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue)
-        {
-            Test(codeHex, gasUsed, refund, originalValue, true);
-        }
+        public void After_introducing_eip3529(string codeHex, long gasUsed, long refund, byte originalValue) => Test(codeHex, gasUsed, refund, originalValue, true);
 
         private void Test(string codeHex, long gasUsed, long refund, byte originalValue, bool eip3529Enabled)
         {

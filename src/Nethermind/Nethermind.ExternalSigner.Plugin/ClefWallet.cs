@@ -38,10 +38,7 @@ namespace Nethermind.ExternalSigner.Plugin
             return accounts.Select(x => new Address(x)).ToArray();
         }
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            ThrowNotSupportedException();
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => ThrowNotSupportedException();
 
         public bool IsUnlocked(Address address)
         {
@@ -74,10 +71,7 @@ namespace Nethermind.ExternalSigner.Plugin
             return new Signature(bytes);
         }
 
-        public Signature Sign(Hash256 message, Address address)
-        {
-            return Sign(message, address, null);
-        }
+        public Signature Sign(Hash256 message, Address address) => Sign(message, address, null);
 
         public Signature Sign(BlockHeader header, Address address)
         {

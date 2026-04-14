@@ -2,10 +2,9 @@ using Microsoft.CodeAnalysis;
 
 class SszProperty
 {
-    public override string ToString()
-    {
-        return $"prop({Kind},{Type},{Name},{(IsVariable ? "v" : "f")})";
-    }
+    public override string ToString() =>
+        $"prop({Kind},{Type},{Name},{(IsVariable ? "v" : "f")})";
+
 
     public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop)
     {
