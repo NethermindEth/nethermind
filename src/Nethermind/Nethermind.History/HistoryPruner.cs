@@ -251,6 +251,8 @@ public class HistoryPruner : IHistoryPruner
 
     public void SchedulePruneHistory(CancellationToken cancellationToken)
     {
+        _logger.Warn($"Schedule prune history epochLength={_epochLength} cutoffBlockNumber={CutoffBlockNumber} cutoffTimestamp={CalculateCutoffTimestamp()}");
+
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {
             Task.Run(() =>
@@ -262,6 +264,9 @@ public class HistoryPruner : IHistoryPruner
                         TimeSpan? pruningTimeout = _historyConfig.PruningTimeoutSeconds > 0
                             ? TimeSpan.FromSeconds(_historyConfig.PruningTimeoutSeconds)
                             : null;
+
+                        _logger.Warn($"Prune history timeout is {pruningTimeout}");
+
                         if (!_backgroundTaskScheduler.TryScheduleTask(1,
                                 (_, backgroundTaskToken) =>
                                 {
@@ -269,6 +274,9 @@ public class HistoryPruner : IHistoryPruner
                                     {
                                         using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(backgroundTaskToken,
                                             cancellationToken);
+
+                                        _logger.Warn("Pruning history...");
+
                                         TryPruneHistory(cts.Token);
                                     }
                                     finally
@@ -281,6 +289,8 @@ public class HistoryPruner : IHistoryPruner
                         {
                             Interlocked.Exchange(ref _currentlyPruning, 0);
                             if (_logger.IsDebug) _logger.Debug("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
+
+                            _logger.Warn("Failed to schedule historical block pruning (queue full). Will retry on next trigger.");
                         }
                     }
                     catch
@@ -315,6 +325,10 @@ public class HistoryPruner : IHistoryPruner
             !_hasLoadedDeletePointer ||
             !ShouldPruneHistory(out ulong? cutoffTimestamp))
         {
+            _logger.Warn("Skipping historical block pruning, conditions not met. " +
+                         $"Head: #{_blockTree.Head?.Number}, SyncPivot: #{_blockTree.SyncPivot.BlockNumber}, " +
+                         $"DeletePointerLoaded: {_hasLoadedDeletePointer}, ShouldPrune: {ShouldPruneHistory(out _)}");
+
             SkipLocalPruning();
             return;
         }
@@ -328,6 +342,8 @@ public class HistoryPruner : IHistoryPruner
                 if (!TryLoadDeletePointer() ||
                     !ShouldPruneHistory(out cutoffTimestamp))
                 {
+                    _logger.Warn("Skipping historical block pruning, conditions not met.");
+
                     SkipLocalPruning();
                     return;
                 }
@@ -437,6 +453,8 @@ public class HistoryPruner : IHistoryPruner
         ulong? lastDeletedTimestamp = null;
         try
         {
+            _logger.Warn("Pruning historical blocks...");
+
             IEnumerable<Block> blocks = _historyConfig.Pruning == PruningModes.UseAncientBarriers ?
                 GetBlocksBeforeAncientBarrier() :
                 GetBlocksBeforeTimestamp(cutoffTimestamp!.Value);
@@ -479,6 +497,8 @@ public class HistoryPruner : IHistoryPruner
         }
         finally
         {
+            _logger.Warn($"Finished pruning historical blocks up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
+
             if (_cutoffPointer < _deletePointer && lastDeletedTimestamp is not null)
             {
                 _cutoffPointer = _deletePointer;
@@ -494,6 +514,8 @@ public class HistoryPruner : IHistoryPruner
                 if (_logger.IsInfo) _logger.Info($"Completed pruning operation up to timestamp {cutoffTimestamp}. Deleted {deletedBlocks} blocks up to #{_deletePointer}.");
                 _lastPrunedTimestamp = cutoffTimestamp;
             }
+
+            _logger.Warn("Historical blocks pruning delete pointer saved.");
         }
     }
 
