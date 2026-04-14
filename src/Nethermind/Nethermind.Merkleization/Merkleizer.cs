@@ -238,10 +238,7 @@ public ref struct Merkleizer
 
     public void Feed(Root value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
 
-    public void Feed(SszBytes32 value)
-    {
-        Feed(MemoryMarshal.Cast<byte, UInt256>(value.Hash.BytesAsSpan)[0]);
-    }
+    public void Feed(SszBytes32 value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.Hash.BytesAsSpan)[0]);
 
     public void Feed(IReadOnlyList<SszBytes32> value)
     {
