@@ -117,6 +117,7 @@ public sealed class SnapshotBundle : IDisposable
             return slotValue?.ToEvmBytes();
         }
 
+        // Self-destructed at the point of the latest change
         if (selfDestructStateIdx == _snapshots.Count + _readOnlySnapshotBundle.SnapshotCount)
         {
             return null;
@@ -132,6 +133,7 @@ public sealed class SnapshotBundle : IDisposable
 
             if (i <= currentBundleSelfDestructIdx)
             {
+                // This is the snapshot with selfdestruct
                 return null;
             }
         }
@@ -321,6 +323,9 @@ public sealed class SnapshotBundle : IDisposable
 
     public void SetChangedSlot(Address address, in UInt256 index, byte[] value)
     {
+        // So right now, if the value is zero, then it is a deletion. This is not the case with verkle where you
+        // can set a value to be zero. Because of this distinction, the zerobytes logic is handled here instead of
+        // lower down.
         HashedKey<(Address, UInt256)> key = new((address, index));
         if (value is null || Bytes.AreEqual(value, StorageTree.ZeroBytes))
         {
@@ -338,6 +343,8 @@ public sealed class SnapshotBundle : IDisposable
         GuardDispose();
 
         Account? account = DoGetAccount(address, excludeChanged: true);
+        // So... a clear is always sent even on a new account. This makes is a minor optimization as
+        // it skips persistence, but probably need to make sure it does not send it at all in the first place.
         bool isNewAccount = account == null || account.StorageRoot == Keccak.EmptyTreeHash;
 
         _selfDestructedAccountAddresses.TryAdd(address, isNewAccount);
