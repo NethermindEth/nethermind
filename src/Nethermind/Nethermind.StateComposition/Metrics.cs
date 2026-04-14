@@ -84,6 +84,10 @@ public static class Metrics
     [Description("Total diff computation errors")]
     public static long StateCompDiffErrors { get; set; }
 
+    [CounterMetric]
+    [Description("Times the incremental baseline was detected as stale (prevRoot missing from DB) and auto-rescan was scheduled")]
+    public static long StateCompBaselineInvalidations { get; set; }
+
     [GaugeMetric]
     [Description("Contracts with non-empty storage")]
     public static long StateCompContractsWithStorage { get; set; }

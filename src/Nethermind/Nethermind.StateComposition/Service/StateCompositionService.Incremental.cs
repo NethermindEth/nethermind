@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 using Nethermind.StateComposition.Data;
@@ -30,7 +32,7 @@ internal partial class StateCompositionService
     /// Non-blocking: if another diff is already running this call is dropped
     /// — the running one will pick up the latest head on its next iteration.
     /// </summary>
-    private void RunIncrementalDiff()
+    internal void RunIncrementalDiff()
     {
         if (!_diffLock.TryEnter()) return;
         Hash256? prevRoot = null;
@@ -69,6 +71,25 @@ internal partial class StateCompositionService
                 _logger.Debug($"StateComposition: incremental diff applied at block {head.Number}, " +
                               $"accounts={updated.AccountsTotal}, slots={updated.StorageSlotsTotal}");
         }
+        catch (MissingTrieNodeException ex)
+        {
+            // prevRoot is no longer in the trie DB (container stopped longer than
+            // the pruning window, or a prune ran while the plugin was idle). The
+            // snapshot baseline is unusable — clear it so OnNewHeadBlock's null
+            // gate (line 20) silences every subsequent head block, then fire a
+            // background rescan to reseed via InitializeIncremental.
+            Metrics.StateCompBaselineInvalidations++;
+            _stateHolder.InvalidateBaseline();
+            if (_logger.IsWarn)
+            {
+                string blockDesc = head?.Number.ToString() ?? "?";
+                string prevDesc = prevRoot?.ToString() ?? "?";
+                _logger.Warn(
+                    $"StateComposition: baseline root {prevDesc} missing from DB at block {blockDesc}; " +
+                    $"invalidated baseline and scheduling a full rescan. Reason: {ex.Message}");
+            }
+            ScheduleBaselineRescan(head);
+        }
         catch (Exception ex)
         {
             Metrics.StateCompDiffErrors++;
@@ -87,6 +108,34 @@ internal partial class StateCompositionService
         {
             _diffLock.Exit();
         }
+    }
+
+    /// <summary>
+    /// Fire-and-forget a full rescan after a stale-baseline detection. Runs
+    /// outside <c>_diffLock</c> because the scan is long-running. <c>AnalyzeAsync</c>
+    /// already serialises via <c>_scanLock</c> with fail-fast semantics, so
+    /// back-to-back triggers collapse into one real scan.
+    /// </summary>
+    private void ScheduleBaselineRescan(Block? head)
+    {
+        BlockHeader? header = head?.Header ?? _blockTree.Head?.Header;
+        if (header is null) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                Result<StateCompositionStats> result =
+                    await AnalyzeAsync(header, CancellationToken.None).ConfigureAwait(false);
+
+                if (!result.IsSuccess && _logger.IsWarn)
+                    _logger.Warn($"StateComposition: auto-rescan skipped: {result.Error}");
+            }
+            catch (Exception ex) when (_logger.IsError)
+            {
+                _logger.Error("StateComposition: auto-rescan failed", ex);
+            }
+        });
     }
 
     /// <summary>

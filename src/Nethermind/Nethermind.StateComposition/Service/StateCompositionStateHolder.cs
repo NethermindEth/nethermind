@@ -178,6 +178,17 @@ internal sealed class StateCompositionStateHolder
     }
 
     /// <summary>
+    /// Drop the incremental baseline root so OnNewHeadBlock stops spawning diff
+    /// tasks until a fresh scan reseeds via <see cref="InitializeIncremental"/>.
+    /// Deliberately narrow: cached stats, depth distribution, and incremental
+    /// trackers stay visible to RPC until <c>PublishScanResults</c> swaps them.
+    /// </summary>
+    public void InvalidateBaseline()
+    {
+        lock (_lock) _lastProcessedStateRoot = null;
+    }
+
+    /// <summary>
     /// Apply a <see cref="TrieDiff"/> atomically: updates the cumulative stats,
     /// the per-address slot tracker (and the slot-count histogram), and the
     /// per-code-hash refcount/size trackers (and <see cref="CumulativeSizeStats.CodeBytesTotal"/>).
