@@ -37,7 +37,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
 
         while (!IsEpochSwitchAtBlock(header))
         {
-            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");
+            header = (XdcBlockHeader)Tree.FindHeader(header.ParentHash!) ?? throw new InvalidOperationException($"Parent block {header.ParentHash} not found while walking to epoch switch");
         }
 
         Address[] masterNodes;
@@ -53,7 +53,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
                 return null;
             }
 
-            masterNodes = header.ValidatorsAddress.Value.ToArray();
+            masterNodes = header.ValidatorsAddress!.Value.ToArray();
         }
 
         Snapshot snap = SnapshotManager.GetSnapshotByBlockNumber(header.Number, xdcSpec);
@@ -65,7 +65,7 @@ internal abstract class BaseEpochSwitchManager(ISpecProvider xdcSpecProvider, IB
         Address[] penalties = ResolvePenalties(header, snap, xdcSpec);
         Address[] candidates = snap.NextEpochCandidates;
 
-        Address[] standbyNodes = Array.Empty<Address>();
+        Address[] standbyNodes = [];
 
         if (masterNodes.Length != candidates.Length)
         {

@@ -147,7 +147,8 @@ internal class EpochSwitchManager(
         {
             return epochSwitchInCache[0];
         }
-        else if (epochSwitchInCache.Count == 0)
+
+        if (epochSwitchInCache.Count == 0)
         {
             return null;
         }
