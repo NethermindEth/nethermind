@@ -138,7 +138,8 @@ internal class SubnetPenaltyTests
 
 
     [Test]
-    public void TestSigningTxForNonMergeSignRangeBlock(){
+    public void TestSigningTxForNonMergeSignRangeBlock()
+    {
         // The last validator never mines (Beneficiary cycles 0..n-2) in current epoch.
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
@@ -160,7 +161,8 @@ internal class SubnetPenaltyTests
     }
 
     [Test]
-    public void TestSortOrder(){
+    public void TestSortOrder()
+    {
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
             validatorSelector: (validators, i) => validators[i % ValidatorCount]
@@ -168,7 +170,7 @@ internal class SubnetPenaltyTests
 
         long target = EpochLength * 3 - Gap;
 
-        Address eip55First  = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
+        Address eip55First = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
         Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
 
         string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()).Should().BeGreaterThan(0);
