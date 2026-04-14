@@ -209,7 +209,6 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
             Eip7934MaxRlpBlockSize = chainSpecJson.Params.Eip7934MaxRlpBlockSize ?? Eip7934Constants.DefaultMaxRlpBlockSize,
 
             Eip7778TransitionTimestamp = chainSpecJson.Params.Eip7778TransitionTimestamp,
-            Rip7728TransitionTimestamp = chainSpecJson.Params.Rip7728TransitionTimestamp,
             Eip8037TransitionTimestamp = chainSpecJson.Params.Eip8037TransitionTimestamp,
 
             Eip7928TransitionTimestamp = chainSpecJson.Params.Eip7928TransitionTimestamp,

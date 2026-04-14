@@ -240,7 +240,7 @@ public class EraStore : IEraStore
     private void GuardMissingEpoch(long epoch)
     {
         if (!HasEpoch(epoch))
-            throw new ArgumentOutOfRangeException($"Epoch not available.", epoch, nameof(epoch));
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
     }
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable

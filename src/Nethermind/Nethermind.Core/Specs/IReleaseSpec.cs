@@ -443,11 +443,6 @@ namespace Nethermind.Core.Specs
         public bool IsEip7907Enabled { get; }
 
         /// <summary>
-        /// RIP-7728: L1SLOAD precompile for reading L1 storage from L2
-        /// </summary>
-        public bool IsRip7728Enabled { get; }
-
-        /// <summary>
         /// EIP-7928: Block-Level Access Lists
         /// </summary>
         public bool IsEip7928Enabled { get; }

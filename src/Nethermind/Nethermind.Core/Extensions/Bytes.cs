@@ -453,7 +453,7 @@ namespace Nethermind.Core.Extensions
         {
             if (bits.Length % 8 != 0)
             {
-                throw new ArgumentException(nameof(bits));
+                throw new ArgumentException("Bit array length must be a multiple of 8.", nameof(bits));
             }
 
             byte[] bytes = new byte[bits.Length / 8];
@@ -642,7 +642,7 @@ namespace Nethermind.Core.Extensions
             }
 
             [DoesNotReturn]
-            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
+            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException(nameof(hex), "Output hex span has incorrect length.");
         }
 
         public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
