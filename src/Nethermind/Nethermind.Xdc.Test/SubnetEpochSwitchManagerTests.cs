@@ -119,7 +119,6 @@ internal class SubnetEpochSwitchManagerTests
         };
         _config.GetSpec(Arg.Any<ForkActivation>()).Returns(releaseSpec);
 
-        // Use a different hash than the penalties test to avoid EpochSwitches cache hit
         XdcSubnetBlockHeaderBuilder builder = Build.A.XdcSubnetBlockHeader();
         builder.WithNumber(0);
         builder.WithHash(TestItem.KeccakA);
@@ -129,19 +128,6 @@ internal class SubnetEpochSwitchManagerTests
         _snapshotManager.GetSnapshotByBlockNumber(header.Number, Arg.Any<IXdcReleaseSpec>()).Returns(baseSnapshot);
 
         Assert.Throws<ArgumentException>(() => _epochSwitchManager.GetEpochSwitchInfo(header));
-    }
-
-    private byte[] FillExtraDataForTests(Address[] nextEpochCandidates)
-    {
-        int length = Address.Size * nextEpochCandidates?.Length ?? 0;
-        byte[] extraData = new byte[XdcConstants.ExtraVanity + length + XdcConstants.ExtraSeal];
-
-        for (int i = 0; i < nextEpochCandidates!.Length; i++)
-        {
-            Array.Copy(nextEpochCandidates[i].Bytes, 0, extraData, XdcConstants.ExtraVanity + i * Address.Size, Address.Size);
-        }
-
-        return extraData;
     }
 
 }

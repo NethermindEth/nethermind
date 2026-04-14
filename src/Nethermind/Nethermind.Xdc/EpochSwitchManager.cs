@@ -3,13 +3,13 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace Nethermind.Xdc;
 
@@ -22,6 +22,7 @@ internal class EpochSwitchManager(
         tree,
         snapshotManager)
 {
+    protected LruCache<ulong, BlockRoundInfo> Round2EpochBlockInfo { get; } = new(XdcConstants.InMemoryRound2Epochs, nameof(Round2EpochBlockInfo));
     /// <summary>
     /// Determine if the given block is an epoch switch block.
     /// </summary>
@@ -92,10 +93,7 @@ internal class EpochSwitchManager(
         return parentRound < epochStartRound;
     }
 
-    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec)
-    {
-        return header.PenaltiesAddress.Value.ToArray();
-    }
+    protected override Address[] ResolvePenalties(XdcBlockHeader header, Snapshot snapshot, IXdcReleaseSpec spec) => [.. header.PenaltiesAddress!.Value];
 
     private EpochSwitchInfo[] GetEpochSwitchBetween(XdcBlockHeader start, XdcBlockHeader end)
     {
@@ -228,36 +226,6 @@ internal class EpochSwitchManager(
 
         epochBlockInfo = null;
         return false;
-    }
-
-    public override EpochSwitchInfo? GetTimeoutCertificateEpochInfo(TimeoutCertificate timeoutCert)
-    {
-        XdcBlockHeader headOfChainHeader = (XdcBlockHeader)Tree.Head.Header;
-
-        EpochSwitchInfo epochSwitchInfo = GetEpochSwitchInfo(headOfChainHeader);
-        if (epochSwitchInfo is null)
-        {
-            return null;
-        }
-
-        IXdcReleaseSpec xdcSpec = XdcSpecProvider.GetXdcSpec(headOfChainHeader);
-
-        ulong epochRound = epochSwitchInfo.EpochSwitchBlockInfo.Round;
-        ulong tempTCEpoch = (ulong)xdcSpec.SwitchEpoch + epochRound / (ulong)xdcSpec.EpochLength;
-
-        BlockRoundInfo epochBlockInfo = new(epochSwitchInfo.EpochSwitchBlockInfo.Hash, epochRound, epochSwitchInfo.EpochSwitchBlockInfo.BlockNumber);
-
-        while (epochBlockInfo.Round > timeoutCert.Round)
-        {
-            tempTCEpoch--;
-            epochBlockInfo = GetBlockByEpochNumber(tempTCEpoch);
-            if (epochBlockInfo is null)
-            {
-                return null;
-            }
-        }
-
-        return GetEpochSwitchInfo(epochBlockInfo.Hash);
     }
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
