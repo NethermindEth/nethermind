@@ -351,10 +351,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     }
 
     // assumes prestate not loaded
-    public void CheckWasChanged()
-    {
-        _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
-    }
+    public void CheckWasChanged() => _wasChanged = _balanceChanges.Count > 0 || _nonceChanges.Count > 0 || _codeChanges.Count > 0 || _storageChanges.Count > 0;
 
     [JsonIgnore]
     public bool AccountChanged => _wasChanged;

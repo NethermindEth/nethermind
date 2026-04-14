@@ -45,10 +45,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         blocksConfig.PreWarmStateConcurrency,
         nodeStorageCache,
         preBlockCaches,
-        logManager)
-    {
-        _parallelExecutionEnabled = blocksConfig.ParallelExecution;
-    }
+        logManager) => _parallelExecutionEnabled = blocksConfig.ParallelExecution;
 
     internal BlockCachePreWarmer(
         IPooledObjectPolicy<IReadOnlyTxProcessorSource> poolPolicy,

@@ -325,10 +325,7 @@ public class BlockAccessListManager(
         new BeaconBlockRootHandler(preExecution.TxProcessor, preExecution.WorldState).StoreBeaconRoot(block, spec, NullTxTracer.Instance);
     }
 
-    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec)
-    {
-        new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
-    }
+    public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) => new BlockhashStore(_txProcessorWithWorldStateManager.GetPreExecution().WorldState).ApplyBlockhashStateChanges(header, spec);
 
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
@@ -447,10 +444,7 @@ public class BlockAccessListManager(
             _txProcessorWithWorldState.WorldState.IncrementIndex();
         }
 
-        public void Rollback()
-        {
-            _txProcessorWithWorldState.WorldState.Clear();
-        }
+        public void Rollback() => _txProcessorWithWorldState.WorldState.Clear();
     }
 
     private class TxProcessorWithWorldState

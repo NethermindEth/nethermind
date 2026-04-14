@@ -33,10 +33,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     {
     }
 
-    public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges)
-    {
-        _accountChanges = accountChanges;
-    }
+    public BlockAccessList(SortedDictionary<Address, AccountChanges> accountChanges) => _accountChanges = accountChanges;
 
     public bool Equals(BlockAccessList? other)
     {

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Evm.State;
@@ -9,8 +9,5 @@ namespace Nethermind.Consensus.Withdrawals;
 
 public class WithdrawalProcessorFactory(ILogManager logManager) : IWithdrawalProcessorFactory
 {
-    public IWithdrawalProcessor Create(IWorldState worldState, ITransactionProcessor transactionProcessor)
-    {
-        return new WithdrawalProcessor(worldState, logManager);
-    }
+    public IWithdrawalProcessor Create(IWorldState worldState, ITransactionProcessor transactionProcessor) => new WithdrawalProcessor(worldState, logManager);
 }

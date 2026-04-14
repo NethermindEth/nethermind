@@ -56,10 +56,7 @@ public class BlockAccessListBasedWorldState(
 
     public class InvalidBlockLevelAccessListException(BlockHeader block, string message) : InvalidBlockException(block, "InvalidBlockLevelAccessList: " + message);
 
-    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
-    {
-        oldBalance = GetBalance(address);
-    }
+    public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
     public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
     {
@@ -96,10 +93,7 @@ public class BlockAccessListBasedWorldState(
         throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage access for {storageCell.Address} not in block access list at index {blockAccessIndex}.");
     }
 
-    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce)
-    {
-        oldNonce = GetNonce(address);
-    }
+    public void IncrementNonce(Address address, UInt256 delta, out UInt256 oldNonce) => oldNonce = GetNonce(address);
 
     public void SetNonce(Address address, in UInt256 nonce) { }
 
@@ -150,10 +144,7 @@ public class BlockAccessListBasedWorldState(
     public byte[]? GetCode(in ValueHash256 _)
         => null;
 
-    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
-    {
-        oldBalance = GetBalance(address);
-    }
+    public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance) => oldBalance = GetBalance(address);
 
     public void DeleteAccount(Address address) { }
 
