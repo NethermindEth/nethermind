@@ -58,9 +58,9 @@ public partial class BlockProcessor
                 Transaction currentTx = block.Transactions[i];
                 ProcessTransaction(balManager.GetTxProcessor(i + 1), _stateProvider, block, currentTx, i, receiptsTracer, processingOptions);
 
+                balManager.NextTransaction();
                 balManager.SpendGas(currentTx.BlockGasUsed);
                 balManager.ValidateBlockAccessList(block, (ushort)(i + 1));
-                balManager.NextTransaction();
             }
 
             return [.. receiptsTracer.TxReceipts];
