@@ -39,7 +39,7 @@ internal class SubnetEpochSwitchManager(
 
     public override BlockRoundInfo? GetBlockByEpochNumber(ulong targetEpoch)
     {
-        // This method is not used in subnet, implentation just in case
+        // This method is not used in subnet, implementation just in case
         XdcBlockHeader headHeader = Tree.Head?.Header as XdcBlockHeader;
         if (headHeader is null)
             return null;
