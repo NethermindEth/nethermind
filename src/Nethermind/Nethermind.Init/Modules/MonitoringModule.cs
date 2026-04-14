@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using DotNetty.Buffers;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -16,10 +17,11 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
 
-public class MonitoringModule(IMetricsConfig metricsConfig) : Module
+public class MonitoringModule(IMetricsConfig metricsConfig, IInitConfig initConfig, IFlatDbConfig flatDbConfig) : Module
 {
     protected override void Load(ContainerBuilder builder)
     {
@@ -62,6 +64,22 @@ public class MonitoringModule(IMetricsConfig metricsConfig) : Module
 
 
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
+
+        ProductInfo.VersionPostfix = flatDbConfig.Enabled
+            ? flatDbConfig.Layout switch
+            {
+                FlatLayout.Flat => "-flat",
+                FlatLayout.FlatInTrie => "-flatInTrie",
+                FlatLayout.PreimageFlat => "-preimageFlat",
+                _ => ""
+            }
+            : initConfig.StateDbKeyScheme switch
+            {
+                INodeStorage.KeyScheme.Hash => "-hash",
+                INodeStorage.KeyScheme.HalfPath => "-halfpath",
+                _ => ""
+            };
+
         Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
         IMetricsController controller = new MetricsController(metricsConfig);
