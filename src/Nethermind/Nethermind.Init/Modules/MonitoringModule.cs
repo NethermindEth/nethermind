@@ -65,6 +65,7 @@ public class MonitoringModule(IMetricsConfig metricsConfig, IInitConfig initConf
 
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
 
+        bool isArchive = pruningConfig.Mode == PruningMode.None;
         ProductInfo.VersionPostfix = flatDbConfig.Enabled
             ? flatDbConfig.Layout switch
             {
@@ -75,8 +76,8 @@ public class MonitoringModule(IMetricsConfig metricsConfig, IInitConfig initConf
             }
             : initConfig.StateDbKeyScheme switch
             {
-                INodeStorage.KeyScheme.Hash => "-hash",
-                INodeStorage.KeyScheme.HalfPath => "-halfpath",
+                INodeStorage.KeyScheme.Hash => isArchive ? "-hashArchive" : "-hash",
+                INodeStorage.KeyScheme.HalfPath => isArchive ? "-halfpathArchive" : "-halfpath",
                 _ => ""
             };
 
