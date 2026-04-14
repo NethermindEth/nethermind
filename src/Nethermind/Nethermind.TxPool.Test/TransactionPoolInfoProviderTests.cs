@@ -61,10 +61,7 @@ namespace Nethermind.TxPool.Test
             VerifyNonceAndTransactions(queued.Value, 9);
         }
 
-        private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce)
-        {
-            transactionNonce[nonce].Nonce.Should().Be(nonce);
-        }
+        private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce) => transactionNonce[nonce].Nonce.Should().Be(nonce);
 
         private Transaction[] GetTransactions()
             => new[]

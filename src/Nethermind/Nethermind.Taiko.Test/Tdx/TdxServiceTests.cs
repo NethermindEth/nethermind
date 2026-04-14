@@ -47,10 +47,8 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void IsBootstrapped_returns_false_before_bootstrap()
-    {
+    public void IsBootstrapped_returns_false_before_bootstrap() =>
         _service.IsBootstrapped.Should().BeFalse();
-    }
 
     [Test]
     public void Bootstrap_generates_keys_and_quote()
@@ -75,10 +73,8 @@ public class TdxServiceTests
     }
 
     [Test]
-    public void GetGuestInfo_returns_null_before_bootstrap()
-    {
+    public void GetGuestInfo_returns_null_before_bootstrap() =>
         _service.GetGuestInfo().Should().BeNull();
-    }
 
     [Test]
     public void GetGuestInfo_returns_info_after_bootstrap()

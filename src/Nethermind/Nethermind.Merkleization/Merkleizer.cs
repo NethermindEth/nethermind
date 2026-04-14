@@ -16,20 +16,11 @@ namespace Nethermind.Merkleization;
 
 public ref struct Merkleizer
 {
-    public readonly bool IsKthBitSet(int k)
-    {
-        return (_filled & ((ulong)1 << k)) != 0;
-    }
+    public readonly bool IsKthBitSet(int k) => (_filled & ((ulong)1 << k)) != 0;
 
-    public void SetKthBit(int k)
-    {
-        _filled |= (ulong)1 << k;
-    }
+    public void SetKthBit(int k) => _filled |= (ulong)1 << k;
 
-    public void UnsetKthBit(int k)
-    {
-        _filled &= ~((ulong)1 << k);
-    }
+    public void UnsetKthBit(int k) => _filled &= ~((ulong)1 << k);
 
     private readonly Span<UInt256> _chunks;
     private ulong _filled;
@@ -55,10 +46,7 @@ public ref struct Merkleizer
         _filled = 0;
     }
 
-    public void Feed(UInt256 chunk)
-    {
-        FeedAtLevel(chunk, 0);
-    }
+    public void Feed(UInt256 chunk) => FeedAtLevel(chunk, 0);
 
     public void Feed(long value)
     {
@@ -243,17 +231,12 @@ public ref struct Merkleizer
         Feed(_chunks[^1]);
     }
 
-    public void Feed(Bytes32 value)
-    {
+    public void Feed(Bytes32 value) =>
         // TODO: Is this going to have correct endianness? (the ulongs inside UInt256 are the correct order,
         // and if only used as memory to store bytes, the native order of a ulong (bit or little) shouldn't matter)
         Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
-    }
 
-    public void Feed(Root value)
-    {
-        Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
-    }
+    public void Feed(Root value) => Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
 
     public void Feed(SszBytes32 value)
     {

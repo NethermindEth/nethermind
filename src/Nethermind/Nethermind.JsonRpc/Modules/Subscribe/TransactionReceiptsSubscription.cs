@@ -51,10 +51,7 @@ public class TransactionReceiptsSubscription : Subscription
         if (_logger.IsTrace) _logger.Trace($"TransactionReceipts subscription {Id} will track ReceiptsInserted.");
     }
 
-    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
-    {
-        ScheduleAction(async () => await TryPublishReceipts(e));
-    }
+    private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => ScheduleAction(async () => await TryPublishReceipts(e));
 
     private async Task TryPublishReceipts(ReceiptsEventArgs e)
     {

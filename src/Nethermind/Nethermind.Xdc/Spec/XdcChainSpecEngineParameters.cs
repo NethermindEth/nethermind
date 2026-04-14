@@ -68,10 +68,7 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
         }
     }
 
-    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp)
-    {
-        spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
-    }
+    public void ApplyToReleaseSpec(ReleaseSpec spec, long startBlock, ulong? startTimestamp) => spec.BaseFeeCalculator = new XdcBaseFeeCalculator();
 
     public void AddTransitions(SortedSet<long> blockNumbers, SortedSet<ulong> timestamps)
     {

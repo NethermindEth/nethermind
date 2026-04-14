@@ -109,10 +109,7 @@ namespace Nethermind.Consensus.AuRa
             }
         }
 
-        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
-        {
-            FinalizeBlocks(e.Block.Header);
-        }
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e) => FinalizeBlocks(e.Block.Header);
 
         private void FinalizeBlocks(BlockHeader finalizingBlock)
         {

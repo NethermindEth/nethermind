@@ -21,10 +21,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey) : I
     /// Signs the node record with own private key.
     /// </summary>
     /// <param name="nodeRecord"></param>
-    public void Sign(NodeRecord nodeRecord)
-    {
-        nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
-    }
+    public void Sign(NodeRecord nodeRecord) => nodeRecord.Signature = _ecdsa.Sign(_privateKey, in nodeRecord.ContentHash.ValueHash256);
 
     /// <summary>
     /// Deserializes a <see cref="NodeRecord"/> from an <see cref="RlpStream"/>.

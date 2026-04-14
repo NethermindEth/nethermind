@@ -41,10 +41,7 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
     public void SetCodeOverride(
         IReleaseSpec vmSpec,
         Address key,
-        CodeInfo value)
-    {
-        _codeOverrides[key] = (value, ValueKeccak.Compute(value.Code.Span));
-    }
+        CodeInfo value) => _codeOverrides[key] = (value, ValueKeccak.Compute(value.Code.Span));
 
     public void MovePrecompile(IReleaseSpec vmSpec, Address precompileAddr, Address targetAddr)
     {

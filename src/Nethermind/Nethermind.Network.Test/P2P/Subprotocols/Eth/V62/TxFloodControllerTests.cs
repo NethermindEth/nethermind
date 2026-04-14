@@ -118,10 +118,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Enabled_by_default()
-        {
-            _controller.IsEnabled.Should().BeTrue();
-        }
+        public void Enabled_by_default() => _controller.IsEnabled.Should().BeTrue();
 
         [Test]
         public void Can_be_disabled_and_enabled()

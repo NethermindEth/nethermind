@@ -135,17 +135,11 @@ namespace Nethermind.HealthChecks
 
         public bool CheckClAlive() => clHealthTracker?.CheckClAlive() ?? true;
 
-        private ulong? GetBlockProcessorIntervalHint()
-        {
-            return healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
+        private ulong? GetBlockProcessorIntervalHint() => healthChecksConfig.MaxIntervalWithoutProcessedBlock ??
                    healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
-        }
 
-        private ulong? GetBlockProducerIntervalHint()
-        {
-            return healthChecksConfig.MaxIntervalWithoutProducedBlock ??
+        private ulong? GetBlockProducerIntervalHint() => healthChecksConfig.MaxIntervalWithoutProducedBlock ??
                    healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-        }
 
         private static bool CheckSyncPostMerge(ICollection<(string Description, string LongDescription)> messages,
             ICollection<string> errors, SyncingResult syncingResult)
@@ -230,20 +224,11 @@ namespace Nethermind.HealthChecks
         }
 
         private static void AddStillSyncingMessage(ICollection<(string Description, string LongDescription)> messages,
-            SyncingResult ethSyncing)
-        {
-            messages.Add(("Still syncing",
+            SyncingResult ethSyncing) => messages.Add(("Still syncing",
                 $"The node is still syncing, CurrentBlock: {ethSyncing.CurrentBlock}, HighestBlock: {ethSyncing.HighestBlock}. The status will change to healthy once synced"));
-        }
 
-        private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages)
-        {
-            messages.Add(("Fully synced", $"The node is now fully synced with a network"));
-        }
+        private static void AddFullySyncMessage(ICollection<(string Description, string LongDescription)> messages) => messages.Add(("Fully synced", $"The node is now fully synced with a network"));
 
-        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent)
-        {
-            messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
-        }
+        private static void AddLowDiskSpaceMessage(ICollection<(string Description, string LongDescription)> messages, IDriveInfo drive, double freeSpacePercent) => messages.Add(("Low free disk space", $"The node is running out of free disk space in '{drive.RootDirectory.FullName}' - only {drive.GetFreeSpaceInGiB():F2} GB ({freeSpacePercent:F2}%) left"));
     }
 }

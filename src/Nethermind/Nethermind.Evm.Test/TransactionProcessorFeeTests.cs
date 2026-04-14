@@ -51,10 +51,7 @@ public class TransactionProcessorFeeTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser.Dispose();
-    }
+    public void TearDown() => _worldStateCloser.Dispose();
 
     [TestCase(true, true)]
     [TestCase(false, true)]

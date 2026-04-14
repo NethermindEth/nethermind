@@ -122,9 +122,6 @@ namespace Nethermind.Consensus.AuRa.Contracts
             return (Address[])objects[0];
         }
 
-        public void EnsureSystemAccount()
-        {
-            EnsureSystemAccount(_stateProvider);
-        }
+        public void EnsureSystemAccount() => EnsureSystemAccount(_stateProvider);
     }
 }

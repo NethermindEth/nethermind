@@ -60,16 +60,15 @@ public class E2StoreWriter(Stream stream) : IDisposable
         return length + HeaderSize;
     }
 
-    public Task Flush(CancellationToken cancellation = default)
-    {
-        return _stream.FlushAsync(cancellation);
-    }
+    public Task Flush(CancellationToken cancellation = default) => _stream.FlushAsync(cancellation);
 
     public void Dispose()
     {
         _checksumCalculator.Dispose();
         _stream.Dispose();
     }
+
+    public ValueHash256 FinalizeChecksum() => new(_checksumCalculator.GetHashAndReset());
 
     /// <summary>
     /// Compresses <paramref name="bytes"/> using Snappy framing and returns the result
@@ -88,10 +87,5 @@ public class E2StoreWriter(Stream stream) : IDisposable
         byte[] rented = ArrayPool<byte>.Shared.Rent(segment.Count);
         segment.AsSpan().CopyTo(rented);
         return (rented, segment.Count);
-    }
-
-    public ValueHash256 FinalizeChecksum()
-    {
-        return new ValueHash256(_checksumCalculator.GetHashAndReset());
     }
 }

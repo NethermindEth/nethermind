@@ -18,10 +18,7 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
     [TestCase((ulong)int.MaxValue)]
     [TestCase(1UL)]
     [TestCase(0UL)]
-    public void Test_roundtrip(ulong value)
-    {
-        TestConverter((ulong?)value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(ulong value) => TestConverter((ulong?)value, static (a, b) => a.Equals(b), converter);
 
     [TestCase("\"0xa00000\"", 10485760UL)]
     [TestCase("\"0x0\"", 0UL)]
@@ -42,11 +39,8 @@ public class NullableULongConverterTests : ConverterTestBase<ulong?>
     }
 
     [Test]
-    public void Throws_on_negative_numbers()
-    {
-        Assert.Throws<JsonException>(
+    public void Throws_on_negative_numbers() => Assert.Throws<JsonException>(
             static () => JsonSerializer.Deserialize<ulong?>("-1", options));
-    }
 
     [TestCase(0UL, "\"0x0\"")]
     [TestCase(1UL, "\"0x1\"")]

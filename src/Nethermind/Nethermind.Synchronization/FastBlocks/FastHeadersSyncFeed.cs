@@ -847,15 +847,9 @@ namespace Nethermind.Synchronization.FastBlocks
             _blockTree.BulkInsertHeader(headersToAdd);
         }
 
-        protected void SetExpectedNextHeaderToParent(BlockHeader header)
-        {
-            _expectedNextHeader = new NextHeader(header.ParentHash, DetermineParentTotalDifficulty(header));
-        }
+        protected void SetExpectedNextHeaderToParent(BlockHeader header) => _expectedNextHeader = new NextHeader(header.ParentHash, DetermineParentTotalDifficulty(header));
 
-        protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header)
-        {
-            return _totalDifficultyStrategy.ParentTotalDifficulty(header);
-        }
+        protected virtual UInt256? DetermineParentTotalDifficulty(BlockHeader header) => _totalDifficultyStrategy.ParentTotalDifficulty(header);
 
         private bool _disposed = false;
 

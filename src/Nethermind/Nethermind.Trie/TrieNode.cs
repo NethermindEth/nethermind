@@ -174,10 +174,7 @@ namespace Nethermind.Trie
             } while (previousValue != currentValue);
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowAlreadySealed()
-            {
-                throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
-            }
+            void ThrowAlreadySealed() => throw new InvalidOperationException($"{nameof(TrieNode)} {this} is already sealed.");
         }
 
         public Hash256? Keccak { get; internal set; }
@@ -229,18 +226,12 @@ namespace Nethermind.Trie
                 Keccak = null;
 
                 [DoesNotReturn, StackTraceHidden]
-                void ThrowDoesNotSupportKey()
-                {
-                    throw new InvalidOperationException(
+                void ThrowDoesNotSupportKey() => throw new InvalidOperationException(
                         $"{NodeType} {this} is does not support having a {nameof(Key)}.");
-                }
 
                 [DoesNotReturn, StackTraceHidden]
-                void ThrowAlreadySealed()
-                {
-                    throw new InvalidOperationException(
+                void ThrowAlreadySealed() => throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Key)}.");
-                }
             }
         }
 
@@ -278,17 +269,11 @@ namespace Nethermind.Trie
                 _nodeData = leafData.CloneWithNewValue(value);
 
                 [DoesNotReturn, StackTraceHidden]
-                void ThrowAlreadySealed()
-                {
-                    throw new InvalidOperationException(
+                void ThrowAlreadySealed() => throw new InvalidOperationException(
                         $"{nameof(TrieNode)} {this} is already sealed when setting {nameof(Value)}.");
-                }
 
                 [DoesNotReturn, StackTraceHidden]
-                static void ThrowNoValueOnBranches()
-                {
-                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
-                }
+                static void ThrowNoValueOnBranches() => throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
             }
         }
 
@@ -374,27 +359,22 @@ namespace Nethermind.Trie
             }
         }
 
-        private INodeData CreateNodeData(NodeType nodeType)
+        private INodeData CreateNodeData(NodeType nodeType) => nodeType switch
         {
-            return nodeType switch
-            {
-                NodeType.Branch => new BranchData(),
-                NodeType.Extension => new ExtensionData(),
-                NodeType.Leaf => new LeafData(),
-                _ => null,
-            };
-        }
+            NodeType.Branch => new BranchData(),
+            NodeType.Extension => new ExtensionData(),
+            NodeType.Leaf => new LeafData(),
+            _ => null,
+        };
 
-        public override string ToString()
-        {
+        public override string ToString() =>
 #if DEBUG
-            return
-                $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNullOrEmpty && FullRlp.Length < 32 ? $"{FullRlp.AsSpan().ToHexString()}" : "")}" +
+            $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)}){(FullRlp.IsNotNullOrEmpty && FullRlp.Length < 32 ? $"{FullRlp.AsSpan().ToHexString()}" : "")}" +
                 $"|{Id}|{Keccak}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #else
-            return $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+            $"[{NodeType}({(FullRlp.IsNotNullOrEmpty ? FullRlp.Length : 0)})|{Keccak?.ToShortString()}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
-        }
+
 
         public void ResolveNode(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags = ReadFlags.None,
             ICappedArrayPool? bufferPool = null)
@@ -411,11 +391,8 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowDecodingError(RlpException rlpException, in TreePath path)
-            {
-                throw new TrieNodeException($"Error when decoding node {Keccak}", path,
+            void ThrowDecodingError(RlpException rlpException, in TreePath path) => throw new TrieNodeException($"Error when decoding node {Keccak}", path,
                     Keccak ?? Nethermind.Core.Crypto.Keccak.Zero, rlpException);
-            }
         }
 
         /// <summary>
@@ -450,24 +427,15 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowMissingKeccak()
-            {
-                throw new TrieException("Unable to resolve node without Keccak");
-            }
+            static void ThrowMissingKeccak() => throw new TrieException("Unable to resolve node without Keccak");
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowNullRlp()
-            {
-                throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
-            }
+            void ThrowNullRlp() => throw new TrieException($"Trie returned a NULL RLP for node {Keccak}");
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path)
-            {
-                throw new TrieNodeException(
+            void ThrowUnexpectedNumberOfItems(int numberOfItems, in TreePath path) => throw new TrieNodeException(
                     $"Unexpected number of items = {numberOfItems} when decoding a node from RLP ({FullRlp.AsSpan().ToHexString()})",
                     path, Keccak ?? Nethermind.Core.Crypto.Keccak.Zero);
-            }
         }
 
         /// <summary>
@@ -609,10 +577,7 @@ namespace Nethermind.Trie
             };
 
             [DoesNotReturn, StackTraceHidden]
-            static CappedArray<byte> ThrowUnhandledNodeType(TrieNode item)
-            {
-                throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
-            }
+            static CappedArray<byte> ThrowUnhandledNodeType(TrieNode item) => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
         }
 
         public Hash256? GetChildHash(int i)
@@ -726,11 +691,8 @@ namespace Nethermind.Trie
             return data is null || ReferenceEquals(data, _nullNode);
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowNotABranch()
-            {
-                throw new TrieException(
+            static void ThrowNotABranch() => throw new TrieException(
                     "An attempt was made to ask about whether a child is null on a non-branch node.");
-            }
         }
 
         public bool TryGetDirtyChild(int i, [NotNullWhen(true)] out TrieNode? dirtyChild)
@@ -870,11 +832,8 @@ namespace Nethermind.Trie
             Keccak = null;
 
             [DoesNotReturn, StackTraceHidden]
-            void ThrowAlreadySealed()
-            {
-                throw new InvalidOperationException(
+            void ThrowAlreadySealed() => throw new InvalidOperationException(
                     $"{nameof(TrieNode)} {this} is already sealed when setting a child.");
-            }
         }
 
         /// <summary>
@@ -1460,16 +1419,10 @@ namespace Nethermind.Trie
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowNotPersisted()
-            {
-                throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
-            }
+            static void ThrowNotPersisted() => throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
         }
 
-        public ChildIterator CreateChildIterator()
-        {
-            return new ChildIterator(this);
-        }
+        public ChildIterator CreateChildIterator() => new(this);
 
         // Allow faster forward child iteration by not re-skipping items on each child seek
         public ref struct ChildIterator(TrieNode node)

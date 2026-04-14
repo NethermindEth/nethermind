@@ -429,26 +429,17 @@ public class BlockchainProcessorTests
             return this;
         }
 
-        public AfterBlock FullyProcessed(Block block)
-        {
-            return Suggested(block)
+        public AfterBlock FullyProcessed(Block block) => Suggested(block)
                 .Recovered(block)
                 .Processed(block);
-        }
 
-        public AfterBlock FullyProcessedSkipped(Block block)
-        {
-            return Suggested(block)
+        public AfterBlock FullyProcessedSkipped(Block block) => Suggested(block)
                 .Recovered(block)
                 .ProcessedSkipped(block);
-        }
 
-        public AfterBlock FullyProcessedFail(Block block)
-        {
-            return Suggested(block)
+        public AfterBlock FullyProcessedFail(Block block) => Suggested(block)
                 .Recovered(block)
                 .ProcessedFail(block);
-        }
 
         public ProcessingTestContext QueueIsEmpty(int count)
         {
@@ -569,37 +560,28 @@ public class BlockchainProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_ignore_lower_difficulty()
-    {
-        When.ProcessingBlocks
+    public void Can_ignore_lower_difficulty() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_blockB2D4).BecomesNewHead()
             .FullyProcessed(_blockB3D8).BecomesNewHead()
             .FullyProcessedSkipped(_block2D4).IsKeptOnBranch()
             .FullyProcessedSkipped(_block3D6).IsKeptOnBranch();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_ignore_same_difficulty()
-    {
-        When.ProcessingBlocks
+    public void Can_ignore_same_difficulty() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_process_sequence()
-    {
-        When.ProcessingBlocks
+    public void Can_process_sequence() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .FullyProcessed(_block3D6).BecomesNewHead()
             .FullyProcessed(_block4D8).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Explicit("Does not work on CI")]
@@ -615,15 +597,12 @@ public class BlockchainProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_process_fast_sync_transition()
-    {
-        When.ProcessingBlocks
+    public void Can_process_fast_sync_transition() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .Suggested(_block3D6.Header)
             .FullyProcessed(_block4D8).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Can_process_fast_sync()
@@ -665,21 +644,16 @@ public class BlockchainProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_reorganize_just_head_block_twice()
-    {
-        When.ProcessingBlocks
+    public void Can_reorganize_just_head_block_twice() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .FullyProcessed(_blockC2D100).BecomesNewHead()
             .FullyProcessed(_blockD2D200).BecomesNewHead()
             .FullyProcessed(_blockE2D300).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_reorganize_there_and_back()
-    {
-        When.ProcessingBlocks
+    public void Can_reorganize_there_and_back() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
@@ -688,12 +662,9 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB3D8).BecomesNewHead()
             .FullyProcessedSkipped(_block4D8).IsKeptOnBranch()
             .FullyProcessed(_block5D10).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_reorganize_to_longer_path()
-    {
-        When.ProcessingBlocks
+    public void Can_reorganize_to_longer_path() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_blockB2D4).BecomesNewHead()
@@ -702,40 +673,30 @@ public class BlockchainProcessorTests
             .FullyProcessedSkipped(_block3D6).IsKeptOnBranch()
             .FullyProcessedSkipped(_block4D8).IsKeptOnBranch()
             .FullyProcessed(_block5D10).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_reorganize_to_same_length()
-    {
-        When.ProcessingBlocks
+    public void Can_reorganize_to_same_length() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .FullyProcessed(_block3D6).BecomesNewHead()
             .FullyProcessedSkipped(_blockB2D4).IsKeptOnBranch()
             .FullyProcessed(_blockB3D8).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_reorganize_to_shorter_path()
-    {
-        When.ProcessingBlocks
+    public void Can_reorganize_to_shorter_path() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessed(_block2D4).BecomesNewHead()
             .FullyProcessed(_block3D6).BecomesNewHead()
             .FullyProcessed(_blockC2D100).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_change_branch_on_invalid_block()
-    {
-        When.ProcessingBlocks
+    public void Can_change_branch_on_invalid_block() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
             .FullyProcessedFail(_block2D4).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
-    }
 
     [Test(Description = "Covering scenario when we have an invalid block followed by its descendants." +
                         "All the descendant blocks should get discarded and an alternative branch should get selected." +
@@ -743,9 +704,7 @@ public class BlockchainProcessorTests
                         "BRANCH A | BLOCK 3 |   VALID |  DISCARD" +
                         "BRANCH A | BLOCK 4 |   VALID |  DISCARD" +
                         "BRANCH B | BLOCK 2 |   VALID | NEW HEAD"), MaxTime(Timeout.MaxTestTime)]
-    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue()
-    {
-        When.ProcessingBlocks
+    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue() => When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
             .Suggested(_block1D2)
             .Suggested(_block2D4)
@@ -760,11 +719,9 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached()
-    {
+    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached() =>
         When.ProcessingBlocks
             .AndRecoveryQueueLimitHasBeenReached()
             .FullyProcessed(_block0).BecomesGenesis()
@@ -781,13 +738,11 @@ public class BlockchainProcessorTests
             .ProcessedSkipped(_block3D6).IsDeletedAsInvalid()
             .ProcessedSkipped(_block4D8).IsDeletedAsInvalid()
             .FullyProcessed(_blockB2D4).BecomesNewHead();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     [Ignore("Not implemented yet - scenario when from suggested blocks we can see that previously suggested will not be winning")]
     [Todo(Improve.Performance, "We can skip processing losing branches by implementing code to pass this test")]
-    public void Never_process_branches_that_are_known_to_lose_in_the_future()
-    {
+    public void Never_process_branches_that_are_known_to_lose_in_the_future() =>
         // this can be solved easily by resetting the hash to follow whenever suggesting a block that is not a child of the previously suggested block
         When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
@@ -803,12 +758,9 @@ public class BlockchainProcessorTests
             .Recovered(_blockB3D8)
             .Processed(_block1D2).BecomesNewHead()
             .ProcessedSkipped(_block2D4).IsKeptOnBranch();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void IsProcessingBlocks_returns_true_when_processing_blocks()
-    {
-        When.ProcessingBlocks
+    public void IsProcessingBlocks_returns_true_when_processing_blocks() => When.ProcessingBlocks
             .IsProcessingBlocks(true, 1)
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
@@ -817,12 +769,9 @@ public class BlockchainProcessorTests
             .IsProcessingBlocks(true, 1)
             .FullyProcessed(_block3D6).BecomesNewHead()
             .IsProcessingBlocks(true, 1);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void IsProcessingBlocks_returns_false_when_max_interval_elapsed()
-    {
-        When.ProcessingBlocks
+    public void IsProcessingBlocks_returns_false_when_max_interval_elapsed() => When.ProcessingBlocks
             .IsProcessingBlocks(true, 1)
             .FullyProcessed(_block0).BecomesGenesis()
             .FullyProcessed(_block1D2).BecomesNewHead()
@@ -832,21 +781,15 @@ public class BlockchainProcessorTests
             .IsProcessingBlocks(false, 1)
             .FullyProcessed(_block3D6).BecomesNewHead()
             .IsProcessingBlocks(true, 1);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void ProcessorIsNotStarted_returns_false()
-    {
-        When.ProcessorIsNotStarted
+    public void ProcessorIsNotStarted_returns_false() => When.ProcessorIsNotStarted
             .IsProcessingBlocks(false, 10)
             .Sleep(1000)
             .IsProcessingBlocks(false, 10);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void QueueCount_returns_correctly()
-    {
-        When.ProcessingBlocks
+    public void QueueCount_returns_correctly() => When.ProcessingBlocks
             .QueueIsEmpty(1)
             .FullyProcessed(_block0)
             .BecomesGenesis()
@@ -874,12 +817,9 @@ public class BlockchainProcessorTests
             .Sleep(10)
             .CountIs(0)
             .QueueIsEmpty(3);
-    }
 
     [Test]
-    public void ProcessingLongRangeFastSync_ProcessOnlyLastBlock()
-    {
-        When.ProcessingBlocks
+    public void ProcessingLongRangeFastSync_ProcessOnlyLastBlock() => When.ProcessingBlocks
             .QueueIsEmpty(1)
 
             .FullyProcessed(_block0).BecomesNewHead()
@@ -897,5 +837,4 @@ public class BlockchainProcessorTests
                 _block1D2,
                 _block5D10
             );
-    }
 }

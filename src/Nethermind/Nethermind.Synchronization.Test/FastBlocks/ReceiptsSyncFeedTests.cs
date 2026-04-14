@@ -131,9 +131,8 @@ public class ReceiptsSyncFeedTests
         _metadataDb?.Dispose();
     }
 
-    private ReceiptsSyncFeed CreateFeed()
-    {
-        return new ReceiptsSyncFeed(
+    private ReceiptsSyncFeed CreateFeed() =>
+        new(
             _specProvider,
             _blockTree,
             _receiptStorage,
@@ -144,7 +143,6 @@ public class ReceiptsSyncFeedTests
             _historyPruner,
             _metadataDb,
             LimboLogs.Instance);
-    }
 
     [Test]
     public void Should_throw_when_fast_block_not_enabled()
@@ -187,22 +185,16 @@ public class ReceiptsSyncFeedTests
     }
 
     [Test]
-    public void Contexts_are_correct()
-    {
+    public void Contexts_are_correct() =>
         _feed.Contexts.Should().Be(AllocationContexts.Receipts);
-    }
 
     [Test]
-    public void Should_be_multifeed()
-    {
+    public void Should_be_multifeed() =>
         _feed.IsMultiFeed.Should().BeTrue();
-    }
 
     [Test]
-    public void Should_start_dormant()
-    {
+    public void Should_start_dormant() =>
         _feed.CurrentState.Should().Be(SyncFeedState.Dormant);
-    }
 
     [Test]
     public void When_activating_should_emit_an_event()
@@ -274,10 +266,8 @@ public class ReceiptsSyncFeedTests
         _feed.IsFinished.Should().Be(shouldFinish);
     }
 
-    private void LoadScenario(Scenario scenario)
-    {
+    private void LoadScenario(Scenario scenario) =>
         LoadScenario(scenario, _syncConfig);
-    }
 
     private void LoadScenario(Scenario scenario, ISyncConfig syncConfig)
     {

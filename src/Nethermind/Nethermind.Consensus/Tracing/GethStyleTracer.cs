@@ -45,15 +45,9 @@ public class GethStyleTracer(
         return TraceImpl(block, block.Transactions[txIndex].Hash, cancellationToken, options);
     }
 
-    public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(GetBlockToTrace(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
-    }
+    public GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(GetBlockToTrace(blockRlp), options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
 
-    public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(block, options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
-    }
+    public GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(block, options with { TxHash = txHash }, cancellationToken).FirstOrDefault();
 
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken)
     {
@@ -125,15 +119,9 @@ public class GethStyleTracer(
         return TraceBlockImpl(block, options, cancellationToken);
     }
 
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken);
-    }
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(GetBlockToTrace(blockRlp), options, cancellationToken);
 
-    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken)
-    {
-        return TraceBlockImpl(block, options, cancellationToken);
-    }
+    public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken) => TraceBlockImpl(block, options, cancellationToken);
 
     public IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
     {

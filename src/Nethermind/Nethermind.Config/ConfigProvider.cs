@@ -72,10 +72,7 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
-    public T GetConfig<T>() where T : IConfig
-    {
-        return (T)GetConfig(typeof(T));
-    }
+    public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
 
     public IConfig GetConfig(Type configType)
     {
@@ -109,10 +106,7 @@ public class ConfigProvider : IConfigProvider
             ?.GetValue(value) : null;
     }
 
-    public void AddSource(IConfigSource configSource)
-    {
-        _configSource.Add(configSource);
-    }
+    public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);
 
     public void Initialize()
     {

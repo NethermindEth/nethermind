@@ -13,10 +13,7 @@ public class IpEntry(IPAddress ipAddress) : EnrContentEntry<IPAddress>(ipAddress
 {
     public override string Key => EnrContentKey.Ip;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return 5;
-    }
+    protected override int GetRlpLengthOfValue() => 5;
 
     protected override void EncodeValue(RlpStream rlpStream)
     {

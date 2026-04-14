@@ -83,11 +83,9 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         }
     }
 
-    public void EndBlockTrace()
-    {
+    public void EndBlockTrace() =>
         // Track block count for end marker
         _blockCount++;
-    }
 
     /// <summary>
     /// Writes a JSONL-compliant test end marker to the trace stream.
@@ -196,9 +194,7 @@ public class BlockchainTestStreamingTracer(GethTraceOptions options, Stream? out
         _output.Write(_newLine);
     }
 
-    public void Dispose()
-    {
+    public void Dispose() =>
         // Don't dispose of Console.Error, but flush it
         _output.Flush();
-    }
 }

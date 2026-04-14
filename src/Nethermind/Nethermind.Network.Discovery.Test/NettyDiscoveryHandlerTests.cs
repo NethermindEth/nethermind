@@ -305,9 +305,6 @@ namespace Nethermind.Network.Discovery.Test
                 .AddLast(handler);
         }
 
-        private static async Task SleepWhileWaiting()
-        {
-            await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
-        }
+        private static async Task SleepWhileWaiting() => await Task.Delay((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
     }
 }

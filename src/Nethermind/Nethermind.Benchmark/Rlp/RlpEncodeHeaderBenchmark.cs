@@ -61,21 +61,12 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved2()
-        {
-            return _headerDecoder.Encode(_header).Bytes;
-        }
+        public byte[] Improved2() => _headerDecoder.Encode(_header).Bytes;
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_header).Bytes;
-        }
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_header).Bytes;
     }
 }

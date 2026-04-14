@@ -24,10 +24,7 @@ namespace Nethermind.Synchronization.Peers
 
         public SyncPeerAllocation(PeerInfo peerInfo, AllocationContexts contexts, Lock? allocationLock = null)
 
-            : this(contexts, allocationLock)
-        {
-            Current = peerInfo;
-        }
+            : this(contexts, allocationLock) => Current = peerInfo;
 
         public void AllocatePeer(PeerInfo? selected)
         {
@@ -62,9 +59,6 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public override string ToString()
-        {
-            return $"[Allocation|{Current}]";
-        }
+        public override string ToString() => $"[Allocation|{Current}]";
     }
 }

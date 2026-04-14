@@ -34,10 +34,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             return definition;
         }
 
-        public void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory)
-        {
-            _abiTypeFactories.Add(abiTypeFactory);
-        }
+        public void RegisterAbiTypeFactory(IAbiTypeFactory abiTypeFactory) => _abiTypeFactories.Add(abiTypeFactory);
 
         public static string LoadContract(Type type)
         {
@@ -45,10 +42,8 @@ namespace Nethermind.Blockchain.Contracts.Json
             return reader.ReadToEnd();
         }
 
-        public static string Serialize(AbiDefinition contract)
-        {
-            return JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
-        }
+        public static string Serialize(AbiDefinition contract) =>
+            JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
 
         private static Stream LoadResource(Type type)
         {

@@ -233,10 +233,7 @@ public class TestBlockchain : IDisposable
         return this;
     }
 
-    protected virtual ChainSpec CreateChainSpec()
-    {
-        return new ChainSpec();
-    }
+    protected virtual ChainSpec CreateChainSpec() => new();
 
     protected virtual ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
         builder
@@ -269,20 +266,14 @@ public class TestBlockchain : IDisposable
             ))
     ;
 
-    protected virtual IEnumerable<IConfig> CreateConfigs()
-    {
-        return [new BlocksConfig()
+    protected virtual IEnumerable<IConfig> CreateConfigs() => [new BlocksConfig()
         {
             MinGasPrice = 0 // Tx pool test seems to need this.
         }];
-    }
 
-    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider)
-    {
-        return specProvider is TestSpecProvider { AllowTestChainOverride: false }
+    private static ISpecProvider WrapSpecProvider(ISpecProvider specProvider) => specProvider is TestSpecProvider { AllowTestChainOverride: false }
             ? specProvider
             : new OverridableSpecProvider(specProvider, static s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
-    }
 
     protected virtual IBlockProducer CreateTestBlockProducer()
     {
@@ -299,10 +290,7 @@ public class TestBlockchain : IDisposable
             BlocksConfig);
     }
 
-    protected virtual IBlockProducerRunner CreateBlockProducerRunner()
-    {
-        return new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
-    }
+    protected virtual IBlockProducerRunner CreateBlockProducerRunner() => new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
 
     public ILogManager LogManager => Container.Resolve<ILogManager>();
 
@@ -399,10 +387,7 @@ public class TestBlockchain : IDisposable
         }
     }
 
-    protected virtual AutoCancelTokenSource CreateCancellationSource()
-    {
-        return AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimeout));
-    }
+    protected virtual AutoCancelTokenSource CreateCancellationSource() => AutoCancelTokenSource.ThatCancelAfter(Debugger.IsAttached ? TimeSpan.FromMilliseconds(-1) : TimeSpan.FromMilliseconds(TestTimeout));
 
     protected virtual async Task AddBlocksOnStart()
     {
@@ -440,10 +425,7 @@ public class TestBlockchain : IDisposable
         return txBuilder;
     }
 
-    public async Task WaitForNewHead()
-    {
-        await BlockTree.WaitForNewBlock(CreateCancellationSource().Token);
-    }
+    public async Task WaitForNewHead() => await BlockTree.WaitForNewBlock(CreateCancellationSource().Token);
 
     public Task WaitForNewHeadWhere(Func<Block, bool> predicate) =>
         Wait.ForEventCondition<BlockReplacementEventArgs>(
@@ -452,40 +434,19 @@ public class TestBlockchain : IDisposable
             (h) => BlockTree.BlockAddedToMain -= h,
             (e) => predicate(e.Block));
 
-    public virtual Task<Block> AddBlock(params Transaction[] transactions)
-    {
-        return TestUtil.AddBlockAndWaitForHead(false, CreateCancellationSource().Token, transactions);
-    }
+    public virtual Task<Block> AddBlock(params Transaction[] transactions) => TestUtil.AddBlockAndWaitForHead(false, CreateCancellationSource().Token, transactions);
 
-    public Task<Block> AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions)
-    {
-        return TestUtil.AddBlock(flags, CreateCancellationSource().Token, transactions);
-    }
+    public Task<Block> AddBlock(TestBlockchainUtil.AddBlockFlags flags, params Transaction[] transactions) => TestUtil.AddBlock(flags, CreateCancellationSource().Token, transactions);
 
-    public virtual Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions)
-    {
-        return TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, CreateCancellationSource().Token, transactions);
-    }
+    public virtual Task<Block> AddBlockFromParent(BlockHeader parent, params Transaction[] transactions) => TestUtil.AddBlock(parent, TestBlockchainUtil.AddBlockFlags.DoNotWaitForHead, CreateCancellationSource().Token, transactions);
 
-    public async Task AddBlockMayMissTx(params Transaction[] transactions)
-    {
-        await TestUtil.AddBlockAndWaitForHead(true, CreateCancellationSource().Token, transactions);
-    }
+    public async Task AddBlockMayMissTx(params Transaction[] transactions) => await TestUtil.AddBlockAndWaitForHead(true, CreateCancellationSource().Token, transactions);
 
-    public async Task AddBlockMayHaveExtraTx(params Transaction[] transactions)
-    {
-        await TestUtil.AddBlockMayHaveExtraTx(true, CreateCancellationSource().Token, transactions);
-    }
+    public async Task AddBlockMayHaveExtraTx(params Transaction[] transactions) => await TestUtil.AddBlockMayHaveExtraTx(true, CreateCancellationSource().Token, transactions);
 
-    public async Task AddBlockThroughPoW(params Transaction[] transactions)
-    {
-        await PoWTestUtil.AddBlockAndWaitForHead(CreateCancellationSource().Token, transactions);
-    }
+    public async Task AddBlockThroughPoW(params Transaction[] transactions) => await PoWTestUtil.AddBlockAndWaitForHead(CreateCancellationSource().Token, transactions);
 
-    public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions)
-    {
-        await TestUtil.AddBlockDoNotWaitForHead(false, CreateCancellationSource().Token, transactions);
-    }
+    public async Task AddBlockDoNotWaitForHead(params Transaction[] transactions) => await TestUtil.AddBlockDoNotWaitForHead(false, CreateCancellationSource().Token, transactions);
 
     public void AddTransactions(params Transaction[] txs)
     {
@@ -548,12 +509,10 @@ public class TestBlockchain : IDisposable
 
 public static class ContainerBuilderExtensions
 {
-    public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer)
-    {
-        return builder.AddDecorator<TestBlockchain.Configuration>((_, conf) =>
+    public static ContainerBuilder ConfigureTestConfiguration(this ContainerBuilder builder, Action<TestBlockchain.Configuration> configurer) =>
+        builder.AddDecorator<TestBlockchain.Configuration>((_, conf) =>
         {
             configurer(conf);
             return conf;
         });
-    }
 }

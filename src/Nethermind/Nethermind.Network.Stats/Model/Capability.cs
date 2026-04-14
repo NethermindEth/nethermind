@@ -42,14 +42,8 @@ namespace Nethermind.Stats.Model
             return obj.GetType() == GetType() && Equals((Capability)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(ProtocolCode, Version);
-        }
+        public override int GetHashCode() => HashCode.Combine(ProtocolCode, Version);
 
-        public override string ToString()
-        {
-            return string.Concat(ProtocolCode, Version);
-        }
+        public override string ToString() => string.Concat(ProtocolCode, Version);
     }
 }

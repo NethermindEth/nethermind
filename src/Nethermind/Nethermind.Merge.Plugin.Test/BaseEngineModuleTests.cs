@@ -196,15 +196,11 @@ public abstract partial class BaseEngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        protected override ChainSpec CreateChainSpec()
-        {
-            return new ChainSpec() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
-        }
+        protected override ChainSpec CreateChainSpec() =>
+            new() { Genesis = Core.Test.Builders.Build.A.Block.WithDifficulty(0).TestObject };
 
-        protected override IEnumerable<IConfig> CreateConfigs()
-        {
-            return base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
-        }
+        protected override IEnumerable<IConfig> CreateConfigs() =>
+            base.CreateConfigs().Concat([MergeConfig, SyncConfig.Default]);
 
         protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)

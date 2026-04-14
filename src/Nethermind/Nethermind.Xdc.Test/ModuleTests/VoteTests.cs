@@ -76,9 +76,8 @@ public class VoteTests
         ctx.HighestQC.ProposedBlockInfo.Should().BeEquivalentTo(blockInfo);
     }
 
-    private VotesManager CreateVotesManager(XdcTestBlockchain blockchain)
-    {
-        return new VotesManager(
+    private VotesManager CreateVotesManager(XdcTestBlockchain blockchain) =>
+        new(
             blockchain.XdcContext,
             Substitute.For<ISyncPeerPool>(),
             blockchain.BlockTree,
@@ -88,5 +87,4 @@ public class VoteTests
             blockchain.SpecProvider,
             blockchain.Signer,
             Substitute.For<IForensicsProcessor>());
-    }
 }

@@ -24,15 +24,9 @@ public class NodesLocator(INodeTable? nodeTable, IDiscoveryManager? discoveryMan
 
     public bool ShouldThrottle { get; set; }
 
-    public void Initialize(Node masterNode)
-    {
-        _masterNode = masterNode;
-    }
+    public void Initialize(Node masterNode) => _masterNode = masterNode;
 
-    public Task LocateNodesAsync(CancellationToken cancellationToken)
-    {
-        return LocateNodesAsync(null, cancellationToken);
-    }
+    public Task LocateNodesAsync(CancellationToken cancellationToken) => LocateNodesAsync(null, cancellationToken);
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
     {

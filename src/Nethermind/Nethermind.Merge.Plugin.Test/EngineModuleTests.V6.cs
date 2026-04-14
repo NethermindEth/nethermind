@@ -296,9 +296,8 @@ public partial class EngineModuleTests
         }
     }
 
-    protected static string GetExpectedBalError(BalErrorKind errorKind, bool exactMatch = true)
-    {
-        return exactMatch
+    protected static string GetExpectedBalError(BalErrorKind errorKind, bool exactMatch = true) =>
+        exactMatch
             ? errorKind switch
             {
                 BalErrorKind.IncorrectChange => "InvalidBlockLevelAccessList: Suggested block-level access list contained incorrect changes for 0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8 at index 3.",
@@ -313,7 +312,6 @@ public partial class EngineModuleTests
                 BalErrorKind.SurplusChange => "surplus changes",
                 _ => "invalid storage reads",
             };
-    }
 
     [TestCaseSource(nameof(InvalidBalEarlyTestCases))]
     public virtual Task NewPayloadV5_rejects_invalid_BAL_early(

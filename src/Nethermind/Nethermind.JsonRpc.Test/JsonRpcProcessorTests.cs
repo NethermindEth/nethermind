@@ -462,12 +462,9 @@ public class JsonRpcProcessorTests(bool returnErrors)
     }
 
     [Test]
-    public void Cannot_accept_null_file_system()
-    {
-        Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
-            Substitute.For<IJsonRpcConfig>(),
-            null!, LimboLogs.Instance));
-    }
+    public void Cannot_accept_null_file_system() => Assert.Throws<ArgumentNullException>(static () => new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),
+                                                             Substitute.For<IJsonRpcConfig>(),
+                                                             null!, LimboLogs.Instance));
 
     [Test]
     public async Task Can_process_multiple_large_requests_arriving_in_chunks()

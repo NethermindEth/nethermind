@@ -66,9 +66,7 @@ public class EthereumStepsLoaderTests
     }
 
     [Test]
-    public void LoadStepsFromHere()
-    {
-        LoadStepInfoFromAssembly(GetType().Assembly)
+    public void LoadStepsFromHere() => LoadStepInfoFromAssembly(GetType().Assembly)
             .ToArray()
             .Should()
             .BeEquivalentTo([
@@ -83,7 +81,6 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(StepE)),
                 new StepInfo(typeof(FailedConstructorWithInvalidConfigurationStep)),
             ]);
-    }
 
     private void CheckPlugin(INethermindPlugin plugin)
     {

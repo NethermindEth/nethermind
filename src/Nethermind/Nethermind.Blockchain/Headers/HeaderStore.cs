@@ -62,10 +62,7 @@ public class HeaderStore(
         return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
-    public void Cache(BlockHeader header)
-    {
-        _headerCache.Set(in header.Hash.ValueHash256, header);
-    }
+    public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
 
     public void Delete(Hash256 blockHash)
     {
@@ -113,8 +110,5 @@ public class HeaderStore(
 
     BlockHeader? IHeaderFinder.Get(Hash256 blockHash, long? blockNumber) => Get(blockHash, true, blockNumber);
 
-    void IClearableCache.ClearCache()
-    {
-        _headerCache.Clear();
-    }
+    void IClearableCache.ClearCache() => _headerCache.Clear();
 }

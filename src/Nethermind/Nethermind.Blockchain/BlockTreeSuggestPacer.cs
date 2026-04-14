@@ -56,8 +56,5 @@ public class BlockTreeSuggestPacer : IDisposable
         }
     }
 
-    public void Dispose()
-    {
-        _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
-    }
+    public void Dispose() => _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
 }

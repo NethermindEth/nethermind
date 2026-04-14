@@ -163,15 +163,9 @@ public class SszBasicVectorTests
         }
     }
 
-    private static IEnumerable<TestCaseData> ValidCases()
-    {
-        return GetCases("basic_vector", "valid");
-    }
+    private static IEnumerable<TestCaseData> ValidCases() => GetCases("basic_vector", "valid");
 
-    private static IEnumerable<TestCaseData> InvalidCases()
-    {
-        return GetCases("basic_vector", "invalid");
-    }
+    private static IEnumerable<TestCaseData> InvalidCases() => GetCases("basic_vector", "invalid");
 
     private static IEnumerable<TestCaseData> GetCases(string handler, string validity)
     {

@@ -50,10 +50,7 @@ namespace Nethermind.TxPool.Test
         private const int TxGasLimit = 1_000_000;
 
         [OneTimeSetUp]
-        public static void OneTimeSetup()
-        {
-            KzgPolynomialCommitments.InitializeAsync().Wait();
-        }
+        public static void OneTimeSetup() => KzgPolynomialCommitments.InitializeAsync().Wait();
 
         [SetUp]
         public void Setup()
@@ -2272,10 +2269,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(transaction.SenderAddress, requiredBalance);
         }
 
-        private void EnsureSenderBalance(Address address, UInt256 balance)
-        {
-            _stateProvider.CreateAccount(address, balance);
-        }
+        private void EnsureSenderBalance(Address address, UInt256 balance) => _stateProvider.CreateAccount(address, balance);
 
         private Transaction GetTransaction(UInt256 nonce, long gasLimit, UInt256 gasPrice, Address to, byte[] data,
             PrivateKey privateKey)
@@ -2375,13 +2369,10 @@ namespace Nethermind.TxPool.Test
                 .Excluding(static t => t.PoolIndex));      // ...as well as PoolIndex
         }
 
-        private Transaction GetTx(PrivateKey sender)
-        {
-            return Build.A.Transaction
+        private Transaction GetTx(PrivateKey sender) => Build.A.Transaction
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(UInt256.Zero)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
-        }
     }
 }

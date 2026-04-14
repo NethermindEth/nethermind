@@ -35,16 +35,14 @@ public class SurgeGasPriceOracleTests
     /// Creates a mock CoreState response.
     /// CoreState: nextProposalId (word 0), lastProposalBlockId (word 1), lastFinalizedProposalId (word 2), ...
     /// </summary>
-    private static string CreateCoreStateResponse(ulong nextProposalId, ulong lastFinalizedProposalId)
-    {
-        return "0x" +
+    private static string CreateCoreStateResponse(ulong nextProposalId, ulong lastFinalizedProposalId) =>
+        "0x" +
             CreatePaddedHex(nextProposalId) +           // word 0: nextProposalId
             CreatePaddedHex(0) +                        // word 1: lastProposalBlockId
             CreatePaddedHex(lastFinalizedProposalId) +  // word 2: lastFinalizedProposalId
             CreatePaddedHex(0) +                        // word 3: lastFinalizedTimestamp
             CreatePaddedHex(0) +                        // word 4: lastCheckpointTimestamp
             CreatePaddedHex(0);                         // word 5: lastFinalizedBlockHash
-    }
 
     /// <summary>
     /// Creates a mock Config response with ringBufferSize at word 10.

@@ -56,10 +56,7 @@ namespace Nethermind.Core.Extensions
 
         private class NullableBytesEqualityComparer : EqualityComparer<byte[]?>
         {
-            public override bool Equals(byte[]? x, byte[]? y)
-            {
-                return AreEqual(x, y);
-            }
+            public override bool Equals(byte[]? x, byte[]? y) => AreEqual(x, y);
 
             public override int GetHashCode(byte[]? obj) => new ReadOnlySpan<byte>(obj).FastHash();
         }
@@ -80,10 +77,7 @@ namespace Nethermind.Core.Extensions
                 return x.SequenceCompareTo(y);
             }
 
-            public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
-            {
-                return x.SequenceCompareTo(y);
-            }
+            public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => x.SequenceCompareTo(y);
         }
 
         public static readonly byte[] Zero32 = new byte[32];
@@ -91,10 +85,7 @@ namespace Nethermind.Core.Extensions
         public static readonly byte[] Empty = [];
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetBit(this byte b, int bitNumber)
-        {
-            return (b & (1 << (7 - bitNumber))) != 0;
-        }
+        public static bool GetBit(this byte b, int bitNumber) => (b & (1 << (7 - bitNumber))) != 0;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void SetBit(this ref byte b, int bitNumber)
@@ -119,20 +110,11 @@ namespace Nethermind.Core.Extensions
             return a1.SequenceEqual(a2);
         }
 
-        public static bool IsZero(this byte[] bytes)
-        {
-            return bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
-        }
+        public static bool IsZero(this byte[] bytes) => bytes.AsSpan().IndexOfAnyExcept((byte)0) < 0;
 
-        public static bool IsZero(this Span<byte> bytes)
-        {
-            return bytes.IndexOfAnyExcept((byte)0) < 0;
-        }
+        public static bool IsZero(this Span<byte> bytes) => bytes.IndexOfAnyExcept((byte)0) < 0;
 
-        public static bool IsZero(this ReadOnlySpan<byte> bytes)
-        {
-            return bytes.IndexOfAnyExcept((byte)0) < 0;
-        }
+        public static bool IsZero(this ReadOnlySpan<byte> bytes) => bytes.IndexOfAnyExcept((byte)0) < 0;
 
         public static int LeadingZerosCount(this ReadOnlySpan<byte> bytes, int startIndex = 0)
         {
@@ -146,10 +128,7 @@ namespace Nethermind.Core.Extensions
             return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
-        public static ReadOnlySpan<byte> WithoutLeadingZeros(this byte[] bytes)
-        {
-            return bytes.AsSpan().WithoutLeadingZeros();
-        }
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this byte[] bytes) => bytes.AsSpan().WithoutLeadingZeros();
 
         public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
@@ -160,10 +139,7 @@ namespace Nethermind.Core.Extensions
         public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes) =>
             ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
 
-        public static ReadOnlySpan<byte> WithoutLeadingZeros(this Span<byte> bytes)
-        {
-            return ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
-        }
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this Span<byte> bytes) => ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
 
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
@@ -245,10 +221,7 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static byte[] Concat(params byte[][] parts)
-        {
-            return Concat(parts.AsSpan());
-        }
+        public static byte[] Concat(params byte[][] parts) => Concat(parts.AsSpan());
 
         public static byte[] Concat(ReadOnlySpan<byte[]> bytes)
         {
@@ -333,20 +306,11 @@ namespace Nethermind.Core.Extensions
         }
 
 
-        public static BigInteger ToUnsignedBigInteger(this byte[] bytes)
-        {
-            return ToUnsignedBigInteger(bytes.AsSpan());
-        }
+        public static BigInteger ToUnsignedBigInteger(this byte[] bytes) => ToUnsignedBigInteger(bytes.AsSpan());
 
-        public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes)
-        {
-            return ToUnsignedBigInteger((ReadOnlySpan<byte>)bytes);
-        }
+        public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes) => ToUnsignedBigInteger((ReadOnlySpan<byte>)bytes);
 
-        public static BigInteger ToUnsignedBigInteger(this ReadOnlySpan<byte> bytes)
-        {
-            return new(bytes, true, true);
-        }
+        public static BigInteger ToUnsignedBigInteger(this ReadOnlySpan<byte> bytes) => new(bytes, true, true);
 
         public static ReadOnlySpan<byte> Trim(this ReadOnlySpan<byte> bytes, int length)
             => bytes.Length > length ? bytes.Slice(bytes.Length - length, length) : bytes;
@@ -393,10 +357,7 @@ namespace Nethermind.Core.Extensions
             };
         }
 
-        public static uint ReadEthUInt32(this Span<byte> bytes)
-        {
-            return ReadEthUInt32((ReadOnlySpan<byte>)bytes);
-        }
+        public static uint ReadEthUInt32(this Span<byte> bytes) => ReadEthUInt32((ReadOnlySpan<byte>)bytes);
 
         public static uint ReadEthUInt32(this ReadOnlySpan<byte> bytes)
         {
@@ -415,10 +376,7 @@ namespace Nethermind.Core.Extensions
             return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
         }
 
-        public static int ReadEthInt32(this Span<byte> bytes)
-        {
-            return ReadEthInt32((ReadOnlySpan<byte>)bytes);
-        }
+        public static int ReadEthInt32(this Span<byte> bytes) => ReadEthInt32((ReadOnlySpan<byte>)bytes);
 
         public static int ReadEthInt32(this ReadOnlySpan<byte> bytes)
         {
@@ -437,10 +395,7 @@ namespace Nethermind.Core.Extensions
             return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
         }
 
-        public static ulong ReadEthUInt64(this Span<byte> bytes)
-        {
-            return ReadEthUInt64((ReadOnlySpan<byte>)bytes);
-        }
+        public static ulong ReadEthUInt64(this Span<byte> bytes) => ReadEthUInt64((ReadOnlySpan<byte>)bytes);
 
         public static ulong ReadEthUInt64(this ReadOnlySpan<byte> bytes)
         {
@@ -484,10 +439,7 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(signedResult);
         }
 
-        public static UInt256 ToUInt256(this byte[] bytes)
-        {
-            return new(bytes, true);
-        }
+        public static UInt256 ToUInt256(this byte[] bytes) => new(bytes, true);
 
         private static byte Reverse(byte b)
         {
@@ -539,15 +491,9 @@ namespace Nethermind.Core.Extensions
             return new BitArray(inverted);
         }
 
-        public static string ToHexString(this byte[] bytes)
-        {
-            return ByteArrayToHexViaLookup32(bytes, false, false, false);
-        }
+        public static string ToHexString(this byte[] bytes) => ByteArrayToHexViaLookup32(bytes, false, false, false);
 
-        public static void StreamHex(this byte[] bytes, TextWriter streamWriter)
-        {
-            bytes.AsSpan().StreamHex(streamWriter);
-        }
+        public static void StreamHex(this byte[] bytes, TextWriter streamWriter) => bytes.AsSpan().StreamHex(streamWriter);
 
         public static void StreamHex(this Span<byte> bytes, TextWriter streamWriter)
         {
@@ -643,10 +589,7 @@ namespace Nethermind.Core.Extensions
                 });
         }
 
-        public static void OutputBytesToByteHex(this Span<byte> bytes, Span<byte> hex, bool extraNibble)
-        {
-            ((ReadOnlySpan<byte>)bytes).OutputBytesToByteHex(hex, extraNibble);
-        }
+        public static void OutputBytesToByteHex(this Span<byte> bytes, Span<byte> hex, bool extraNibble) => ((ReadOnlySpan<byte>)bytes).OutputBytesToByteHex(hex, extraNibble);
 
         public static void OutputBytesToByteHex(this ReadOnlySpan<byte> bytes, Span<byte> hex, bool extraNibble)
         {
@@ -699,10 +642,7 @@ namespace Nethermind.Core.Extensions
             }
 
             [DoesNotReturn]
-            static void ThrowArgumentOutOfRangeException()
-            {
-                throw new ArgumentOutOfRangeException();
-            }
+            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException();
         }
 
         public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
@@ -820,46 +760,43 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass)
+        private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass) => string.Create(length, stateToPass, static (chars, state) =>
         {
-            return string.Create(length, stateToPass, static (chars, state) =>
+            // this path is rarely used - only in wallets
+            byte[] bytesArray = state.Bytes;
+            string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
+            Span<byte> bytes = bytesArray;
+
+            if (state.WithZeroX)
             {
-                // this path is rarely used - only in wallets
-                byte[] bytesArray = state.Bytes;
-                string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
-                Span<byte> bytes = bytesArray;
+                chars[1] = 'x';
+                chars[0] = '0';
+                chars = chars[2..];
+            }
 
-                if (state.WithZeroX)
+            bool odd = state.LeadingZeros % 2 == 1;
+            int oddity = odd ? 1 : 0;
+
+            uint[] lookup32 = Lookup32;
+            for (int i = 0; i < chars.Length; i += 2)
+            {
+                uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
+                if (i != 0 || !odd)
                 {
-                    chars[1] = 'x';
-                    chars[0] = '0';
-                    chars = chars[2..];
+                    char char1 = (char)val;
+                    chars[i - oddity] =
+                        char.IsLetter(char1) && hashHex![i] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
                 }
 
-                bool odd = state.LeadingZeros % 2 == 1;
-                int oddity = odd ? 1 : 0;
-
-                uint[] lookup32 = Lookup32;
-                for (int i = 0; i < chars.Length; i += 2)
-                {
-                    uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
-                    if (i != 0 || !odd)
-                    {
-                        char char1 = (char)val;
-                        chars[i - oddity] =
-                            char.IsLetter(char1) && hashHex![i] > '7'
-                                ? char.ToUpper(char1)
-                                : char1;
-                    }
-
-                    char char2 = (char)(val >> 16);
-                    chars[i + 1 - oddity] =
-                        char.IsLetter(char2) && hashHex![i + 1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-                }
-            });
-        }
+                char char2 = (char)(val >> 16);
+                chars[i + 1 - oddity] =
+                    char.IsLetter(char2) && hashHex![i + 1] > '7'
+                        ? char.ToUpper(char2)
+                        : char2;
+            }
+        });
 
         internal static uint[] Lookup32 = CreateLookup32("x2");
         internal static ushort[] Lookup16 = CreateLookup16("x2");
@@ -1013,16 +950,10 @@ namespace Nethermind.Core.Extensions
         }
 
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowInvalidOperationException()
-        {
-            throw new InvalidOperationException();
-        }
+        private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
 
         [DoesNotReturn, StackTraceHidden]
-        private static void ThrowFormatException_IncorrectHexString()
-        {
-            throw new FormatException("Incorrect hex string");
-        }
+        private static void ThrowFormatException_IncorrectHexString() => throw new FormatException("Incorrect hex string");
 
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString, int length) =>
@@ -1198,11 +1129,9 @@ namespace Nethermind.Core.Extensions
             return outputString;
         }
 
-        private static bool IsControlCharacter(Rune rune)
-        {
+        private static bool IsControlCharacter(Rune rune) =>
             // Control characters are U+0000 to U+001F and U+007F to U+009F
-            return rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
-        }
+            rune.Value <= 0x001F || (rune.Value >= 0x007F && rune.Value <= 0x009F);
 
     }
 }

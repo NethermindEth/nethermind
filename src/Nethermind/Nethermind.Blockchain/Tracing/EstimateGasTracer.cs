@@ -15,10 +15,7 @@ namespace Nethermind.Blockchain.Tracing;
 
 public class EstimateGasTracer : TxTracer
 {
-    public EstimateGasTracer()
-    {
-        _currentGasAndNesting.Push(new GasAndNesting(0, -1));
-    }
+    public EstimateGasTracer() => _currentGasAndNesting.Push(new GasAndNesting(0, -1));
 
     public override bool IsTracingReceipt => true;
     public override bool IsTracingActions => true;
@@ -119,15 +116,10 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        UpdateAdditionalGas(gas);
-    }
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => UpdateAdditionalGas(gas);
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-    {
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         UpdateAdditionalGas(gas);
-    }
 
     public override void ReportActionError(EvmExceptionType exceptionType)
     {
@@ -179,14 +171,9 @@ public class EstimateGasTracer : TxTracer
         }
     }
 
-    public override void ReportRefund(long refund)
-    {
-        TotalRefund += refund;
-    }
+    public override void ReportRefund(long refund) => TotalRefund += refund;
 
-    public override void ReportExtraGasPressure(long extraGasPressure)
-    {
+    public override void ReportExtraGasPressure(long extraGasPressure) =>
         _currentGasAndNesting.Peek().ExtraGasPressure =
             Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
-    }
 }

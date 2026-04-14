@@ -89,10 +89,7 @@ public class E2StoreReader : IDisposable
         return decoder(segment);
     }
 
-    public void Dispose()
-    {
-        _file.Dispose();
-    }
+    public void Dispose() => _file.Dispose();
 
     public long BlockOffset(long blockNumber)
     {

@@ -31,10 +31,7 @@ internal class TestBlockTree : IBlockTree
     public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain { add { } remove { } }
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated { add { } remove { } }
 
-    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args)
-    {
-        BlockAddedToMain?.Invoke(this, args);
-    }
+    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => BlockAddedToMain?.Invoke(this, args);
 
     public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
 

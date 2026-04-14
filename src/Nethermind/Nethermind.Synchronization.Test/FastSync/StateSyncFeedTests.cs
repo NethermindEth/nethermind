@@ -106,10 +106,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             local.AssertFlushed();
         }
 
-        private static Hash256 HashKey(byte[] k)
-        {
-            return new Hash256(k[^32..]);
-        }
+        private static Hash256 HashKey(byte[] k) =>
+            new(k[^32..]);
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]

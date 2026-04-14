@@ -59,20 +59,13 @@ namespace Nethermind.Blockchain.FullPruning
             throw new TrieException($"Trie {nodeHash} missing");
         }
 
-        public void VisitBranch(in TContext ctx, TrieNode node)
-        {
+        public void VisitBranch(in TContext ctx, TrieNode node) =>
             PersistNode(ctx.Storage, ctx.Path, node, isLeaf: false);
-        }
 
-        public void VisitExtension(in TContext ctx, TrieNode node)
-        {
+        public void VisitExtension(in TContext ctx, TrieNode node) =>
             PersistNode(ctx.Storage, ctx.Path, node, isLeaf: false);
-        }
 
-        public void VisitLeaf(in TContext ctx, TrieNode node)
-        {
-            PersistNode(ctx.Storage, ctx.Path, node, isLeaf: true);
-        }
+        public void VisitLeaf(in TContext ctx, TrieNode node) => PersistNode(ctx.Storage, ctx.Path, node, isLeaf: true);
 
         public void VisitAccount(in TContext ctx, TrieNode node, in AccountStruct account) { }
 

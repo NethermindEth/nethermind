@@ -19,10 +19,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
 {
     public const string TestNetwork = "abc";
 
-    public static ContainerBuilder BuildContainerBuilder()
-    {
-        return new ContainerBuilder().AddModule(new EraTestModule());
-    }
+    public static ContainerBuilder BuildContainerBuilder() => new ContainerBuilder().AddModule(new EraTestModule());
 
     public static ContainerBuilder BuildContainerBuilderWithBlockTreeOfLength(int length)
     {

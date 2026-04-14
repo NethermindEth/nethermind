@@ -8,8 +8,5 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProducerTxSourceFactory(IBlockProducerTxSourceFactory baseTxSource) : IBlockProducerTxSourceFactory
 {
-    public ITxSource Create()
-    {
-        return new OptimismTxPoolTxSource(baseTxSource.Create());
-    }
+    public ITxSource Create() => new OptimismTxPoolTxSource(baseTxSource.Create());
 }

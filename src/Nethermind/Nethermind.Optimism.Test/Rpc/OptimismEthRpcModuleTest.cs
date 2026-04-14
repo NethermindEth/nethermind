@@ -572,9 +572,8 @@ internal static class TestRpcBlockchainExt
         IAccountStateProvider accountStateProvider,
         IEthereumEcdsa ecdsa,
         ITxSealer sealer,
-        IOptimismSpecHelper opSpecHelper)
-    {
-        return @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
+        IOptimismSpecHelper opSpecHelper) =>
+        @this.WithEthRpcModule(blockchain => new OptimismEthRpcModule(
             blockchain.RpcConfig,
             blockchain.Bridge,
             blockchain.BlockFinder,
@@ -595,5 +594,4 @@ internal static class TestRpcBlockchainExt
             new BlocksConfig().SecondsPerSlot,
             sequencerRpcClient, ecdsa, sealer, new LogIndexConfig(), opSpecHelper
         ));
-    }
 }

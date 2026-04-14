@@ -12,13 +12,7 @@ public class TcpEntry(int portNumber) : EnrContentEntry<int>(portNumber)
 {
     public override string Key => EnrContentKey.Tcp;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return Rlp.LengthOf(Value);
-    }
+    protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        rlpStream.Encode(Value);
-    }
+    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value);
 }

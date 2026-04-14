@@ -27,10 +27,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
 
         public virtual PostMergeBlockProducer Create(
             IBlockProducerEnv producerEnv,
-            ITxSource? txSource = null)
-        {
-
-            return new PostMergeBlockProducer(
+            ITxSource? txSource = null) => new(
                 txSource ?? producerEnv.TxSource,
                 producerEnv.ChainProcessor,
                 producerEnv.BlockTree,
@@ -41,6 +38,5 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 _specProvider,
                 _logManager,
                 _blocksConfig);
-        }
     }
 }

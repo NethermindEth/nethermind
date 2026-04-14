@@ -50,10 +50,7 @@ public class DebugRpcModule(
             : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
     }
 
-    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false)
-    {
-        return ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
-    }
+    public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) => ResultWrapper<int>.Success(debugBridge.DeleteChainSlice(startNumber, force));
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
@@ -296,35 +293,23 @@ public class DebugRpcModule(
         }
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
 
-    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<GcStats> debug_gcStats()
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
 
-    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<byte[]> debug_getBlockRlp(long blockNumber) =>
+        GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
-    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
+        GetBlockRlpOrFail(new BlockParameter(hash));
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
-    {
-        throw new NotImplementedException();
-    }
+    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter) => throw new NotImplementedException();
+
+    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
+
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
@@ -391,10 +376,7 @@ public class DebugRpcModule(
         return ResultWrapper<byte[]>.Success(rlp.Bytes);
     }
 
-    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage()
-    {
-        return ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
-    }
+    public Task<ResultWrapper<SyncReportSummary>> debug_getSyncStage() => ResultWrapper<SyncReportSummary>.Success(debugBridge.GetCurrentSyncStage());
 
     public ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
     {
@@ -442,11 +424,8 @@ public class DebugRpcModule(
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
-        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
-    {
-        return new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
+        SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null) => new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
-    }
 
     public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {

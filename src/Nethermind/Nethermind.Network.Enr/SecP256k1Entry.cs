@@ -13,13 +13,7 @@ public class SecP256k1Entry(CompressedPublicKey publicKey) : EnrContentEntry<Com
 {
     public override string Key => EnrContentKey.SecP256k1;
 
-    protected override int GetRlpLengthOfValue()
-    {
-        return CompressedPublicKey.LengthInBytes + 1;
-    }
+    protected override int GetRlpLengthOfValue() => CompressedPublicKey.LengthInBytes + 1;
 
-    protected override void EncodeValue(RlpStream rlpStream)
-    {
-        rlpStream.Encode(Value.Bytes);
-    }
+    protected override void EncodeValue(RlpStream rlpStream) => rlpStream.Encode(Value.Bytes);
 }

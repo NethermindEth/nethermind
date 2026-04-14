@@ -381,11 +381,9 @@ public abstract class BlockchainTestBase
         SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion,
             $$$"""[{"headBlockHash":"{{{blockHash}}}","safeBlockHash":"{{{blockHash}}}","finalizedBlockHash":"{{{blockHash}}}"},null]""");
 
-    private static void AssertRpcSuccess(JsonRpcResponse response)
-    {
+    private static void AssertRpcSuccess(JsonRpcResponse response) =>
         Assert.That(response, Is.InstanceOf<JsonRpcSuccessResponse>(),
             response is JsonRpcErrorResponse err ? $"RPC error: {err.Error?.Code} {err.Error?.Message}" : "unexpected response type");
-    }
 
     private static List<(Block Block, string ExpectedException)> DecodeRlps(BlockchainTest test, bool failOnInvalidRlp)
     {
