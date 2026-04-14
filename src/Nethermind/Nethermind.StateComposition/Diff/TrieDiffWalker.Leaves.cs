@@ -59,17 +59,33 @@ internal sealed partial class TrieDiffWalker
         if (!oldAccount.IsTotallyEmpty && newAccount.IsTotallyEmpty) _emptyAccountsAdded++;
         else if (oldAccount.IsTotallyEmpty && !newAccount.IsTotallyEmpty) _emptyAccountsRemoved++;
 
+        // Code-hash transition payload — captured once per account leaf, consumed by the
+        // incremental tracker to refcount CodeBytesTotal. Whole-contract create/delete
+        // leaves go through CollectLeaf instead and emit their own transitions there.
+        bool storageUnchanged = oldAccount.StorageRoot == newAccount.StorageRoot;
+
+        Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
+        RecordCodeHashChange(addressHash.ValueHash256, oldAccount.CodeHash, newAccount.CodeHash);
+
         // Storage trie diff — skip allocation when storage roots are identical
-        if (oldAccount.StorageRoot == newAccount.StorageRoot) return;
+        if (storageUnchanged) return;
 
         Hash256? normalizedOldStorage = oldAccount.HasStorage ? new Hash256(oldAccount.StorageRoot) : null;
         Hash256? normalizedNewStorage = newAccount.HasStorage ? new Hash256(newAccount.StorageRoot) : null;
 
-        Hash256 addressHash = GetAddressHash(oldLeaf, ref path);
         ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
         TreePath storagePath = TreePath.Empty;
-        // Storage tries always start at depth 0 (independent trie)
-        DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
+
+        BeginContractStorage(addressHash.ValueHash256);
+        try
+        {
+            // Storage tries always start at depth 0 (independent trie)
+            DiffSubtree(normalizedOldStorage, normalizedNewStorage, ref storagePath, storageResolver, isStorage: true, depth: 0);
+        }
+        finally
+        {
+            EndContractStorage();
+        }
     }
 
     /// <summary>

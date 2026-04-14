@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Diff;
+using Nethermind.StateComposition.Visitors;
 
 namespace Nethermind.StateComposition.Service;
 
@@ -27,6 +29,15 @@ internal sealed class StateCompositionStateHolder
     private long _incrementalBlock;
     private int _diffsSinceBaseline;
     private Hash256? _lastProcessedStateRoot;
+
+    // Incremental trackers — keep the state needed to update CodeBytesTotal and
+    // SlotCountHistogram when a TrieDiff lands. Seeded from each full scan, carried
+    // forward across diffs, and persisted in the snapshot so a restart doesn't lose
+    // them. All mutation happens under _lock together with _incrementalStats, so the
+    // histogram and the tracker maps never drift relative to each other.
+    private Dictionary<ValueHash256, long> _slotCountByAddress = new();
+    private Dictionary<ValueHash256, int> _codeHashRefcounts = new();
+    private Dictionary<ValueHash256, int> _codeHashSizes = new();
 
     public StateCompositionStats CurrentStats
     {
@@ -75,6 +86,44 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _lastProcessedStateRoot; }
     }
 
+    /// <summary>
+    /// Returns a cloned snapshot of the per-address slot count tracker so callers
+    /// (snapshot persistence) can serialize it without racing against diff application.
+    /// </summary>
+    public Dictionary<ValueHash256, long> CloneSlotCountByAddress()
+    {
+        lock (_lock) return new Dictionary<ValueHash256, long>(_slotCountByAddress);
+    }
+
+    /// <summary>Clone of the per-code-hash refcount tracker — see <see cref="CloneSlotCountByAddress"/>.</summary>
+    public Dictionary<ValueHash256, int> CloneCodeHashRefcounts()
+    {
+        lock (_lock) return new Dictionary<ValueHash256, int>(_codeHashRefcounts);
+    }
+
+    /// <summary>Clone of the per-code-hash size tracker — see <see cref="CloneSlotCountByAddress"/>.</summary>
+    public Dictionary<ValueHash256, int> CloneCodeHashSizes()
+    {
+        lock (_lock) return new Dictionary<ValueHash256, int>(_codeHashSizes);
+    }
+
+    /// <summary>
+    /// True when the incremental trackers have been seeded from a consistent baseline
+    /// (either a full scan or a persisted snapshot that carried them). When false, the
+    /// incremental path must not apply TrieDiff payloads — the plugin should trigger a
+    /// full rescan instead.
+    /// </summary>
+    public bool HasIncrementalTrackers
+    {
+        get
+        {
+            lock (_lock)
+                return _slotCountByAddress.Count > 0
+                    || _codeHashRefcounts.Count > 0
+                    || _codeHashSizes.Count > 0;
+        }
+    }
+
     public void SetBaseline(StateCompositionStats stats, TrieDepthDistribution dist)
     {
         lock (_lock)
@@ -101,7 +150,10 @@ internal sealed class StateCompositionStateHolder
     }
 
     public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot,
-        TrieDepthDistribution? depthDistribution = null)
+        TrieDepthDistribution? depthDistribution = null,
+        IReadOnlyDictionary<ValueHash256, long>? slotCountByAddress = null,
+        IReadOnlyDictionary<ValueHash256, int>? codeHashRefcounts = null,
+        IReadOnlyDictionary<ValueHash256, int>? codeHashSizes = null)
     {
         lock (_lock)
         {
@@ -112,20 +164,145 @@ internal sealed class StateCompositionStateHolder
             _currentDepthStats.Reset();
             if (depthDistribution.HasValue)
                 _currentDepthStats.SeedFromScan(depthDistribution.Value);
+
+            _slotCountByAddress = slotCountByAddress is null
+                ? new Dictionary<ValueHash256, long>()
+                : new Dictionary<ValueHash256, long>(slotCountByAddress);
+            _codeHashRefcounts = codeHashRefcounts is null
+                ? new Dictionary<ValueHash256, int>()
+                : new Dictionary<ValueHash256, int>(codeHashRefcounts);
+            _codeHashSizes = codeHashSizes is null
+                ? new Dictionary<ValueHash256, int>()
+                : new Dictionary<ValueHash256, int>(codeHashSizes);
         }
     }
 
-    public void UpdateIncremental(CumulativeSizeStats updated, long blockNumber, Hash256 stateRoot,
-        DepthDelta? depthDelta = null)
+    /// <summary>
+    /// Apply a <see cref="TrieDiff"/> atomically: updates the cumulative stats,
+    /// the per-address slot tracker (and the slot-count histogram), and the
+    /// per-code-hash refcount/size trackers (and <see cref="CumulativeSizeStats.CodeBytesTotal"/>).
+    /// All mutation happens under <see cref="_lock"/> so callers see a consistent
+    /// view across every field.
+    /// <para>
+    /// <paramref name="codeSizeLookup"/> is invoked once per previously-unseen code
+    /// hash referenced on the "new" side of a <see cref="CodeHashChange"/>. The
+    /// returned value is cached in the tracker for later refcount-0 decrements.
+    /// </para>
+    /// </summary>
+    public CumulativeSizeStats ApplyIncrementalDiffAndUpdate(
+        TrieDiff diff, long blockNumber, Hash256 stateRoot,
+        Func<ValueHash256, int> codeSizeLookup)
     {
         lock (_lock)
         {
+            CumulativeSizeStats current = _incrementalStats!.Value;
+            CumulativeSizeStats updated = current.ApplyDiff(diff);
+
+            long codeBytes = updated.CodeBytesTotal;
+
+            // Histogram copy-on-write: keep the baseline ImmutableArray untouched so
+            // callers that captured it before this diff still see the pre-diff values.
+            long[] histogram = new long[CumulativeSizeStats.SlotHistogramLength];
+            if (!updated.SlotCountHistogram.IsDefault)
+                updated.SlotCountHistogram.CopyTo(histogram);
+
+            if (diff.CodeHashChanges is not null)
+            {
+                foreach (CodeHashChange change in diff.CodeHashChanges)
+                {
+                    ApplyCodeHashChange(change, codeSizeLookup, ref codeBytes);
+                }
+            }
+
+            if (diff.SlotCountChanges is not null)
+            {
+                foreach (SlotCountChange change in diff.SlotCountChanges)
+                {
+                    ApplySlotCountChange(change, histogram);
+                }
+            }
+
+            updated = updated with
+            {
+                CodeBytesTotal = codeBytes,
+                SlotCountHistogram = System.Collections.Immutable.ImmutableArray.Create(histogram),
+            };
+
             _incrementalStats = updated;
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline++;
             _lastProcessedStateRoot = stateRoot;
-            if (depthDelta is not null)
-                _currentDepthStats.ApplyDelta(depthDelta);
+            if (diff.DepthDelta is not null)
+                _currentDepthStats.ApplyDelta(diff.DepthDelta);
+
+            return updated;
+        }
+    }
+
+    /// <summary>
+    /// Apply one <see cref="CodeHashChange"/>: decrement the old code hash's refcount
+    /// (freeing its contribution to <paramref name="codeBytes"/> when it hits zero) and
+    /// increment the new code hash's refcount (resolving its size on first reference).
+    /// </summary>
+    private void ApplyCodeHashChange(
+        in CodeHashChange change,
+        Func<ValueHash256, int> codeSizeLookup,
+        ref long codeBytes)
+    {
+        if (change.HadCode)
+        {
+            _codeHashRefcounts.TryGetValue(change.OldCodeHash, out int oldRefcount);
+            if (oldRefcount <= 1)
+            {
+                _codeHashRefcounts.Remove(change.OldCodeHash);
+                if (_codeHashSizes.Remove(change.OldCodeHash, out int oldSize))
+                    codeBytes -= oldSize;
+            }
+            else
+            {
+                _codeHashRefcounts[change.OldCodeHash] = oldRefcount - 1;
+            }
+        }
+
+        if (change.HasCode)
+        {
+            _codeHashRefcounts.TryGetValue(change.NewCodeHash, out int newRefcount);
+            if (newRefcount == 0)
+            {
+                int size = codeSizeLookup(change.NewCodeHash);
+                _codeHashSizes[change.NewCodeHash] = size;
+                codeBytes += size;
+            }
+            _codeHashRefcounts[change.NewCodeHash] = newRefcount + 1;
+        }
+    }
+
+    /// <summary>
+    /// Apply one <see cref="SlotCountChange"/>: move the contract between histogram
+    /// buckets. Contracts with no prior entry enter the histogram; contracts whose
+    /// slot count drops to zero leave it. The histogram therefore always counts
+    /// exactly the contracts in <see cref="_slotCountByAddress"/>.
+    /// </summary>
+    private void ApplySlotCountChange(in SlotCountChange change, long[] histogram)
+    {
+        bool hadEntry = _slotCountByAddress.TryGetValue(change.AddressHash, out long oldCount);
+        long newCount = oldCount + change.SlotDelta;
+
+        if (hadEntry)
+        {
+            int oldBucket = VisitorCounters.ComputeSlotBucket(oldCount);
+            histogram[oldBucket]--;
+        }
+
+        if (newCount > 0)
+        {
+            int newBucket = VisitorCounters.ComputeSlotBucket(newCount);
+            histogram[newBucket]++;
+            _slotCountByAddress[change.AddressHash] = newCount;
+        }
+        else
+        {
+            _slotCountByAddress.Remove(change.AddressHash);
         }
     }
 
@@ -144,6 +321,16 @@ internal sealed class StateCompositionStateHolder
             _currentDepthStats.Reset();
             if (snapshot.DepthStats is { IsSeeded: true } persisted)
                 _currentDepthStats.SeedFromSnapshot(persisted);
+
+            _slotCountByAddress = snapshot.SlotCountByAddress is null
+                ? new Dictionary<ValueHash256, long>()
+                : new Dictionary<ValueHash256, long>(snapshot.SlotCountByAddress);
+            _codeHashRefcounts = snapshot.CodeHashRefcounts is null
+                ? new Dictionary<ValueHash256, int>()
+                : new Dictionary<ValueHash256, int>(snapshot.CodeHashRefcounts);
+            _codeHashSizes = snapshot.CodeHashSizes is null
+                ? new Dictionary<ValueHash256, int>()
+                : new Dictionary<ValueHash256, int>(snapshot.CodeHashSizes);
         }
     }
 }

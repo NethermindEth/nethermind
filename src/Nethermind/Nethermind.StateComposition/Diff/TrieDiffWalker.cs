@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -17,6 +18,15 @@ namespace Nethermind.StateComposition.Diff;
 internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, bool trackDepth = false)
 {
     private readonly DepthDelta _depthDelta = new();
+    private readonly List<SlotCountChange> _slotCountChanges = new();
+    private readonly List<CodeHashChange> _codeHashChanges = new();
+
+    // Active contract context for per-account slot tracking.
+    // Set by BeginContractStorage / cleared by EndContractStorage around every
+    // storage-subtree walk — matches exactly one per-account payload entry.
+    private ValueHash256 _currentContract;
+    private long _currentContractSlotDelta;
+    private bool _inContractStorage;
 
     private int _accountsAdded, _accountsRemoved;
     private int _contractsAdded, _contractsRemoved;
@@ -63,8 +73,52 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
-            DepthDelta: trackDepth ? _depthDelta : null
+            DepthDelta: trackDepth ? _depthDelta : null,
+            SlotCountChanges: _slotCountChanges.Count > 0 ? _slotCountChanges.ToArray() : null,
+            CodeHashChanges: _codeHashChanges.Count > 0 ? _codeHashChanges.ToArray() : null
         );
+    }
+
+    /// <summary>
+    /// Enter a per-contract storage walk. All storage-leaf add/remove events
+    /// recorded until <see cref="EndContractStorage"/> are attributed to this address.
+    /// </summary>
+    private void BeginContractStorage(in ValueHash256 addressHash)
+    {
+        _currentContract = addressHash;
+        _currentContractSlotDelta = 0;
+        _inContractStorage = true;
+    }
+
+    /// <summary>
+    /// Exit the current per-contract storage walk. Emits a <see cref="SlotCountChange"/>
+    /// when the net delta for this contract is non-zero.
+    /// </summary>
+    private void EndContractStorage()
+    {
+        if (_inContractStorage && _currentContractSlotDelta != 0)
+        {
+            _slotCountChanges.Add(new SlotCountChange(_currentContract, _currentContractSlotDelta));
+        }
+
+        _inContractStorage = false;
+        _currentContractSlotDelta = 0;
+    }
+
+    /// <summary>
+    /// Record a code-hash transition for one account. Translates the empty-bytecode
+    /// hash (<see cref="Keccak.OfAnEmptyString"/>) to <see cref="CodeHashChange.NoCode"/>
+    /// so the tracker's refcount/sizes maps never see the "no code" sentinel.
+    /// </summary>
+    private void RecordCodeHashChange(in ValueHash256 addressHash, in ValueHash256 oldCodeHash, in ValueHash256 newCodeHash)
+    {
+        ValueHash256 emptyCode = Keccak.OfAnEmptyString.ValueHash256;
+        ValueHash256 oldNormalized = oldCodeHash == emptyCode ? CodeHashChange.NoCode : oldCodeHash;
+        ValueHash256 newNormalized = newCodeHash == emptyCode ? CodeHashChange.NoCode : newCodeHash;
+
+        if (oldNormalized == newNormalized) return;
+
+        _codeHashChanges.Add(new CodeHashChange(addressHash, oldNormalized, newNormalized));
     }
 
     /// <summary>
@@ -171,5 +225,11 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         _storageSlotsAdded = 0; _storageSlotsRemoved = 0;
         _contractsWithStorageAdded = 0; _contractsWithStorageRemoved = 0;
         _emptyAccountsAdded = 0; _emptyAccountsRemoved = 0;
+
+        _slotCountChanges.Clear();
+        _codeHashChanges.Clear();
+        _currentContract = default;
+        _currentContractSlotDelta = 0;
+        _inContractStorage = false;
     }
 }

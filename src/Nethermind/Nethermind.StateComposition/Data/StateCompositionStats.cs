@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 
@@ -23,29 +24,31 @@ public readonly record struct StateCompositionStats
     public long StorageTrieFullNodes { get; init; }
     public long StorageTrieShortNodes { get; init; }
     public long StorageTrieValueNodes { get; init; }
-
-    /// <summary>
-    /// Aggregate on-chain contract bytecode size, deduplicated by codeHash.
-    /// A contract that shares bytecode with another contract (proxy, clone)
-    /// contributes 0 bytes on the second observation.
-    /// </summary>
     public long CodeBytesTotal { get; init; }
-
-    /// <summary>
-    /// Log-bucketed histogram of per-contract storage slot counts.
-    /// Bucket index i holds the number of contracts where
-    /// <c>min(15, floor(log2(slotCount + 1))) == i</c>.
-    /// Invariant: <c>sum(SlotCountHistogram) == ContractsWithStorage</c>.
-    /// Always length 16 when set.
-    /// </summary>
     public ImmutableArray<long> SlotCountHistogram { get; init; }
-
     public ImmutableArray<TopContractEntry> TopContractsByDepth { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByNodes { get; init; }
     public ImmutableArray<TopContractEntry> TopContractsByValueNodes { get; init; }
-    /// <summary>
-    /// Top contracts ranked by total storage trie byte size.
-    /// Nethermind extension — not present in Geth's inspect-trie output.
-    /// </summary>
     public ImmutableArray<TopContractEntry> TopContractsBySize { get; init; }
+
+    /// <summary>
+    /// Per-contract slot count, keyed by account-hash. Seeds the state holder's
+    /// incremental slot tracker so <see cref="SlotCountHistogram"/> can be updated
+    /// in-place by subsequent <see cref="TrieDiff"/>s.
+    /// </summary>
+    public IReadOnlyDictionary<ValueHash256, long>? SlotCountByAddress { get; init; }
+
+    /// <summary>
+    /// Distinct bytecode sizes observed during the scan, keyed by code hash.
+    /// Together with <see cref="CodeHashRefcounts"/> these feed the incremental
+    /// <see cref="CodeBytesTotal"/> tracker.
+    /// </summary>
+    public IReadOnlyDictionary<ValueHash256, int>? CodeHashSizes { get; init; }
+
+    /// <summary>
+    /// Per-code-hash reference count — number of accounts whose CodeHash equals
+    /// the given hash. Used to detect when the last account referencing a code
+    /// hash disappears, so <see cref="CodeBytesTotal"/> can be decremented.
+    /// </summary>
+    public IReadOnlyDictionary<ValueHash256, int>? CodeHashRefcounts { get; init; }
 }

@@ -9,8 +9,6 @@ namespace Nethermind.StateComposition.Data;
 /// <summary>
 /// Immutable cumulative state composition stats.
 /// <see cref="ApplyDiff"/> returns a new instance with exact adds and removes applied.
-/// Unlike a monotonic Add(delta), this correctly handles both additions and removals
-/// from trie modifications — no drift possible.
 /// </summary>
 public readonly record struct CumulativeSizeStats(
     long AccountsTotal,

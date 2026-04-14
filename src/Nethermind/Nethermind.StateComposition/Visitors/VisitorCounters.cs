@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
@@ -65,6 +66,22 @@ public sealed class VisitorCounters(int topN = 20)
     public readonly long[] BranchOccupancyHistogram = new long[MaxTrackedDepth];
 
     public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
+
+    /// <summary>
+    /// Per-contract (owner → slot count) pairs for every contract-with-storage finalized
+    /// on this thread. Appended in <see cref="FinalizeCurrentStorageTrie"/>, merged by
+    /// <see cref="MergeFrom"/> via list concatenation (each account is visited by exactly
+    /// one worker thread, so no cross-thread deduplication is required).
+    /// Feeds the state holder's incremental slot-count tracker.
+    /// </summary>
+    public readonly List<KeyValuePair<ValueHash256, long>> SlotCountsByOwner = new();
+
+    /// <summary>
+    /// Per-code-hash reference count accumulated on this thread. Each account whose
+    /// <c>HasCode</c> is true bumps the count for its code hash by one. Merged across
+    /// threads in <see cref="MergeFrom"/> to produce the total refcount per hash.
+    /// </summary>
+    public readonly Dictionary<ValueHash256, int> CodeHashRefcounts = new();
 
     private ValueHash256 _currentStorageRoot;
     private ValueHash256 _currentOwner;
@@ -149,6 +166,11 @@ public sealed class VisitorCounters(int topN = 20)
         // Log-bucketed slot-count histogram: bucket = min(15, floor(log2(slotCount + 1))).
         int slotBucket = ComputeSlotBucket(_currentStorageValueNodes);
         SlotCountHistogram[slotBucket]++;
+
+        // Remember this contract's exact slot count so the state holder can adjust
+        // the histogram incrementally when later diffs move it between buckets.
+        if (_currentStorageValueNodes > 0)
+            SlotCountsByOwner.Add(new KeyValuePair<ValueHash256, long>(_currentOwner, _currentStorageValueNodes));
 
         // Build per-depth Levels[16] summary into a reusable scratch array.
         // The scratch array is allocated once per VisitorCounters instance (lazily)
@@ -269,6 +291,19 @@ public sealed class VisitorCounters(int topN = 20)
         // not MaxTrackedDepth, so it needs its own loop.
         for (int i = 0; i < SlotCountHistogram.Length; i++)
             SlotCountHistogram[i] += other.SlotCountHistogram[i];
+
+        // Per-account slot counts: straight concatenation — each account is visited
+        // by exactly one worker, so no owner can appear in two thread-local lists.
+        if (other.SlotCountsByOwner.Count > 0)
+            SlotCountsByOwner.AddRange(other.SlotCountsByOwner);
+
+        // Code-hash refcounts: additive merge. Each account contributed one increment
+        // on its own thread, so summing across threads yields the total refcount.
+        foreach (KeyValuePair<ValueHash256, int> kvp in other.CodeHashRefcounts)
+        {
+            CodeHashRefcounts.TryGetValue(kvp.Key, out int existing);
+            CodeHashRefcounts[kvp.Key] = existing + kvp.Value;
+        }
 
         TopN.MergeFrom(other.TopN);
     }

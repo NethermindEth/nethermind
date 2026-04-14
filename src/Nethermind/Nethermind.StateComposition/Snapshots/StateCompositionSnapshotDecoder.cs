@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -21,6 +22,9 @@ namespace Nethermind.StateComposition.Snapshots;
 ///        + TotalBranchNodes + TotalBranchChildren
 ///   5. codeBytesTotal (long)
 ///   6. 16 longs of SlotCountHistogram
+///   7. slotCountByAddress: int count, then count × (keccak hash, long slot count)
+///   8. codeHashRefcounts: int count, then count × (keccak hash, int refcount)
+///   9. codeHashSizes: int count, then count × (keccak hash, int size)
 /// Legacy snapshots (pre-CodeBytes/SlotHistogram schema) will fail to decode and
 /// are discarded by the plugin, which then triggers a fresh scan to rebuild the
 /// baseline with the new schema.
@@ -84,6 +88,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
             stream.Encode(hist.IsDefault ? 0L : hist[i]);
+
+        EncodeSlotCountMap(stream, item.SlotCountByAddress);
+        EncodeIntMap(stream, item.CodeHashRefcounts);
+        EncodeIntMap(stream, item.CodeHashSizes);
     }
 
     private static int GetContentLength(StateCompositionSnapshot item)
@@ -138,6 +146,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
             contentLength += Rlp.LengthOf(hist.IsDefault ? 0L : hist[i]);
 
+        contentLength += GetSlotCountMapLength(item.SlotCountByAddress);
+        contentLength += GetIntMapLength(item.CodeHashRefcounts);
+        contentLength += GetIntMapLength(item.CodeHashSizes);
+
         return contentLength;
     }
 
@@ -156,6 +168,86 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     private static void DecodeLongArray(ref Rlp.ValueDecoderContext ctx, long[] dest)
     {
         for (int i = 0; i < dest.Length; i++) dest[i] = ctx.DecodeLong();
+    }
+
+    private static int GetSlotCountMapLength(IReadOnlyDictionary<ValueHash256, long>? map)
+    {
+        int count = map?.Count ?? 0;
+        int total = Rlp.LengthOf(count);
+        if (map is null) return total;
+
+        foreach (KeyValuePair<ValueHash256, long> kvp in map)
+        {
+            total += Rlp.LengthOfKeccakRlp;
+            total += Rlp.LengthOf(kvp.Value);
+        }
+        return total;
+    }
+
+    private static void EncodeSlotCountMap(RlpStream stream, IReadOnlyDictionary<ValueHash256, long>? map)
+    {
+        int count = map?.Count ?? 0;
+        stream.Encode(count);
+        if (map is null) return;
+
+        foreach (KeyValuePair<ValueHash256, long> kvp in map)
+        {
+            stream.Encode(new Hash256(kvp.Key));
+            stream.Encode(kvp.Value);
+        }
+    }
+
+    private static Dictionary<ValueHash256, long> DecodeSlotCountMap(ref Rlp.ValueDecoderContext ctx)
+    {
+        int count = ctx.DecodeInt();
+        Dictionary<ValueHash256, long> map = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            ValueHash256 key = ctx.DecodeKeccak()!;
+            long value = ctx.DecodeLong();
+            map[key] = value;
+        }
+        return map;
+    }
+
+    private static int GetIntMapLength(IReadOnlyDictionary<ValueHash256, int>? map)
+    {
+        int count = map?.Count ?? 0;
+        int total = Rlp.LengthOf(count);
+        if (map is null) return total;
+
+        foreach (KeyValuePair<ValueHash256, int> kvp in map)
+        {
+            total += Rlp.LengthOfKeccakRlp;
+            total += Rlp.LengthOf(kvp.Value);
+        }
+        return total;
+    }
+
+    private static void EncodeIntMap(RlpStream stream, IReadOnlyDictionary<ValueHash256, int>? map)
+    {
+        int count = map?.Count ?? 0;
+        stream.Encode(count);
+        if (map is null) return;
+
+        foreach (KeyValuePair<ValueHash256, int> kvp in map)
+        {
+            stream.Encode(new Hash256(kvp.Key));
+            stream.Encode(kvp.Value);
+        }
+    }
+
+    private static Dictionary<ValueHash256, int> DecodeIntMap(ref Rlp.ValueDecoderContext ctx)
+    {
+        int count = ctx.DecodeInt();
+        Dictionary<ValueHash256, int> map = new(count);
+        for (int i = 0; i < count; i++)
+        {
+            ValueHash256 key = ctx.DecodeKeccak()!;
+            int value = ctx.DecodeInt();
+            map[key] = value;
+        }
+        return map;
     }
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -219,6 +311,12 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        return new StateCompositionSnapshot(stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats);
+        Dictionary<ValueHash256, long> slotCountByAddress = DecodeSlotCountMap(ref ctx);
+        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeIntMap(ref ctx);
+        Dictionary<ValueHash256, int> codeHashSizes = DecodeIntMap(ref ctx);
+
+        return new StateCompositionSnapshot(
+            stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
+            slotCountByAddress, codeHashRefcounts, codeHashSizes);
     }
 }
