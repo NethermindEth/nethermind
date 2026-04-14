@@ -30,18 +30,12 @@ public class L1StaticCallPrecompileTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        L1StaticCallPrecompile.L1CallProvider = null;
-    }
+    public void TearDown() => L1StaticCallPrecompile.L1CallProvider = null;
 
     // --- BaseGasCost ---
 
     [Test]
-    public void BaseGasCost_Should_Return_FixedGasCost()
-    {
-        Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.L1StaticCallFixedGasCost));
-    }
+    public void BaseGasCost_Should_Return_FixedGasCost() => Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.L1StaticCallFixedGasCost));
 
     // --- DataGasCost (static overhead only) ---
 
@@ -269,10 +263,7 @@ public class L1StaticCallPrecompileTests
         public int CallCount { get; private set; }
         public long LastGasLimit { get; private set; }
 
-        private MockL1CallProvider(L1CallResult result)
-        {
-            _result = result;
-        }
+        private MockL1CallProvider(L1CallResult result) => _result = result;
 
         public L1CallResult ExecuteTraceCall(Address contractAddress, UInt256 blockNumber, byte[] calldata, long gasLimit)
         {

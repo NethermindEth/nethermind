@@ -27,10 +27,7 @@ public class L1SloadPrecompileTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        L1SloadPrecompile.L1StorageProvider = null;
-    }
+    public void TearDown() => L1SloadPrecompile.L1StorageProvider = null;
 
     [Test]
     public void BaseGasCost_Should_Return_FixedGasCost() => Assert.That(_precompile.BaseGasCost(_spec), Is.EqualTo(L1PrecompileConstants.L1SloadFixedGasCost));
