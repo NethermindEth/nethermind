@@ -7,9 +7,9 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Ssz;
 
 /// <summary>
-/// Static-abstract contract implemented by every SSZ-serializable container, forwarding to
-/// <c>Nethermind.Serialization.SszEncoding</c>. Allows generic code to invoke decode, encode,
-/// merkleize, and length operations without having to weave in per-type delegates.
+/// Static-abstract contract implemented by every SSZ-serializable container. Allows generic code
+/// to invoke decode, encode, merkleize, and length operations without having to weave in per-type
+/// delegates.
 /// </summary>
 /// <typeparam name="T">The implementing container type.</typeparam>
 public interface ISszCodec<T> where T : ISszCodec<T>

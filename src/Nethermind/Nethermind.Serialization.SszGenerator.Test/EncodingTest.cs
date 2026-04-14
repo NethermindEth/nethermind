@@ -35,10 +35,10 @@ public class EncodingTest
             BitVec = new(10),
         };
 
-        byte[] encoded = SszEncoding.Encode(test);
-        SszEncoding.Merkleize(test, out UInt256 root);
-        SszEncoding.Decode(encoded, out ComplexStruct decodedTest);
-        SszEncoding.Merkleize(decodedTest, out UInt256 decodedRoot);
+        byte[] encoded = Encode(test);
+        Merkleize(test, out UInt256 root);
+        Decode(encoded, out ComplexStruct decodedTest);
+        Merkleize(decodedTest, out UInt256 decodedRoot);
 
         Assert.That(decodedTest.VariableC.Fixed1, Is.EqualTo(test.VariableC.Fixed1));
         Assert.That(decodedTest.VariableC.Fixed2, Is.EqualTo(test.VariableC.Fixed2));
@@ -52,7 +52,7 @@ public class EncodingTest
     {
         byte[] encoded = [8, 0, 0, 0, 8, 0, 0, 0];
 
-        SszEncoding.Decode(encoded, out DoubleListContainer decoded);
+        Decode(encoded, out DoubleListContainer decoded);
 
         Assert.That(decoded.First, Is.Not.Null);
         Assert.That(decoded.First, Is.Empty);
@@ -69,8 +69,8 @@ public class EncodingTest
         bits[9] = true;
         BitVectorContainer container = new() { Bits = bits };
 
-        byte[] encoded = SszEncoding.Encode(container);
-        SszEncoding.Decode(encoded, out BitVectorContainer decoded);
+        byte[] encoded = Encode(container);
+        Decode(encoded, out BitVectorContainer decoded);
 
         Assert.That(decoded.Bits, Is.Not.Null);
         Assert.That(decoded.Bits!.Length, Is.EqualTo(10));
@@ -106,10 +106,10 @@ public class EncodingTest
             ],
         };
 
-        byte[] encoded = SszEncoding.Encode(container);
-        SszEncoding.Decode(encoded, out NestedProgressiveListContainer decoded);
+        byte[] encoded = Encode(container);
+        Decode(encoded, out NestedProgressiveListContainer decoded);
 
-        Assert.That(SszEncoding.Encode(decoded), Is.EqualTo(encoded));
+        Assert.That(Encode(decoded), Is.EqualTo(encoded));
         Assert.That(decoded.Items, Has.Length.EqualTo(2));
         Assert.That(decoded.Items![0].Items, Has.Length.EqualTo(2));
         Assert.That(decoded.Items[0].Items![0].Fixed2, Is.EqualTo([2UL, 3UL]));
@@ -122,7 +122,7 @@ public class EncodingTest
     {
         SingleListContainer container = new() { Items = [1UL, 2UL] };
 
-        SszEncoding.Merkleize(container, out UInt256 actual);
+        Merkleize(container, out UInt256 actual);
 
         ulong[] items = [1UL, 2UL];
         Merkle.Merkleize(out UInt256 expected, items, 4);
@@ -136,7 +136,7 @@ public class EncodingTest
     {
         CompatibleNumberUnion container = new() { Selector = CompatibleNumberUnionSelector.PreviousValue, PreviousValue = 123UL };
 
-        SszEncoding.Merkleize(container, out UInt256 actual);
+        Merkleize(container, out UInt256 actual);
 
         Merkle.Merkleize(out UInt256 expected, container.PreviousValue);
         Merkle.MixIn(ref expected, (byte)container.Selector);
@@ -149,8 +149,8 @@ public class EncodingTest
     {
         ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
 
-        byte[] encoded = SszEncoding.Encode(container);
-        SszEncoding.Decode(encoded, out ProgressiveContainerSample decoded);
+        byte[] encoded = Encode(container);
+        Decode(encoded, out ProgressiveContainerSample decoded);
 
         byte[] expected = new byte[16];
         BitConverter.TryWriteBytes(expected.AsSpan(0, 8), container.Head);
@@ -166,7 +166,7 @@ public class EncodingTest
     {
         ProgressiveContainerSample container = new() { Head = 1, Tail = 2 };
 
-        SszEncoding.Merkleize(container, out UInt256 actual);
+        Merkleize(container, out UInt256 actual);
 
         Merkle.Merkleize(out UInt256 headRoot, container.Head);
         Merkle.Merkleize(out UInt256 tailRoot, container.Tail);
@@ -181,8 +181,8 @@ public class EncodingTest
     {
         ProgressiveListContainer container = new() { Items = [1UL, 2UL, 3UL] };
 
-        byte[] encoded = SszEncoding.Encode(container);
-        SszEncoding.Decode(encoded, out ProgressiveListContainer decoded);
+        byte[] encoded = Encode(container);
+        Decode(encoded, out ProgressiveListContainer decoded);
 
         Assert.That(decoded.Items, Is.EqualTo(container.Items));
     }
@@ -192,7 +192,7 @@ public class EncodingTest
     {
         ProgressiveListContainer container = new() { Items = [1UL, 2UL, 3UL] };
 
-        SszEncoding.Merkleize(container, out UInt256 actual);
+        Merkleize(container, out UInt256 actual);
 
         ulong[] items = container.Items!;
         UInt256 expected = ProgressiveMerkleizeBytes(MemoryMarshal.AsBytes(items.AsSpan()));
@@ -210,8 +210,8 @@ public class EncodingTest
         bits[9] = true;
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
-        byte[] encoded = SszEncoding.Encode(container);
-        SszEncoding.Decode(encoded, out ProgressiveBitlistContainer decoded);
+        byte[] encoded = Encode(container);
+        Decode(encoded, out ProgressiveBitlistContainer decoded);
 
         Assert.That(decoded.Bits, Is.Not.Null);
         Assert.That(decoded.Bits!.Length, Is.EqualTo(bits.Length));
@@ -227,7 +227,7 @@ public class EncodingTest
         bits[9] = true;
         ProgressiveBitlistContainer container = new() { Bits = bits };
 
-        SszEncoding.Merkleize(container, out UInt256 actual);
+        Merkleize(container, out UInt256 actual);
 
         byte[] bytes = new byte[(bits.Length + 7) / 8];
         bits.CopyTo(bytes, 0);
@@ -248,7 +248,7 @@ public class EncodingTest
 
         byte[] viaInterface = EncodeViaInterface(fixture);
 
-        Assert.That(viaInterface, Is.EqualTo(SszEncoding.Encode(fixture)));
+        Assert.That(viaInterface, Is.EqualTo(Encode(fixture)));
 
         static byte[] EncodeViaInterface<T>(T value) where T : ISszCodec<T>
         {
@@ -258,30 +258,39 @@ public class EncodingTest
         }
     }
 
+    private static byte[] Encode<T>(T value) where T : ISszCodec<T> =>
+        T.Encode(value);
+
+    private static void Decode<T>(ReadOnlySpan<byte> data, out T value) where T : ISszCodec<T> =>
+        T.Decode(data, out value);
+
+    private static void Merkleize<T>(T value, out UInt256 root) where T : ISszCodec<T> =>
+        T.Merkleize(value, out root);
+
     private static IEnumerable<TestCaseData> InvalidInputCases()
     {
-        yield return new TestCaseData((Action)(() => SszEncoding.Decode([99], out CompatibleNumberUnion _)))
+        yield return new TestCaseData((Action)(() => Decode([99], out CompatibleNumberUnion _)))
             .SetName("Decode rejects unknown compatible union selector");
-        yield return new TestCaseData((Action)(() => SszEncoding.Decode([1, 1, 0], out CompatibleBoolUnion _)))
+        yield return new TestCaseData((Action)(() => Decode([1, 1, 0], out CompatibleBoolUnion _)))
             .SetName("Decode rejects compatible union trailing bytes");
-        yield return new TestCaseData((Action)(() => SszEncoding.Decode(new byte[4], out VariableC _)))
+        yield return new TestCaseData((Action)(() => Decode(new byte[4], out VariableC _)))
             .SetName("Decode rejects truncated variable container input");
-        yield return new TestCaseData((Action)(() => SszEncoding.Decode([4, 0, 0, 0, 8, 0, 0, 0], out DoubleListContainer _)))
+        yield return new TestCaseData((Action)(() => Decode([4, 0, 0, 0, 8, 0, 0, 0], out DoubleListContainer _)))
             .SetName("Decode rejects offsets that point into the fixed section");
-        yield return new TestCaseData((Action)(() => SszEncoding.Decode([8, 0, 0, 0, 7, 0, 0, 0], out DoubleListContainer _)))
+        yield return new TestCaseData((Action)(() => Decode([8, 0, 0, 0, 7, 0, 0, 0], out DoubleListContainer _)))
             .SetName("Decode rejects offsets that are out of order");
         yield return new TestCaseData((Action)(() =>
         {
-            byte[] encoded = SszEncoding.Encode(new VariableC { Fixed1 = 1, Fixed2 = [10, 20] });
+            byte[] encoded = Encode(new VariableC { Fixed1 = 1, Fixed2 = [10, 20] });
             encoded[8] = 0xFF;
             encoded[9] = 0xFF;
             encoded[10] = 0x00;
             encoded[11] = 0x00;
-            SszEncoding.Decode(encoded, out VariableC _);
+            Decode(encoded, out VariableC _);
         })).SetName("Decode rejects offsets that point past the end");
-        yield return new TestCaseData((Action)(() => SszEncoding.Encode(new FixedVectorContainer { Items = [new FixedC()] })))
+        yield return new TestCaseData((Action)(() => Encode(new FixedVectorContainer { Items = [new FixedC()] })))
             .SetName("Encode rejects vectors with the wrong length");
-        yield return new TestCaseData((Action)(() => SszEncoding.Encode(new SingleListContainer { Items = [1UL, 2UL, 3UL, 4UL, 5UL] })))
+        yield return new TestCaseData((Action)(() => Encode(new SingleListContainer { Items = [1UL, 2UL, 3UL, 4UL, 5UL] })))
             .SetName("Encode rejects lists above the declared limit");
     }
 

@@ -18,7 +18,7 @@ Supports vectors, lists, bitvectors, bitlists, compatible unions, progressive co
 ```
 
 - Output of the generation will appear under Project/Dependencies/Analyzers/Nethermind.Serialization.SszGenerator/SszGenerator.
-- Partial static class SszEncoding will contain all the methods.
+- Mark SSZ types as `partial`. The generator adds `ISszCodec<T>` and static encode, decode, merkleize, and length methods to each marked type.
 
 
 ## Examples
@@ -28,7 +28,7 @@ Supports vectors, lists, bitvectors, bitlists, compatible unions, progressive co
 ```csharp
 
 [SszContainer]
-public struct MyClass
+public partial struct MyClass
 {
   public ulong Test1 { get; set; }
 
@@ -41,9 +41,9 @@ public struct MyClass
 
 ...
 MyClass instance = new();
-SszEncoding.Merkleize(instance, out UInt256 root);
-byte[] encoded = SszEncoding.Encode(instance);
-SszEncoding.Decode(encoded, out decodedInstance);
+MyClass.Merkleize(instance, out UInt256 root);
+byte[] encoded = MyClass.Encode(instance);
+MyClass.Decode(encoded, out decodedInstance);
 ```
 
 
@@ -51,7 +51,7 @@ SszEncoding.Decode(encoded, out decodedInstance);
 
 ```csharp
 [SszCompatibleUnion]
-public struct MyUnion
+public partial struct MyUnion
 {
   public MyUnionSelector Selector { get; set; }
 
@@ -74,7 +74,7 @@ Selector enum members must be byte-backed, use values in the range `[1, 127]`, a
 
 ```csharp
 [SszContainer]
-public struct ProgressiveSample
+public partial struct ProgressiveSample
 {
   [SszField(0)]
   public ulong Head { get; set; }
@@ -92,7 +92,7 @@ Progressive containers are inferred from `SszField` attributes. There is no sepa
 using System.Collections;
 
 [SszContainer]
-public struct ProgressiveCollections
+public partial struct ProgressiveCollections
 {
   [SszProgressiveList]
   public ulong[] History { get; set; }
@@ -106,7 +106,7 @@ public struct ProgressiveCollections
 
 ```csharp
 [SszContainer(isCollectionItself: true)]
-public struct ValidatorIndexList
+public partial struct ValidatorIndexList
 {
   [SszList(128)]
   public ulong[] Items { get; set; }
