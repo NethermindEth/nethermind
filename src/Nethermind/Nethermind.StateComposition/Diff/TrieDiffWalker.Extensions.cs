@@ -37,7 +37,10 @@ internal sealed partial class TrieDiffWalker
 
             int prevLen = path.Length;
             path.AppendMut(oldKey);
-            int childDepth = depth + oldKey.Length;
+            // Structural depth: one level per Add, matching StateCompositionContext.Add
+            // which seeds the baseline histogram. Incrementing by oldKey.Length would
+            // route diffs into nibble-depth buckets and drift the byte totals (bug #...).
+            int childDepth = depth + 1;
 
             if (oldChildHash is not null && newChildHash is not null)
             {

@@ -79,7 +79,8 @@ internal sealed partial class TrieDiffWalker
                     Hash256? childHash = node.GetChildHash(1);
                     int prevLen = path.Length;
                     path.AppendMut(node.Key!);
-                    int childDepth = depth + (node.Key?.Length ?? 1);
+                    // Structural depth — see TrieDiffWalker.Extensions.DiffExtensions for rationale.
+                    int childDepth = depth + 1;
 
                     if (childHash is not null)
                     {
@@ -253,7 +254,8 @@ internal sealed partial class TrieDiffWalker
                     Hash256? childHash = node.GetChildHash(1);
                     int prevLen = path.Length;
                     path.AppendMut(node.Key!);
-                    int childDepth = depth + (node.Key?.Length ?? 1);
+                    // Structural depth — see TrieDiffWalker.Extensions.DiffExtensions for rationale.
+                    int childDepth = depth + 1;
                     if (childHash is not null)
                     {
                         TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
