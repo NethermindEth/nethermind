@@ -52,5 +52,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
         }
     }
 
-    public override NativePrestateTracerAccount? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+    public override NativePrestateTracerAccount? Read(
+        ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        throw new NotSupportedException();
 }

@@ -60,7 +60,8 @@ namespace Nethermind.Abi
             }
 
             [DoesNotReturn, StackTraceHidden]
-            static void Throw() => throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
+            static void Throw() =>
+                throw new ArgumentOutOfRangeException(nameof(length), $"{nameof(length)} of {nameof(AbiUInt)} has to be a multiple of 8");
         }
     }
 }
@@ -201,6 +202,7 @@ namespace Nethermind.Blockchain.Contracts.Json
             };
         }
 
-        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options) => writer.WriteStringValue(value.Name);
+        public override void Write(Utf8JsonWriter writer, AbiType value, JsonSerializerOptions options) =>
+            writer.WriteStringValue(value.Name);
     }
 }

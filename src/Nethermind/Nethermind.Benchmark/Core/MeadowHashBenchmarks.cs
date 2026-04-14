@@ -102,7 +102,8 @@ namespace Nethermind.Benchmarks.Core
         public static MeadowHashBenchmarks Create(int size = HASH_SIZE) => new(size);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong ROL(ulong a, int offset) => (a << (offset % LANE_BITS)) ^ (a >> (LANE_BITS - (offset % LANE_BITS)));
+        private static ulong ROL(ulong a, int offset) =>
+            (a << (offset % LANE_BITS)) ^ (a >> (LANE_BITS - (offset % LANE_BITS)));
 
         // update the state with given number of rounds
         public static void KeccakF(Span<ulong> st, int rounds)

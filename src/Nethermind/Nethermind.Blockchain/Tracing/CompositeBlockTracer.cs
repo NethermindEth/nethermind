@@ -14,7 +14,8 @@ public class CompositeBlockTracer : IBlockTracer, ITracerBag
     private readonly List<IBlockTracer> _childTracers = new();
     public bool IsTracingRewards { get; private set; }
 
-    public CompositeBlockTracer() => IsTracingRewards = _childTracers.Any(static childTracer => childTracer.IsTracingRewards);
+    public CompositeBlockTracer() =>
+        IsTracingRewards = _childTracers.Any(static childTracer => childTracer.IsTracingRewards);
 
     public void EndTxTrace()
     {

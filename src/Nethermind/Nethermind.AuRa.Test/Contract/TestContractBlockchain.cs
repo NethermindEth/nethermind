@@ -44,7 +44,8 @@ namespace Nethermind.AuRa.Test.Contract
         protected override ChainSpec CreateChainSpec() =>
             ChainSpecOverride ?? base.CreateChainSpec();
 
-        protected override ContainerBuilder ConfigureContainer(ContainerBuilder builder, IConfigProvider configProvider) =>
+        protected override ContainerBuilder ConfigureContainer(
+            ContainerBuilder builder, IConfigProvider configProvider) =>
             base.ConfigureContainer(builder, configProvider)
                 .AddScoped<IGenesisBuilder, GenesisBuilder>()
                 .AddScoped<IGenesisPostProcessor, AuraGenesisPostProcessor>()

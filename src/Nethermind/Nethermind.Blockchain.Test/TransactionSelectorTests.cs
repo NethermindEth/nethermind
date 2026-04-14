@@ -231,7 +231,9 @@ namespace Nethermind.Blockchain.Test
         private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount)
             => CreateBlobTransaction(address, key, maxFee, blobCount, nonce: 1);
 
-        private static Transaction CreateBlobTransaction(Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1) => Build.A.Transaction
+        private static Transaction CreateBlobTransaction(
+            Address address, PrivateKey key, UInt256 maxFee, int blobCount, UInt256 nonce, uint priority = 1) =>
+            Build.A.Transaction
                 .WithSenderAddress(address)
                 .WithShardBlobTxTypeAndFields(blobCount)
                 .WithNonce(nonce)

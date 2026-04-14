@@ -211,7 +211,8 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
 
-        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator) =>
+        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(
+            AuRaParameters.Validator validator) =>
             validator.Validators.ToDictionary(static x => x.Value, static x => Math.Max(x.Key + 1, 1));
 
         private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType) =>

@@ -64,7 +64,8 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) => _op = opcode;
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
+        _op = opcode;
 
     private void CaptureStart(ReadOnlyMemory<byte> input)
     {

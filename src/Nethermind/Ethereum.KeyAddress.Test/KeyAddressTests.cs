@@ -28,7 +28,8 @@ namespace Ethereum.KeyAddress.Test
             _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
         }
 
-        private static IEnumerable<KeyAddressTest> LoadTests() => TestLoader.LoadFromFile<KeyAddressTestJson[], KeyAddressTest>(
+        private static IEnumerable<KeyAddressTest> LoadTests() =>
+            TestLoader.LoadFromFile<KeyAddressTestJson[], KeyAddressTest>(
                 "keyaddrtest.json",
                 c => c.Select(FromJson));
 

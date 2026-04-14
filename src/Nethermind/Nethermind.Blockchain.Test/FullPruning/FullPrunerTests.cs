@@ -258,7 +258,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
             await WaitForPruningEnd(ctx);
         }
 
-        public void TriggerPruningViaEvent() => PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+        public void TriggerPruningViaEvent() =>
+            PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
 
         public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
         {
@@ -402,7 +403,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     {
         private readonly INodeStorage _nodeStorageToCompareTo = nodeStorage;
 
-        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) => _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
+        private void CheckNode(Hash256? storage, in TreePath path, TrieNode node) =>
+            _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
 
         public bool IsFullDbScan => true;
         public bool ShouldVisit(in TreePathContextWithStorage ctx, in ValueHash256 nextNode) => true;
@@ -415,9 +417,11 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
         {
         }
 
-        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
+        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node) =>
+            CheckNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
+        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node) =>
+            CheckNode(ctx.Storage, ctx.Path, node);
 
         public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node) => CheckNode(ctx.Storage, ctx.Path, node);
 

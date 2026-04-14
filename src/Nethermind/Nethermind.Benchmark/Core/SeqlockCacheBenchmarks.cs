@@ -85,7 +85,8 @@ public class SeqlockCacheBenchmarks
     // ==================== GetOrAdd (Hit) ====================
 
     [Benchmark]
-    public byte[]? SeqlockCache_GetOrAdd_Hit() => _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
+    public byte[]? SeqlockCache_GetOrAdd_Hit() =>
+        _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
 
     [Benchmark]
     public byte[] ConcurrentDict_GetOrAdd_Hit() => _concurrentDict.GetOrAdd(_keys[500], static _ => new byte[32]);

@@ -135,18 +135,20 @@ namespace Nethermind.JsonRpc.Data
         }
 
         [SkipLocalsInit]
-        public override BlockParameter? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => reader.TokenType switch
-        {
-            JsonTokenType.String => !reader.HasValueSequence ?
-                                        reader.ValueSpan.Length <= 66 ?
-                                            ReadStringFormat(reader.ValueSpan) :
-                                            ReadStringComplex(ref reader, options) :
-                                        ReadStringFormatValueSequence(ref reader, options),
-            JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
-            JsonTokenType.Null => BlockParameter.Latest,
-            JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
-            _ => throw new FormatException("unknown block parameter type")
-        };
+        public override BlockParameter? Read(
+            ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+            reader.TokenType switch
+            {
+                JsonTokenType.String => !reader.HasValueSequence ?
+                                            reader.ValueSpan.Length <= 66 ?
+                                                ReadStringFormat(reader.ValueSpan) :
+                                                ReadStringComplex(ref reader, options) :
+                                            ReadStringFormatValueSequence(ref reader, options),
+                JsonTokenType.StartObject => ReadObjectFormat(ref reader, typeToConvert, options),
+                JsonTokenType.Null => BlockParameter.Latest,
+                JsonTokenType.Number when !EthereumJsonSerializer.StrictHexFormat => new BlockParameter(reader.GetInt64()),
+                _ => throw new FormatException("unknown block parameter type")
+            };
 
         private BlockParameter ReadObjectFormat(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {

@@ -42,7 +42,8 @@ namespace Nethermind.Blockchain.Contracts.Json
             return reader.ReadToEnd();
         }
 
-        public static string Serialize(AbiDefinition contract) => JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
+        public static string Serialize(AbiDefinition contract) =>
+            JsonSerializer.Serialize(contract, SourceGenerationContext.Default.AbiDefinition);
 
         private static Stream LoadResource(Type type)
         {

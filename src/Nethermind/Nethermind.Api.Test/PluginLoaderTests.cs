@@ -195,6 +195,7 @@ public class PluginLoaderTests
 
         public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => throw new NotImplementedException();
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
+            throw new NotImplementedException();
     }
 }

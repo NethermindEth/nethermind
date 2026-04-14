@@ -12,13 +12,16 @@ namespace Nethermind.Blockchain.Spec
 {
     public class ChainHeadSpecProvider(ISpecProvider specProvider, IBlockFinder blockFinder) : IChainHeadSpecProvider
     {
-        private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+        private readonly ISpecProvider _specProvider =
+            specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        private readonly IBlockFinder _blockFinder =
+            blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private long _lastHeader = -1;
         private IReleaseSpec? _headerSpec;
         private readonly Lock _lock = new();
 
-        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) => _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
+        public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null) =>
+            _specProvider.UpdateMergeTransitionInfo(blockNumber, terminalTotalDifficulty);
 
         public ForkActivation? MergeBlockNumber => _specProvider.MergeBlockNumber;
 

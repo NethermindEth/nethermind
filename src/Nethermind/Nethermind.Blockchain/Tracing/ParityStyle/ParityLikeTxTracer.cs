@@ -269,7 +269,8 @@ public class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) => _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
+    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+        _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -429,5 +430,6 @@ public class ParityLikeTxTracer : TxTracer
         // TODO: use memory pool?
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
 
-    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) => _currentOperation!.Used = gasAvailable;
+    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
+        _currentOperation!.Used = gasAvailable;
 }

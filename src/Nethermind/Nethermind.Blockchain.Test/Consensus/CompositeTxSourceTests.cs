@@ -26,7 +26,8 @@ public class CompositeTxSourceTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Throws_on_null_argument() => Assert.Throws<ArgumentNullException>(static () => new CompositeTxSource(null!));
+    public void Throws_on_null_argument() =>
+        Assert.Throws<ArgumentNullException>(static () => new CompositeTxSource(null!));
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void selectTransactions_injects_transactions_from_ImmediateTransactionSources_in_front_of_block_transactions()

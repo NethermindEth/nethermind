@@ -118,7 +118,8 @@ public class EstimateGasTracer : TxTracer
 
     public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => UpdateAdditionalGas(gas);
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => UpdateAdditionalGas(gas);
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
+        UpdateAdditionalGas(gas);
 
     public override void ReportActionError(EvmExceptionType exceptionType)
     {
@@ -172,6 +173,7 @@ public class EstimateGasTracer : TxTracer
 
     public override void ReportRefund(long refund) => TotalRefund += refund;
 
-    public override void ReportExtraGasPressure(long extraGasPressure) => _currentGasAndNesting.Peek().ExtraGasPressure =
+    public override void ReportExtraGasPressure(long extraGasPressure) =>
+        _currentGasAndNesting.Peek().ExtraGasPressure =
             Math.Max(_currentGasAndNesting.Peek().ExtraGasPressure, extraGasPressure);
 }

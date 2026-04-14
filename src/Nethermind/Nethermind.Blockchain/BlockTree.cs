@@ -1409,7 +1409,8 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
-        private bool ShouldCache(long number) => number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
+        private bool ShouldCache(long number) =>
+            number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
 
         public ChainLevelInfo? FindLevel(long number) => _chainLevelInfoRepository.LoadLevel(number);
 

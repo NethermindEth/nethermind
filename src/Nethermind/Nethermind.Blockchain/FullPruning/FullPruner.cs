@@ -104,7 +104,9 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private Task WaitForMainChainChange(Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken) => Wait.ForEventCondition<OnUpdateMainChainArgs>(
+        private Task WaitForMainChainChange(
+            Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken) =>
+            Wait.ForEventCondition<OnUpdateMainChainArgs>(
                 cancellationToken,
                 (h) => _blockTree.OnUpdateMainChain += h,
                 (h) => _blockTree.OnUpdateMainChain -= h,

@@ -25,7 +25,8 @@ namespace Nethermind.Blockchain.Receipts
         private readonly IReceiptRefDecoder _receiptRefDecoder;
         private bool _recoveryContextConfigured;
 
-        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
+        public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb,
+            Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
             _blocksDb = blocksDb;
@@ -113,9 +114,13 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContext?.Dispose();
         }
 
-        public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) => receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
+        public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt) =>
+            receipt.Logs is null
+                ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder)
+                : new LogEntriesIterator(receipt.Logs);
 
-        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => _receiptRefDecoder.DecodeTopics(valueDecoderContext);
+        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) =>
+            _receiptRefDecoder.DecodeTopics(valueDecoderContext);
 
         public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }

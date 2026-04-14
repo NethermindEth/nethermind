@@ -721,7 +721,8 @@ public class BlockchainProcessorTests
             .FullyProcessed(_blockB2D4).BecomesNewHead();
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached() => When.ProcessingBlocks
+    public void Can_change_branch_on_invalid_block_when_invalid_branch_is_in_the_queue_and_recovery_queue_max_has_been_reached() =>
+        When.ProcessingBlocks
             .AndRecoveryQueueLimitHasBeenReached()
             .FullyProcessed(_block0).BecomesGenesis()
             .Suggested(_block1D2)
