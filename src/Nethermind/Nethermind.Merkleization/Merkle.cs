@@ -78,10 +78,7 @@ public static partial class Merkle
     // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
     public static void MixInActiveFields(ref UInt256 root, ReadOnlySpan<byte> activeFields)
     {
-        if (activeFields.Length > 32)
-        {
-            throw new ArgumentOutOfRangeException(nameof(activeFields), "active_fields must fit in 256 bits.");
-        }
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(activeFields.Length, 32, nameof(activeFields));
 
         Span<byte> chunk = stackalloc byte[32];
         activeFields.CopyTo(chunk);
@@ -91,10 +88,7 @@ public static partial class Merkle
     // EIP-7495 / EIP-7916 progressive merkleization keeps generalized indices stable across extensions.
     public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1)
     {
-        if (numLeaves == 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(numLeaves), "Progressive merkleization requires numLeaves > 0.");
-        }
+        ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));
 
         if (chunks.Length == 0)
         {

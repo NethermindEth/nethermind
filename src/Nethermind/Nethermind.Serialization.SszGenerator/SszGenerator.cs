@@ -1045,6 +1045,7 @@ public partial class SszEncoding
                 ThrowInvalidSszData(nameof({decl.Name}), $""unsupported union selector {{data[0]}}."");
                 break;
         }};
+        ValidateSszExactLength(data.Length, GetLength(container), nameof({decl.Name}));
     }}
 {Whitespace}
     public static void Merkleize({decl.Name}{(decl.IsStruct ? "" : "?")} container, out UInt256 root)

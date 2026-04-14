@@ -112,6 +112,14 @@ namespace Nethermind.Serialization.SszGenerator.Test
         public ulong CurrentValue { get; set; }
     }
 
+    [SszCompatibleUnion]
+    public partial struct CompatibleBoolUnion
+    {
+        public CompatibleBoolUnionSelector Selector { get; set; }
+        public bool PreviousValue { get; set; }
+        public bool CurrentValue { get; set; }
+    }
+
     [SszContainer]
     public partial struct ProgressiveContainerSample
     {
@@ -151,6 +159,12 @@ namespace Nethermind.Serialization.SszGenerator.Test
     }
 
     public enum CompatibleNumberUnionSelector : byte
+    {
+        PreviousValue = 1,
+        CurrentValue = 2,
+    }
+
+    public enum CompatibleBoolUnionSelector : byte
     {
         PreviousValue = 1,
         CurrentValue = 2,

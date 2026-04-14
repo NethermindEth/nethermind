@@ -262,6 +262,8 @@ public class EncodingTest
     {
         yield return new TestCaseData((Action)(() => SszEncoding.Decode([99], out CompatibleNumberUnion _)))
             .SetName("Decode rejects unknown compatible union selector");
+        yield return new TestCaseData((Action)(() => SszEncoding.Decode([1, 1, 0], out CompatibleBoolUnion _)))
+            .SetName("Decode rejects compatible union trailing bytes");
         yield return new TestCaseData((Action)(() => SszEncoding.Decode(new byte[4], out VariableC _)))
             .SetName("Decode rejects truncated variable container input");
         yield return new TestCaseData((Action)(() => SszEncoding.Decode([4, 0, 0, 0, 8, 0, 0, 0], out DoubleListContainer _)))
