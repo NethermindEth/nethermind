@@ -12,8 +12,8 @@ namespace Nethermind.Analyzers;
 /// <summary>
 /// Reports multi-line lambda expressions whose body is indented so far to the right
 /// (due to Roslyn aligning it to the opening parenthesis of the enclosing call) that
-/// readability suffers. The fix is to extract the body to a local function or a
-/// separately-declared variable.
+/// readability suffers. The fix is to reindent the lambda body to use normal block
+/// indentation.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class LambdaIndentationAnalyzer : DiagnosticAnalyzer
