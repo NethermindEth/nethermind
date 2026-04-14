@@ -24,7 +24,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         JsonSerializerOptions options) => Convert(ref reader);
 
     [SkipLocalsInit]
-    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
+    public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false, bool requireEvenLength = false)
     {
         JsonTokenType tokenType = reader.TokenType;
         if (tokenType == JsonTokenType.None || tokenType == JsonTokenType.Null)
@@ -34,7 +34,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         if (reader.HasValueSequence)
         {
-            return ConvertValueSequence(ref reader, strictHexFormat);
+            return ConvertValueSequence(ref reader, strictHexFormat, requireEvenLength);
         }
 
         ReadOnlySpan<byte> hex = reader.ValueSpan;
@@ -47,12 +47,15 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
         else if (strictHexFormat) ThrowFormatException();
 
+        if (requireEvenLength && hex.Length % 2 != 0)
+            ThrowFormatException();
+
         return Bytes.FromUtf8HexString(hex);
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat)
+    private static byte[]? ConvertValueSequence(ref Utf8JsonReader reader, bool strictHexFormat, bool requireEvenLength = false)
     {
         ReadOnlySequence<byte> valueSequence = reader.ValueSequence;
         int length = checked((int)valueSequence.Length);
@@ -86,6 +89,9 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         long totalHexChars = length - (hadPrefix ? 2 : 0);
         if (totalHexChars <= 0) return [];
+
+        if (requireEvenLength && (totalHexChars & 1) != 0)
+            ThrowFormatException();
 
         int odd = (int)(totalHexChars & 1);
         int outLen = (int)(totalHexChars >> 1) + odd;
@@ -313,4 +319,28 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options) => Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
+}
+
+/// <summary>
+/// A strict variant of <see cref="ByteArrayConverter"/> that rejects odd-length hex strings.
+/// Odd-length hex (e.g. "0x1ab") is ambiguous and rejected by Geth, Reth, and Erigon.
+/// Use on RPC transaction fields (input, data) to return -32602 instead of letting
+/// malformed calldata reach the EVM.
+/// </summary>
+public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
+{
+    public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        try
+        {
+            return ByteArrayConverter.Convert(ref reader, strictHexFormat: false, requireEvenLength: true);
+        }
+        catch (FormatException e)
+        {
+            throw new JsonException(e.Message, e);
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+        => ByteArrayConverter.Convert(writer, value, skipLeadingZeros: false);
 }

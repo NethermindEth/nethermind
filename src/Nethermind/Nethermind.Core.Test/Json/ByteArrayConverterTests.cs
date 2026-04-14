@@ -455,6 +455,58 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ["0xzz"],
     };
 
+    [TestCaseSource(nameof(StrictOddLengthCases))]
+    public void StrictConverter_OddLength_ShouldThrowJsonException(string hex)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+        {
+            Utf8JsonReader reader = new(seq);
+            reader.Read();
+            EvenLengthByteArrayConverter converter = new();
+            Exception? caught = null;
+            try { converter.Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default); }
+            catch (Exception ex) { caught = ex; }
+            caught.Should().BeOfType<JsonException>();
+        }
+    }
+
+    [TestCaseSource(nameof(StrictEvenLengthCases))]
+    public void StrictConverter_EvenLength_ShouldParse(string hex, byte[] expected)
+    {
+        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+        {
+            Utf8JsonReader reader = new(seq);
+            reader.Read();
+            EvenLengthByteArrayConverter converter = new();
+            byte[]? result = converter.Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default);
+            result.Should().Equal(expected);
+        }
+    }
+
+    public static IEnumerable<object[]> StrictOddLengthCases() => new object[][]
+    {
+        ["F"],
+        ["0xF"],
+        ["123"],
+        ["0x123"],
+        ["0x1fF"],
+        ["abc"],
+        ["0xabc"],
+    };
+
+    public static IEnumerable<object[]> StrictEvenLengthCases() => new object[][]
+    {
+        ["0x", Array.Empty<byte>()],
+        ["1f", new byte[] { 0x1f }],
+        ["0x1f", new byte[] { 0x1f }],
+        ["DEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef }],
+        ["0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef }],
+    };
+
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
     {
         public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
