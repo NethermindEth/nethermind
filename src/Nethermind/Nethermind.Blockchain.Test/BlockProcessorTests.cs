@@ -11,6 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -225,6 +226,34 @@ public class BlockProcessorTests
             NullBlockTracer.Instance);
 
         Assert.That(processedBlocks, Has.Length.EqualTo(1), "block should process successfully without a prewarmer");
+    }
+
+    [TestCase(ProcessingOptions.LoadNonceFromState, TestName = "PrepareForProcessing_disables_parallel_bal_for_LoadNonceFromState")]
+    [TestCase(ProcessingOptions.Trace, TestName = "PrepareForProcessing_disables_parallel_bal_for_Trace")]
+    public void PrepareForProcessing_disables_parallel_bal_for_nonce_loading_flows(ProcessingOptions processingOptions)
+    {
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Amsterdam.Instance);
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            specProvider,
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = true },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithBlockAccessList(new BlockAccessList())
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, specProvider.GetSpec(block.Header), processingOptions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balManager.Enabled, Is.True);
+            Assert.That(balManager.ParallelExecutionEnabled, Is.False);
+        }
     }
 
     [Test]

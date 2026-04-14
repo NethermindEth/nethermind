@@ -70,7 +70,8 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
-            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding;
+            bool loadsNonceFromState = options.ContainsFlag(ProcessingOptions.LoadNonceFromState);
+            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding && !loadsNonceFromState;
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 

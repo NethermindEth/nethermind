@@ -340,10 +340,28 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private bool? AccountExistsCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+        if (accountChanges is null)
         {
-            // if nonce is changed in this tx must exist
-            // could have been created this tx
+            return null;
+        }
+
+        if (accountChanges.NonceChanges.Count > 0)
+        {
+            // A nonce change can only happen for an account that already exists at this point in the tx.
+            return true;
+        }
+
+        if (accountChanges.BalanceChanges.Count > 0 &&
+            !accountChanges.BalanceChanges[^1].PostBalance.IsZero)
+        {
+            // Parallel BAL execution can create accounts with a balance-only transition before the
+            // underlying world state reflects that creation.
+            return true;
+        }
+
+        if (accountChanges.CodeChanges.Count > 0 &&
+            accountChanges.CodeChanges[^1].NewCode.Length > 0)
+        {
             return true;
         }
 

@@ -13,6 +13,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NUnit.Framework;
@@ -29,6 +30,7 @@ namespace Nethermind.Store.Test;
 public class TracedAccessWorldStateTests
 {
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
+    private static readonly ILogManager Logger = LimboLogs.Instance;
 
     /// <summary>
     /// Creates a <see cref="TracedAccessWorldState"/> wrapping a real <see cref="WorldState"/>,
@@ -51,6 +53,35 @@ public class TracedAccessWorldStateTests
         TracedAccessWorldState tws = new(inner, parallel: false);
         IDisposable scope = tws.BeginScope(baseBlock);
         tws.SetIndex(0);
+        return (tws, scope);
+    }
+
+    private static (TracedAccessWorldState tws, IDisposable scope) CreateParallelTracingState(
+        int blockAccessIndex,
+        Action<BlockAccessList> balSetup,
+        Action<IWorldState>? genesisSetup = null)
+    {
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        Hash256 stateRoot;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            genesisSetup?.Invoke(inner);
+            inner.Commit(Spec, isGenesis: true);
+            inner.CommitTree(0);
+            stateRoot = inner.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(1).TestObject;
+        BlockAccessList suggestedBal = new();
+        balSetup(suggestedBal);
+
+        BlockAccessListBasedWorldState balWorldState = new(inner, blockAccessIndex, Logger);
+        Block block = Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(suggestedBal).TestObject;
+        balWorldState.Setup(block);
+
+        TracedAccessWorldState tws = new(balWorldState, parallel: true);
+        IDisposable scope = tws.BeginScope(baseBlock);
+        tws.SetIndex(blockAccessIndex);
         return (tws, scope);
     }
 
@@ -289,6 +320,99 @@ public class TracedAccessWorldStateTests
             {
                 Assert.That(result, Is.True);
                 Assert.That(tws.GetGeneratingBlockAccessList().HasAccount(TestItem.AddressA), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void ParallelValueCreatedAccount_IsTreatedAsExistingWithinTransaction()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelTracingState(
+            blockAccessIndex: 0,
+            balSetup: bal =>
+            {
+                bal.AddAccountRead(TestItem.AddressB);
+                AccountChanges accountChanges = bal.GetAccountChanges(TestItem.AddressB)!;
+                accountChanges.AddBalanceChange(new BalanceChange(-1, 0));
+                accountChanges.EmptyBeforeBlock = true;
+            });
+
+        using (scope)
+        {
+            bool created = tws.AddToBalanceAndCreateIfNotExists(TestItem.AddressB, 1, Spec, out UInt256 oldBalance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created, Is.True);
+                Assert.That(oldBalance, Is.EqualTo(UInt256.Zero));
+                Assert.That(tws.AccountExists(TestItem.AddressB), Is.True);
+                Assert.That(tws.IsDeadAccount(TestItem.AddressB), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void ParallelZeroBalanceTransition_FallsBackToUnderlyingExistence()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelTracingState(
+            blockAccessIndex: 0,
+            balSetup: bal =>
+            {
+                bal.AddAccountRead(TestItem.AddressA);
+                AccountChanges accountChanges = bal.GetAccountChanges(TestItem.AddressA)!;
+                accountChanges.AddBalanceChange(new BalanceChange(-1, 1));
+                accountChanges.AddNonceChange(new NonceChange(-1, 1));
+                accountChanges.ExistedBeforeBlock = true;
+            },
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 1);
+                ws.IncrementNonce(TestItem.AddressA, 1, out _);
+            });
+
+        using (scope)
+        {
+            tws.SubtractFromBalance(TestItem.AddressA, 1, Spec, out UInt256 oldBalance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oldBalance, Is.EqualTo(UInt256.One));
+                Assert.That(tws.AccountExists(TestItem.AddressA), Is.True);
+                Assert.That(tws.IsDeadAccount(TestItem.AddressA), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void ParallelEmptyCodeTransition_FallsBackToUnderlyingExistence()
+    {
+        byte[] existingCode = [0x60, 0x00];
+        (TracedAccessWorldState tws, IDisposable scope) = CreateParallelTracingState(
+            blockAccessIndex: 0,
+            balSetup: bal =>
+            {
+                bal.AddAccountRead(TestItem.AddressA);
+                AccountChanges accountChanges = bal.GetAccountChanges(TestItem.AddressA)!;
+                accountChanges.AddBalanceChange(new BalanceChange(-1, 1));
+                accountChanges.AddCodeChange(new CodeChange(-1, existingCode));
+                accountChanges.ExistedBeforeBlock = true;
+            },
+            genesisSetup: ws =>
+            {
+                ws.CreateAccount(TestItem.AddressA, 1);
+                ws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(existingCode), existingCode, Spec);
+            });
+
+        using (scope)
+        {
+            byte[] emptyCode = [];
+            tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(emptyCode), emptyCode, Spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tws.AccountExists(TestItem.AddressA), Is.True);
+                Assert.That(tws.IsDeadAccount(TestItem.AddressA), Is.False);
+                Assert.That(tws.GetCode(TestItem.AddressA), Is.Empty);
             }
         }
     }
