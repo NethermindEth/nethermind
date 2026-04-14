@@ -251,7 +251,7 @@ public class HistoryPruner : IHistoryPruner
 
     public void SchedulePruneHistory(CancellationToken cancellationToken)
     {
-        _logger.Warn($"Schedule prune history epochLength={_epochLength} cutoffBlockNumber={CutoffBlockNumber} cutoffTimestamp={CalculateCutoffTimestamp()}");
+        _logger.Warn($"Schedule prune history epochLength={_epochLength} pruningInterval={_pruningInterval} cutoffBlockNumber={CutoffBlockNumber} cutoffTimestamp={CalculateCutoffTimestamp()}");
 
         if (Volatile.Read(ref _currentlyPruning) == 0)
         {
@@ -447,7 +447,7 @@ public class HistoryPruner : IHistoryPruner
     }
 
     private bool PruningIntervalHasElapsed()
-        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval == 0;
+        => _pruningInterval == 0 || _blockTree.Head!.Number % _pruningInterval > 0;
 
     private void PruneBlocksAndReceipts(ulong? cutoffTimestamp, CancellationToken cancellationToken)
     {
