@@ -7,20 +7,20 @@ using Nethermind.Serialization.Ssz;
 namespace Ethereum.Ssz.Test;
 
 [SszContainer]
-public struct SingleFieldTestStruct
+public partial struct SingleFieldTestStruct
 {
     public byte A { get; set; }
 }
 
 [SszContainer]
-public struct SmallTestStruct
+public partial struct SmallTestStruct
 {
     public ushort A { get; set; }
     public ushort B { get; set; }
 }
 
 [SszContainer]
-public struct FixedTestStruct
+public partial struct FixedTestStruct
 {
     public byte A { get; set; }
     public ulong B { get; set; }
@@ -28,7 +28,7 @@ public struct FixedTestStruct
 }
 
 [SszContainer]
-public struct VarTestStruct
+public partial struct VarTestStruct
 {
     public ushort A { get; set; }
 
@@ -39,7 +39,7 @@ public struct VarTestStruct
 }
 
 [SszContainer]
-public struct ComplexTestStruct
+public partial struct ComplexTestStruct
 {
     public ushort A { get; set; }
 
@@ -61,7 +61,7 @@ public struct ComplexTestStruct
 }
 
 [SszContainer]
-public struct ProgressiveTestStruct
+public partial struct ProgressiveTestStruct
 {
     [SszProgressiveList]
     public byte[]? A { get; set; }
@@ -77,14 +77,14 @@ public struct ProgressiveTestStruct
 }
 
 [SszContainer(true)]
-public struct ProgressiveVarTestStructList
+public partial struct ProgressiveVarTestStructList
 {
     [SszProgressiveList]
     public VarTestStruct[]? Items { get; set; }
 }
 
 [SszContainer]
-public struct BitsStruct
+public partial struct BitsStruct
 {
     [SszList(5)]
     public BitArray? A { get; set; }
@@ -103,7 +103,7 @@ public struct BitsStruct
 }
 
 [SszContainer]
-public struct ProgressiveBitsStruct
+public partial struct ProgressiveBitsStruct
 {
     [SszVector(256)]
     public BitArray? A { get; set; }
