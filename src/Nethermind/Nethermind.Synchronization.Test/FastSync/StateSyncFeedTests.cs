@@ -451,6 +451,37 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [Repeat(TestRepeatCount)]
+        public async Task RepairEmptyStorageRoot_does_not_hang()
+        {
+            RemoteDbContext remote = new(_logManager);
+
+            // Account with EmptyTreeHash storage root (storage was cleared on-chain)
+            StateTree state = remote.StateTree;
+            state.Set(TestItem.KeccakA, Build.An.Account.WithNonce(1).TestObject); // No storage
+            state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
+            state.Commit();
+
+            await using IContainer container = PrepareDownloader(remote);
+            IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
+
+            local.SetAccountsAndCommit(
+                (TestItem.KeccakA, Build.An.Account.WithNonce(1).TestObject),
+                (TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject));
+
+            local.DeleteStateRoot();
+
+            // Simulate snap sync detecting that this account's storage changed
+            // Even though final state has empty storage, VerifyStorageUpdated must handle it
+            container.Resolve<StateSyncPivot>().UpdatedStorages.Add(TestItem.KeccakA);
+
+            SafeContext ctx = container.Resolve<SafeContext>();
+            await ActivateAndWait(ctx);
+
+            local.CompareTrees(remote, _logger, "END");
+        }
+
+        [Test]
+        [Repeat(TestRepeatCount)]
         [CancelAfter(10000)]
         public async Task Pending_items_cache_mechanism_works_across_root_changes(CancellationToken cancellation)
         {
