@@ -178,22 +178,14 @@ namespace Nethermind.Synchronization.Test
             protected override TimeSpan InitTimeout { get; } = default;
             public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized = static delegate { };
             public override event EventHandler<ProtocolEventArgs> SubprotocolRequested = static delegate { };
-            public override void Init()
-            {
+            public override void Init() =>
                 throw new NotImplementedException();
-            }
-            public override void HandleMessage(ZeroPacket message)
-            {
+            public override void HandleMessage(ZeroPacket message) =>
                 throw new NotImplementedException();
-            }
-            public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
-            {
+            public override void NotifyOfNewBlock(Block block, SendBlockMode mode) =>
                 throw new NotImplementedException();
-            }
-            protected override void OnDisposed()
-            {
+            protected override void OnDisposed() =>
                 throw new NotImplementedException();
-            }
         }
     }
 }

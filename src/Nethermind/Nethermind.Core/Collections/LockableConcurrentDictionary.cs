@@ -88,10 +88,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
         }
 
         // Duck typing
-        public void Dispose()
-        {
-            _releaseLocksMethod(_dictionary, _locksAcquired);
-        }
+        public void Dispose() => _releaseLocksMethod(_dictionary, _locksAcquired);
     }
 }
 
@@ -106,25 +103,16 @@ public static class ConcurrentDictionaryExtensions
         where TKey : notnull =>
         ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
 
-    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
-    }
+    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull => dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
 
-    public static void Increment<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
-    }
+    public static void Increment<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull => dictionary.AddOrUpdate(key, 1, static (_, value) => value + 1);
 
-    public static void AddBy<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key, long amount) where TKey : notnull
-    {
-        dictionary.AddOrUpdate(
+    public static void AddBy<TKey>(this NonBlocking.ConcurrentDictionary<TKey, long> dictionary, TKey key, long amount) where TKey : notnull => dictionary.AddOrUpdate(
             key,
             (_, amount) => amount,
             (_, startValue, amount) => startValue + amount,
             amount
         );
-    }
 }
 
 

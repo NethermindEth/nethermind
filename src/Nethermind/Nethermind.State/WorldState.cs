@@ -71,10 +71,7 @@ namespace Nethermind.State
         }
 
         [StackTraceHidden, DoesNotReturn]
-        private void ThrowOutOfScope()
-        {
-            throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
-        }
+        private void ThrowOutOfScope() => throw new InvalidOperationException($"{nameof(IWorldState)} must only be used within scope");
 
         public Account GetAccount(Address address)
         {
@@ -215,15 +212,9 @@ namespace Nethermind.State
             return _stateProvider.GetNonce(address);
         }
 
-        public bool IsStorageEmpty(Address address)
-        {
-            return _persistentStorageProvider.IsStorageEmpty(address);
-        }
+        public bool IsStorageEmpty(Address address) => _persistentStorageProvider.IsStorageEmpty(address);
 
-        public bool HasCode(Address address)
-        {
-            return _stateProvider.GetAccount(address).HasCode;
-        }
+        public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
 
         public IDisposable BeginScope(BlockHeader? baseBlock)
         {

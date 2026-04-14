@@ -20,15 +20,9 @@ namespace Nethermind.Consensus.Processing
 
         private readonly Lock _lock = new();
 
-        public void Start()
-        {
-            _processor.Start();
-        }
+        public void Start() => _processor.Start();
 
-        public Task StopAsync(bool processRemainingBlocks = false)
-        {
-            return _processor.StopAsync(processRemainingBlocks);
-        }
+        public Task StopAsync(bool processRemainingBlocks = false) => _processor.StopAsync(processRemainingBlocks);
 
         public Block? Process(Block block, ProcessingOptions options, IBlockTracer tracer, CancellationToken token)
         {
@@ -38,10 +32,7 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public bool IsProcessingBlocks(ulong? maxProcessingInterval)
-        {
-            return _processor.IsProcessingBlocks(maxProcessingInterval);
-        }
+        public bool IsProcessingBlocks(ulong? maxProcessingInterval) => _processor.IsProcessingBlocks(maxProcessingInterval);
 
 #pragma warning disable 67
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;

@@ -7,8 +7,5 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies;
 
 public class CanServeByHashPeerAllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
 {
-    protected override bool Filter(PeerInfo peerInfo)
-    {
-        return peerInfo.CanGetNodeData();
-    }
+    protected override bool Filter(PeerInfo peerInfo) => peerInfo.CanGetNodeData();
 }

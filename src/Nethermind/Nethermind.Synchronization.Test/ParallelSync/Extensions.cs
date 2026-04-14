@@ -9,21 +9,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 {
     internal static class Extensions
     {
-        public static SyncMode GetSyncMode(this FastBlocksState state, bool isFullSync = false)
-        {
-            return state switch
+        public static SyncMode GetSyncMode(this FastBlocksState state, bool isFullSync = false) =>
+            state switch
             {
                 FastBlocksState.None => SyncMode.FastHeaders,
                 FastBlocksState.FinishedHeaders => isFullSync ? SyncMode.FastBodies : SyncMode.None,
                 FastBlocksState.FinishedBodies => isFullSync ? SyncMode.FastReceipts : SyncMode.None,
                 _ => SyncMode.None,
             };
-        }
 
-        public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver)
-        {
-            return new FastBlocksFinishedState(syncProgressResolver);
-        }
+        public static FastBlocksFinishedState IsFastBlocksFinished(this ISyncProgressResolver syncProgressResolver) =>
+            new(syncProgressResolver);
 
         internal class FastBlocksFinishedState(ISyncProgressResolver syncProgressResolver)
         {

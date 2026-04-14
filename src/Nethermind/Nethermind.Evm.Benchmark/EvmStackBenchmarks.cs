@@ -22,10 +22,7 @@ namespace Nethermind.Evm.Benchmark
         private byte[] _stack;
 
         [GlobalSetup]
-        public void GlobalSetup()
-        {
-            _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
-        }
+        public void GlobalSetup() => _stack = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength * 32) * 1024];
 
         [Benchmark(OperationsPerInvoke = 4)]
         [ArgumentsSource(nameof(ValueSource))]

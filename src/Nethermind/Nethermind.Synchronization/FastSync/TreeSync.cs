@@ -402,10 +402,7 @@ namespace Nethermind.Synchronization.FastSync
             return (true, false);
         }
 
-        public void ResetStateRoot(SyncFeedState currentState)
-        {
-            ResetStateRoot(_blockNumber, _rootNode, currentState);
-        }
+        public void ResetStateRoot(SyncFeedState currentState) => ResetStateRoot(_blockNumber, _rootNode, currentState);
 
         public void ResetStateRootToBestSuggested(SyncFeedState currentState)
         {
@@ -505,10 +502,7 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public DetailedProgress GetDetailedProgress()
-        {
-            return _data;
-        }
+        public DetailedProgress GetDetailedProgress() => _data;
 
         private AddNodeResult AddNodeToPending(StateSyncItem syncItem, DependentItem? dependentItem, string reason, bool retry = false)
         {

@@ -7,9 +7,6 @@ namespace Nethermind.Synchronization.Peers.AllocationStrategies
     {
         private readonly string _protocol = protocol;
 
-        protected override bool Filter(PeerInfo peerInfo)
-        {
-            return peerInfo.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _);
-        }
+        protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.TryGetSatelliteProtocol<T>(_protocol, out _);
     }
 }

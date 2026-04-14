@@ -31,20 +31,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
-        {
-            return GetCurrentValue(in storageCell);
-        }
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell) => GetCurrentValue(in storageCell);
 
         /// <summary>
         /// Set the provided value to storage at the specified storage cell
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
-        {
-            PushUpdate(in storageCell, newValue);
-        }
+        public void Set(in StorageCell storageCell, byte[] newValue) => PushUpdate(in storageCell, newValue);
 
         /// <summary>
         /// Creates a restartable snapshot.

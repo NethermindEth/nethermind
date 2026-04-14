@@ -10,8 +10,5 @@ public class NodeIdResolver(IEcdsa ecdsa) : INodeIdResolver
 {
     private readonly IEcdsa _ecdsa = ecdsa;
 
-    public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData)
-    {
-        return _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), ValueKeccak.Compute(typeAndData))!;
-    }
+    public PublicKey GetNodeId(ReadOnlySpan<byte> signature, int recoveryId, Span<byte> typeAndData) => _ecdsa.RecoverPublicKey(new Signature(signature, recoveryId), ValueKeccak.Compute(typeAndData))!;
 }

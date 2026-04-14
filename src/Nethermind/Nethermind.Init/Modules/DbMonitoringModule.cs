@@ -64,15 +64,9 @@ public class DbMonitoringModule : Module
             }
         }
 
-        public void AddDb(string name, IDbMeta dbMeta)
-        {
-            _createdDbs.TryAdd(name, dbMeta);
-        }
+        public void AddDb(string name, IDbMeta dbMeta) => _createdDbs.TryAdd(name, dbMeta);
 
-        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
-        {
-            return _createdDbs;
-        }
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta() => _createdDbs;
 
         public bool Paused { get; set; } = false;
 

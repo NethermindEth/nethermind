@@ -2026,25 +2026,17 @@ public class BlockTreeTests
             return LevelVisitOutcome.None;
         }
 
-        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(true);
-        }
+        public Task<bool> VisitMissing(Hash256 hash, CancellationToken cancellationToken) => Task.FromResult(true);
 
-        public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(HeaderVisitOutcome.None);
-        }
+        public Task<HeaderVisitOutcome> VisitHeader(BlockHeader header, CancellationToken cancellationToken) =>
+            Task.FromResult(HeaderVisitOutcome.None);
 
-        public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(BlockVisitOutcome.None);
-        }
+        public Task<BlockVisitOutcome> VisitBlock(Block block, CancellationToken cancellationToken) =>
+            Task.FromResult(BlockVisitOutcome.None);
 
-        public Task<LevelVisitOutcome> VisitLevelEnd(ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(LevelVisitOutcome.None);
-        }
+        public Task<LevelVisitOutcome> VisitLevelEnd(
+            ChainLevelInfo chainLevelInfo, long levelNumber, CancellationToken cancellationToken) =>
+            Task.FromResult(LevelVisitOutcome.None);
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

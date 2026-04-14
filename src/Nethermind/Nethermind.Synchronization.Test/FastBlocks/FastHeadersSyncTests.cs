@@ -209,12 +209,10 @@ public class FastHeadersSyncTests
 
         feed.InitializeFeed();
 
-        void FulfillBatch(HeadersSyncBatch batch)
-        {
+        void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
                 remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
                 false)!;
-        }
 
         using HeadersSyncBatch? r = await feed.PrepareRequest();
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
@@ -256,12 +254,10 @@ public class FastHeadersSyncTests
 
         feed.InitializeFeed();
 
-        void FulfillBatch(HeadersSyncBatch batch)
-        {
+        void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
                 remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
                 false)!;
-        }
 
         // First batch need to be handled first before handle dependencies can do anything
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
@@ -329,12 +325,10 @@ public class FastHeadersSyncTests
 
         feed.InitializeFeed();
 
-        void FulfillBatch(HeadersSyncBatch batch)
-        {
+        void FulfillBatch(HeadersSyncBatch batch) =>
             batch.Response = remoteBlockTree.FindHeaders(
                 remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
                 false)!;
-        }
 
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
         FulfillBatch(batch1);
@@ -551,12 +545,10 @@ public class FastHeadersSyncTests
         using HeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, report, Substitute.For<IPoSSwitcher>(), LimboLogs.Instance);
         feed.InitializeFeed();
 
-        void FillBatch(HeadersSyncBatch batch)
-        {
+        void FillBatch(HeadersSyncBatch batch) =>
             batch.Response = Enumerable.Range((int)batch.StartNumber!, batch.RequestSize)
                 .Select(i => peerChain.FindBlock(i, BlockTreeLookupOptions.None)!.Header)
                 .ToPooledList<BlockHeader?>(batch.RequestSize);
-        }
 
         using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
         batch1.StartNumber.Should().Be(808);

@@ -50,9 +50,6 @@ public class DevBlockProducerTests
 
     private class EmptyTxSourceFactory : IBlockProducerTxSourceFactory
     {
-        public ITxSource Create()
-        {
-            return EmptyTxSource.Instance;
-        }
+        public ITxSource Create() => EmptyTxSource.Instance;
     }
 }

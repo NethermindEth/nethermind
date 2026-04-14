@@ -65,10 +65,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
-        {
-            input.ReadBytes(_zeroPacket.Content, frame.Size);
-        }
+        private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame) => input.ReadBytes(_zeroPacket.Content, frame.Size);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, in FrameHeaderReader.FrameInfo frame)

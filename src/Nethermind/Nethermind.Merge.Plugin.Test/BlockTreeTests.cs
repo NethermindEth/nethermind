@@ -302,10 +302,8 @@ public partial class BlockTreeTests
                 return this;
             }
 
-            private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
-            {
+            private void OnNewBestSuggestedBlock(object? sender, BlockEventArgs e) =>
                 NotSyncedTree.UpdateMainChain(new[] { e.Block! }, true);
-            }
 
             public ScenarioBuilder InsertBeaconPivot(long num)
             {
@@ -600,10 +598,8 @@ public partial class BlockTreeTests
             public BlockTreeBuilder NotSyncedTreeBuilder { get; private set; } = null!;
         }
 
-        public static ScenarioBuilder GoesLikeThis()
-        {
-            return new();
-        }
+        public static ScenarioBuilder GoesLikeThis() =>
+            new();
     }
 
     [Test]
@@ -676,8 +672,7 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Best_pointers_are_set_on_restart_with_gap()
-    {
+    public void Best_pointers_are_set_on_restart_with_gap() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(10, 20)
             .InsertBeaconPivot(14)
@@ -687,11 +682,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(9)
             .AssertBestSuggestedHeader(9)
             .AssertBestSuggestedBody(9);
-    }
 
     [Test]
-    public void BeaconBlockInsert_does_not_change_best_blocks()
-    {
+    public void BeaconBlockInsert_does_not_change_best_blocks() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -699,11 +692,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedBody(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestKnownNumber(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_during_header_sync()
-    {
+    public void pointers_are_set_on_restart_during_header_sync() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -715,11 +706,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_after_header_sync_finished()
-    {
+    public void pointers_are_set_on_restart_after_header_sync_finished() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -731,11 +720,9 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_during_filling_block_gap()
-    {
+    public void pointers_are_set_on_restart_during_filling_block_gap() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 30)
             .InsertBeaconPivot(7)
@@ -748,11 +735,9 @@ public partial class BlockTreeTests
             .AssertLowestInsertedBeaconHeader(4)
             .AssertBestSuggestedHeader(25)
             .AssertBestSuggestedBody(25);
-    }
 
     [Test]
-    public void pointers_are_set_on_restart_after_filling_block_gap_finished()
-    {
+    public void pointers_are_set_on_restart_after_filling_block_gap_finished() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -766,11 +751,9 @@ public partial class BlockTreeTests
             .AssertBestSuggestedHeader(7)
             .AssertBestSuggestedBody(7)
             .AssertLowestInsertedBeaconHeader(4);
-    }
 
     [Test]
-    public void Best_pointers_should_not_move_if_sync_is_not_finished()
-    {
+    public void Best_pointers_should_not_move_if_sync_is_not_finished() =>
         BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconPivot(7)
@@ -783,7 +766,6 @@ public partial class BlockTreeTests
             .AssertBestKnownNumber(3)
             .AssertBestSuggestedHeader(3)
             .AssertBestSuggestedBody(3);
-    }
 
     [Test]
     public void MarkChainAsProcessed_does_not_change_main_chain()
@@ -816,26 +798,22 @@ public partial class BlockTreeTests
     }
 
     [Test]
-    public void Can_reorg_beacon_main_chain()
-    {
+    public void Can_reorg_beacon_main_chain() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
             .InsertFork(6, 9, true)
             .SuggestBlocksUsingChainLevels()
             .AssertChainLevel(0, 9);
-    }
 
     [Test]
-    public void Chain_level_helper_stop_on_partial_reorg()
-    {
+    public void Chain_level_helper_stop_on_partial_reorg() =>
         _ = BlockTreeTestScenario.GoesLikeThis()
             .WithBlockTrees(4, 10)
             .InsertBeaconBlocks(4, 9)
             .InsertFork(5, 9, true, moveSyncedTree: false, nonce: 1)
             .InsertFork(7, 9, true, moveSyncedTree: false, nonce: 2)
             .AssertChainLevelHelperLength(4); // From 3 to 7 where the third branch mismatch second branch
-    }
 
     [Test]
     public void Can_set_total_difficulty_when_suggested_with_0()

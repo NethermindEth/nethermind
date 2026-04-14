@@ -14,10 +14,7 @@ namespace Nethermind.Core.Test.Caching
     [TestFixture]
     public class LruCacheTests
     {
-        private static ICache<Address, Account> Create()
-        {
-            return new LruCache<Address, Account>(Capacity, Capacity / 2, "test");
-        }
+        private static ICache<Address, Account> Create() => new LruCache<Address, Account>(Capacity, Capacity / 2, "test");
 
         private const int Capacity = 32;
 

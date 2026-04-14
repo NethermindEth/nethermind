@@ -27,15 +27,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
     protected StateTree _backingStateTree;
     private readonly KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb);
 
-    protected virtual StateTree CreateStateTree()
-    {
-        return new StateTree(_trieStore.GetTrieStore(null), _logManager);
-    }
+    protected virtual StateTree CreateStateTree() => new(_trieStore.GetTrieStore(null), _logManager);
 
-    public bool HasRoot(BlockHeader? baseBlock)
-    {
-        return _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
-    }
+    public bool HasRoot(BlockHeader? baseBlock) => _trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
     public IWorldStateScopeProvider.IScope BeginScope(BlockHeader? baseBlock)
     {
@@ -46,10 +40,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         return new TrieStoreWorldStateBackendScope(_backingStateTree, this, _codeDb, trieStoreCloser, _logManager);
     }
 
-    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot)
-    {
-        return new StorageTree(_trieStore.GetTrieStore(address), storageRoot, _logManager);
-    }
+    protected virtual StorageTree CreateStorageTree(Address address, Hash256 storageRoot) => new(_trieStore.GetTrieStore(address), storageRoot, _logManager);
 
     private class TrieStoreWorldStateBackendScope(StateTree backingStateTree, TrieStoreScopeProvider scopeProvider, IWorldStateScopeProvider.ICodeDb codeDb, IDisposable trieStoreCloser, ILogManager logManager) : IWorldStateScopeProvider.IScope
     {
@@ -74,10 +65,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             return account;
         }
 
-        public void HintGet(Address address, Account? account)
-        {
-            _loadedAccounts.TryAdd(address, account);
-        }
+        public void HintGet(Address address, Account? account) => _loadedAccounts.TryAdd(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
@@ -89,10 +77,7 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
         private readonly ILogManager _logManager = logManager;
 
-        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber)
-        {
-            return new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
-        }
+        public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNumber) => new WorldStateWriteBatch(this, estimatedAccountNumber, _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>());
 
         public void Commit(long blockNumber)
         {
@@ -135,15 +120,9 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
             return storageTree;
         }
 
-        public void ClearLoadedAccounts()
-        {
-            _loadedAccounts.Clear();
-        }
+        public void ClearLoadedAccounts() => _loadedAccounts.Clear();
 
-        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
-        {
-            return LookupStorageTree(address);
-        }
+        public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => LookupStorageTree(address);
     }
 
     private class WorldStateWriteBatch(
@@ -156,21 +135,12 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
 
-        public void Set(Address key, Account? account)
-        {
-            _dirtyAccounts[key] = account;
-        }
+        public void Set(Address key, Account? account) => _dirtyAccounts[key] = account;
 
-        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries)
-        {
-            return new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
+        public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address address, int estimatedEntries) => new StorageTreeBulkWriteBatch(estimatedEntries, scope.LookupStorageTree(address),
                 (address, rootHash) => MarkDirty(address, rootHash), address);
-        }
 
-        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash)
-        {
-            _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
-        }
+        public void MarkDirty(AddressAsKey address, Hash256 storageTreeRootHash) => _dirtyStorageTree.Enqueue((address, storageTreeRootHash));
 
         public void Dispose()
         {
@@ -286,27 +256,15 @@ public class TrieStoreScopeProvider(ITrieStore trieStore, IKeyValueStoreWithBatc
 
     public class KeyValueWithBatchingBackedCodeDb(IKeyValueStoreWithBatching codeDb) : IWorldStateScopeProvider.ICodeDb
     {
-        public byte[]? GetCode(in ValueHash256 codeHash)
-        {
-            return codeDb[codeHash.Bytes]?.ToArray();
-        }
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeDb[codeHash.Bytes]?.ToArray();
 
-        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite()
-        {
-            return new CodeSetter(codeDb.StartWriteBatch());
-        }
+        public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(codeDb.StartWriteBatch());
 
         private class CodeSetter(IWriteBatch writeBatch) : IWorldStateScopeProvider.ICodeSetter
         {
-            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code)
-            {
-                writeBatch.PutSpan(codeHash.Bytes, code);
-            }
+            public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> code) => writeBatch.PutSpan(codeHash.Bytes, code);
 
-            public void Dispose()
-            {
-                writeBatch.Dispose();
-            }
+            public void Dispose() => writeBatch.Dispose();
         }
     }
 }

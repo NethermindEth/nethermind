@@ -39,14 +39,8 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, TimeSpan timeout, CancellationToken cancellationToken) => handle.WaitOneAsync((int)timeout.TotalMilliseconds, cancellationToken);
 
-        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken)
-        {
-            return handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
-        }
+        public static Task<bool> WaitOneAsync(this WaitHandle handle, CancellationToken cancellationToken) => handle.WaitOneAsync(Timeout.Infinite, cancellationToken);
     }
 }

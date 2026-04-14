@@ -245,9 +245,6 @@ public class MainPruningTrieStoreFactory
             }
         }
 
-        public Hash256? GetFinalizedStateRootAt(long blockNumber)
-        {
-            return finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
-        }
+        public Hash256? GetFinalizedStateRootAt(long blockNumber) => finalizedStateProvider.GetFinalizedStateRootAt(blockNumber);
     }
 }

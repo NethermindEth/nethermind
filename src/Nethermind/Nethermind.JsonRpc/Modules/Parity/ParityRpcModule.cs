@@ -50,10 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
                 t.IsSigned ? _ecdsa.RecoverPublicKey(t.Signature, t.Hash) : null)).ToArray());
         }
 
-        public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
-        {
-            return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
-        }
+        public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter) => _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)
         {

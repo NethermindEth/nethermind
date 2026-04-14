@@ -245,10 +245,7 @@ public class EraStore : IEraStore
 
     private readonly struct EraRenter(EraStore store, EraReader reader, long epoch) : IDisposable
     {
-        public void Dispose()
-        {
-            store.ReturnReader(epoch, reader);
-        }
+        public void Dispose() => store.ReturnReader(epoch, reader);
     }
 
     public void Dispose()

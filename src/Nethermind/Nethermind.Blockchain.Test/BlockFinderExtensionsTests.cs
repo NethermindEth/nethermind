@@ -39,16 +39,12 @@ public class BlockFinderExtensionsTests
     [TestCase(BlockParameterType.Finalized, "finalized")]
     [TestCase(BlockParameterType.Safe, "safe")]
     [MaxTime(Timeout.MaxTestTime)]
-    public void BlockParameter_ToString_ReturnsLowercaseTypeName(BlockParameterType type, string expected)
-    {
+    public void BlockParameter_ToString_ReturnsLowercaseTypeName(BlockParameterType type, string expected) =>
         new BlockParameter(type).ToString().Should().Be(expected);
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void BlockParameter_ToString_ReturnsBlockNumber()
-    {
+    public void BlockParameter_ToString_ReturnsBlockNumber() =>
         new BlockParameter(12345L).ToString().Should().Be("12345");
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void BlockParameter_ToString_ReturnsBlockHash()

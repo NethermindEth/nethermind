@@ -10,10 +10,7 @@ public class NetworkTransactionSizeCalculator(TxDecoder txDecoder) : ITransactio
 {
     private readonly TxDecoder _txDecoder = txDecoder;
 
-    public int GetLength(Transaction tx, bool shouldCountBlobs)
-    {
-        return shouldCountBlobs
+    public int GetLength(Transaction tx, bool shouldCountBlobs) => shouldCountBlobs
             ? _txDecoder.GetLength(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)
             : _txDecoder.GetLength(tx, RlpBehaviors.SkipTypedWrapping);
-    }
 }

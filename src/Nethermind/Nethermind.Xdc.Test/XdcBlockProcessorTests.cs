@@ -29,10 +29,8 @@ internal class XdcBlockProcessorTests
     private TestableXdcBlockProcessor _processor = null!;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         _processor = new TestableXdcBlockProcessor();
-    }
 
     [
         TestCase(0L, "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),

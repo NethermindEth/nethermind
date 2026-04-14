@@ -53,23 +53,14 @@ namespace Nethermind.Serialization.Rlp
         internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
 
         internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes);
-        static Rlp()
-        {
-            RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
-        }
+        static Rlp() => RegisterDecoders(Assembly.GetAssembly(typeof(Rlp)));
 
         /// <summary>
         /// This is not encoding - just a creation of an RLP object, e.g. passing 192 would mean an RLP of an empty sequence.
         /// </summary>
-        private Rlp(byte singleByte)
-        {
-            Bytes = [singleByte];
-        }
+        private Rlp(byte singleByte) => Bytes = [singleByte];
 
-        public Rlp(byte[] bytes)
-        {
-            Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
-        }
+        public Rlp(byte[] bytes) => Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
 
         public long MemorySize => /* this */ MemorySizes.SmallObjectOverhead +
                                             MemorySizes.Align(MemorySizes.ArrayOverhead + Bytes.Length);
@@ -385,10 +376,7 @@ namespace Nethermind.Serialization.Rlp
             return newPosition;
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowArgumentOutOfRangeException()
-            {
-                throw new ArgumentOutOfRangeException(nameof(buffer));
-            }
+            static void ThrowArgumentOutOfRangeException() => throw new ArgumentOutOfRangeException(nameof(buffer));
         }
 
         [SkipLocalsInit]
@@ -1147,10 +1135,7 @@ namespace Nethermind.Serialization.Rlp
                 return default;
 
                 [DoesNotReturn, StackTraceHidden]
-                static void ThrowNotMemoryBacked()
-                {
-                    throw new RlpException("Rlp not backed by a Memory<byte>");
-                }
+                static void ThrowNotMemoryBacked() => throw new RlpException("Rlp not backed by a Memory<byte>");
 
             }
 
@@ -1791,10 +1776,7 @@ namespace Nethermind.Serialization.Rlp
 
         [DoesNotReturn]
         [StackTraceHidden]
-        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength)
-        {
-            throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
-        }
+        private static void ThrowBufferTooSmall(Span<byte> buffer, int minLength) => throw new ArgumentException($"Buffer is too small. Minimal length: {minLength}, actual length: {buffer.Length}");
     }
 
     public readonly partial struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>

@@ -69,13 +69,11 @@ public partial class BaseEngineModuleTests
             return t.Result;
         }
 
-        public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond)
-        {
-            return Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
+        public Task WaitForImprovedBlockWithCondition(CancellationToken cancellationToken, Func<Block, bool> cond) =>
+            Wait.ForEventCondition<BlockEventArgs>(cancellationToken,
                 e => BlockImproved += e,
                 e => BlockImproved -= e,
                 b => cond(b.Block));
-        }
     }
 
     public class ImprovementStartedEventArgs(IBlockImprovementContext blockImprovementContext) : EventArgs

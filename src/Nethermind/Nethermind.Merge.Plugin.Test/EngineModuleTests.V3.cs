@@ -110,10 +110,8 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task GetPayloadV3_should_fail_on_unknown_payload()
-    {
+    public async Task GetPayloadV3_should_fail_on_unknown_payload() =>
         await GetPayload_should_fail_on_unknown_payload(3);
-    }
 
     [Test]
     public async Task GetPayloadV3_should_return_all_the_blobs([Values(0, 1, 2, 3, 4)] int blobTxCount, [Values(true, false)] bool oneBlobPerTx)

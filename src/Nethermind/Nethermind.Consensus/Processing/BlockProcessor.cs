@@ -171,9 +171,7 @@ public partial class BlockProcessor(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected static void CalculateBlooms(TxReceipt[] receipts)
-    {
-        ParallelUnbalancedWork.For(
+    private static void CalculateBlooms(TxReceipt[] receipts) => ParallelUnbalancedWork.For(
             0,
             receipts.Length,
             ParallelUnbalancedWork.DefaultOptions,
@@ -183,7 +181,6 @@ public partial class BlockProcessor(
                 receipts[i].CalculateBloom();
                 return receipts;
             });
-    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void SetAccountChanges(Block block)
@@ -201,11 +198,9 @@ public partial class BlockProcessor(
         }
     }
 
-    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec)
-    {
+    private void StoreTxReceipts(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) =>
         // Setting canonical is done when the BlockAddedToMain event is fired
         receiptStorage.Insert(block, txReceipts, spec, false);
-    }
 
     protected virtual Block PrepareBlockForProcessing(Block suggestedBlock)
     {

@@ -14,10 +14,7 @@ public class JsonConfigSource : IConfigSource
 {
     private const string SchemaKey = "$schema";
 
-    public JsonConfigSource(string configFilePath)
-    {
-        LoadJsonConfig(configFilePath);
-    }
+    public JsonConfigSource(string configFilePath) => LoadJsonConfig(configFilePath);
 
     private void ApplyJsonConfig(string jsonContent)
     {
@@ -154,8 +151,5 @@ public class JsonConfigSource : IConfigSource
         return (isSet, isSet ? _values[category][name] : null);
     }
 
-    public IEnumerable<(string Category, string Name)> GetConfigKeys()
-    {
-        return _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
-    }
+    public IEnumerable<(string Category, string Name)> GetConfigKeys() => _values.SelectMany(m => m.Value.Keys.Select(n => (m.Key, n)));
 }

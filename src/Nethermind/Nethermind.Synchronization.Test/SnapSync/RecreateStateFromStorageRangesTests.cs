@@ -41,16 +41,12 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeTearDown]
         public void TearDown() => ((IDisposable)_store)?.Dispose();
 
-        private ContainerBuilder CreateContainerBuilder()
-        {
-            ContainerBuilder builder = new ContainerBuilder()
+        private ContainerBuilder CreateContainerBuilder() =>
+            new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
                 .AddKeyedSingleton<IDb>(DbNames.State, (_) => (IDb)new TestMemDb())
                 .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
                 ;
-
-            return builder;
-        }
 
         private IContainer CreateContainer() =>
             CreateContainerBuilder().Build();
@@ -227,13 +223,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             helper.TrieNodeWritesCount.Should().Be(0); // No writes should happen
         }
 
-        private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash)
-        {
-            return new StorageRange()
+        private static StorageRange PrepareStorageRequest(ValueHash256 accountPath, Hash256 storageRoot, ValueHash256 startingHash) =>
+            new()
             {
                 StartingHash = startingHash,
                 Accounts = new ArrayPoolList<PathWithAccount>(1) { new(accountPath, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
             };
-        }
     }
 }

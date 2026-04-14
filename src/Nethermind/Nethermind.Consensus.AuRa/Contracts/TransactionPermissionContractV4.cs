@@ -20,8 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly ISpecProvider _specProvider = specProvider;
         private static readonly UInt256 Four = 4;
 
-        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader)
-        {
+        protected override object[] GetAllowedTxTypesParameters(Transaction tx, BlockHeader parentHeader) =>
             // _sender Transaction sender address.
             // _to Transaction recipient address. If creating a contract, the `_to` address is zero.
             // _value Transaction amount in wei.
@@ -30,11 +29,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
             // _gasLimit
             // _data Transaction data.
 
-            return new object[]
+            new object[]
             {
                 tx.SenderAddress, tx.To ?? Address.Zero, tx.Value, tx.MaxFeePerGas, tx.MaxPriorityFeePerGas, tx.GasLimit, tx.Data.AsArray() ?? []
             };
-        }
 
         public override UInt256 Version => Four;
     }

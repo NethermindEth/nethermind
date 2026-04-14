@@ -112,8 +112,5 @@ public class OptimismOptimismRpcModule(
         return ResultWrapper<OptimismSyncStatus>.Success(syncStatus);
     }
 
-    public Task<ResultWrapper<string>> optimism_version()
-    {
-        return ResultWrapper<string>.Success(ProductInfo.Version);
-    }
+    public Task<ResultWrapper<string>> optimism_version() => ResultWrapper<string>.Success(ProductInfo.Version);
 }

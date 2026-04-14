@@ -21,10 +21,7 @@ public readonly struct EIP1559Parameters(byte version, UInt32 denominator, UInt3
 
     public int ByteLength => ByteLengthByVersion[Version];
 
-    public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity, UInt64 minBaseFee) : this(version, denominator, elasticity)
-    {
-        MinBaseFee = minBaseFee;
-    }
+    public EIP1559Parameters(byte version, UInt32 denominator, UInt32 elasticity, UInt64 minBaseFee) : this(version, denominator, elasticity) => MinBaseFee = minBaseFee;
 
     public static bool TryCreateV0(UInt32 denominator, UInt32 elasticity, out EIP1559Parameters parameters, [NotNullWhen(false)] out string? error)
     {

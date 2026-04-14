@@ -175,10 +175,7 @@ public class TaikoPayloadPreparationService(
         return ValueTask.FromResult<IBlockProductionContext?>(null);
     }
 
-    public void CancelBlockProduction(string payloadId)
-    {
-        _ = GetPayload(payloadId);
-    }
+    public void CancelBlockProduction(string payloadId) => _ = GetPayload(payloadId);
 
 
     public event EventHandler<BlockEventArgs>? BlockImproved { add { } remove { } }

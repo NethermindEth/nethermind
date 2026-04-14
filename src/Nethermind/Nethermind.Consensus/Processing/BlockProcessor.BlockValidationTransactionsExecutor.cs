@@ -25,10 +25,7 @@ namespace Nethermind.Consensus.Processing
             protected IWorldState _stateProvider = stateProvider;
             protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
 
-            public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
-            {
-                transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
-            }
+            public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
             public virtual void SetBlockAccessListManager(in IBlockAccessListManager balManager) { }
 
@@ -53,10 +50,7 @@ namespace Nethermind.Consensus.Processing
             }
 
             [DoesNotReturn, StackTraceHidden]
-            protected static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index)
-            {
-                throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
-            }
+            protected static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
             /// <summary>
             /// Used by <see cref="FilterManager"/> through <see cref="IMainProcessingContext"/>

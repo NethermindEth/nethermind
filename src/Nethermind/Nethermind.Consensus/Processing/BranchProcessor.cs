@@ -222,12 +222,10 @@ public class BranchProcessor(
 
     private class TxHashCalculator(Block suggestedBlock) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(Block suggestedBlock)
-        {
+        public static void CalculateInBackground(Block suggestedBlock) =>
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
             ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlock), preferLocal: false);
-        }
 
         void IThreadPoolWorkItem.Execute()
         {

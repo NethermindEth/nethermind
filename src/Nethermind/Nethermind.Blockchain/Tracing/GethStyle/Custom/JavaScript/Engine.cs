@@ -47,11 +47,9 @@ public class Engine : IDisposable
         set => _currentEngine = value;
     }
 
-    static Engine()
-    {
+    static Engine() =>
         // compile default scripts in background thread
         Task.Run(CompileStandardScripts);
-    }
 
     private static string PackTracerCode(string tracerObjectCode) => "(" + tracerObjectCode + ")";
 

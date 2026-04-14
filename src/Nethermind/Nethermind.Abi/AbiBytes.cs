@@ -30,10 +30,8 @@ namespace Nethermind.Abi
 
         public override string Name { get; }
 
-        public override (object, int) Decode(byte[] data, int position, bool packed)
-        {
-            return (data.Slice(position, Length), position + (packed ? Length : MaxLength));
-        }
+        public override (object, int) Decode(byte[] data, int position, bool packed) =>
+            (data.Slice(position, Length), position + (packed ? Length : MaxLength));
 
         public override byte[] Encode(object? arg, bool packed)
         {

@@ -50,7 +50,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => _traceModule.trace_simulateV1(payload, blockParameter, traceTypes);
 
-    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null) =>
+    public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest calls, BlockParameter? blockParameter = null) =>
         _traceModule.trace_callMany(calls, blockParameter);
 
     public ResultWrapper<ParityTxTraceFromReplay> trace_rawTransaction(byte[] data, string[] traceTypes) =>
@@ -271,10 +271,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
 
     // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace)
-    {
-        trace.VmTrace = null;
-    }
+    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
     private static void FilterStateDiff(ParityLikeTxTrace trace)
@@ -290,11 +287,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     }
 
     // Trace uses flags IsTracingActions, IsTracingReceipt
-    private static void FilterTrace(ParityLikeTxTrace trace)
-    {
-        trace.Output = null;
-        // trace action?
-    }
+    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Output = null;// trace action?
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {

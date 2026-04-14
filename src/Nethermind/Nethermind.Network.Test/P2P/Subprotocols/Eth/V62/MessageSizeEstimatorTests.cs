@@ -21,10 +21,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Estimate_null_header_size()
-        {
-            MessageSizeEstimator.EstimateSize((BlockHeader)null).Should().Be(0);
-        }
+        public void Estimate_null_header_size() => MessageSizeEstimator.EstimateSize((BlockHeader)null).Should().Be(0);
 
         [Test]
         public void Estimate_block_size()
@@ -34,16 +31,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         [Test]
-        public void Estimate_null_block_size()
-        {
-            MessageSizeEstimator.EstimateSize((Block)null).Should().Be(0);
-        }
+        public void Estimate_null_block_size() => MessageSizeEstimator.EstimateSize((Block)null).Should().Be(0);
 
         [Test]
-        public void Estimate_null_tx_size()
-        {
-            MessageSizeEstimator.EstimateSize((Transaction)null).Should().Be(0);
-        }
+        public void Estimate_null_tx_size() => MessageSizeEstimator.EstimateSize((Transaction)null).Should().Be(0);
 
         [Test]
         public void Estimate_tx_size()

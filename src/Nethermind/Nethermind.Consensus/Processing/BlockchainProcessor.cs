@@ -116,10 +116,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private void OnNewProcessingStatistics(object? sender, BlockStatistics stats)
         => NewProcessingStatistics?.Invoke(sender, stats);
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _lastProcessedBlock = DateTime.UtcNow;
-    }
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e) => _lastProcessedBlock = DateTime.UtcNow;
 
     private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
     {
@@ -768,9 +765,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             => _logger.Debug($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceBranchingConditions(BlockHeader branchingPoint, bool notFoundTheBranchingPointYet, bool hasState, bool notInForceProcessing)
-        {
-            _logger.Trace(
+        void TraceBranchingConditions(BlockHeader branchingPoint, bool notFoundTheBranchingPointYet, bool hasState, bool notInForceProcessing) => _logger.Trace(
                 $" Current branching point: " +
                 $"{branchingPoint.Number}," +
                 $" {branchingPoint.Hash} " +
@@ -779,7 +774,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 $"notFoundTheBranchingPointYet {notFoundTheBranchingPointYet}, " +
                 $"hasState: {hasState}, " +
                 $"notInForceProcessing: {notInForceProcessing}, ");
-        }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceBranchingPoint(BlockHeader? branchingPoint)

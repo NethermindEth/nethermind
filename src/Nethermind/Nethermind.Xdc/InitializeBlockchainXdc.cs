@@ -36,8 +36,5 @@ internal class InitializeBlockchainXdc(INethermindApi api, IChainHeadInfoProvide
         return txPool;
     }
 
-    protected new IComparer<Transaction> CreateTxPoolTxComparer()
-    {
-        return new XdcTransactionComparerProvider(_api.SpecProvider!, _api.BlockTree!).GetDefaultComparer();
-    }
+    protected new IComparer<Transaction> CreateTxPoolTxComparer() => new XdcTransactionComparerProvider(_api.SpecProvider!, _api.BlockTree!).GetDefaultComparer();
 }

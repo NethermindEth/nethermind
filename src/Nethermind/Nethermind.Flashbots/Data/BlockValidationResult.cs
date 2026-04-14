@@ -12,27 +12,18 @@ namespace Nethermind.Flashbots.Data;
 public class FlashbotsResult
 {
 
-    public static ResultWrapper<FlashbotsResult> Invalid(string error)
+    public static ResultWrapper<FlashbotsResult> Invalid(string error) => ResultWrapper<FlashbotsResult>.Fail(error, new FlashbotsResult
     {
-        return ResultWrapper<FlashbotsResult>.Fail(error, new FlashbotsResult
-        {
-            Status = FlashbotsStatus.Invalid,
-            ValidationError = error
-        });
-    }
+        Status = FlashbotsStatus.Invalid,
+        ValidationError = error
+    });
 
-    public static ResultWrapper<FlashbotsResult> Valid()
+    public static ResultWrapper<FlashbotsResult> Valid() => ResultWrapper<FlashbotsResult>.Success(new FlashbotsResult
     {
-        return ResultWrapper<FlashbotsResult>.Success(new FlashbotsResult
-        {
-            Status = FlashbotsStatus.Valid
-        });
-    }
+        Status = FlashbotsStatus.Valid
+    });
 
-    public static ResultWrapper<FlashbotsResult> Error(string error)
-    {
-        return ResultWrapper<FlashbotsResult>.Fail(error);
-    }
+    public static ResultWrapper<FlashbotsResult> Error(string error) => ResultWrapper<FlashbotsResult>.Fail(error);
 
     /// <summary>
     /// The status of the validation of the builder submissions

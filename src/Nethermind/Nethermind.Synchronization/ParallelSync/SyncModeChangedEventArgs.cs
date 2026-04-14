@@ -10,9 +10,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public SyncMode Previous { get; } = previous;
         public SyncMode Current { get; } = current;
 
-        public bool WasModeFinished(SyncMode mode)
-        {
-            return (Previous & mode) != 0 && (Current & mode) == 0;
-        }
+        public bool WasModeFinished(SyncMode mode) => (Previous & mode) != 0 && (Current & mode) == 0;
     }
 }

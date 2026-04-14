@@ -221,10 +221,7 @@ public partial class BlockProducerBaseTests
                     await _antecedent;
             }
 
-            public async Task Finish()
-            {
-                await ExecuteAntecedentIfNeeded();
-            }
+            public async Task Finish() => await ExecuteAntecedentIfNeeded();
 
             private async Task<byte[]> GetContractBytecode(string contract)
             {
@@ -239,10 +236,7 @@ public partial class BlockProducerBaseTests
             }
         }
 
-        public static ScenarioBuilder GoesLikeThis()
-        {
-            return new();
-        }
+        public static ScenarioBuilder GoesLikeThis() => new();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

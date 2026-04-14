@@ -15,15 +15,9 @@ namespace Nethermind.Blockchain.Test.Runner
         private static readonly List<string> AllFailingTests = new();
         private static double _totalMs;
 
-        public static async Task Main(params string[] args)
-        {
-            await Run();
-        }
+        public static async Task Main(params string[] args) => await Run();
 
-        private static async Task Run()
-        {
-            await RunManualTestingLoop();
-        }
+        private static async Task Run() => await RunManualTestingLoop();
 
         private static async Task RunManualTestingLoop()
         {

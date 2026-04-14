@@ -42,22 +42,19 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             blockTree.BlockAddedToMain += OnBlockAddedToMain;
         }
 
-        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run(() =>
         {
-            Task.Run(() =>
+            if (e.PreviousBlock is not null)
             {
-                if (e.PreviousBlock is not null)
-                {
-                    _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
-                }
+                _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
+            }
 
-                if (ShouldCache(e.Block))
-                {
-                    SaveHistorySearchInfo(e.Block);
-                    TryRunCleanup();
-                }
-            });
-        }
+            if (ShouldCache(e.Block))
+            {
+                SaveHistorySearchInfo(e.Block);
+                TryRunCleanup();
+            }
+        });
 
         private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
 
@@ -235,12 +232,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private static ArrayPoolList<UInt256>? CalculateRewardsPercentiles(
             BlockFeeHistorySearchInfo blockInfo,
-            double[] rewardPercentiles)
-        {
-            return blockInfo.BlockTransactionsLength == 0
+            double[] rewardPercentiles) => blockInfo.BlockTransactionsLength == 0
                 ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length))
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
-        }
 
         private List<RewardInfo> GetRewardsInBlock(Block block)
         {
@@ -350,9 +344,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return _success;
         }
 
-        public void Dispose()
-        {
-            _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
-        }
+        public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
     }
 }

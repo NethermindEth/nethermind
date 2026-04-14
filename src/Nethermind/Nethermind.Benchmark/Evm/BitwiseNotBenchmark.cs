@@ -12,10 +12,7 @@ namespace Nethermind.Benchmarks.Evm
     public class BitwiseNotBenchmark
     {
         [GlobalSetup]
-        public void Setup()
-        {
-            a[31] = 3;
-        }
+        public void Setup() => a[31] = 3;
 
         private byte[] a = new byte[32];
         private byte[] c = new byte[32];
