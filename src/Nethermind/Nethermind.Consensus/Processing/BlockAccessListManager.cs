@@ -53,6 +53,7 @@ public class BlockAccessListManager(
     private long? _gasRemaining;
     private bool _isBuilding;
     private bool _blockAccessListsEnabled;
+    private Hash256 _lastLoadedBal = Hash256.Zero;
 
     private void Reset()
     {
@@ -73,8 +74,9 @@ public class BlockAccessListManager(
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
-            if (ParallelExecutionEnabled)
+            if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
+                _lastLoadedBal = suggestedBlock.Hash;
                 ArgumentNullException.ThrowIfNull(suggestedBlock.BlockAccessList);
                 LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
             }
