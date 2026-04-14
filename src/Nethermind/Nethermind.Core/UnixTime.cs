@@ -15,10 +15,7 @@ namespace Nethermind.Core
     {
         private readonly DateTimeOffset _offset = dateTime;
 
-        public static UnixTime FromSeconds(double seconds)
-        {
-            return new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
-        }
+        public static UnixTime FromSeconds(double seconds) => new(DateTime.UnixEpoch.Add(TimeSpan.FromSeconds(seconds)));
 
         public UnixTime(DateTime dateTime) : this(new DateTimeOffset(dateTime))
         {

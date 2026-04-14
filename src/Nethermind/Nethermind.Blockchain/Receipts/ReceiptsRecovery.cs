@@ -143,10 +143,7 @@ namespace Nethermind.Blockchain.Receipts
                 _gasUsedBefore = gasUsedTotal;
             }
 
-            public void Dispose()
-            {
-                _block.Dispose();
-            }
+            public void Dispose() => _block.Dispose();
         }
     }
 }

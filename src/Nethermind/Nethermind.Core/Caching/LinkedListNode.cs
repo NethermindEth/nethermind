@@ -55,17 +55,11 @@ internal sealed class LinkedListNode<T>(T value)
         }
 
         [DoesNotReturn, StackTraceHidden]
-        static void InvalidRemoveFromEmptyList()
-        {
-            throw new InvalidOperationException("This method shouldn't be called on empty list");
-        }
+        static void InvalidRemoveFromEmptyList() => throw new InvalidOperationException("This method shouldn't be called on empty list");
     }
 
     [DoesNotReturn, StackTraceHidden]
-    static void InvalidNotSingleNodeList()
-    {
-        throw new InvalidOperationException("This should only be true for a list with only one node");
-    }
+    static void InvalidNotSingleNodeList() => throw new InvalidOperationException("This should only be true for a list with only one node");
 
     public static void AddMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {

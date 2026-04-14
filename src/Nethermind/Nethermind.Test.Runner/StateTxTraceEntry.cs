@@ -8,10 +8,7 @@ namespace Nethermind.Test.Runner
 {
     public class StateTestTxTraceEntry
     {
-        public StateTestTxTraceEntry()
-        {
-            Stack = new List<string>();
-        }
+        public StateTestTxTraceEntry() => Stack = new List<string>();
 
         public int Pc { get; set; }
 
@@ -37,9 +34,6 @@ namespace Nethermind.Test.Runner
 
         public string? Error { get; set; } = string.Empty;
 
-        internal void UpdateMemorySize(int size)
-        {
-            MemSize = size;
-        }
+        internal void UpdateMemorySize(int size) => MemSize = size;
     }
 }

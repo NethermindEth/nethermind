@@ -39,12 +39,10 @@ namespace Nethermind.Consensus.Ethash
             ResetValidationInterval();
         }
 
-        private void ResetValidationInterval()
-        {
+        private void ResetValidationInterval() =>
             // more or less at the constant component
             // prevents attack on all Nethermind nodes at once
             _sealValidationInterval = SealValidationIntervalConstantComponent - 8 + _cryptoRandom.NextInt(16);
-        }
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
@@ -68,10 +66,7 @@ namespace Nethermind.Consensus.Ethash
             return result;
         }
 
-        public void HintValidationRange(Guid guid, long start, long end)
-        {
-            _ethash.HintRange(guid, start, end);
-        }
+        public void HintValidationRange(Guid guid, long start, long end) => _ethash.HintRange(guid, start, end);
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {

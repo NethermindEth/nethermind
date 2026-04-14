@@ -37,10 +37,7 @@ public static class EraPathUtils
         }
     }
 
-    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network)
-    {
-        return GetAllEraFiles(directoryPath, network, new RealFileSystem());
-    }
+    public static IEnumerable<string> GetAllEraFiles(string directoryPath, string network) => GetAllEraFiles(directoryPath, network, new RealFileSystem());
 
     public static string Filename(string network, long epoch, Hash256 root)
     {

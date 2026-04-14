@@ -11,15 +11,9 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager = snapshotManager;
         private readonly CliqueChainSpecEngineParameters _chainSpec = chainSpec;
 
-        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
-        {
-            return _chainSpec.Period * HealthHintConstants.ProcessingSafetyMultiplier;
-        }
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint() => _chainSpec.Period * HealthHintConstants.ProcessingSafetyMultiplier;
 
-        public ulong? MaxSecondsIntervalForProducingBlocksHint()
-        {
-            return Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Period *
+        public ulong? MaxSecondsIntervalForProducingBlocksHint() => Math.Max(_snapshotManager.GetLastSignersCount(), 1) * _chainSpec.Period *
                 HealthHintConstants.ProducingSafetyMultiplier;
-        }
     }
 }

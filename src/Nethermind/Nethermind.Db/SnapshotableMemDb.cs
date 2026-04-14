@@ -82,10 +82,7 @@ namespace Nethermind.Db
             }
         }
 
-        public void Remove(ReadOnlySpan<byte> key)
-        {
-            Set(key, null);
-        }
+        public void Remove(ReadOnlySpan<byte> key) => Set(key, null);
 
         public bool KeyExists(ReadOnlySpan<byte> key)
         {
@@ -481,18 +478,12 @@ namespace Nethermind.Db
             private readonly SnapshotableMemDb _db = db;
             private readonly int _snapshotVersion = snapshotVersion;
 
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-            {
-                return _db.GetAtVersion(key, _snapshotVersion);
-            }
+            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _db.GetAtVersion(key, _snapshotVersion);
 
             public unsafe Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
                 => Get(key, flags).AsSpan();
 
-            public bool KeyExists(ReadOnlySpan<byte> key)
-            {
-                return Get(key) is not null;
-            }
+            public bool KeyExists(ReadOnlySpan<byte> key) => Get(key) is not null;
 
             public unsafe void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
@@ -520,15 +511,9 @@ namespace Nethermind.Db
                 }
             }
 
-            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive)
-            {
-                return new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
-            }
+            public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => new MemDbSortedView(_db, _snapshotVersion, firstKeyInclusive.ToArray(), lastKeyExclusive.ToArray());
 
-            public void Dispose()
-            {
-                _db.OnSnapshotDisposed(_snapshotVersion);
-            }
+            public void Dispose() => _db.OnSnapshotDisposed(_snapshotVersion);
         }
 
         /// <summary>
@@ -674,11 +659,9 @@ namespace Nethermind.Db
                 _operations.Add((key.ToArray(), value, flags));
             }
 
-            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-            {
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
                 // For in-memory database, merge is the same as set
                 Set(key, value.ToArray(), flags);
-            }
 
             public void Clear()
             {

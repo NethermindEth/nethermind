@@ -61,58 +61,35 @@ public class SeqlockCacheBenchmarks
     // ==================== TryGetValue (Hit) ====================
 
     [Benchmark(Baseline = true)]
-    public bool SeqlockCache_TryGetValue_Hit()
-    {
-        return _seqlockCache.TryGetValue(in _keys[500], out _);
-    }
+    public bool SeqlockCache_TryGetValue_Hit() => _seqlockCache.TryGetValue(in _keys[500], out _);
 
     [Benchmark]
-    public bool ConcurrentDict_TryGetValue_Hit()
-    {
-        return _concurrentDict.TryGetValue(_keys[500], out _);
-    }
+    public bool ConcurrentDict_TryGetValue_Hit() => _concurrentDict.TryGetValue(_keys[500], out _);
 
     // ==================== TryGetValue (Miss) ====================
 
     [Benchmark]
-    public bool SeqlockCache_TryGetValue_Miss()
-    {
-        return _seqlockCache.TryGetValue(in _missKey, out _);
-    }
+    public bool SeqlockCache_TryGetValue_Miss() => _seqlockCache.TryGetValue(in _missKey, out _);
 
     [Benchmark]
-    public bool ConcurrentDict_TryGetValue_Miss()
-    {
-        return _concurrentDict.TryGetValue(_missKey, out _);
-    }
+    public bool ConcurrentDict_TryGetValue_Miss() => _concurrentDict.TryGetValue(_missKey, out _);
 
     // ==================== Set (Existing Key) ====================
 
     [Benchmark]
-    public void SeqlockCache_Set_Existing()
-    {
-        _seqlockCache.Set(in _keys[500], _values[500]);
-    }
+    public void SeqlockCache_Set_Existing() => _seqlockCache.Set(in _keys[500], _values[500]);
 
     [Benchmark]
-    public void ConcurrentDict_Set_Existing()
-    {
-        _concurrentDict[_keys[500]] = _values[500];
-    }
+    public void ConcurrentDict_Set_Existing() => _concurrentDict[_keys[500]] = _values[500];
 
     // ==================== GetOrAdd (Hit) ====================
 
     [Benchmark]
-    public byte[]? SeqlockCache_GetOrAdd_Hit()
-    {
-        return _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
-    }
+    public byte[]? SeqlockCache_GetOrAdd_Hit() =>
+        _seqlockCache.GetOrAdd(in _keys[500], static (in StorageCell _) => new byte[32]);
 
     [Benchmark]
-    public byte[] ConcurrentDict_GetOrAdd_Hit()
-    {
-        return _concurrentDict.GetOrAdd(_keys[500], static _ => new byte[32]);
-    }
+    public byte[] ConcurrentDict_GetOrAdd_Hit() => _concurrentDict.GetOrAdd(_keys[500], static _ => new byte[32]);
 
     // ==================== GetOrAdd (Miss - measures factory overhead) ====================
 
@@ -315,31 +292,16 @@ public class SeqlockCacheCallSiteBenchmarks
     }
 
     [Benchmark(Baseline = true)]
-    public byte[]? GetOrAdd_Hit_PerCallMethodGroup()
-    {
-        return _cache.GetOrAdd(in _key, LoadFromBackingStore);
-    }
+    public byte[]? GetOrAdd_Hit_PerCallMethodGroup() => _cache.GetOrAdd(in _key, LoadFromBackingStore);
 
     [Benchmark]
-    public byte[]? GetOrAdd_Hit_CachedDelegate()
-    {
-        return _cache.GetOrAdd(in _key, _cachedFactory);
-    }
+    public byte[]? GetOrAdd_Hit_CachedDelegate() => _cache.GetOrAdd(in _key, _cachedFactory);
 
     [Benchmark]
-    public bool TryGetValue_WithIn()
-    {
-        return _cache.TryGetValue(in _key, out _);
-    }
+    public bool TryGetValue_WithIn() => _cache.TryGetValue(in _key, out _);
 
     [Benchmark]
-    public bool TryGetValue_WithoutIn()
-    {
-        return _cache.TryGetValue(_key, out _);
-    }
+    public bool TryGetValue_WithoutIn() => _cache.TryGetValue(_key, out _);
 
-    private byte[] LoadFromBackingStore(in StorageCell _)
-    {
-        return _value;
-    }
+    private byte[] LoadFromBackingStore(in StorageCell _) => _value;
 }

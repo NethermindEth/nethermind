@@ -115,14 +115,11 @@ public sealed class SpecGasCosts : IEquatable<SpecGasCosts>
     }
 
     public long RefundFromReversal<TEip8037>(bool originalIsZero)
-        where TEip8037 : struct, IFlag
-    {
-        return originalIsZero
+        where TEip8037 : struct, IFlag => originalIsZero
             ? TEip8037.IsActive
                 ? RefundOf.SSetReversedEip8037
                 : SetReversalRefund
             : ClearReversalRefund;
-    }
 
     public bool Equals(SpecGasCosts? other)
     {

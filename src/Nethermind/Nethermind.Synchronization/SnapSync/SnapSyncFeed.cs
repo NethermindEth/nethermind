@@ -189,10 +189,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void Dispose()
-        {
-            _disposed = true;
-        }
+        public void Dispose() => _disposed = true;
 
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {

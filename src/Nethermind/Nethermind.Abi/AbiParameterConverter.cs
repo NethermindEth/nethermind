@@ -77,12 +77,9 @@ public abstract class AbiParameterConverterBase<T> : JsonConverter<T> where T : 
         item.Type = GetAbiType(token);
     }
 
-    private AbiType GetAbiType(JsonElement token)
-    {
-        return token.TryGetProperty("components"u8, out JsonElement components)
+    private AbiType GetAbiType(JsonElement token) => token.TryGetProperty("components"u8, out JsonElement components)
             ? GetParameterType(token.GetProperty(TypePropertyName).GetString()!, components)
             : GetParameterType(token.GetProperty(TypePropertyName).GetString()!, null);
-    }
 
     private static string TypePropertyName => nameof(AbiParameter.Type).ToLowerInvariant();
 

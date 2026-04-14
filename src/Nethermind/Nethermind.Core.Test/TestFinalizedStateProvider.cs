@@ -41,8 +41,5 @@ public class TestFinalizedStateProvider(long depth) : IFinalizedStateProvider
         return commitSets[0].StateRoot;
     }
 
-    public void SetFinalizedPoint(BlockHeader baseBlock)
-    {
-        _manualFinalizedPoint = baseBlock;
-    }
+    public void SetFinalizedPoint(BlockHeader baseBlock) => _manualFinalizedPoint = baseBlock;
 }

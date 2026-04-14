@@ -264,10 +264,7 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
-        public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler)
-        {
-            return _protocols.TryGetValue(protocolCode, out handler);
-        }
+        public bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler) => _protocols.TryGetValue(protocolCode, out handler);
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
@@ -368,15 +365,12 @@ namespace Nethermind.Network.P2P
         {
             EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
-            bool ShouldDisconnectStaticNode()
+            bool ShouldDisconnectStaticNode() => ethDisconnectReason switch
             {
-                return ethDisconnectReason switch
-                {
-                    EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
-                    EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
-                    _ => true,
-                };
-            }
+                EthDisconnectReason.DisconnectRequested or EthDisconnectReason.TcpSubSystemError or EthDisconnectReason.UselessPeer or EthDisconnectReason.TooManyPeers or EthDisconnectReason.Other => false,
+                EthDisconnectReason.ReceiveMessageTimeout or EthDisconnectReason.BreachOfProtocol or EthDisconnectReason.AlreadyConnected or EthDisconnectReason.IncompatibleP2PVersion or EthDisconnectReason.NullNodeIdentityReceived or EthDisconnectReason.ClientQuitting or EthDisconnectReason.UnexpectedIdentity or EthDisconnectReason.IdentitySameAsSelf => true,
+                _ => true,
+            };
 
             if (Node?.IsStatic == true && !ShouldDisconnectStaticNode())
             {
@@ -742,10 +736,7 @@ namespace Nethermind.Network.P2P
 
         private bool _isTracked = false;
 
-        public void StartTrackingSession()
-        {
-            _isTracked = true;
-        }
+        public void StartTrackingSession() => _isTracked = true;
 
         private void RecordOutgoingMessageMetric<T>(T message, int size) where T : P2PMessage
         {
@@ -769,20 +760,11 @@ namespace Nethermind.Network.P2P
             Metrics.IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }
 
-        private static long IncrementMetric(P2PMessageKey _, long value)
-        {
-            return value + 1;
-        }
+        private static long IncrementMetric(P2PMessageKey _, long value) => value + 1;
 
-        private static long ZeroMetric(P2PMessageKey _, int i)
-        {
-            return 0;
-        }
+        private static long ZeroMetric(P2PMessageKey _, int i) => 0;
 
-        private static long AddMetric(P2PMessageKey _, long value, int toAdd)
-        {
-            return value + toAdd;
-        }
+        private static long AddMetric(P2PMessageKey _, long value, int toAdd) => value + toAdd;
 
         [DoesNotReturn, StackTraceHidden]
         private void ThrowInvalidSessionState([CallerMemberName] string caller = "")

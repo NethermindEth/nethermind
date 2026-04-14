@@ -47,9 +47,6 @@ namespace Nethermind.Serialization.Ssz.Test
             return result;
         }
 
-        public static byte[][] ZeroHashes(int start, int end)
-        {
-            return _zeroHashes[start..end];
-        }
+        public static byte[][] ZeroHashes(int start, int end) => _zeroHashes[start..end];
     }
 }

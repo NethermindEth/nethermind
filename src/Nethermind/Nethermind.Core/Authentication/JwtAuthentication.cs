@@ -407,16 +407,13 @@ public sealed partial class JwtAuthentication : IRpcAuthentication
         return true;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WarnInvalidResult(Exception? ex)
+        void WarnInvalidResult(Exception? ex) => _logger.Warn(ex switch
         {
-            _logger.Warn(ex switch
-            {
-                SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
-                SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
-                SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
-                _ => $"Message authentication error: {ex?.Message}"
-            });
-        }
+            SecurityTokenDecryptionFailedException => "Message authentication error: The token cannot be decrypted.",
+            SecurityTokenReplayDetectedException => "Message authentication error: The token has been used multiple times.",
+            SecurityTokenInvalidSignatureException => "Message authentication error: Invalid token signature.",
+            _ => $"Message authentication error: {ex?.Message}"
+        });
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnTokenExpired(long iat, long now)

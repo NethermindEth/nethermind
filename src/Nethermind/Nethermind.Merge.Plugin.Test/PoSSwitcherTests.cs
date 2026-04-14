@@ -222,26 +222,20 @@ namespace Nethermind.Merge.Plugin.Test
         }
 
         [Test]
-        public void No_final_difficulty_if_conditions_are_not_met()
-        {
+        public void No_final_difficulty_if_conditions_are_not_met() =>
             AssertFinalTotalDifficulty(10005, 10000, 10000, null);
-        }
 
         [TestCase(0, 1)]
         [TestCase(0, 0)]
         [TestCase(5000, 6000)]
-        public void Can_set_final_total_difficulty_for_post_merge_networks(long ttd, long genesisDifficulty)
-        {
+        public void Can_set_final_total_difficulty_for_post_merge_networks(long ttd, long genesisDifficulty) =>
             AssertFinalTotalDifficulty(ttd, genesisDifficulty, null, genesisDifficulty);
-        }
 
         [TestCase(0, 1)]
         [TestCase(0, 0)]
         [TestCase(5000, 6000)]
-        public void Can_set_final_total_difficulty_based_on_sync_pivot(long ttd, long pivotTotalDifficulty)
-        {
+        public void Can_set_final_total_difficulty_based_on_sync_pivot(long ttd, long pivotTotalDifficulty) =>
             AssertFinalTotalDifficulty(ttd, 0, pivotTotalDifficulty, pivotTotalDifficulty);
-        }
 
         private void AssertFinalTotalDifficulty(long ttd, long genesisDifficulty, long? pivotTotalDifficulty, long? expectedFinalTotalDifficulty)
         {

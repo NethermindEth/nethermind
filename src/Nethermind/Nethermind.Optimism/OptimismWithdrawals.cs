@@ -52,10 +52,8 @@ public sealed class OptimismGenesisPostProcessor(
     ISpecProvider specProvider
 ) : IGenesisPostProcessor
 {
-    public void PostProcess(Block genesis)
-    {
+    public void PostProcess(Block genesis) =>
         // When Isthmus is enabled at Genesis it's required that we compute the `WithdrawalsRoot` from the L2ToL1MessagePasser account.
         // See: https://specs.optimism.io/protocol/isthmus/exec-engine.html?search=#genesis-block
         withdrawalProcessor.ProcessWithdrawals(genesis, spec: specProvider.GetSpec(genesis.Header));
-    }
 }

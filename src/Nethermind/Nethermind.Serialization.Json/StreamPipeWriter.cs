@@ -252,10 +252,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     }
 
     /// <inheritdoc />
-    public override void CancelPendingFlush()
-    {
-        Cancel();
-    }
+    public override void CancelPendingFlush() => Cancel();
 
     /// <inheritdoc />
     public override bool CanGetUnflushedBytes => true;
@@ -327,15 +324,9 @@ public sealed class CountingStreamPipeWriter : CountingWriter
     /// <inheritdoc />
     public override long UnflushedBytes => _bytesBuffered;
 
-    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default)
-    {
-        return FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
-    }
+    public override ValueTask<FlushResult> WriteAsync(ReadOnlyMemory<byte> source, CancellationToken cancellationToken = default) => FlushAsyncInternal(writeToStream: true, data: source, cancellationToken);
 
-    private void Cancel()
-    {
-        InternalTokenSource.Cancel();
-    }
+    private void Cancel() => InternalTokenSource.Cancel();
 
     [AsyncMethodBuilder(typeof(PoolingAsyncValueTaskMethodBuilder<>))]
     private async ValueTask<FlushResult> FlushAsyncInternal(bool writeToStream, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)

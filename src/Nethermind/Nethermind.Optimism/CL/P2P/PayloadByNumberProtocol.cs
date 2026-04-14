@@ -26,10 +26,7 @@ public class PayloadByNumberProtocol(
 
     public string Id => $"/opstack/req/payload_by_number/{_chainId}/0";
 
-    public async Task ListenAsync(IChannel downChannel, ISessionContext context)
-    {
-        await downChannel.WriteAsync(new ReadOnlySequence<byte>([Result.Unavailable]));
-    }
+    public async Task ListenAsync(IChannel downChannel, ISessionContext context) => await downChannel.WriteAsync(new ReadOnlySequence<byte>([Result.Unavailable]));
 
     private static class Result
     {

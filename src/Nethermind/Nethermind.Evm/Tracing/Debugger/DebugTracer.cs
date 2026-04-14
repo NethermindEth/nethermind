@@ -290,10 +290,7 @@ public class DebugTracer<TGasPolicy>(ITxTracer tracer) : ITxTracer, ITxTracerWra
     public void ReportStorageRead(in StorageCell storageCell)
         => InnerTracer.ReportStorageRead(storageCell);
 
-    public void Dispose()
-    {
-        _autoResetEvent.Dispose();
-    }
+    public void Dispose() => _autoResetEvent.Dispose();
 }
 
 /// <summary>

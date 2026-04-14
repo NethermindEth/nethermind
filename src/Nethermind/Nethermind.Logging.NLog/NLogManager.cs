@@ -79,10 +79,7 @@ namespace Nethermind.Logging.NLog
 
         public ILogger GetLogger(string loggerName) => s_namedLoggers.GetOrAdd(loggerName, s_namedLoggerBuilder);
 
-        public void SetGlobalVariable(string name, object value)
-        {
-            GlobalDiagnosticsContext.Set(name, value);
-        }
+        public void SetGlobalVariable(string name, object value) => GlobalDiagnosticsContext.Set(name, value);
 
         private static void SetupLogRules(string logRules)
         {
@@ -162,15 +159,9 @@ namespace Nethermind.Logging.NLog
             return loggingRule;
         }
 
-        public static void Shutdown()
-        {
-            LogManager.Shutdown();
-        }
+        public static void Shutdown() => LogManager.Shutdown();
 
-        public void Dispose()
-        {
-            LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
-        }
+        public void Dispose() => LogManager.ConfigurationChanged -= _logManagerOnConfigurationChanged;
 
 #if !ZK_EVM
         private static class TypedLogger<T>

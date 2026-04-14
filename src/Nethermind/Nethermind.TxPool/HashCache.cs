@@ -59,10 +59,7 @@ namespace Nethermind.TxPool
             _currentBlockCache.Delete(in valueHash);
         }
 
-        public void ClearCurrentBlockCache()
-        {
-            _currentBlockCache.Clear();
-        }
+        public void ClearCurrentBlockCache() => _currentBlockCache.Clear();
 
         /// <summary>
         /// Clears both long-term and current block caches.

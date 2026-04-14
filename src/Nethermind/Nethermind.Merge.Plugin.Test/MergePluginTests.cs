@@ -65,9 +65,8 @@ public class MergePluginTests
         _consensusPlugin = new(_chainSpec);
     }
 
-    private IContainer BuildContainer(IConfigProvider? configProvider = null)
-    {
-        return new ContainerBuilder()
+    private IContainer BuildContainer(IConfigProvider? configProvider = null) =>
+        new ContainerBuilder()
             .AddModule(new NethermindRunnerModule(
                 new EthereumJsonSerializer(),
                 _chainSpec,
@@ -86,7 +85,6 @@ public class MergePluginTests
                 api.BlockProcessingQueue.IsEmpty.Returns(true);
             })
             .Build();
-    }
 
     [Test]
     public void SlotPerSeconds_has_different_value_in_mergeConfig_and_blocksConfig()

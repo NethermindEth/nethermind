@@ -414,10 +414,8 @@ public class XdcTestBlockchain : TestBlockchain
         }
     }
 
-    public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure)
-    {
+    public void ChangeReleaseSpec(Action<XdcReleaseSpec> reconfigure) =>
         reconfigure((XdcReleaseSpec)SpecProvider.GetXdcSpec((XdcBlockHeader)BlockTree.Head!.Header));
-    }
 
     public void StartHotStuffModule()
     {
@@ -517,10 +515,8 @@ public class XdcTestBlockchain : TestBlockchain
             XdcContext.NewRoundSetEvent -= OnNewRound;
         }
 
-        void OnNewRound(object? sender, NewRoundEventArgs e)
-        {
+        void OnNewRound(object? sender, NewRoundEventArgs e) =>
             newRoundWaitHandle.SetResult();
-        }
         void SignRandom(Vote vote)
         {
             KeccakRlpStream stream = new();
@@ -555,10 +551,8 @@ public class XdcTestBlockchain : TestBlockchain
             BlockTree.NewHeadBlock -= OnNewHead;
         }
 
-        void OnNewHead(object? sender, BlockEventArgs e)
-        {
+        void OnNewHead(object? sender, BlockEventArgs e) =>
             newHeadWaitHandle.SetResult();
-        }
     }
 
     public void CreateAndCommitQC(XdcBlockHeader header)
@@ -573,15 +567,13 @@ public class XdcTestBlockchain : TestBlockchain
         QuorumCertificateManager.CommitCertificate(headQc);
     }
 
-    public PrivateKey[] TakeRandomMasterNodes(IXdcReleaseSpec headSpec, EpochSwitchInfo switchInfo)
-    {
-        return switchInfo
+    public PrivateKey[] TakeRandomMasterNodes(IXdcReleaseSpec headSpec, EpochSwitchInfo switchInfo) =>
+        switchInfo
                     .Masternodes
                     .OrderBy(x => _random.Next())
                     .Take((int)(Math.Ceiling(switchInfo.Masternodes.Length * headSpec.CertificateThreshold)))
                     .Select(a => MasterNodeCandidates.First(c => a == c.Address))
                     .ToArray();
-    }
 
     private TransactionBuilder<Transaction> CreateTransactionBuilder()
     {

@@ -73,10 +73,7 @@ public partial class EthRpcModuleTests
         .Op(Instruction.RETURN)
         .Done;
 
-    private static void AssertAccountDoesNotExist(Context ctx, Address account)
-    {
-        Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
-    }
+    private static void AssertAccountDoesNotExist(Context ctx, Address account) => Assert.That(ctx.Test.ReadOnlyState.AccountExists(account), Is.False);
 
     [TestCase("earliest", "0x3635c9adc5dea00000")]
     [TestCase("latest", "0x3635c9adc5de9f09e5")]
@@ -1883,21 +1880,18 @@ public partial class EthRpcModuleTests
             return await Create(specProvider);
         }
 
-        public static async Task<Context> CreateWithAncientBarriers(long blockNumber)
+        public static async Task<Context> CreateWithAncientBarriers(long blockNumber) => await Create(configurer: builder =>
         {
-            return await Create(configurer: builder =>
+            builder.AddDecorator<ISyncConfig>((_, config) =>
             {
-                builder.AddDecorator<ISyncConfig>((_, config) =>
-                {
-                    long cutBlock = blockNumber;
-                    config.AncientBodiesBarrier = cutBlock;
-                    config.AncientReceiptsBarrier = cutBlock;
-                    config.PivotNumber = cutBlock;
-                    config.SnapSync = true;
-                    return config;
-                });
+                long cutBlock = blockNumber;
+                config.AncientBodiesBarrier = cutBlock;
+                config.AncientReceiptsBarrier = cutBlock;
+                config.PivotNumber = cutBlock;
+                config.SnapSync = true;
+                return config;
             });
-        }
+        });
 
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,

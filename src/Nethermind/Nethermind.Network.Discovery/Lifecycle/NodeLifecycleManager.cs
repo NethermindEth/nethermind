@@ -288,10 +288,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         return CreateAndSendPingAsync(_discoveryConfig.PingRetryCount);
     }
 
-    private long CalculateExpirationTime()
-    {
-        return ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
-    }
+    private long CalculateExpirationTime() => ExpirationTimeInSeconds + _timestamper.UnixTime.SecondsLong;
 
     public void SendPong(PingMsg discoveryMsg)
     {
@@ -318,10 +315,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
     }
 
-    public void StartEvictionProcess()
-    {
-        UpdateState(NodeLifecycleState.EvictCandidate);
-    }
+    public void StartEvictionProcess() => UpdateState(NodeLifecycleState.EvictCandidate);
 
     public void ResetUnreachableStatus()
     {

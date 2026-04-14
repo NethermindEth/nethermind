@@ -100,8 +100,5 @@ public class SocketClient<TStream>(
         }
     }
 
-    public virtual void Dispose()
-    {
-        _stream?.Dispose();
-    }
+    public virtual void Dispose() => _stream?.Dispose();
 }

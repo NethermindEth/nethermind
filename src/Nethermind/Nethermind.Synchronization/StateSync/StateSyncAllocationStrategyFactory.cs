@@ -20,10 +20,7 @@ namespace Nethermind.Synchronization.StateSync
 
         internal class AllocationStrategy(IPeerAllocationStrategy strategy) : FilterPeerAllocationStrategy(strategy)
         {
-            protected override bool Filter(PeerInfo peerInfo)
-            {
-                return peerInfo.CanGetSnapData() || peerInfo.CanGetNodeData();
-            }
+            protected override bool Filter(PeerInfo peerInfo) => peerInfo.CanGetSnapData() || peerInfo.CanGetNodeData();
         }
     }
 }

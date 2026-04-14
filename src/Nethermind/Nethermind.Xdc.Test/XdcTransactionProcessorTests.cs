@@ -61,10 +61,8 @@ internal class XdcTransactionProcessorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _worldStateCloser.Dispose();
-    }
 
     [TestCase(false, false)]
     [TestCase(true, false)]
@@ -149,10 +147,8 @@ internal class XdcTransactionProcessorTests
             long spentGas,
             in UInt256 premiumPerGas,
             in UInt256 blobBaseFee,
-            int statusCode)
-        {
+            int statusCode) =>
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, blobBaseFee, statusCode);
-        }
     }
 }
 

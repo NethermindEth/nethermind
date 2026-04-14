@@ -30,10 +30,7 @@ public class ChainSpecBasedSpecProviderTests
     private const double GnosisBlockTime = 5;
 
     [SetUp]
-    public void Setup()
-    {
-        Eip4844Constants.OverrideIfAny(1);
-    }
+    public void Setup() => Eip4844Constants.OverrideIfAny(1);
 
     [TestCase(0, null, false)]
     [TestCase(0, 0ul, false)]

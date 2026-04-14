@@ -308,10 +308,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        internal void ClearCache()
-        {
-            _receiptsCache.Clear();
-        }
+        internal void ClearCache() => _receiptsCache.Clear();
 
         [SkipLocalsInit]
         public bool HasBlock(long blockNumber, Hash256 blockHash)
@@ -333,10 +330,7 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        public void EnsureCanonical(Block block)
-        {
-            EnsureCanonical(block, null);
-        }
+        public void EnsureCanonical(Block block) => EnsureCanonical(block, null);
 
         public void RemoveReceipts(Block block)
         {

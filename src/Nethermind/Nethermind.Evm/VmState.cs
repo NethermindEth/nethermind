@@ -147,10 +147,7 @@ public class VmState<TGasPolicy> : IDisposable
         _creationStackTrace = new StackTrace();
 #endif
         [DoesNotReturn, StackTraceHidden]
-        static void ThrowIsInUse()
-        {
-            throw new InvalidOperationException("Already in use");
-        }
+        static void ThrowIsInUse() => throw new InvalidOperationException("Already in use");
     }
 
     public Address From => ExecutionType switch

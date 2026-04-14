@@ -56,15 +56,9 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Logs subscription {Id} will track ReceiptsInserted.");
         }
 
-        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
-        {
-            TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
-        }
+        private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e) => TryPublishReceiptsInBackground(e.BlockHeader, () => e.TxReceipts, nameof(_receiptCanonicalityMonitor.ReceiptsInserted), e.WasRemoved);
 
-        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed)
-        {
-            ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
-        }
+        private void TryPublishReceiptsInBackground(BlockHeader blockHeader, Func<TxReceipt[]> getReceipts, string eventName, bool removed) => ScheduleAction(async () => await TryPublishEvent(blockHeader, getReceipts(), eventName, removed));
 
         private async Task TryPublishEvent(BlockHeader blockHeader, TxReceipt[] receipts, string eventName, bool removed)
         {

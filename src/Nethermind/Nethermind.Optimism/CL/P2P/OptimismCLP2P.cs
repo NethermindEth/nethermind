@@ -342,10 +342,7 @@ public class OptimismCLP2P : IDisposable
         return new MessageId(sha256.GetHashAndReset());
     }
 
-    public void Reset(ulong headNumber)
-    {
-        _headNumber = headNumber;
-    }
+    public void Reset(ulong headNumber) => _headNumber = headNumber;
 
     public void Dispose()
     {

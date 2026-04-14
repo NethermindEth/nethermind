@@ -33,20 +33,14 @@ public class RecreateStateFromAccountRangesTests
     private StateTree _inputTree;
 
     [OneTimeSetUp]
-    public void Setup()
-    {
+    public void Setup() =>
         _inputTree = TestItem.Tree.GetStateTree();
-    }
 
-    private ContainerBuilder CreateContainerBuilder()
-    {
-        ContainerBuilder builder = new ContainerBuilder()
+    private ContainerBuilder CreateContainerBuilder() =>
+        new ContainerBuilder()
             .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
             .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
             ;
-
-        return builder;
-    }
 
     private IContainer CreateContainer() =>
         CreateContainerBuilder().Build();

@@ -84,9 +84,6 @@ namespace Ethereum.Test.Base
         public override void Write(
             Utf8JsonWriter writer,
             GeneralStateTestInfoJson info,
-            JsonSerializerOptions options)
-        {
-            JsonSerializer.Serialize(writer, info, options);
-        }
+            JsonSerializerOptions options) => JsonSerializer.Serialize(writer, info, options);
     }
 }

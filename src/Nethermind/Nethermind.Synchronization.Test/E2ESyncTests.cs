@@ -93,10 +93,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private PrivateKey _serverKey = TestItem.PrivateKeyA;
     private IContainer _server = null!;
 
-    private int AllocatePort()
-    {
-        return Interlocked.Increment(ref _portNumber);
-    }
+    private int AllocatePort() =>
+        Interlocked.Increment(ref _portNumber);
 
     /// <summary>
     /// Replace all entries in a block-keyed dictionary with a single entry at block 0
@@ -339,10 +337,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     }
 
     [OneTimeTearDown]
-    public async Task TearDownServer()
-    {
-        await _server.DisposeAsync();
-    }
+    public Task TearDownServer() =>
+        _server.DisposeAsync().AsTask();
 
     [Test]
     [Retry(5)]
@@ -509,7 +505,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
         {
             if (modeCheck(syncModeSelector.Current)) return;
-
             await Wait.ForEventCondition<SyncModeChangedEventArgs>(cancellationToken,
                 h => syncModeSelector.Changed += h,
                 h => syncModeSelector.Changed -= h,
@@ -572,10 +567,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             await preMergeTestEnv.SyncUntilFinished(server, cancellationToken);
         }
 
-        public async Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken)
-        {
-            await preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
-        }
+        public Task WaitForSyncMode(Func<SyncMode, bool> modeCheck, CancellationToken cancellationToken) =>
+            preMergeTestEnv.WaitForSyncMode(modeCheck, cancellationToken);
     }
 
     private class SyncTestContext(
@@ -624,15 +617,11 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             .ForInitOf(_runtimeCode)  // return runtime code
             .Done;
 
-        public async Task StartBlockProcessing(CancellationToken cancellationToken)
-        {
-            await runner.StartBlockProcessing(cancellationToken);
-        }
+        public Task StartBlockProcessing(CancellationToken cancellationToken) =>
+            runner.StartBlockProcessing(cancellationToken);
 
-        public async Task StartNetwork(CancellationToken cancellationToken)
-        {
-            await runner.StartNetwork(cancellationToken);
-        }
+        public Task StartNetwork(CancellationToken cancellationToken) =>
+            runner.StartNetwork(cancellationToken);
 
         private async Task ConnectTo(IContainer server, CancellationToken cancellationToken)
         {
@@ -756,11 +745,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             stream1.AsSpan().ToArray().Should().BeEquivalentTo(stream2.AsSpan().ToArray());
         }
 
-        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2)
-        {
+        private void AssertReceiptsEqual(TxReceipt[] receipts1, TxReceipt[] receipts2) =>
             // The network encoding is not the same as storage encoding.
             EncodeReceipts(receipts1).Should().BeEquivalentTo(EncodeReceipts(receipts2));
-        }
 
         private byte[] EncodeReceipts(TxReceipt[] receipts)
         {
@@ -835,11 +822,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
     internal class BlockProcessorExceptionDetector
     {
-        internal static void Configure(ContainerBuilder builder)
-        {
+        internal static void Configure(ContainerBuilder builder) =>
             builder.AddSingleton<BlockProcessorExceptionDetector>()
                 .AddDecorator<IBlockProcessor, BlockProcessorInterceptor>();
-        }
 
         private Exception? BlockProcessingFailure;
         private CancellationTokenSource _cts = new();
@@ -849,6 +834,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             BlockProcessingFailure = exception;
             _cts.Cancel();
         }
+
 
         public async Task WatchForFailure(Func<CancellationToken, Task> act, CancellationToken cancellationToken)
         {

@@ -71,16 +71,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             remove { }
         }
 
-        public override void Init()
-        {
-            ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
-        }
+        public override void Init() => ProtocolInitialized?.Invoke(this, new ProtocolInitializedEventArgs(this));
 
-        public override void Dispose()
-        {
+        public override void Dispose() =>
             // Clear Events if set
             ProtocolInitialized = null;
-        }
 
         public override void HandleMessage(ZeroPacket message)
         {
@@ -140,25 +135,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return true;
         }
 
-        private void Handle(AccountRangeMessage msg, long size)
-        {
-            _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
-        }
+        private void Handle(AccountRangeMessage msg, long size) => _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
 
-        private void Handle(StorageRangeMessage msg, long size)
-        {
-            _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
-        }
+        private void Handle(StorageRangeMessage msg, long size) => _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
 
-        private void Handle(ByteCodesMessage msg, long size)
-        {
-            _getByteCodesRequests.Handle(msg.RequestId, msg, size);
-        }
+        private void Handle(ByteCodesMessage msg, long size) => _getByteCodesRequests.Handle(msg.RequestId, msg, size);
 
-        private void Handle(TrieNodesMessage msg, long size)
-        {
-            _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
-        }
+        private void Handle(TrieNodesMessage msg, long size) => _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
 
         private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
@@ -192,10 +175,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new ValueTask<TrieNodesMessage>(response);
         }
 
-        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
-        {
-            Dispose();
-        }
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) => Dispose();
 
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
@@ -268,10 +248,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
-        {
-            return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
-        }
+        public async Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) => await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
 
         private async Task<IByteArrayList> GetTrieNodes(Hash256 rootHash, IOwnedReadOnlyList<PathGroup> groups, CancellationToken token)
         {

@@ -547,10 +547,7 @@ public class NodeLifecycleManagerTests
             _manager.OnStateChanged += _currentHandler;
         }
 
-        public EnrResponseMsg CreateEnrResponse(long sequence, Hash256 requestHash, int port = 30303)
-        {
-            return CreateEnrResponseMsg(_remotePublicKey, _remotePrivateKey, _remoteIp, port, sequence, requestHash);
-        }
+        public EnrResponseMsg CreateEnrResponse(long sequence, Hash256 requestHash, int port = 30303) => CreateEnrResponseMsg(_remotePublicKey, _remotePrivateKey, _remoteIp, port, sequence, requestHash);
 
         public void ProcessEnrResponse(long sequence, Hash256 requestHash, int port = 30303)
         {

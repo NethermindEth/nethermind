@@ -28,23 +28,18 @@ namespace Ethereum.KeyAddress.Test
             _ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId);
         }
 
-        private static IEnumerable<KeyAddressTest> LoadTests()
-        {
-            return TestLoader.LoadFromFile<KeyAddressTestJson[], KeyAddressTest>(
+        private static IEnumerable<KeyAddressTest> LoadTests() =>
+            TestLoader.LoadFromFile<KeyAddressTestJson[], KeyAddressTest>(
                 "keyaddrtest.json",
                 c => c.Select(FromJson));
-        }
 
-        private static KeyAddressTest FromJson(KeyAddressTestJson testJson)
-        {
-            return new KeyAddressTest(
+        private static KeyAddressTest FromJson(KeyAddressTestJson testJson) => new(
                 testJson.Seed,
                 testJson.Key,
                 testJson.Addr,
                 UInt256.Parse(testJson.Signature.R),
                 UInt256.Parse(testJson.Signature.S),
                 byte.Parse(testJson.Signature.V));
-        }
 
         [TestCase("0x135a7de83802408321b74c322f8558db1679ac20", "xyz", "0x30755ed65396facf86c53e6217c52b4daebe72aa4941d89635409de4c9c7f9466d4e9aaec7977f05e923889b33c0d0dd27d7226b6e6f56ce737465c5cfd04be41b")]
         [TestCase("0x36d85Dc3683156e63Bf880A9fAb7788CF8143a27", "Christopher Pearce", "0x34ff4b97a0ec8f735f781f250dcd3070a72ddb640072dd39553407d0320db79939e3b080ecaa2e9f248214c6f0811fb4b4ba05b7bcff254c053e47d8513e82091b")]
@@ -114,10 +109,7 @@ namespace Ethereum.KeyAddress.Test
             public UInt256 R { get; } = r;
             public UInt256 S { get; } = s;
 
-            public override string ToString()
-            {
-                return $"{Seed}, exp: {R}, {S}, {V}";
-            }
+            public override string ToString() => $"{Seed}, exp: {R}, {S}, {V}";
         }
     }
 }

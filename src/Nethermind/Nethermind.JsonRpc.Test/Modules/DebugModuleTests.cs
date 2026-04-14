@@ -43,9 +43,7 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge)
-    {
-        return new(
+    private DebugRpcModule CreateDebugRpcModule(IDebugBridge customDebugBridge) => new(
             LimboLogs.Instance,
             customDebugBridge,
             _jsonRpcConfig,
@@ -54,7 +52,6 @@ public class DebugModuleTests
             new BlocksConfig(),
             _blockFinder
         );
-    }
 
     [Test]
     public async Task Get_from_db()

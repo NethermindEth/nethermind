@@ -70,8 +70,6 @@ public class LocalDbContext(
         }
     }
 
-    public void DeleteStateRoot()
-    {
+    public void DeleteStateRoot() =>
         NodeStorage.Set(null, TreePath.Empty, RootHash, null);
-    }
 }

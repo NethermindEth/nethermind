@@ -1293,10 +1293,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
             }
 
-            public void Dispose()
-            {
-                _closer.Dispose();
-            }
+            public void Dispose() => _closer.Dispose();
         }
     }
 }

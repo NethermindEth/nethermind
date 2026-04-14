@@ -268,11 +268,8 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response)
-    {
-        return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-    }
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
@@ -477,10 +474,7 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id)
-        {
-            JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
-        }
+        void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
     private static async ValueTask WriteStreamableResponseAsync(
@@ -561,10 +555,7 @@ public class Startup : IStartup
             stream.AdvanceTo(consumed, examined);
         }
 
-        public override void CancelPendingRead()
-        {
-            stream.CancelPendingRead();
-        }
+        public override void CancelPendingRead() => stream.CancelPendingRead();
 
         public override void Complete(Exception? exception = null)
         {

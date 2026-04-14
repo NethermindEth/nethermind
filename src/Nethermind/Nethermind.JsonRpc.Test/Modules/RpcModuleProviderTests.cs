@@ -38,10 +38,7 @@ public class RpcModuleProviderTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _context?.Dispose();
-    }
+    public void TearDown() => _context?.Dispose();
 
     [Test]
     public void Module_provider_will_recognize_disabled_modules()
@@ -193,9 +190,6 @@ public class RpcModuleProviderTests
 
     private class TestRpcModule : ITestRpcModule
     {
-        public TestRpcModule(TestRpcModuleDependencies dependencies)
-        {
-            dependencies.WasRequested = true;
-        }
+        public TestRpcModule(TestRpcModuleDependencies dependencies) => dependencies.WasRequested = true;
     }
 }

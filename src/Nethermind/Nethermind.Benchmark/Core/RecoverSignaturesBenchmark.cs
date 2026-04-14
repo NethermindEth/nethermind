@@ -144,54 +144,33 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block10TxWith0AuthSigs);
             ResetSigs(_block3TxWith1AuthSigs);
 
-            void ResetSigs(Block block)
+            void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
             {
-                Parallel.ForEach(block.Transactions, (t) =>
+                t.SenderAddress = null;
+                t.Hash = null;
+                Parallel.ForEach(t.AuthorizationList, (tuple) =>
                 {
-                    t.SenderAddress = null;
-                    t.Hash = null;
-                    Parallel.ForEach(t.AuthorizationList, (tuple) =>
-                    {
-                        tuple.Authority = null;
-                    });
+                    tuple.Authority = null;
                 });
-            }
+            });
         }
 
         [Benchmark]
-        public void Recover100TxSignaturesWith100AuthoritySignatures()
-        {
-            _sut.RecoverData(_block100TxWith100AuthSigs);
-        }
+        public void Recover100TxSignaturesWith100AuthoritySignatures() => _sut.RecoverData(_block100TxWith100AuthSigs);
 
         [Benchmark]
-        public void Recover100TxSignaturesWith10AuthoritySignatures()
-        {
-            _sut.RecoverData(_block100TxWith10AuthSigs);
-        }
+        public void Recover100TxSignaturesWith10AuthoritySignatures() => _sut.RecoverData(_block100TxWith10AuthSigs);
 
         [Benchmark]
-        public void Recover100TxSignaturesWith1AuthoritySignatures()
-        {
-            _sut.RecoverData(_block100TxWith1AuthSigs);
-        }
+        public void Recover100TxSignaturesWith1AuthoritySignatures() => _sut.RecoverData(_block100TxWith1AuthSigs);
 
         [Benchmark]
-        public void Recover10TxSignaturesWith10AuthoritySignatures()
-        {
-            _sut.RecoverData(_block10TxWith10AuthSigs);
-        }
+        public void Recover10TxSignaturesWith10AuthoritySignatures() => _sut.RecoverData(_block10TxWith10AuthSigs);
 
         [Benchmark]
-        public void Recover3TxSignaturesWith1AuthoritySignatures()
-        {
-            _sut.RecoverData(_block3TxWith1AuthSigs);
-        }
+        public void Recover3TxSignaturesWith1AuthoritySignatures() => _sut.RecoverData(_block3TxWith1AuthSigs);
 
         [Benchmark]
-        public void Recover10TxSignaturesWith0AuthoritySignatures()
-        {
-            _sut.RecoverData(_block10TxWith0AuthSigs);
-        }
+        public void Recover10TxSignaturesWith0AuthoritySignatures() => _sut.RecoverData(_block10TxWith0AuthSigs);
     }
 }

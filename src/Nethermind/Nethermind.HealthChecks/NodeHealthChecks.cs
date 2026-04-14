@@ -36,14 +36,11 @@ namespace Nethermind.HealthChecks
             }
         }
 
-        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult)
-        {
-            return new Dictionary<string, object>
+        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult) => new Dictionary<string, object>
             {
                 { nameof(healthResult.IsSyncing), healthResult.IsSyncing },
                 { nameof(healthResult.Errors), healthResult.Errors }
             };
-        }
 
         private static string FormatMessages(IEnumerable<string> messages)
         {

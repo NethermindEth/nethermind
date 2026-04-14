@@ -38,10 +38,8 @@ public class RangeQueryVisitorTests
     private StateTree _inputTree = null!;
 
     [OneTimeSetUp]
-    public void Setup()
-    {
+    public void Setup() =>
         _inputTree = TestItem.Tree.GetStateTree();
-    }
 
     [Test]
     public void AccountRangeFetchVisitor()

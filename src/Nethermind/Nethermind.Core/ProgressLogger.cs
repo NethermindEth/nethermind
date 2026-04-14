@@ -35,10 +35,7 @@ namespace Nethermind.Core
             CurrentValue = value;
         }
 
-        public void IncrementSkipped(int skipped = 1)
-        {
-            Interlocked.Add(ref _skipped, skipped);
-        }
+        public void IncrementSkipped(int skipped = 1) => Interlocked.Add(ref _skipped, skipped);
 
         public void SetMeasuringPoint(bool resetCompletion = true)
         {
@@ -148,10 +145,7 @@ namespace Nethermind.Core
             }
         }
 
-        public void SetFormat(Func<ProgressLogger, string> formatter)
-        {
-            _formatter = formatter;
-        }
+        public void SetFormat(Func<ProgressLogger, string> formatter) => _formatter = formatter;
 
         public void LogProgress()
         {
@@ -165,10 +159,7 @@ namespace Nethermind.Core
             SetMeasuringPoint(resetCompletion: false);
         }
 
-        private string DefaultFormatter()
-        {
-            return GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
-        }
+        private string DefaultFormatter() => GenerateReport(_prefix, CurrentValue, TargetValue, CurrentQueued, CurrentPerSecond, SkippedPerSecond);
 
         private static string GenerateReport(string prefix, long current, long total, long queue, decimal speed, decimal skippedPerSecond)
         {

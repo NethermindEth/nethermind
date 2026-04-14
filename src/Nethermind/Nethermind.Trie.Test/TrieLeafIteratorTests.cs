@@ -33,10 +33,7 @@ public class TrieLeafIteratorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _db.Dispose();
-    }
+    public void TearDown() => _db.Dispose();
 
     [Test]
     public void EmptyTrie_ReturnsNoLeaves()

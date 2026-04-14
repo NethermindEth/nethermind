@@ -178,15 +178,9 @@ namespace Nethermind.Evm.Test
             AssertSendAll();
         }
 
-        private void AssertNotDestroyed()
-        {
-            AssertCodeHash(_contractAddress, Keccak.Compute(_selfDestructCode.AsSpan()));
-        }
+        private void AssertNotDestroyed() => AssertCodeHash(_contractAddress, Keccak.Compute(_selfDestructCode.AsSpan()));
 
-        private void AssertDestroyed(Address address = null)
-        {
-            TestState.AccountExists(address ?? _contractAddress).Should().BeFalse();
-        }
+        private void AssertDestroyed(Address address = null) => TestState.AccountExists(address ?? _contractAddress).Should().BeFalse();
 
         private void AssertSendAll()
         {

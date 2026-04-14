@@ -70,8 +70,5 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
         }
     }
 
-    public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        throw new NotSupportedException();
-    }
+    public override IJavaScriptObject? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
 }

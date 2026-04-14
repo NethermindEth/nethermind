@@ -58,10 +58,7 @@ namespace Nethermind.Synchronization.FastSync
             return _treeSync.HandleResponse(b, peer);
         }
 
-        public void Dispose()
-        {
-            _disposed = true;
-        }
+        public void Dispose() => _disposed = true;
 
         public override void SyncModeSelectorOnChanged(SyncMode current)
         {
