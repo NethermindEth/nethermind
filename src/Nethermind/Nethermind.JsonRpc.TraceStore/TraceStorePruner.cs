@@ -37,22 +37,22 @@ public class TraceStorePruner : IDisposable
     }
 
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run((() =>
-                                                                                         {
-                                                                                             long levelToDelete = e.Block.Number - _blockToKeep;
-                                                                                             if (levelToDelete > 0)
-                                                                                             {
-                                                                                                 ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
-                                                                                                 if (level is not null)
-                                                                                                 {
-                                                                                                     for (int i = 0; i < level.BlockInfos.Length; i++)
-                                                                                                     {
-                                                                                                         BlockInfo blockInfo = level.BlockInfos[i];
-                                                                                                         if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
-                                                                                                         _db.Delete(blockInfo.BlockHash);
-                                                                                                     }
-                                                                                                 }
-                                                                                             }
-                                                                                         }));
+    {
+        long levelToDelete = e.Block.Number - _blockToKeep;
+        if (levelToDelete > 0)
+        {
+            ChainLevelInfo? level = _blockTree.FindLevel(levelToDelete);
+            if (level is not null)
+            {
+                for (int i = 0; i < level.BlockInfos.Length; i++)
+                {
+                    BlockInfo blockInfo = level.BlockInfos[i];
+                    if (_logger.IsTrace) _logger.Trace($"Removing traces from TraceStore on level {levelToDelete} for block {blockInfo}.");
+                    _db.Delete(blockInfo.BlockHash);
+                }
+            }
+        }
+    }));
 
     public void Dispose() => _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
 }

@@ -367,16 +367,16 @@ public static class ContainerBuilderExtensions
     }
 
     public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
-                                                                                                                              {
-                                                                                                                                  interceptor(service);
-                                                                                                                                  return service;
-                                                                                                                              });
+    {
+        interceptor(service);
+        return service;
+    });
 
     public static ContainerBuilder Intercept<T>(this ContainerBuilder builder, Action<T, IComponentContext> interceptor) where T : class => builder.AddDecorator<T>((ctx, service) =>
-                                                                                                                                                 {
-                                                                                                                                                     interceptor(service, ctx);
-                                                                                                                                                     return service;
-                                                                                                                                                 });
+    {
+        interceptor(service, ctx);
+        return service;
+    });
 
     /// <summary>
     /// A convenient way of creating a service whose members can be configured independent of other instances of the same

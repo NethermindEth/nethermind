@@ -1881,17 +1881,17 @@ public partial class EthRpcModuleTests
         }
 
         public static async Task<Context> CreateWithAncientBarriers(long blockNumber) => await Create(configurer: builder =>
-                                                                                                  {
-                                                                                                      builder.AddDecorator<ISyncConfig>((_, config) =>
-                                                                                                      {
-                                                                                                          long cutBlock = blockNumber;
-                                                                                                          config.AncientBodiesBarrier = cutBlock;
-                                                                                                          config.AncientReceiptsBarrier = cutBlock;
-                                                                                                          config.PivotNumber = cutBlock;
-                                                                                                          config.SnapSync = true;
-                                                                                                          return config;
-                                                                                                      });
-                                                                                                  });
+        {
+            builder.AddDecorator<ISyncConfig>((_, config) =>
+            {
+                long cutBlock = blockNumber;
+                config.AncientBodiesBarrier = cutBlock;
+                config.AncientReceiptsBarrier = cutBlock;
+                config.PivotNumber = cutBlock;
+                config.SnapSync = true;
+                return config;
+            });
+        });
 
         public static Task<Context> Create(ISpecProvider? specProvider = null,
             IBlockchainBridge? blockchainBridge = null,

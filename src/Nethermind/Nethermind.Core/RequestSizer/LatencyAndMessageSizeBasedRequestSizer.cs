@@ -47,36 +47,36 @@ public class LatencyAndMessageSizeBasedRequestSizer(
     /// <typeparam name="TResponseItem">response item type</typeparam>
     /// <returns></returns>
     public Task<TResponse> Run<TResponse, TRequest, TResponseItem>(IReadOnlyList<TRequest> request, Func<IReadOnlyList<TRequest>, Task<(TResponse, long)>> func) where TResponse : IReadOnlyList<TResponseItem> => _requestSizer.Run(async (adjustedRequestSize) =>
-                                                                                                                                                                                                                        {
-                                                                                                                                                                                                                            long startTime = Stopwatch.GetTimestamp();
-                                                                                                                                                                                                                            long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
-                                                                                                                                                                                                                            IReadOnlyList<TRequest> cappedRequest = affectiveRequestSize == request.Count
-                                                                                                                                                                                                                                ? request
-                                                                                                                                                                                                                                : request.Slice(0, (int)affectiveRequestSize);
-                                                                                                                                                                                                                            (TResponse result, long messageSize) = await func(cappedRequest);
-                                                                                                                                                                                                                            TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
-                                                                                                                                                                                                                            if (messageSize > _maxResponseSize)
-                                                                                                                                                                                                                            {
-                                                                                                                                                                                                                                return (result, AdaptiveRequestSizer.Direction.Decrease);
-                                                                                                                                                                                                                            }
+    {
+        long startTime = Stopwatch.GetTimestamp();
+        long affectiveRequestSize = Math.Min(adjustedRequestSize, request.Count);
+        IReadOnlyList<TRequest> cappedRequest = affectiveRequestSize == request.Count
+            ? request
+            : request.Slice(0, (int)affectiveRequestSize);
+        (TResponse result, long messageSize) = await func(cappedRequest);
+        TimeSpan duration = Stopwatch.GetElapsedTime(startTime);
+        if (messageSize > _maxResponseSize)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-                                                                                                                                                                                                                            if (duration > _upperLatencyWatermark)
-                                                                                                                                                                                                                            {
-                                                                                                                                                                                                                                return (result, AdaptiveRequestSizer.Direction.Decrease);
-                                                                                                                                                                                                                            }
+        if (duration > _upperLatencyWatermark)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-                                                                                                                                                                                                                            if (result.Count < affectiveRequestSize)
-                                                                                                                                                                                                                            {
-                                                                                                                                                                                                                                return (result, AdaptiveRequestSizer.Direction.Decrease);
-                                                                                                                                                                                                                            }
+        if (result.Count < affectiveRequestSize)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Decrease);
+        }
 
-                                                                                                                                                                                                                            if (
-                                                                                                                                                                                                                                request.Count >= adjustedRequestSize // If the original request size is low, increasing wont do anything
-                                                                                                                                                                                                                                && duration < _lowerLatencyWatermark)
-                                                                                                                                                                                                                            {
-                                                                                                                                                                                                                                return (result, AdaptiveRequestSizer.Direction.Increase);
-                                                                                                                                                                                                                            }
+        if (
+            request.Count >= adjustedRequestSize // If the original request size is low, increasing wont do anything
+            && duration < _lowerLatencyWatermark)
+        {
+            return (result, AdaptiveRequestSizer.Direction.Increase);
+        }
 
-                                                                                                                                                                                                                            return (result, AdaptiveRequestSizer.Direction.Stay);
-                                                                                                                                                                                                                        });
+        return (result, AdaptiveRequestSizer.Direction.Stay);
+    });
 }

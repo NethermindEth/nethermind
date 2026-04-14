@@ -761,42 +761,42 @@ namespace Nethermind.Core.Extensions
         }
 
         private static string ByteArrayToHexViaLookup32Checksum(int length, State stateToPass) => string.Create(length, stateToPass, static (chars, state) =>
-                                                                                                           {
-                                                                                                               // this path is rarely used - only in wallets
-                                                                                                               byte[] bytesArray = state.Bytes;
-                                                                                                               string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
-                                                                                                               Span<byte> bytes = bytesArray;
+        {
+            // this path is rarely used - only in wallets
+            byte[] bytesArray = state.Bytes;
+            string hashHex = Keccak.Compute(bytesArray.ToHexString(false)).ToString(false);
+            Span<byte> bytes = bytesArray;
 
-                                                                                                               if (state.WithZeroX)
-                                                                                                               {
-                                                                                                                   chars[1] = 'x';
-                                                                                                                   chars[0] = '0';
-                                                                                                                   chars = chars[2..];
-                                                                                                               }
+            if (state.WithZeroX)
+            {
+                chars[1] = 'x';
+                chars[0] = '0';
+                chars = chars[2..];
+            }
 
-                                                                                                               bool odd = state.LeadingZeros % 2 == 1;
-                                                                                                               int oddity = odd ? 1 : 0;
+            bool odd = state.LeadingZeros % 2 == 1;
+            int oddity = odd ? 1 : 0;
 
-                                                                                                               uint[] lookup32 = Lookup32;
-                                                                                                               for (int i = 0; i < chars.Length; i += 2)
-                                                                                                               {
-                                                                                                                   uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
-                                                                                                                   if (i != 0 || !odd)
-                                                                                                                   {
-                                                                                                                       char char1 = (char)val;
-                                                                                                                       chars[i - oddity] =
-                                                                                                                           char.IsLetter(char1) && hashHex![i] > '7'
-                                                                                                                               ? char.ToUpper(char1)
-                                                                                                                               : char1;
-                                                                                                                   }
+            uint[] lookup32 = Lookup32;
+            for (int i = 0; i < chars.Length; i += 2)
+            {
+                uint val = lookup32[bytes[(i + state.LeadingZeros) / 2]];
+                if (i != 0 || !odd)
+                {
+                    char char1 = (char)val;
+                    chars[i - oddity] =
+                        char.IsLetter(char1) && hashHex![i] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+                }
 
-                                                                                                                   char char2 = (char)(val >> 16);
-                                                                                                                   chars[i + 1 - oddity] =
-                                                                                                                       char.IsLetter(char2) && hashHex![i + 1] > '7'
-                                                                                                                           ? char.ToUpper(char2)
-                                                                                                                           : char2;
-                                                                                                               }
-                                                                                                           });
+                char char2 = (char)(val >> 16);
+                chars[i + 1 - oddity] =
+                    char.IsLetter(char2) && hashHex![i + 1] > '7'
+                        ? char.ToUpper(char2)
+                        : char2;
+            }
+        });
 
         internal static uint[] Lookup32 = CreateLookup32("x2");
         internal static ushort[] Lookup16 = CreateLookup16("x2");

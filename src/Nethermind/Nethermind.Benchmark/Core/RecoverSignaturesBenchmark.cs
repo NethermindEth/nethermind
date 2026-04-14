@@ -145,14 +145,14 @@ namespace Nethermind.Benchmarks.Core
             ResetSigs(_block3TxWith1AuthSigs);
 
             void ResetSigs(Block block) => Parallel.ForEach(block.Transactions, (t) =>
-                                                        {
-                                                            t.SenderAddress = null;
-                                                            t.Hash = null;
-                                                            Parallel.ForEach(t.AuthorizationList, (tuple) =>
-                                                            {
-                                                                tuple.Authority = null;
-                                                            });
-                                                        });
+            {
+                t.SenderAddress = null;
+                t.Hash = null;
+                Parallel.ForEach(t.AuthorizationList, (tuple) =>
+                {
+                    tuple.Authority = null;
+                });
+            });
         }
 
         [Benchmark]

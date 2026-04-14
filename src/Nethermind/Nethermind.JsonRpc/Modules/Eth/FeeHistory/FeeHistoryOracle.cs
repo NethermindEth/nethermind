@@ -43,18 +43,18 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e) => Task.Run(() =>
-                                                                                                 {
-                                                                                                     if (e.PreviousBlock is not null)
-                                                                                                     {
-                                                                                                         _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
-                                                                                                     }
+        {
+            if (e.PreviousBlock is not null)
+            {
+                _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
+            }
 
-                                                                                                     if (ShouldCache(e.Block))
-                                                                                                     {
-                                                                                                         SaveHistorySearchInfo(e.Block);
-                                                                                                         TryRunCleanup();
-                                                                                                     }
-                                                                                                 });
+            if (ShouldCache(e.Block))
+            {
+                SaveHistorySearchInfo(e.Block);
+                TryRunCleanup();
+            }
+        });
 
         private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
 

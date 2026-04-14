@@ -42,27 +42,27 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         protected string GetErrorMsg() => $"{Type} subscription with ID {Id} failed.";
 
         private void ProcessMessages() => Task.Factory.StartNew(async () =>
-                                                   {
-                                                       while (await SendChannel.Reader.WaitToReadAsync())
-                                                       {
-                                                           while (SendChannel.Reader.TryRead(out Func<Task> action))
-                                                           {
-                                                               try
-                                                               {
-                                                                   await action();
-                                                               }
-                                                               catch (Exception e)
-                                                               {
-                                                                   if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
-                                                               }
-                                                           }
-                                                       }
-                                                   }, TaskCreationOptions.LongRunning).ContinueWith(t =>
-                                                   {
-                                                       if (t.IsFaulted)
-                                                       {
-                                                           if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
-                                                       }
-                                                   });
+        {
+            while (await SendChannel.Reader.WaitToReadAsync())
+            {
+                while (SendChannel.Reader.TryRead(out Func<Task> action))
+                {
+                    try
+                    {
+                        await action();
+                    }
+                    catch (Exception e)
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"{GetErrorMsg()} With exception {e}");
+                    }
+                }
+            }
+        }, TaskCreationOptions.LongRunning).ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                if (_logger.IsError) _logger.Error($"{GetErrorMsg()} {nameof(ProcessMessages)} encountered an exception.", t.Exception);
+            }
+        });
     }
 }

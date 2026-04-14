@@ -23,12 +23,12 @@ public class LongDisposeTracker : IResolveMiddleware
     /// </summary>
     /// <param name="builder"></param>
     public static void Configure(ContainerBuilder builder) => builder.ComponentRegistryBuilder.Registered += (sender, args) =>
-                                                                   {
-                                                                       args.ComponentRegistration.ConfigurePipeline((pipeline) =>
-                                                                       {
-                                                                           pipeline.Use(Instance, MiddlewareInsertionMode.EndOfPhase);
-                                                                       });
-                                                                   };
+    {
+        args.ComponentRegistration.ConfigurePipeline((pipeline) =>
+        {
+            pipeline.Use(Instance, MiddlewareInsertionMode.EndOfPhase);
+        });
+    };
 
     private static LongDisposeTracker Instance { get; } = new LongDisposeTracker();
 
