@@ -31,7 +31,8 @@ public class TestBlockchainUtil(
 
     private Task _previousAddBlock = Task.CompletedTask;
 
-    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions) => AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
+    public Task<Block> AddBlock(AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions) =>
+        AddBlock(blockTree.GetProducedBlockParent(null)!, flags, cancellationToken, transactions);
     public async Task<Block> AddBlock(BlockHeader parentToBuildOn, AddBlockFlags flags, CancellationToken cancellationToken, params Transaction[] transactions)
     {
         Task waitforHead = flags.HasFlag(AddBlockFlags.DoNotWaitForHead)

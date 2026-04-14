@@ -16,15 +16,15 @@ public class AssertionsSetup
 {
     [OneTimeSetUp]
     public void RunBeforeAnyTests() => AssertionOptions.AssertEquivalencyUsing(static options =>
-                                                {
-                                                    options
-                                                        .Using<Memory<byte>>(static context =>
-                                                            context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
-                                                        .WhenTypeIs<Memory<byte>>();
-                                                    options
-                                                        .Using<ReadOnlyMemory<byte>>(static context =>
-                                                            context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
-                                                        .WhenTypeIs<ReadOnlyMemory<byte>>();
-                                                    return options;
-                                                });
+    {
+        options
+            .Using<Memory<byte>>(static context =>
+                context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
+            .WhenTypeIs<Memory<byte>>();
+        options
+            .Using<ReadOnlyMemory<byte>>(static context =>
+                context.Subject.AsArray().Should().BeEquivalentTo(context.Expectation.AsArray()))
+            .WhenTypeIs<ReadOnlyMemory<byte>>();
+        return options;
+    });
 }
