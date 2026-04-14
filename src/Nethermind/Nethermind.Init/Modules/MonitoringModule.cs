@@ -15,8 +15,8 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
+using Nethermind.Api;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Trie;
 
 namespace Nethermind.Init.Modules;
 
