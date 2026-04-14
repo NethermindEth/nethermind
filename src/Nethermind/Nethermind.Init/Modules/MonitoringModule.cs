@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Autofac;
 using DotNetty.Buffers;
-using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
