@@ -63,7 +63,7 @@ public partial class BlockProcessor(
 
     public event Action? TransactionsExecuted;
 
-    public virtual (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
+    public (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
@@ -183,7 +183,7 @@ public partial class BlockProcessor(
             });
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    protected void SetAccountChanges(Block block)
+    private void SetAccountChanges(Block block)
         => block.AccountChanges = _stateProvider.GetAccountChanges();
 
     private void StoreBeaconRoot(Block block, IReleaseSpec spec)
