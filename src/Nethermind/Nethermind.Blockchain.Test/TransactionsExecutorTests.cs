@@ -361,44 +361,6 @@ namespace Nethermind.Blockchain.Test
             Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
         }
 
-        // [Test]
-        // public void BlockProductionTransactionsExecutor_does_not_trace_tx_picker_world_state_reads_into_bal()
-        // {
-        //     IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
-
-        //     using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
-        //     stateProvider.CreateAccount(TestItem.AddressA, 1.Ether);
-
-        //     Transaction includedTx = Build.A.Transaction
-        //         .WithSenderAddress(TestItem.AddressA)
-        //         .WithNonce(0)
-        //         .WithGasPrice(1)
-        //         .WithGasLimit(GasCostOf.Transaction)
-        //         .SignedAndResolved(TestItem.PrivateKeyA)
-        //         .TestObject;
-
-        //     Transaction skippedTx = Build.A.Transaction
-        //         .WithSenderAddress(TestItem.AddressB)
-        //         .WithNonce(0)
-        //         .WithGasPrice(1)
-        //         .WithGasLimit(GasCostOf.Transaction)
-        //         .SignedAndResolved(TestItem.PrivateKeyB)
-        //         .TestObject;
-
-        //     Block block = Build.A.Block
-        //         .WithGasLimit(GasCostOf.Transaction * 2)
-        //         .WithTransactions([includedTx, skippedTx])
-        //         .TestObject;
-
-        //     ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
-        //     transactionProcessor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(TransactionResult.Ok);
-
-        //     IReleaseSpec spec = Homestead.Instance;
-        //     Transaction[] selectedTransactions = RunBlockProduction(transactionProcessor, stateProvider, block, spec);
-        //     Assert.That(selectedTransactions, Has.Length.EqualTo(1));
-        //     Assert.That(selectedTransactions[0], Is.SameAs(includedTx));
-        // }
-
         [Test]
         public void BlockProductionTransactionsExecutor_tx_picker_uses_state_changes_from_previous_transactions()
         {
