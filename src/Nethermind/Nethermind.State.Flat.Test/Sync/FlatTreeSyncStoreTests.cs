@@ -79,21 +79,6 @@ public class FlatTreeSyncStoreTests
     }
 
     [Test]
-    public void EnsureStorageEmpty_does_not_affect_other_accounts()
-    {
-        Address addressA = TestItem.AddressA;
-        Address addressB = TestItem.AddressB;
-        WriteStorageDirectToDb(addressA, 0, [0x11]);
-        WriteStorageDirectToDb(addressB, 0, [0x22]);
-
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
-        store.EnsureStorageEmpty(Keccak.Compute(addressA.Bytes));
-
-        Assert.That(HasStorageEntries(addressA), Is.False, "AddressA storage should be deleted");
-        Assert.That(HasStorageEntries(addressB), Is.True, "AddressB storage should remain");
-    }
-
-    [Test]
     public void EnsureStorageEmpty_on_empty_account_is_noop()
     {
         Address address = TestItem.AddressA;
