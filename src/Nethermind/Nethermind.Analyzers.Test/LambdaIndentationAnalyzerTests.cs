@@ -32,7 +32,7 @@ public class LambdaIndentationAnalyzerTests
             }
             """;
 
-        await Verify(source, Diagnostic().WithLocation(0).WithArguments("33", "25", "24"));
+        await Verify(source, Diagnostic().WithLocation(0).WithArguments("33", "25", "4"));
     }
 
     [TestCase(

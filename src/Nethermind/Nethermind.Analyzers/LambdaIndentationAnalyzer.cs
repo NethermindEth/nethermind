@@ -21,7 +21,7 @@ public sealed class LambdaIndentationAnalyzer : DiagnosticAnalyzer
     public const string DiagnosticId = "NETH002";
 
     /// <summary>Maximum allowed column offset of the lambda body relative to its containing statement.</summary>
-    public const int MaxIndentOffset = 24;
+    public const int MaxIndentOffset = 4;
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
@@ -59,21 +59,30 @@ public sealed class LambdaIndentationAnalyzer : DiagnosticAnalyzer
 
         int bodyColumn = bodyFirstToken.GetLocation().GetLineSpan().StartLinePosition.Character;
 
-        // Walk up to the nearest statement or member declaration to get the baseline column
-        SyntaxNode? container = lambda.Parent;
-        while (container is not null
-               && container is not StatementSyntax
-               && container is not MemberDeclarationSyntax
-               && container is not AccessorDeclarationSyntax)
+        // Baseline: indentation of the line that contains the lambda arrow (=>).
+        // This correctly handles fluent chains where the lambda is already indented
+        // several levels — we only care about depth relative to that line, not the
+        // outermost statement or member declaration.
+        FileLinePositionSpan arrowSpan = lambda.ArrowToken.GetLocation().GetLineSpan();
+        SyntaxToken arrowLineFirstToken = lambda.ArrowToken.GetPreviousToken();
+        // Walk back to find the first token on the same line as the arrow
+        while (arrowLineFirstToken != default
+               && arrowLineFirstToken.GetLocation().GetLineSpan().StartLinePosition.Line
+                  == arrowSpan.StartLinePosition.Line)
         {
-            container = container.Parent;
+            SyntaxToken prev = arrowLineFirstToken.GetPreviousToken();
+            if (prev == default
+                || prev.GetLocation().GetLineSpan().StartLinePosition.Line
+                   != arrowSpan.StartLinePosition.Line)
+                break;
+            arrowLineFirstToken = prev;
         }
 
-        if (container is null)
-            return;
+        int arrowLineColumn = arrowLineFirstToken == default
+            ? 0
+            : arrowLineFirstToken.GetLocation().GetLineSpan().StartLinePosition.Character;
 
-        int containerColumn = container.GetFirstToken().GetLocation().GetLineSpan().StartLinePosition.Character;
-        int offset = bodyColumn - containerColumn;
+        int offset = bodyColumn - arrowLineColumn;
 
         if (offset > MaxIndentOffset)
         {
