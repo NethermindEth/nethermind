@@ -9,7 +9,7 @@ namespace Nethermind.StateComposition;
 [ConfigCategory(Description = "State composition metrics")]
 public interface IStateCompositionConfig : IConfig
 {
-    [ConfigItem(Description = "Enable state composition plugin", DefaultValue = "true")]
+    [ConfigItem(Description = "Enable state composition plugin", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "Timeout in seconds to wait for a queued scan to acquire the lock. " +
@@ -53,7 +53,7 @@ public interface IStateCompositionConfig : IConfig
 
 public class StateCompositionConfig : IStateCompositionConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; }
     public int ScanQueueTimeoutSeconds { get; set; } = 5;
     public int ScanParallelism { get; set; } = Math.Clamp(Environment.ProcessorCount / 2, 1, 16);
     public long ScanMemoryBudgetBytes { get; set; } = 1_000_000_000;
