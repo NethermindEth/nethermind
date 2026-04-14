@@ -62,12 +62,12 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
                 Address[] masternodes = epochSwitchManager.GetEpochSwitchInfo(parentHeader)?.Masternodes ?? [];
                 foreach (Address masternode in masternodes)
                 {
-                    if(minerStatistics.GetValueOrDefault(masternode, 0) < XdcConstants.MinimumMinerBlockPerEpoch)
+                    if (minerStatistics.GetValueOrDefault(masternode, 0) < XdcConstants.MinimumMinerBlockPerEpoch)
                         penalties.Add(masternode);
                 }
                 minerStatistics.Clear();
 
-                if(parentNumber <= minBlockNumber)
+                if (parentNumber <= minBlockNumber)
                     break;
             }
 
@@ -80,10 +80,10 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
         long startRange = Math.Max(number - (long)currentSpec.RangeReturnSigner + 1, 0);
         for (int i = listBlockNumber.Count - 1; i >= 0; i--)
         {
-            long blockNumber =  listBlockNumber[i];
+            long blockNumber = listBlockNumber[i];
             Hash256 blockHash = listBlockHash[i];
 
-            if(blockNumber < startRange)
+            if (blockNumber < startRange)
                 continue;
 
 

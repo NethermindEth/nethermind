@@ -32,7 +32,6 @@ internal class SubnetPenaltyTests
     [Test]
     public void TestNoPenalty()
     {
-        // The last validator never mines (Beneficiary cycles 0..n-2).
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
             validatorSelector: (validators, i) => validators[i % ValidatorCount]
@@ -110,7 +109,8 @@ internal class SubnetPenaltyTests
     }
 
     [Test]
-    public void TestSigningTxRemovesPenalty(){
+    public void TestSigningTxRemovesPenalty()
+    {
         // The last validator never mines (Beneficiary cycles 0..n-2) in current epoch.
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
@@ -131,7 +131,8 @@ internal class SubnetPenaltyTests
     }
 
     [Test]
-    public void TestSigningTxBeforeRangeReturnSigner(){
+    public void TestSigningTxBeforeRangeReturnSigner()
+    {
         // The last validator never mines (Beneficiary cycles 0..n-2) in current epoch.
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
@@ -173,6 +174,32 @@ internal class SubnetPenaltyTests
             []);
         penalties.Length.Should().Be(1);
         penalties[0].Should().Be(ctx.ValidatorKeys.Last().Address);
+    }
+
+    [Test]
+    public void TestSortOrder(){
+        MockedSubnetPenaltyContext ctx = CreateMockedContext(
+            chainLength: EpochLength * 3 - Gap + 1,
+            validatorSelector: (validators, i) => validators[i % ValidatorCount]
+        );
+
+        long target = EpochLength * 3 - Gap;
+
+        Address eip55First  = new("0xECf1aC276D2D3333483cF394d2F73BaB6915feCb");
+        Address eip55Second = new("0xe3eE640071486df6A007021c34D52b5DE7be94e3");
+
+        string.CompareOrdinal(eip55First.ToString(), eip55Second.ToString()).Should().BeGreaterThan(0);
+        string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)).Should().BeLessThan(0);
+
+        Address[] injectedPenalties = [eip55Second, eip55First];
+        ctx.Headers[target - EpochLength + 1].Penalties = injectedPenalties.SelectMany(a => a.Bytes).ToArray();
+
+        Address[] penalties = ctx.Handler.HandlePenalties(
+            target,
+            ctx.Headers[(int)(target - 1)].Hash!,
+            []);
+
+        penalties.Should().Equal(eip55First, eip55Second);
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────
