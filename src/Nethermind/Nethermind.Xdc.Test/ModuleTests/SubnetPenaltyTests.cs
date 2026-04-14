@@ -240,7 +240,7 @@ internal class SubnetPenaltyTests
         }
 
         blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<long>())
-            .Returns(ci => hashToHeader.TryGetValue(ci.ArgAt<Hash256>(0), out var h) ? h : null);
+            .Returns(ci => hashToHeader.TryGetValue(ci.ArgAt<Hash256>(0), out XdcSubnetBlockHeader? h) ? h : null);
         blockTree.FindBlock(Arg.Any<Hash256>(), Arg.Any<long>())
             .Returns(ci => hashToBlock.TryGetValue(ci.ArgAt<Hash256>(0), out Block? block) ? block : null);
         blockTree.Head.Returns(blocks.Last());
