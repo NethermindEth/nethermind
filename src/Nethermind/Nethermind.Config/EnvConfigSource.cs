@@ -33,32 +33,29 @@ namespace Nethermind.Config
             return (variableValueString is not null, variableValueString);
         }
 
-        public IEnumerable<(string Category, string Name)> GetConfigKeys()
+        public IEnumerable<(string Category, string Name)> GetConfigKeys() => _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(static k => k.StartsWith("NETHERMIND_")).Select(static v => v.Split('_')).Select(static a =>
         {
-            return _environmentWrapper.GetEnvironmentVariables().Keys.Cast<string>().Where(static k => k.StartsWith("NETHERMIND_")).Select(static v => v.Split('_')).Select(static a =>
+            // actually only possible value is "NETHERMIND_"
+            if (a.Length <= 1)
             {
-                // actually only possible value is "NETHERMIND_"
-                if (a.Length <= 1)
-                {
-                    return (null, null);
-                }
+                return (null, null);
+            }
 
-                // variables like "NETHERMIND_CONFIG"
-                if (a.Length == 2)
-                {
-                    return (null, a[1]);
-                }
+            // variables like "NETHERMIND_CONFIG"
+            if (a.Length == 2)
+            {
+                return (null, a[1]);
+            }
 
-                // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL"
-                if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
-                {
-                    return (null, string.Join(null, a[1..]));
-                }
+            // VARIABLES like "NETHERMIND_CLI_SWITCH_LOCAL"
+            if (a.Length > 2 && !a[1].EndsWith("config", StringComparison.OrdinalIgnoreCase))
+            {
+                return (null, string.Join(null, a[1..]));
+            }
 
-                // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED"
-                return (a[1], a[2]);
-            });
-        }
+            // Variables like "NETHERMIND_JSONRPCCONFIG_ENABLED"
+            return (a[1], a[2]);
+        });
     }
 
     public interface IEnvironment
@@ -69,14 +66,8 @@ namespace Nethermind.Config
 
     public class EnvironmentWrapper : IEnvironment
     {
-        public string GetEnvironmentVariable(string variableName)
-        {
-            return Environment.GetEnvironmentVariable(variableName);
-        }
+        public string GetEnvironmentVariable(string variableName) => Environment.GetEnvironmentVariable(variableName);
 
-        public System.Collections.IDictionary GetEnvironmentVariables()
-        {
-            return Environment.GetEnvironmentVariables();
-        }
+        public System.Collections.IDictionary GetEnvironmentVariables() => Environment.GetEnvironmentVariables();
     }
 }

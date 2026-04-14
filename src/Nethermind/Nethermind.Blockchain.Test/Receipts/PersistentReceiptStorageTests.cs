@@ -53,10 +53,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _receiptsDb.Dispose();
-    }
+    public void TearDown() => _receiptsDb.Dispose();
 
     private void CreateStorage()
     {
@@ -96,10 +93,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Get_returns_empty_on_empty_span()
-    {
+    public void Get_returns_empty_on_empty_span() =>
         _storage.Get(Keccak.Zero).Should().BeEquivalentTo(Array.Empty<TxReceipt>());
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Adds_and_retrieves_receipts_for_block()
@@ -256,10 +251,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void HasBlock_should_returnFalseForMissingHash()
-    {
+    public void HasBlock_should_returnFalseForMissingHash() =>
         _storage.HasBlock(0, Keccak.Compute("missing-value")).Should().BeFalse();
-    }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void HasBlock_should_returnTrueForKnownHash()
@@ -501,9 +494,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         return (block, receipts);
     }
 
-    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts)
-    {
-        return opts
-            .Excluding(static su => su.Error);
-    }
+    private EquivalencyAssertionOptions<TxReceipt> ReceiptCompareOpt(EquivalencyAssertionOptions<TxReceipt> opts) =>
+        opts.Excluding(static su => su.Error);
 }

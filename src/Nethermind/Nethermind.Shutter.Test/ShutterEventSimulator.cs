@@ -78,10 +78,8 @@ public class ShutterEventSimulator
         public ulong Eon;
     }
 
-    public List<Event> GetEvents(int c)
-    {
-        return _eventSource.Take(c).ToList();
-    }
+    public List<Event> GetEvents(int c) =>
+        _eventSource.Take(c).ToList();
 
     public (List<Event> events, DecryptionKeys keys) AdvanceSlot(int eventCount, int? keyCount)
     {
@@ -105,10 +103,8 @@ public class ShutterEventSimulator
         return (events, decryptionKeys);
     }
 
-    protected virtual IEnumerable<Event> EmitEvents()
-    {
-        return EmitEvents(EmitDefaultEons(), EmitDefaultTransactions());
-    }
+    protected virtual IEnumerable<Event> EmitEvents() =>
+        EmitEvents(EmitDefaultEons(), EmitDefaultTransactions());
 
     protected IEnumerable<Event> EmitEvents(IEnumerable<ulong> eons, IEnumerable<Transaction> transactions)
     {

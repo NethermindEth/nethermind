@@ -28,9 +28,6 @@ namespace Nethermind.JsonRpc.Modules
     {
         private readonly T _module = module;
 
-        public override T Create()
-        {
-            return _module;
-        }
+        public override T Create() => _module;
     }
 }

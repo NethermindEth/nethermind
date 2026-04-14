@@ -17,15 +17,9 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
 {
     private int _offset;
 
-    public ReadOnlyMemory<byte> Peek(int bytes)
-    {
-        return memory[_offset..(_offset + bytes)];
-    }
+    public ReadOnlyMemory<byte> Peek(int bytes) => memory[_offset..(_offset + bytes)];
 
-    public void Skip(int bytes)
-    {
-        _offset += bytes;
-    }
+    public void Skip(int bytes) => _offset += bytes;
 
     public ReadOnlyMemory<byte> Take(int bytes)
     {
@@ -35,15 +29,9 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
         return m;
     }
 
-    public byte PeekByte()
-    {
-        return memory.Span[_offset];
-    }
+    public byte PeekByte() => memory.Span[_offset];
 
-    public void SkipByte()
-    {
-        _offset++;
-    }
+    public void SkipByte() => _offset++;
 
     public byte TakeByte()
     {
@@ -56,10 +44,7 @@ public class BinaryMemoryReader(ReadOnlyMemory<byte> memory)
 
     public bool HasRemainder => _offset < memory.Length;
 
-    public TResult Read<TResult>(Func<BinaryMemoryReader, TResult> parser)
-    {
-        return parser(this);
-    }
+    public TResult Read<TResult>(Func<BinaryMemoryReader, TResult> parser) => parser(this);
 
     public delegate bool TryParseFunc<TResult>(ReadOnlySpan<byte> source, out TResult result);
     public TResult Read<TResult>(TryParseFunc<TResult> parser, int bytes)

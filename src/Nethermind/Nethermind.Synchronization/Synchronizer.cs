@@ -223,17 +223,14 @@ namespace Nethermind.Synchronization
             }
         }
 
-        private static NodeStatsEventType Convert(SyncEvent syncEvent)
+        private static NodeStatsEventType Convert(SyncEvent syncEvent) => syncEvent switch
         {
-            return syncEvent switch
-            {
-                Synchronization.SyncEvent.Started => NodeStatsEventType.SyncStarted,
-                Synchronization.SyncEvent.Failed => NodeStatsEventType.SyncFailed,
-                Synchronization.SyncEvent.Cancelled => NodeStatsEventType.SyncCancelled,
-                Synchronization.SyncEvent.Completed => NodeStatsEventType.SyncCompleted,
-                _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
-            };
-        }
+            Synchronization.SyncEvent.Started => NodeStatsEventType.SyncStarted,
+            Synchronization.SyncEvent.Failed => NodeStatsEventType.SyncFailed,
+            Synchronization.SyncEvent.Cancelled => NodeStatsEventType.SyncCancelled,
+            Synchronization.SyncEvent.Completed => NodeStatsEventType.SyncCompleted,
+            _ => throw new ArgumentOutOfRangeException(nameof(syncEvent))
+        };
 
         private void DownloaderOnSyncEvent(object? sender, SyncEventArgs e)
         {
@@ -387,10 +384,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
     }
 
-    private void ConfigureFullSync(ContainerBuilder scopeConfig)
-    {
-        scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>();
-    }
+    private void ConfigureFullSync(ContainerBuilder scopeConfig) => scopeConfig.AddScoped<ISyncFeed<BlocksRequest>, FullSyncFeed>();
 
     private void ConfigureFastSync(ContainerBuilder scopeConfig)
     {
@@ -478,14 +472,11 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
         }
     }
 
-    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch>
-    {
-        serviceCollection
+    private static void ConfigureSingletonSyncFeed<TBatch, TFeed, TDownloader, TAllocationStrategy>(ContainerBuilder serviceCollection) where TFeed : class, ISyncFeed<TBatch> where TDownloader : class, ISyncDownloader<TBatch> where TAllocationStrategy : class, IPeerAllocationStrategyFactory<TBatch> => serviceCollection
             .AddSingleton<ISyncFeed<TBatch>, TFeed>()
             .AddSingleton<SyncFeedComponent<TBatch>>()
             .AddSingleton<ISyncDownloader<TBatch>, TDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<TBatch>, TAllocationStrategy>()
             .AddSingleton<SyncDispatcher<TBatch>>();
-    }
 
 }

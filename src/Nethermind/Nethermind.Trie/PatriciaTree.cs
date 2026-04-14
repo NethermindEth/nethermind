@@ -290,16 +290,10 @@ namespace Nethermind.Trie
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceExtensionSkip(TrieNode extensionChild)
-            {
-                _logger.Trace($"Skipping commit of {extensionChild}");
-            }
+            void TraceExtensionSkip(TrieNode extensionChild) => _logger.Trace($"Skipping commit of {extensionChild}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceSkipInlineNode(TrieNode node)
-            {
-                _logger.Trace($"Skipping commit of an inlined {node}");
-            }
+            void TraceSkipInlineNode(TrieNode node) => _logger.Trace($"Skipping commit of an inlined {node}");
         }
 
         private async Task CreateTaskForPath(ICommitter committer, TrieNode node, int maxLevelForConcurrentCommit, TreePath childPath, TrieNode childNode, int idx)
@@ -501,10 +495,7 @@ namespace Nethermind.Trie
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
-        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value)
-        {
-            Set(rawKey, new CappedArray<byte>(value));
-        }
+        public virtual void Set(ReadOnlySpan<byte> rawKey, byte[] value) => Set(rawKey, new CappedArray<byte>(value));
 
         [SkipLocalsInit]
         [DebuggerStepThrough]
@@ -543,16 +534,10 @@ namespace Nethermind.Trie
                 if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
 
-            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value)
-            {
-                _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
-            }
+            void Trace(in ReadOnlySpan<byte> rawKey, CappedArray<byte> value) => _logger.Trace($"{(value.Length == 0 ? $"Deleting {rawKey.ToHexString(withZeroX: true)}" : $"Setting {rawKey.ToHexString(withZeroX: true)} = {value.AsSpan().ToHexString(withZeroX: true)}")}");
 
             [DoesNotReturn, StackTraceHidden]
-            static void ThrowNonConcurrentWrites()
-            {
-                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
-            }
+            static void ThrowNonConcurrentWrites() => throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
         }
 
         [DebuggerStepThrough]

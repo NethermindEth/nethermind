@@ -61,10 +61,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
     public abstract class TransactionPermissionContract : Contract, ITransactionPermissionContract
     {
-        public virtual UInt256 ContractVersion(BlockHeader blockHeader)
-        {
-            return Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
-        }
+        public virtual UInt256 ContractVersion(BlockHeader blockHeader) => Constant.Call<UInt256>(blockHeader, nameof(ContractVersion), Address.Zero);
 
         /// <summary>
         /// Returns the contract version number needed for node's engine.
@@ -98,10 +95,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
             IAbiEncoder abiEncoder,
             Address contractAddress,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-            : base(abiEncoder, contractAddress)
-        {
-            Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
-        }
+            : base(abiEncoder, contractAddress) => Constant = new PermissionConstantContract(this, readOnlyTxProcessorSource);
 
         protected class PermissionConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : ConstantContract(contract, readOnlyTxProcessorSource)
         {

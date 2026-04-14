@@ -140,10 +140,7 @@ namespace Nethermind.Synchronization.SnapSync
             return true;
         }
 
-        public void UpdatePivot()
-        {
-            _pivot.UpdateHeaderForcefully();
-        }
+        public void UpdatePivot() => _pivot.UpdateHeaderForcefully();
 
         public bool IsFinished(out SnapSyncBatch? nextBatch)
         {
@@ -289,13 +286,10 @@ namespace Nethermind.Synchronization.SnapSync
             return new SnapSyncBatch { AccountsToRefreshRequest = new AccountsToRefreshRequest { RootHash = rootHash, Paths = paths } };
         }
 
-        private bool ShouldRequestAccountRequests()
-        {
-            return _activeAccountRequests < _accountRangePartitionCount
+        private bool ShouldRequestAccountRequests() => _activeAccountRequests < _accountRangePartitionCount
                    && NextSlotRange.Count < 10
                    && StoragesToRetrieve.Count < HIGH_STORAGE_QUEUE_SIZE
                    && CodesToRetrieve.Count < HIGH_CODES_QUEUE_SIZE;
-        }
 
         public void EnqueueCodeHashes(ReadOnlySpan<ValueHash256> codeHashes)
         {
@@ -325,10 +319,7 @@ namespace Nethermind.Synchronization.SnapSync
             Interlocked.Decrement(ref _activeAccRefreshRequests);
         }
 
-        public void EnqueueAccountStorage(PathWithAccount pwa)
-        {
-            StoragesToRetrieve.Enqueue(pwa);
-        }
+        public void EnqueueAccountStorage(PathWithAccount pwa) => StoragesToRetrieve.Enqueue(pwa);
 
         public void EnqueueAccountRefresh(PathWithAccount pathWithAccount, in ValueHash256? startingHash, in ValueHash256? hashLimit)
         {
@@ -452,9 +443,7 @@ namespace Nethermind.Synchronization.SnapSync
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
         }
 
-        public bool IsSnapGetRangesFinished()
-        {
-            return AccountRangeReadyForRequest.IsEmpty
+        public bool IsSnapGetRangesFinished() => AccountRangeReadyForRequest.IsEmpty
                    && StoragesToRetrieve.IsEmpty
                    && NextSlotRange.IsEmpty
                    && CodesToRetrieve.IsEmpty
@@ -463,7 +452,6 @@ namespace Nethermind.Synchronization.SnapSync
                    && _activeStorageRequests == 0
                    && _activeCodeRequests == 0
                    && _activeAccRefreshRequests == 0;
-        }
 
         private void GetSyncProgress()
         {
@@ -670,11 +658,9 @@ namespace Nethermind.Synchronization.SnapSync
                 return 1.0 - total;
             }
 
-            internal bool OnCompletedPartition()
-            {
+            internal bool OnCompletedPartition() =>
                 // Determine if this tracker could be removed
-                return Interlocked.Decrement(ref _totalPartition) == 0;
-            }
+                Interlocked.Decrement(ref _totalPartition) == 0;
         }
     }
 }

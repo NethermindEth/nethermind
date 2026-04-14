@@ -135,9 +135,6 @@ namespace Nethermind.EthStats.Clients
             }
         }
 
-        public void Dispose()
-        {
-            _client?.Dispose();
-        }
+        public void Dispose() => _client?.Dispose();
     }
 }

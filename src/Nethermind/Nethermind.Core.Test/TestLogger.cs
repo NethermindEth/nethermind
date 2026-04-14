@@ -11,30 +11,15 @@ namespace Nethermind.Core.Test
     {
         public List<string> LogList { get; set; } = new();
 
-        public void Info(string text)
-        {
-            LogList.Add(text);
-        }
+        public void Info(string text) => LogList.Add(text);
 
-        public void Warn(string text)
-        {
-            LogList.Add(text);
-        }
+        public void Warn(string text) => LogList.Add(text);
 
-        public void Debug(string text)
-        {
-            LogList.Add(text);
-        }
+        public void Debug(string text) => LogList.Add(text);
 
-        public void Trace(string text)
-        {
-            LogList.Add(text);
-        }
+        public void Trace(string text) => LogList.Add(text);
 
-        public void Error(string text, Exception? ex = null)
-        {
-            LogList.Add(text);
-        }
+        public void Error(string text, Exception? ex = null) => LogList.Add(text);
 
         public bool IsInfo { get; set; } = true;
         public bool IsWarn { get; set; } = true;

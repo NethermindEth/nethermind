@@ -120,10 +120,7 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        public Task StopAsync()
-        {
-            return _cancellation?.CancelAsync() ?? Task.CompletedTask;
-        }
+        public Task StopAsync() => _cancellation?.CancelAsync() ?? Task.CompletedTask;
 
         string IStoppableService.Description => "sync mode selector";
 
@@ -250,13 +247,10 @@ namespace Nethermind.Synchronization.ParallelSync
             }
         }
 
-        private bool IsTheModeSwitchWorthMentioning(SyncMode current, SyncMode newModes)
-        {
-            return newModes != current &&
+        private bool IsTheModeSwitchWorthMentioning(SyncMode current, SyncMode newModes) => newModes != current &&
                    (_logger.IsDebug ||
                    (newModes != SyncMode.WaitingForBlock || current != SyncMode.Full) &&
                    (newModes != SyncMode.Full || current != SyncMode.WaitingForBlock));
-        }
 
         private void UpdateSyncModes(SyncMode newModes, string? reason = null)
         {
@@ -561,9 +555,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return result;
         }
 
-        private static bool ShouldBeInDisconnectedMode(Snapshot best)
-        {
-            return !best.IsInUpdatingPivot &&
+        private static bool ShouldBeInDisconnectedMode(Snapshot best) => !best.IsInUpdatingPivot &&
                 !best.IsInFastBodies &&
                 !best.IsInFastHeaders &&
                 !best.IsInFastReceipts &&
@@ -573,7 +565,6 @@ namespace Nethermind.Synchronization.ParallelSync
                 // maybe some more sophisticated heuristic?
                 (best.Peer.TotalDifficulty ?? UInt256.Zero).IsZero &&
                 best.Peer.Block == 0;
-        }
 
         private bool ShouldBeInStateSyncMode(Snapshot best)
         {
@@ -698,10 +689,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return (maxPeerDifficulty, number);
         }
 
-        public void Dispose()
-        {
-            CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
-        }
+        public void Dispose() => CancellationTokenExtensions.CancelDisposeAndClear(ref _cancellation);
 
         private Snapshot EnsureSnapshot(in UInt256? peerDifficulty, long peerBlock, bool inBeaconControl)
         {
@@ -741,10 +729,7 @@ namespace Nethermind.Synchronization.ParallelSync
             return new(processed, state, block, header, chainDifficulty, Math.Max(peerBlock, 0), peerDifficulty, inBeaconControl, targetBlock, _syncProgressResolver.SyncPivot.BlockNumber);
         }
 
-        private static bool IsSnapshotInvalid(Snapshot best)
-        {
-            return // none of these values should ever be negative
-                best.Block < 0
+        private static bool IsSnapshotInvalid(Snapshot best) => best.Block < 0
                 || best.Header < 0
                 || best.State < 0
                 || best.Processed < 0
@@ -755,10 +740,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // we cannot download state for an unknown header
                 || best.State > best.Header
                 // we can only process blocks for which we have full body
-                || best.Processed > best.Block;
-            // for any processed block we should have its full state
-            // but we only do limited lookups for state so we need to instead fast sync to now;
-        }
+                || best.Processed > best.Block;// for any processed block we should have its full state// but we only do limited lookups for state so we need to instead fast sync to now;
 
         private void LogDetailedSyncModeChecks(string syncType, params (string Name, bool IsSatisfied)[] checks)
         {

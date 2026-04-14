@@ -216,15 +216,9 @@ public class MetricsTests
     }
 
     [Test]
-    public void All_config_items_have_descriptions()
-    {
-        ValidateMetricsDescriptions();
-    }
+    public void All_config_items_have_descriptions() => ValidateMetricsDescriptions();
 
-    public static void ValidateMetricsDescriptions()
-    {
-        ForEachProperty(CheckDescribedOrHidden);
-    }
+    public static void ValidateMetricsDescriptions() => ForEachProperty(CheckDescribedOrHidden);
 
     private static void CheckDescribedOrHidden(PropertyInfo property)
     {

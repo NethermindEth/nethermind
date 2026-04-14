@@ -96,12 +96,9 @@ public class LogIndexBuilderTests
     {
         private int _callCount;
 
-        public override Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null)
-        {
-            return Interlocked.Increment(ref _callCount) <= failAfter
+        public override Task AddReceiptsAsync(LogIndexAggregate aggregate, LogIndexUpdateStats? stats = null) => Interlocked.Increment(ref _callCount) <= failAfter
                 ? base.AddReceiptsAsync(aggregate, stats)
                 : throw exception;
-        }
     }
 
     private const int MaxReorgDepth = 8;
@@ -147,12 +144,9 @@ public class LogIndexBuilderTests
         }
     }
 
-    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage)
-    {
-        return new LogIndexBuilder(
+    private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage) => new LogIndexBuilder(
             logIndexStorage, _config, _blockTree, _syncConfig, _receiptStorage, _logManager
         ).AddTo(_testDisposables);
-    }
 
     [Test]
     [CancelAfter(60_000)]

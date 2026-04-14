@@ -140,10 +140,7 @@ namespace Nethermind.Core.Crypto
         public Hash256(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public Hash256(in ValueHash256 hash256)
-        {
-            _hash256 = hash256;
-        }
+        public Hash256(in ValueHash256 hash256) => _hash256 = hash256;
 
         public Hash256(byte[] bytes)
         {

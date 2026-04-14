@@ -210,16 +210,10 @@ public class OptimismCostHelper(IOptimismSpecHelper opSpecHelper, Address l1Bloc
     }
 
     // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
-    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
-    {
-        return PrecisionDivisor.IsZero ? default : dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
-    }
+    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar) => PrecisionDivisor.IsZero ? default : dataGas * (PrecisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / PrecisionDivisor;
 
     // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
-    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar)
-    {
-        return BasicDivisor.IsZero ? default : dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
-    }
+    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar) => BasicDivisor.IsZero ? default : dataGasWithOverhead * l1BaseFee * feeScalar / BasicDivisor;
 
     // Based on:
     // https://github.com/ethereum-optimism/op-geth/blob/7c2819836018bfe0ca07c4e4955754834ffad4e0/core/types/rollup_cost.go

@@ -70,10 +70,7 @@ public class OwnedBlockBodies(BlockBody?[]? bodies, IMemoryOwner<byte>? memoryOw
         }
     }
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return _rawBodies.GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => _rawBodies.GetEnumerator();
 
     public int Count => _rawBodies.Length;
 

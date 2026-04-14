@@ -39,10 +39,8 @@ namespace Nethermind.Benchmark.Runner
 
     public class PrecompileBenchmarkConfig : DashboardConfig
     {
-        public PrecompileBenchmarkConfig(Job job) : base(job)
-        {
+        public PrecompileBenchmarkConfig(Job job) : base(job) =>
             AddColumnProvider(new GasColumnProvider());
-        }
     }
 
     public static class Program

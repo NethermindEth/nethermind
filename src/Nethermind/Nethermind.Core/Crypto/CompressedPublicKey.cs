@@ -29,10 +29,7 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes.Slice(bytes.Length - LengthInBytes, LengthInBytes).ToArray();
         }
 
-        public PublicKey Decompress()
-        {
-            return new PublicKey(SecP256k1.Decompress(Bytes));
-        }
+        public PublicKey Decompress() => new(SecP256k1.Decompress(Bytes));
 
         public byte[] Bytes { get; }
 
@@ -46,24 +43,12 @@ namespace Nethermind.Core.Crypto
             return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public override bool Equals(object? obj)
-        {
-            return Equals(obj as CompressedPublicKey);
-        }
+        public override bool Equals(object? obj) => Equals(obj as CompressedPublicKey);
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(Bytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(Bytes);
 
-        public override string ToString()
-        {
-            return Bytes.ToHexString(true);
-        }
+        public override string ToString() => Bytes.ToHexString(true);
 
-        public string ToString(bool with0X)
-        {
-            return Bytes.ToHexString(with0X);
-        }
+        public string ToString(bool with0X) => Bytes.ToHexString(with0X);
     }
 }

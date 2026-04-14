@@ -41,28 +41,19 @@ namespace Nethermind.Runner.Logging
             }
         }
 
-        public bool IsEnabled(LogLevel logLevel)
-        {
-            return IsLevelEnabled(logLevel);
-        }
+        public bool IsEnabled(LogLevel logLevel) => IsLevelEnabled(logLevel);
 
-        public IDisposable BeginScope<TState>(TState state)
-        {
-            return NullScope.Instance;
-        }
+        public IDisposable BeginScope<TState>(TState state) => NullScope.Instance;
 
-        private bool IsLevelEnabled(LogLevel logLevel)
+        private bool IsLevelEnabled(LogLevel logLevel) => logLevel switch
         {
-            return logLevel switch
-            {
-                LogLevel.Error or LogLevel.Critical => _logger.IsError,
-                LogLevel.Information => _logger.IsInfo,
-                LogLevel.Warning => _logger.IsWarn,
-                LogLevel.Debug => _logger.IsDebug,
-                LogLevel.Trace => _logger.IsTrace,
-                _ => false,
-            };
-        }
+            LogLevel.Error or LogLevel.Critical => _logger.IsError,
+            LogLevel.Information => _logger.IsInfo,
+            LogLevel.Warning => _logger.IsWarn,
+            LogLevel.Debug => _logger.IsDebug,
+            LogLevel.Trace => _logger.IsTrace,
+            _ => false,
+        };
 
         private class NullScope : IDisposable
         {

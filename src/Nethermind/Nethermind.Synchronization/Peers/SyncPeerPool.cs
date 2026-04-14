@@ -90,10 +90,7 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}");
         }
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts)
-        {
-            ReportWeakPeer(peerInfo, allocationContexts);
-        }
+        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts) => ReportWeakPeer(peerInfo, allocationContexts);
 
         public void ReportBreachOfProtocol(PeerInfo? peerInfo, DisconnectReason disconnectReason, string details)
         {
@@ -546,11 +543,8 @@ namespace Nethermind.Synchronization.Peers
             return 1;
         }
 
-        public void SignalPeersChanged()
-        {
-            Interlocked.Exchange(ref _signal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
+        public void SignalPeersChanged() => Interlocked.Exchange(ref _signal, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously))
                 .TrySetResult();
-        }
 
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
         {
@@ -679,17 +673,11 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private void UpdatePeerCountMetric(NodeClientType clientType, int delta)
-        {
-            Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
-        }
+        private void UpdatePeerCountMetric(NodeClientType clientType, int delta) => Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
 
         private class RefreshTotalDiffTask
         {
-            public RefreshTotalDiffTask(ISyncPeer syncPeer)
-            {
-                SyncPeer = syncPeer;
-            }
+            public RefreshTotalDiffTask(ISyncPeer syncPeer) => SyncPeer = syncPeer;
 
             public RefreshTotalDiffTask(Hash256 blockHash, ISyncPeer syncPeer)
             {

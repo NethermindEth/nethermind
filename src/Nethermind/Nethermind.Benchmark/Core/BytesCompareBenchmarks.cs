@@ -34,15 +34,9 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark]
-        public bool Improved()
-        {
-            return Bytes.AreEqual(_a, _b);
-        }
+        public bool Improved() => Bytes.AreEqual(_a, _b);
 
         [Benchmark]
-        public bool Current()
-        {
-            return Bytes.AreEqual(_a, _b);
-        }
+        public bool Current() => Bytes.AreEqual(_a, _b);
     }
 }

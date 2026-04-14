@@ -168,9 +168,6 @@ namespace Nethermind.Stats
             stats.AddTransferSpeedCaptureEvent(type, value);
         }
 
-        public void Dispose()
-        {
-            _cleanupTimer.Dispose();
-        }
+        public void Dispose() => _cleanupTimer.Dispose();
     }
 }

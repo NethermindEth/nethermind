@@ -185,10 +185,7 @@ namespace Nethermind.Consensus.AuRa
             {
                 public static readonly StepElementComparer Instance = new();
 
-                public int Compare(AuthorBlockForStep x, AuthorBlockForStep y)
-                {
-                    return x.Step.CompareTo(y.Step);
-                }
+                public int Compare(AuthorBlockForStep x, AuthorBlockForStep y) => x.Step.CompareTo(y.Step);
             }
 
             private readonly List<AuthorBlockForStep> _list

@@ -206,9 +206,8 @@ public class TimeoutCertificateManagerTests
         Assert.That(tcManager.FilterTimeout(timeout), Is.EqualTo(expected));
     }
 
-    private TimeoutCertificateManager BuildTimeoutCertificateManager(XdcConsensusContext? ctx = null)
-    {
-        return new TimeoutCertificateManager(
+    private TimeoutCertificateManager BuildTimeoutCertificateManager(XdcConsensusContext? ctx = null) =>
+        new(
             ctx ?? new XdcConsensusContext(),
             Substitute.For<ITimeoutTimer>(),
             Substitute.For<ISyncPeerPool>(),
@@ -218,7 +217,6 @@ public class TimeoutCertificateManagerTests
             Substitute.For<IBlockTree>(),
 
             Substitute.For<ISigner>());
-    }
 
     private static TimeoutCertificate BuildTimeoutCertificate(PrivateKey[] keys, ulong round = 1, ulong gap = 0)
     {

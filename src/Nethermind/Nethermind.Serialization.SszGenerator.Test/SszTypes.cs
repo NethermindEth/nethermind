@@ -155,4 +155,5 @@ namespace Nethermind.Serialization.SszGenerator.Test
         PreviousValue = 1,
         CurrentValue = 2,
     }
+
 }

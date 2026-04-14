@@ -12,10 +12,7 @@ namespace Nethermind.JsonRpc.Test
 {
     public static class StandardJsonRpcTests
     {
-        public static void ValidateDocumentation()
-        {
-            ForEachMethod(CheckDescribed);
-        }
+        public static void ValidateDocumentation() => ForEachMethod(CheckDescribed);
 
         private static void ForEachMethod(Action<MethodInfo> verifier)
         {
@@ -34,10 +31,7 @@ namespace Nethermind.JsonRpc.Test
             CheckModules(verifier, typeof(IRpcModule).Assembly.GetExportedTypes().Where(FilterTypes).ToArray());
         }
 
-        private static bool FilterTypes(Type t)
-        {
-            return typeof(IRpcModule).IsAssignableFrom(t) && t.IsInterface && t != typeof(IContextAwareRpcModule);
-        }
+        private static bool FilterTypes(Type t) => typeof(IRpcModule).IsAssignableFrom(t) && t.IsInterface && t != typeof(IContextAwareRpcModule);
 
         private static void CheckModules(Action<MethodInfo> verifier, Type[] modules)
         {

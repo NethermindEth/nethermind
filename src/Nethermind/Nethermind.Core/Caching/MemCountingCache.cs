@@ -155,11 +155,8 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperation()
-            {
-                throw new InvalidOperationException(
+            static void ThrowInvalidOperation() => throw new InvalidOperationException(
                                     $"{nameof(MemCountingCache)} called {nameof(Replace)} when empty.");
-            }
         }
 
         private struct LruCacheItem(ValueHash256 k, byte[] v)
@@ -169,13 +166,10 @@ namespace Nethermind.Core.Caching
 
             public readonly long MemorySize => FindMemorySize(Value);
 
-            public static long FindMemorySize(byte[] withValue)
-            {
-                return MemorySizes.Align(
+            public static long FindMemorySize(byte[] withValue) => MemorySizes.Align(
                     Hash256.MemorySize +
                     MemorySizes.ArrayOverhead +
                     withValue.Length);
-            }
         }
 
         private long CalculateDictionaryPartMemory(int currentCapacity, int newCount)

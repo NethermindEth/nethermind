@@ -407,9 +407,6 @@ public class NodeHealthServiceTests
             }
         }
 
-        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities()
-        {
-            return _capabilities;
-        }
+        public IReadOnlyDictionary<string, (bool Enabled, bool WarnIfMissing)> GetEngineCapabilities() => _capabilities;
     }
 }

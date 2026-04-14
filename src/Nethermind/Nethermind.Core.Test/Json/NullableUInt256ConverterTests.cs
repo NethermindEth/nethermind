@@ -18,10 +18,7 @@ public class NullableUInt256ConverterTests : ConverterTestBase<UInt256?>
     static readonly JsonSerializerOptions options = new() { Converters = { converter } };
 
     [TestCaseSource(nameof(RoundtripTestCases))]
-    public void Test_roundtrip(UInt256? value)
-    {
-        TestConverter(value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(UInt256? value) => TestConverter(value, static (a, b) => a.Equals(b), converter);
 
     static IEnumerable<TestCaseData> RoundtripTestCases =
     [

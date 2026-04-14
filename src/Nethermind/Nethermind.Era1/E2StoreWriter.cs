@@ -59,10 +59,7 @@ public class E2StoreWriter(Stream stream) : IDisposable
         return length + HeaderSize;
     }
 
-    public Task Flush(CancellationToken cancellation = default)
-    {
-        return _stream.FlushAsync(cancellation);
-    }
+    public Task Flush(CancellationToken cancellation = default) => _stream.FlushAsync(cancellation);
 
     public void Dispose()
     {
@@ -70,8 +67,5 @@ public class E2StoreWriter(Stream stream) : IDisposable
         _stream.Dispose();
     }
 
-    public ValueHash256 FinalizeChecksum()
-    {
-        return new ValueHash256(_checksumCalculator.GetHashAndReset());
-    }
+    public ValueHash256 FinalizeChecksum() => new(_checksumCalculator.GetHashAndReset());
 }

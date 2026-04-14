@@ -117,15 +117,9 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Hash256 Compute(ReadOnlySpan<byte> input)
-        {
-            return new Hash256(ValueKeccak.Compute(input));
-        }
+        public static Hash256 Compute(ReadOnlySpan<byte> input) => new(ValueKeccak.Compute(input));
 
         [DebuggerStepThrough]
-        public static Hash256 Compute(string input)
-        {
-            return new Hash256(ValueKeccak.Compute(input));
-        }
+        public static Hash256 Compute(string input) => new(ValueKeccak.Compute(input));
     }
 }

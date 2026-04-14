@@ -101,10 +101,7 @@ internal class XdcTransactionProcessor(
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)
-    {
-        return spec.BlackListedAddresses.Contains(sender);
-    }
+    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {

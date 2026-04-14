@@ -36,8 +36,5 @@ public class AuthResponseMessageSerializerTests
     }
 
     [Test]
-    public void Test()
-    {
-        TestEncodeDecode();
-    }
+    public void Test() => TestEncodeDecode();
 }

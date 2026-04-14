@@ -61,17 +61,14 @@ namespace Nethermind.Facade.Eth
             return SyncingResult.NotSyncing;
         }
 
-        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
+        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode) => new()
         {
-            return new SyncingResult
-            {
-                CurrentBlock = headNumberOrZero,
-                HighestBlock = bestSuggestedNumber,
-                StartingBlock = 0L,
-                SyncMode = syncMode,
-                IsSyncing = true
-            };
-        }
+            CurrentBlock = headNumberOrZero,
+            HighestBlock = bestSuggestedNumber,
+            StartingBlock = 0L,
+            SyncMode = syncMode,
+            IsSyncing = true
+        };
 
         private readonly Stopwatch _syncStopwatch = new();
 
@@ -97,9 +94,6 @@ namespace Nethermind.Facade.Eth
 
         public SyncMode SyncMode => _syncModeSelector.Current;
 
-        public bool IsSyncing()
-        {
-            return GetFullInfo().IsSyncing;
-        }
+        public bool IsSyncing() => GetFullInfo().IsSyncing;
     }
 }

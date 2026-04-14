@@ -108,9 +108,6 @@ namespace Nethermind.Facade.Proxy
             Post
         }
 
-        public void Dispose()
-        {
-            _client?.Dispose();
-        }
+        public void Dispose() => _client?.Dispose();
     }
 }

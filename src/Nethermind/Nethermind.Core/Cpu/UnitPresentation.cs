@@ -16,13 +16,7 @@ public class UnitPresentation(bool isVisible, int minUnitWidth)
 
     public int MinUnitWidth { get; private set; } = minUnitWidth;
 
-    public static UnitPresentation FromVisibility(bool isVisible)
-    {
-        return new UnitPresentation(isVisible, 0);
-    }
+    public static UnitPresentation FromVisibility(bool isVisible) => new(isVisible, 0);
 
-    public static UnitPresentation FromWidth(int unitWidth)
-    {
-        return new UnitPresentation(isVisible: true, unitWidth);
-    }
+    public static UnitPresentation FromWidth(int unitWidth) => new(isVisible: true, unitWidth);
 }

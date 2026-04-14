@@ -70,18 +70,14 @@ public class WalletTests
             }
         }
 
-        public void Dispose()
-        {
-            _keyStorePath?.Dispose();
-        }
+        public void Dispose() => _keyStorePath?.Dispose();
     }
 
     private readonly ConcurrentDictionary<WalletType, Context> _cachedWallets = new();
     private readonly ConcurrentQueue<Context> _wallets = new();
 
     [OneTimeSetUp]
-    public void Setup()
-    {
+    public void Setup() =>
         // by pre-caching wallets we make the tests do lot less work
         Parallel.ForEach(WalletTypes, walletType =>
         {
@@ -89,16 +85,12 @@ public class WalletTests
             _cachedWallets.TryAdd(walletType, cachedWallet);
             _wallets.Enqueue(cachedWallet);
         });
-    }
 
     [OneTimeTearDown]
-    public void TearDown()
-    {
-        Parallel.ForEach(_wallets, static wallet =>
-        {
-            wallet.Dispose();
-        });
-    }
+    public void TearDown() => Parallel.ForEach(_wallets, static wallet =>
+                                   {
+                                       wallet.Dispose();
+                                   });
 
     public enum WalletType
     {

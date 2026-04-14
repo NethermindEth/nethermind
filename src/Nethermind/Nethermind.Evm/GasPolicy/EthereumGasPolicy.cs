@@ -217,10 +217,7 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void UpdateGasUp(ref EthereumGasPolicy gas,
-        long refund)
-    {
-        gas.Value += refund;
-    }
+        long refund) => gas.Value += refund;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void RefundStateGas(ref EthereumGasPolicy gas, long amount, long stateGasFloor)
@@ -256,14 +253,11 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         => UpdateGas(ref gas, GasCostOf.CallValue);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag
+    public static bool ConsumeNewAccountCreation<TEip8037>(ref EthereumGasPolicy gas) where TEip8037 : struct, IFlag => TEip8037.IsActive switch
     {
-        return TEip8037.IsActive switch
-        {
-            true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
-            false => UpdateGas(ref gas, GasCostOf.NewAccount)
-        };
-    }
+        true => ConsumeStateGas(ref gas, GasCostOf.NewAccountState),
+        false => UpdateGas(ref gas, GasCostOf.NewAccount)
+    };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ConsumeLogEmission(ref EthereumGasPolicy gas, long topicCount, long dataSize)

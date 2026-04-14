@@ -17,16 +17,10 @@ public class AccessTxTracer(params Address[] addressesToOptimize) : TxTracer
     public override bool IsTracingAccess => true;
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs,
-        Hash256? stateRoot = null)
-    {
-        GasSpent += gasSpent.SpentGas;
-    }
+        Hash256? stateRoot = null) => GasSpent += gasSpent.SpentGas;
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error,
-        Hash256? stateRoot = null)
-    {
-        GasSpent += gasSpent.SpentGas;
-    }
+        Hash256? stateRoot = null) => GasSpent += gasSpent.SpentGas;
 
     public override void ReportAccess(IEnumerable<Address> accessedAddresses, IEnumerable<StorageCell> accessedStorageCells)
     {

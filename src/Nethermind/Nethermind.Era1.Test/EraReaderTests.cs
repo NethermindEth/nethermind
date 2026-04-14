@@ -68,10 +68,7 @@ internal class EraReaderTests
             AddedContents = addedContents;
         }
 
-        public void Dispose()
-        {
-            _tmpFile.Dispose();
-        }
+        public void Dispose() => _tmpFile.Dispose();
     }
 
     [Test]

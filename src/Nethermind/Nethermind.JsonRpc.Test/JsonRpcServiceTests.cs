@@ -42,10 +42,7 @@ public class JsonRpcServiceTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _context?.Dispose();
-    }
+    public void TearDown() => _context?.Dispose();
 
     private IJsonRpcService _jsonRpcService = null!;
     private IConfigProvider _configurationProvider = null!;

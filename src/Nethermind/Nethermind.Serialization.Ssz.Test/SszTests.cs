@@ -129,10 +129,8 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
-        public void DecodeBitvector_rejects_zero_length_vector()
-        {
+        public void DecodeBitvector_rejects_zero_length_vector() =>
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitvector(ReadOnlySpan<byte>.Empty, 0));
-        }
 
         [Test]
         public void DecodeBitvector_rejects_set_high_bits()
@@ -179,11 +177,9 @@ namespace Nethermind.Serialization.Ssz.Test
         }
 
         [Test]
-        public void DecodeBitlist_rejects_empty_input()
-        {
+        public void DecodeBitlist_rejects_empty_input() =>
             // missing sentinel
             Assert.Throws<InvalidDataException>(() => Ssz.DecodeBitlist(ReadOnlySpan<byte>.Empty));
-        }
 
         [Test]
         public void DecodeBitlist_rejects_zero_last_byte()

@@ -13,10 +13,7 @@ namespace Nethermind.Benchmarks.Core
         private LruCache<int, object> shared;
 
         [GlobalSetup]
-        public void Setup()
-        {
-            shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);
-        }
+        public void Setup() => shared = new LruCache<int, object>(Capacity, Capacity, string.Empty);
 
         [Benchmark]
         public ICache<int, object> WithRecreation()

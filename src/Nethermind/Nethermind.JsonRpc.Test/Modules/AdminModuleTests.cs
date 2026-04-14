@@ -366,10 +366,7 @@ public class AdminModuleTests
     }
 
     [Test]
-    public async Task Smoke_solc()
-    {
-        _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
-    }
+    public async Task Smoke_solc() => _ = await RpcTest.TestSerializedRequest(_adminRpcModule, "admin_setSolc");
 
     [Test]
     public async Task Smoke_test_peers()

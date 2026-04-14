@@ -119,12 +119,9 @@ public static class TypeDiscovery
             missingRefs.AddRange(newRefs);
         }
 
-        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an)
-        {
-            return an.Name is not null
+        static bool Filter(Dictionary<string, Assembly> considered, AssemblyName an) => an.Name is not null
                     && !considered.ContainsKey(an.Name)
                     && an.Name.StartsWith("Nethermind");
-        }
     }
 
     public static IEnumerable<Type> FindNethermindBasedTypes(Type baseType)

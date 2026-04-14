@@ -393,9 +393,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             regularDepositCost, stateDepositCost, invalidCode, discardCreateStateCharge, callResult.Output);
     }
 
-    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult)
-    {
-        return new TransactionSubstate(
+    protected TransactionSubstate PrepareTopLevelSubstate(scoped in CallResult callResult) => new(
             callResult.Output,
             _currentState.Refund,
             _currentState.AccessTracker.DestroyList,
@@ -404,7 +402,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             isTracerConnected: _txTracer.IsTracing,
             callResult.ExceptionType,
             _logger);
-    }
 
     private void TryChargeAndDepositCode(
         VmState<TGasPolicy> previousState,
@@ -1337,10 +1334,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    internal void EndInstructionTrace(long gasAvailable)
-    {
-        _txTracer.ReportOperationRemainingGas(gasAvailable);
-    }
+    internal void EndInstructionTrace(long gasAvailable) => _txTracer.ReportOperationRemainingGas(gasAvailable);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void EndInstructionTraceError(long gasAvailable, EvmExceptionType evmExceptionType)

@@ -39,10 +39,7 @@ public static class Int64Extensions
     public static byte[] ToBigEndianByteArray(this long value)
         => ToBigEndianByteArray((ulong)value);
 
-    public static void WriteBigEndian(this long value, Span<byte> output)
-    {
-        BinaryPrimitives.WriteInt64BigEndian(output, value);
-    }
+    public static void WriteBigEndian(this long value, Span<byte> output) => BinaryPrimitives.WriteInt64BigEndian(output, value);
 
     [SkipLocalsInit]
     public static string ToHexString(this long value, bool skipLeadingZeros)

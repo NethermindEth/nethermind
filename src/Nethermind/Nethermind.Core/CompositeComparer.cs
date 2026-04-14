@@ -17,23 +17,17 @@ namespace Nethermind.Core
         {
         }
 
-        public CompositeComparer<T> FirstBy(IComparer<T> comparer)
+        public CompositeComparer<T> FirstBy(IComparer<T> comparer) => comparer switch
         {
-            return comparer switch
-            {
-                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers)),
-                _ => new CompositeComparer<T>(new[] { comparer }.Concat(_comparers)),
-            };
-        }
+            CompositeComparer<T> compositeComparer => new CompositeComparer<T>(compositeComparer._comparers.Concat(_comparers)),
+            _ => new CompositeComparer<T>(new[] { comparer }.Concat(_comparers)),
+        };
 
-        public CompositeComparer<T> ThenBy(IComparer<T> comparer)
+        public CompositeComparer<T> ThenBy(IComparer<T> comparer) => comparer switch
         {
-            return comparer switch
-            {
-                CompositeComparer<T> compositeComparer => new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers)),
-                _ => new CompositeComparer<T>(_comparers.Concat(new[] { comparer })),
-            };
-        }
+            CompositeComparer<T> compositeComparer => new CompositeComparer<T>(_comparers.Concat(compositeComparer._comparers)),
+            _ => new CompositeComparer<T>(_comparers.Concat(new[] { comparer })),
+        };
 
 
         public int Compare(T? x, T? y)

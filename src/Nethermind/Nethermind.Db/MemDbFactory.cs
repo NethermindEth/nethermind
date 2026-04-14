@@ -9,14 +9,8 @@ namespace Nethermind.Db
     {
         public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum => new MemColumnsDb<T>(dbName);
 
-        public IDb CreateDb(DbSettings dbSettings)
-        {
-            return new MemDb(dbSettings.DbName);
-        }
+        public IDb CreateDb(DbSettings dbSettings) => new MemDb(dbSettings.DbName);
 
-        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
-        {
-            return new MemColumnsDb<T>(dbSettings.DbName);
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => new MemColumnsDb<T>(dbSettings.DbName);
     }
 }

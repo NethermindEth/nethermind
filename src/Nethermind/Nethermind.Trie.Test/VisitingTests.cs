@@ -196,10 +196,7 @@ public class VisitingTests
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext AddStorage(in ValueHash256 storage)
-            {
-                return this;
-            }
+            public PathGatheringContext AddStorage(in ValueHash256 storage) => this;
         }
 
         public bool IsFullDbScan => true;
@@ -210,10 +207,7 @@ public class VisitingTests
         {
         }
 
-        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash)
-        {
-            throw new System.Exception("Should not happen");
-        }
+        public void VisitMissingNode(in PathGatheringContext nodeContext, in ValueHash256 nodeHash) => throw new System.Exception("Should not happen");
 
         public void VisitBranch(in PathGatheringContext nodeContext, TrieNode node)
         {

@@ -7,15 +7,9 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class DisconnectMessage : P2PMessage
     {
-        public DisconnectMessage(EthDisconnectReason reason)
-        {
-            Reason = (int)reason;
-        }
+        public DisconnectMessage(EthDisconnectReason reason) => Reason = (int)reason;
 
-        public DisconnectMessage(int reason)
-        {
-            Reason = reason;
-        }
+        public DisconnectMessage(int reason) => Reason = reason;
 
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.Disconnect;

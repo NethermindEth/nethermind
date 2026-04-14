@@ -353,11 +353,9 @@ public ref struct EvmStack
     }
 
     public void PushSignedInt256<TTracingInst>(in Int256.Int256 value)
-        where TTracingInst : struct, IFlag
-    {
+        where TTracingInst : struct, IFlag =>
         // tail call into UInt256
         PushUInt256<TTracingInst>(in Unsafe.As<Int256.Int256, UInt256>(ref Unsafe.AsRef(in value)));
-    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool PopLimbo()

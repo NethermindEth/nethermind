@@ -52,9 +52,6 @@ public class KeyedMapperRegistrationSourceTests
 
     private record ClassB(string Property, Action? onDispose = null) : IDisposable
     {
-        public void Dispose()
-        {
-            onDispose?.Invoke();
-        }
+        public void Dispose() => onDispose?.Invoke();
     }
 }

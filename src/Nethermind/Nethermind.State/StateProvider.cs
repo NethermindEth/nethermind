@@ -908,16 +908,10 @@ internal class StateProvider(ILogManager logManager) : IJournal<int>
 internal static class Extensions
 {
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-    {
-        trace.Add(address, new ChangeTrace(change));
-    }
+    public static void AddToTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace.Add(address, new ChangeTrace(change));
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change)
-    {
-        trace[address] = new ChangeTrace(change, trace[address].After);
-    }
+    public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace>? trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
