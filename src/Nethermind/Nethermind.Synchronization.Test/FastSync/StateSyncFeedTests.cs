@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -451,7 +453,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         [Test]
         [Repeat(TestRepeatCount)]
-        public async Task RepairEmptyStorageRoot_does_not_hang()
+        public async Task RepairEmptyStorageRoot_calls_EnsureStorageEmpty()
         {
             RemoteDbContext remote = new(_logManager);
 
@@ -461,7 +463,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakB, Build.An.Account.WithNonce(2).TestObject);
             state.Commit();
 
-            await using IContainer container = PrepareDownloader(remote);
+            List<Hash256> clearedAddresses = new();
+
+            await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
+            {
+                builder.AddDecorator<ITreeSyncStore>((ctx, inner) =>
+                    new TrackingTreeSyncStore(inner, clearedAddresses));
+            });
             IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
 
             local.SetAccountsAndCommit(
@@ -478,6 +486,16 @@ namespace Nethermind.Synchronization.Test.FastSync
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
+            clearedAddresses.Should().Contain(TestItem.KeccakA, "EnsureStorageEmpty should be called for account with empty storage root in UpdatedStorages");
+        }
+
+        private class TrackingTreeSyncStore(ITreeSyncStore inner, List<Hash256> clearedAddresses) : ITreeSyncStore
+        {
+            public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
+            public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) => inner.SaveNode(address, path, hash, data);
+            public void EnsureStorageEmpty(Hash256 address) { clearedAddresses.Add(address); inner.EnsureStorageEmpty(address); }
+            public void FinalizeSync(BlockHeader pivotHeader) => inner.FinalizeSync(pivotHeader);
+            public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) => inner.CreateVerificationContext(rootNodeData);
         }
 
         [Test]

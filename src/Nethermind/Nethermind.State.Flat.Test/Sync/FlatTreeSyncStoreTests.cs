@@ -78,12 +78,4 @@ public class FlatTreeSyncStoreTests
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
     }
 
-    [Test]
-    public void EnsureStorageEmpty_on_empty_account_is_noop()
-    {
-        Address address = TestItem.AddressA;
-
-        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
-        Assert.DoesNotThrow(() => store.EnsureStorageEmpty(Keccak.Compute(address.Bytes)));
-    }
 }
