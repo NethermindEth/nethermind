@@ -16,25 +16,23 @@ using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition;
 
-public class StateCompositionPlugin : INethermindPlugin
+public class StateCompositionPlugin(IStateCompositionConfig config) : INethermindPlugin
 {
-    private IStateCompositionConfig _config = null!;
     private INethermindApi? _api;
 
     public string Name => "StateComposition";
     public string Description => "State composition metrics";
     public string Author => "Nethermind";
 
-    public bool Enabled => _config is { Enabled: true };
+    public bool Enabled => config.Enabled;
     public IModule Module => new StateCompositionModule();
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        _config = nethermindApi.Config<IStateCompositionConfig>();
         _api.Context.Resolve<StateCompositionService>();
 
-        if (!_config.PersistSnapshots) return Task.CompletedTask;
+        if (!config.PersistSnapshots) return Task.CompletedTask;
 
         ILogger logger = _api.LogManager.GetClassLogger<StateCompositionPlugin>();
 
