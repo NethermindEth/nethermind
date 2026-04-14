@@ -453,6 +453,20 @@ public class FlatTrieVerifier
         }
     }
 
+    private void VerifyEmptyStorage(StorageVerificationJob job, IPersistence.IPersistenceReader reader)
+    {
+        using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        while (flatIter.MoveNext())
+        {
+            if (!IsZeroValue(flatIter.CurrentValue))
+            {
+                Interlocked.Increment(ref _slotCount);
+                Interlocked.Increment(ref _missingInTrie);
+                if (_logger.IsWarn) _logger.Warn($"Orphaned flat storage for empty-root account. Account: {job.FlatAccountKey}, Slot: {flatIter.CurrentKey}");
+            }
+        }
+    }
+
     private void VerifyStorageHashed(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
@@ -510,6 +524,13 @@ public class FlatTrieVerifier
         IScopedTrieStore trieStore,
         CancellationToken cancellationToken)
     {
+        // Empty storage root — any flat entries are orphans
+        if (job.StorageRoot == Keccak.EmptyTreeHash)
+        {
+            VerifyEmptyStorage(job, reader);
+            return;
+        }
+
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
         PatriciaTree storageTree = new(storageTrieStore, _logManager);
 
