@@ -473,6 +473,12 @@ public class FlatTrieVerifier
         IScopedTrieStore trieStore,
         CancellationToken cancellationToken)
     {
+        if (job.StorageRoot == Keccak.EmptyTreeHash)
+        {
+            VerifyEmptyStorage(job, reader);
+            return;
+        }
+
         using IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue);
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
