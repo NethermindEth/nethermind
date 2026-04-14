@@ -104,6 +104,7 @@ public class PayloadByNumberProtocol(
         }
         finally
         {
+            decompressor?.Dispose();
             ArrayPool<byte>.Shared.Return(buffer);
         }
     }
