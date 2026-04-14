@@ -616,7 +616,7 @@ public class AdminModuleTests
 
         if (ethProtocolVersion.HasValue)
         {
-            var ethHandler = Substitute.For<IProtocolHandler>();
+            IProtocolHandler ethHandler = Substitute.For<IProtocolHandler>();
             ethHandler.ProtocolVersion.Returns(ethProtocolVersion.Value);
             session.TryGetProtocolHandler("eth", out Arg.Any<IProtocolHandler>())
                 .Returns(x => { x[1] = ethHandler; return true; });
@@ -741,16 +741,16 @@ public class AdminModuleTests
     public void Admin_peers_uses_negotiated_eth_version_for_protocol_info()
     {
         // Arrange
-        var capabilities = new[] {
+        Capability[] capabilities = new[] {
             new Capability("eth", 68), new Capability("eth", 72), new Capability("snap", 1) };
-        var peer = CreateTestPeer("Nethermind/v1.37.0", capabilities, ethProtocolVersion: 72);
-        var module = CreateMinimalAdminModule(CreatePeerPool(peer));
+        Peer peer = CreateTestPeer("Nethermind/v1.37.0", capabilities, ethProtocolVersion: 72);
+        AdminRpcModule module = CreateMinimalAdminModule(CreatePeerPool(peer));
 
         // Act
-        var result = module.admin_peers();
+        ResultWrapper<PeerInfo[]> result = module.admin_peers();
 
         // Assert
-        var peerInfo = result.Data[0];
+        PeerInfo peerInfo = result.Data[0];
         peerInfo.Protocols.Should().ContainKeys("eth", "snap");
         GetProtocolVersion(peerInfo.Protocols["eth"]).Should().Be(72);
     }

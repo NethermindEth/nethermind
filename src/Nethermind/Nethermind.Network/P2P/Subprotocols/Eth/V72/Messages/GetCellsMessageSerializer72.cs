@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -18,7 +19,7 @@ public class GetCellsMessageSerializer72 : IZeroMessageSerializer<GetCellsMessag
     private static GetCellsMessage72 Deserialize(ref Rlp.ValueDecoderContext ctx)
     {
         ctx.ReadSequenceLength();
-        using var hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
         byte[] cellMask = ctx.DecodeByteArraySpan().ToArray();
         return new GetCellsMessage72(hashes.AsSpan().ToArray(), cellMask);
     }

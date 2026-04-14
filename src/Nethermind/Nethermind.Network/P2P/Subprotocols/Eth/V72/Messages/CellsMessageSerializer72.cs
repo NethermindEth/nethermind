@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.SyncLimits;
@@ -19,7 +20,7 @@ public class CellsMessageSerializer72 : IZeroMessageSerializer<CellsMessage72>
     private static CellsMessage72 Deserialize(ref Rlp.ValueDecoderContext ctx)
     {
         ctx.ReadSequenceLength();
-        using var hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
+        using ArrayPoolList<Hash256> hashes = ctx.DecodeArrayPoolList(static (ref Rlp.ValueDecoderContext c) => c.DecodeKeccak(), limit: HashesRlpLimit);
 
         int cellsSequenceLength = ctx.ReadSequenceLength();
         int cellsEnd = ctx.Position + cellsSequenceLength;

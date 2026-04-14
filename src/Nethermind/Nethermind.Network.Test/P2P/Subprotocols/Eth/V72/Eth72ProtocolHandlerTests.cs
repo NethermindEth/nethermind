@@ -305,7 +305,7 @@ public class Eth72ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        using var statusMsg = new StatusMessage69 { ProtocolVersion = 72, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
+        using StatusMessage69 statusMsg = new() { ProtocolVersion = 72, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
