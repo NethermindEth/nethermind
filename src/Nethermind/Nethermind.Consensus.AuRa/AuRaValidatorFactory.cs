@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.AuRa
                         _logManager,
                         _forSealing),
 
-                _ => throw new ArgumentOutOfRangeException()
+                _ => throw new ArgumentOutOfRangeException(nameof(validator), validator.ValidatorType, "Unknown validator type.")
             };
         }
     }

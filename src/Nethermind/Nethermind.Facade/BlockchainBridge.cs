@@ -424,6 +424,13 @@ namespace Nethermind.Facade
             return witnessCollector.GetWitnessForExistingBlock(parent, block);
         }
 
+        public Witness GenerateExecutionWitness(BlockHeader header, Transaction tx)
+        {
+            using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
+            ISingleCallWitnessCollector collector = scope.Env.CreateSingleCallWitnessCollector();
+            return collector.ExecuteCallAndCollectWitness(header, tx);
+        }
+
         public record BlockProcessingComponents(
             IStateReader StateReader,
             ITransactionProcessor TransactionProcessor,
