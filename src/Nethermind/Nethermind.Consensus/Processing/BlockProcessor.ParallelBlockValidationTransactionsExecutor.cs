@@ -50,9 +50,8 @@ public partial class BlockProcessor
 
         private TxReceipt[] ProcessTransactionsSequential(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
         {
-            balManager.ValidateBlockAccessList(block, 0);
-
             balManager.NextTransaction();
+            balManager.ValidateBlockAccessList(block, 0);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
