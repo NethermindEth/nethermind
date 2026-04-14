@@ -21,6 +21,7 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
+        // Triggered only at gap blocks
         XdcSubnetBlockHeader header = (XdcSubnetBlockHeader)tree.FindHeader(parentHash, number - 1);
         IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
 
