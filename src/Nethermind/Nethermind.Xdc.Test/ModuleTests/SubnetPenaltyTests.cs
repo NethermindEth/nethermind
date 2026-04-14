@@ -47,35 +47,15 @@ internal class SubnetPenaltyTests
     }
 
 
-    [Test]
-    public void TestNoMinedBlocksInCurrentEpochPenalty()
+    [TestCase(2, TestName = "CurrentEpoch")]
+    [TestCase(1, TestName = "PreviousEpoch")]
+    public void TestNoMinedBlocksInEpochPenalty(int absentEpoch)
     {
-        // The last validator never mines (Beneficiary cycles 0..n-2) in current epoch.
+        // The last validator never mines (Beneficiary cycles 0..n-2) in the specified epoch.
         MockedSubnetPenaltyContext ctx = CreateMockedContext(
             chainLength: EpochLength * 3 - Gap + 1,
-            validatorSelector: (validators, i) => i / EpochLength == 2 ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
+            validatorSelector: (validators, i) => i / EpochLength == absentEpoch ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
         );
-
-
-        long target = EpochLength * 3 - Gap;
-        Address[] penalties = ctx.Handler.HandlePenalties(
-            target,
-            ctx.Headers[(int)(target - 1)].Hash!,
-            []);
-
-        penalties.Length.Should().Be(1);
-        penalties[0].Should().Be(ctx.ValidatorKeys.Last().Address);
-    }
-
-    [Test]
-    public void TestNoMinedBlocksInPreviousEpochPenalty()
-    {
-        // The last validator never mines (Beneficiary cycles 0..n-2) in previous epoch.
-        MockedSubnetPenaltyContext ctx = CreateMockedContext(
-            chainLength: EpochLength * 3 - Gap + 1,
-            validatorSelector: (validators, i) => i / EpochLength == 1 ? validators[i % (ValidatorCount - 1)] : validators[i % ValidatorCount]
-        );
-
 
         long target = EpochLength * 3 - Gap;
         Address[] penalties = ctx.Handler.HandlePenalties(
@@ -98,7 +78,10 @@ internal class SubnetPenaltyTests
         long target = EpochLength * 3 - Gap;
 
         Address[] injectedPenalties = [TestItem.AddressA, TestItem.AddressB];
-        ctx.Headers[target - EpochLength + 1].Penalties = injectedPenalties.SelectMany(a => a.Bytes).ToArray();
+        byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
+        for (int i = 0; i < injectedPenalties.Length; i++)
+            injectedPenalties[i].Bytes.CopyTo(penaltyBytes, i * Address.Size);
+        ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
@@ -192,7 +175,10 @@ internal class SubnetPenaltyTests
         string.CompareOrdinal(eip55First.ToString(withEip55Checksum: true), eip55Second.ToString(withEip55Checksum: true)).Should().BeLessThan(0);
 
         Address[] injectedPenalties = [eip55Second, eip55First];
-        ctx.Headers[target - EpochLength + 1].Penalties = injectedPenalties.SelectMany(a => a.Bytes).ToArray();
+        byte[] penaltyBytes = new byte[injectedPenalties.Length * Address.Size];
+        for (int i = 0; i < injectedPenalties.Length; i++)
+            injectedPenalties[i].Bytes.CopyTo(penaltyBytes, i * Address.Size);
+        ctx.Headers[target - EpochLength + 1].Penalties = penaltyBytes;
 
         Address[] penalties = ctx.Handler.HandlePenalties(
             target,
@@ -222,7 +208,9 @@ internal class SubnetPenaltyTests
         Func<Address[], int, Address> validatorSelector)
     {
         PrivateKey[] validatorKeys = XdcTestHelper.GeneratePrivateKeys(ValidatorCount);
-        Address[] validatorAddresses = validatorKeys.Select(k => k.Address).ToArray();
+        Address[] validatorAddresses = new Address[validatorKeys.Length];
+        for (int i = 0; i < validatorKeys.Length; i++)
+            validatorAddresses[i] = validatorKeys[i].Address;
 
         IBlockTree blockTree = Substitute.For<IBlockTree>();
 

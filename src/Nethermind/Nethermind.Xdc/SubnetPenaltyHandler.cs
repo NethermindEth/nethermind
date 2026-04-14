@@ -22,8 +22,9 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
     public Address[] HandlePenalties(long number, Hash256 parentHash, Address[] candidates)
     {
         // Triggered only at gap blocks
-        XdcSubnetBlockHeader header = (XdcSubnetBlockHeader)tree.FindHeader(parentHash, number - 1);
-        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header!);
+        XdcSubnetBlockHeader header = tree.FindHeader(parentHash, number - 1) as XdcSubnetBlockHeader
+            ?? throw new InvalidOperationException($"Header not found for block {number - 1}");
+        IXdcReleaseSpec currentSpec = specProvider.GetXdcSpec(header);
 
         HashSet<Address> penalties = new();
 
@@ -39,7 +40,8 @@ internal class SubnetPenaltyHandler(IBlockTree tree, ISpecProvider specProvider,
 
         while (true)
         {
-            XdcSubnetBlockHeader parentHeader = (XdcSubnetBlockHeader)tree.FindHeader(parentHash, parentNumber);
+            XdcSubnetBlockHeader parentHeader = tree.FindHeader(parentHash, parentNumber) as XdcSubnetBlockHeader
+                ?? throw new InvalidOperationException($"Header not found for block {parentNumber}");
 
             if (parentNumber == minBlockNumber + 1)
             {
