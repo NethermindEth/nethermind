@@ -316,9 +316,20 @@ jobs:
           path: .coverage
           pattern: '*-coverage'
 
+      - name: Merge coverage reports
+        run: |
+          dotnet tool install --global dotnet-coverage
+          dotnet-coverage merge \
+            ./.coverage/**/*.cobertura.xml \
+            -f cobertura \
+            -o ./coverage.cobertura.xml \
+            --remove-input-files
+
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           name: codecov-nethermind
-          directory: .coverage
+          files: ./coverage.cobertura.xml
+          disable_search: true
+          fail_ci_if_error: true
