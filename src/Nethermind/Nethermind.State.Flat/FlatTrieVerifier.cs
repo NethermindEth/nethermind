@@ -398,7 +398,7 @@ public class FlatTrieVerifier
             if (_logger.IsWarn) _logger.Warn($"Mismatched account. Path: {triePath}. Flat: {flatAccount}, Trie: {trieAccount}");
         }
 
-        if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
+        if (trieAccount is not null)
         {
             Hash256 fullPath = triePath.Path.ToCommitment();
             StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, isPreimageMode);
@@ -426,7 +426,7 @@ public class FlatTrieVerifier
             if (_logger.IsWarn) _logger.Warn($"Mismatched account. Hash: {trieHash}. Flat: {flatAccount}, Trie: {trieAccount}");
         }
 
-        if (trieAccount is not null && trieAccount.StorageRoot != Keccak.EmptyTreeHash)
+        if (trieAccount is not null)
         {
             Hash256 fullPath = trieHash.ToCommitment();
             StorageVerificationJob job = new(flatKey, fullPath, trieAccount.StorageRoot, true);

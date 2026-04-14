@@ -222,6 +222,14 @@ public class FlatTreeSyncStore(IPersistence persistence, IPersistenceManager per
     private static DeletionRange ComputeSubtreeRangeForNibble(TreePath path, int from, int to) =>
         new(path.Append(from).ToLowerBoundPath(), path.Append(to).ToUpperBoundPath());
 
+    public void EnsureStorageEmpty(Hash256 address)
+    {
+        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        ValueHash256 addressHash = address.ValueHash256;
+        writeBatch.DeleteStorageRange(addressHash, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageTrieNodeRange(addressHash, new TreePath(ValueKeccak.Zero, 64), new TreePath(ValueKeccak.MaxValue, 64));
+    }
+
     public void FinalizeSync(BlockHeader pivotHeader)
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
