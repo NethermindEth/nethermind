@@ -279,9 +279,9 @@ namespace Nethermind.Synchronization.FastSync
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
                     if (isEmpty)
                     {
-                        if (_logger.IsDebug)
-                            _logger.Debug(
-                                $"Peer sent no data in response to a request of length {batch.RequestedNodes.Count}");
+                        if (_logger.IsWarn)
+                            _logger.Warn(
+                                $"Peer {peerInfo} sent no data in response to a request of length {batch.RequestedNodes.Count}");
                         return SyncResponseHandlingResult.NoProgress;
                     }
 
