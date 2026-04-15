@@ -232,6 +232,12 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
+
+    /// <summary>
+    /// EIP-8037: cumulative state gas for the last tracked tx.
+    /// Used by parallel execution to pass state gas back for 2D block gas accounting.
+    /// </summary>
+    public long BlockStateGasUsed => _cumulativeBlockGasPerTx.Count > 0 ? _cumulativeBlockGasPerTx[^1].State : 0;
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
     public ITxTracer InnerTracer => _currentTxTracer;
