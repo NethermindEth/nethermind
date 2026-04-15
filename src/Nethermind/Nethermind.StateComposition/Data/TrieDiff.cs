@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.StateComposition.Diff;
@@ -52,15 +53,16 @@ public readonly record struct TrieDiff(
     int EmptyAccountsAdded,
     int EmptyAccountsRemoved,
 
-    // Optional per-depth distribution delta. Null when TrackDepthIncrementally is disabled.
+    // Per-depth distribution delta. Always non-null; an unseeded instance
+    // (TrackDepthIncrementally disabled) is a no-op under CumulativeDepthStats.AddInPlace.
     // Reuses CumulativeDepthStats as the delta container — identical field layout,
     // merged into the holder's baseline via CumulativeDepthStats.AddInPlace.
-    CumulativeDepthStats? DepthDelta = null,
+    CumulativeDepthStats DepthDelta,
 
     // Per-account payloads that feed the incremental trackers in the state holder.
-    // Null on diffs that don't need them (tests, synthetic apply paths).
-    IReadOnlyList<SlotCountChange>? SlotCountChanges = null,
-    IReadOnlyList<CodeHashChange>? CodeHashChanges = null
+    // Empty arrays on diffs that don't need them — never null.
+    IReadOnlyList<SlotCountChange> SlotCountChanges,
+    IReadOnlyList<CodeHashChange> CodeHashChanges
 )
 {
     public int NetAccounts => AccountsAdded - AccountsRemoved;
@@ -71,6 +73,22 @@ public readonly record struct TrieDiff(
 
     public long NetAccountTrieBytes => AccountTrieBytesAdded - AccountTrieBytesRemoved;
     public long NetStorageTrieBytes => StorageTrieBytesAdded - StorageTrieBytesRemoved;
+
+    /// <summary>
+    /// Zero-delta sentinel returned by <see cref="Diff.TrieDiffWalker.ComputeDiff"/>
+    /// when both roots are equal. Callers iterate <see cref="SlotCountChanges"/>
+    /// / <see cref="CodeHashChanges"/> as empty lists and feed
+    /// <see cref="DepthDelta"/> through the unseeded no-op path on the holder.
+    /// </summary>
+    public static TrieDiff Empty { get; } = new(
+        0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0,
+        0, 0, 0, 0,
+        DepthDelta: new CumulativeDepthStats(),
+        SlotCountChanges: Array.Empty<SlotCountChange>(),
+        CodeHashChanges: Array.Empty<CodeHashChange>());
 }
 
 /// <summary>

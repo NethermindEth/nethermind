@@ -18,8 +18,8 @@ internal partial class StateCompositionService
 {
     private void OnNewHeadBlock(object? sender, BlockEventArgs e)
     {
-        Hash256? lastRoot = _stateHolder.LastProcessedStateRoot;
-        if (lastRoot is null) return; // No baseline yet
+        Hash256 lastRoot = _stateHolder.LastProcessedStateRoot;
+        if (lastRoot == Hash256.Zero) return; // No baseline yet
 
         Hash256? newRoot = e.Block.Header.StateRoot;
         if (newRoot is null || newRoot == lastRoot) return; // No state change
@@ -35,14 +35,14 @@ internal partial class StateCompositionService
     internal void RunIncrementalDiff()
     {
         if (!_diffLock.TryEnter()) return;
-        Hash256? prevRoot = null;
+        Hash256 prevRoot = Hash256.Zero;
         Block? head = null;
         try
         {
             // Re-read inside lock for coalescing: diff from real latest to current head.
             prevRoot = _stateHolder.LastProcessedStateRoot;
             head = _blockTree.Head;
-            if (head?.Header.StateRoot is null || head.Header.StateRoot == prevRoot) return;
+            if (head?.Header.StateRoot is null || prevRoot == Hash256.Zero || head.Header.StateRoot == prevRoot) return;
 
             using IReadOnlyTrieStore readOnlyStore = _worldStateManager.CreateReadOnlyTrieStore();
             IScopedTrieStore resolver = readOnlyStore.GetTrieStore(null);
@@ -59,7 +59,7 @@ internal partial class StateCompositionService
             Metrics.UpdateFromCumulativeStats(updated);
             // Skip the labeled-gauge republish when the depth distribution did not change.
             // Gauges retain their last published value, which is correct — nothing changed.
-            if (_config.TrackDepthIncrementally && diff.DepthDelta?.IsEmpty() != true)
+            if (_config.TrackDepthIncrementally && !diff.DepthDelta.IsEmpty())
                 Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
             Metrics.StateCompIncrementalBlock = head.Number;
             Metrics.StateCompDiffsSinceBaseline = _stateHolder.DiffsSinceBaseline;
@@ -83,7 +83,7 @@ internal partial class StateCompositionService
             if (_logger.IsWarn)
             {
                 string blockDesc = head?.Number.ToString() ?? "?";
-                string prevDesc = prevRoot?.ToString() ?? "?";
+                string prevDesc = prevRoot.ToString();
                 _logger.Warn(
                     $"StateComposition: baseline root {prevDesc} missing from DB at block {blockDesc}; " +
                     $"invalidated baseline and scheduling a full rescan. Reason: {ex.Message}");
@@ -96,7 +96,7 @@ internal partial class StateCompositionService
             if (_logger.IsError)
             {
                 string blockDesc = head is not null ? head.Number.ToString() : "?";
-                string prevDesc = prevRoot?.ToString() ?? "?";
+                string prevDesc = prevRoot.ToString();
                 string newDesc = head?.Header.StateRoot?.ToString() ?? "?";
                 _logger.Error(
                     $"StateComposition: failed to compute incremental diff at block {blockDesc} " +

@@ -52,7 +52,7 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         Hash256? oldHash = NormalizeHash(oldRoot);
         Hash256? newHash = NormalizeHash(newRoot);
 
-        if (oldHash == newHash) return default;
+        if (oldHash == newHash) return TrieDiff.Empty;
 
         TreePath path = TreePath.Empty;
         DiffSubtree(oldHash, newHash, ref path, rootResolver, isStorage: false, depth: 0);
@@ -71,9 +71,9 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
-            DepthDelta: trackDepth ? _depthDelta : null,
-            SlotCountChanges: _slotCountChanges.Count > 0 ? _slotCountChanges.ToArray() : null,
-            CodeHashChanges: _codeHashChanges.Count > 0 ? _codeHashChanges.ToArray() : null
+            DepthDelta: _depthDelta,
+            SlotCountChanges: _slotCountChanges.ToArray(),
+            CodeHashChanges: _codeHashChanges.ToArray()
         );
     }
 

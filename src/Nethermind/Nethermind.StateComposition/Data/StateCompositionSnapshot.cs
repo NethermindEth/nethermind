@@ -14,9 +14,10 @@ namespace Nethermind.StateComposition.Data;
 /// The tracker maps (<see cref="SlotCountByAddress"/>, <see cref="CodeHashRefcounts"/>,
 /// <see cref="CodeHashSizes"/>) are required for the incremental
 /// <see cref="CumulativeSizeStats.CodeBytesTotal"/> and
-/// <see cref="CumulativeSizeStats.SlotCountHistogram"/> updates to run.
-/// A snapshot loaded without them must be treated as "no baseline" — the plugin
-/// falls back to a fresh scan rather than applying diffs against an unknown state.
+/// <see cref="CumulativeSizeStats.SlotCountHistogram"/> updates to run. The decoder
+/// always materializes them — even if empty — so the holder can take ownership without
+/// nullable fallbacks. <see cref="DepthStats"/> uses its own <see cref="CumulativeDepthStats.IsSeeded"/>
+/// flag as the "depth distribution available" gate.
 /// </para>
 /// </summary>
 public readonly record struct StateCompositionSnapshot(
@@ -25,7 +26,7 @@ public readonly record struct StateCompositionSnapshot(
     Hash256 StateRoot,
     int DiffsSinceBaseline,
     long ScanBlockNumber,
-    CumulativeDepthStats? DepthStats = null,
-    Dictionary<ValueHash256, long>? SlotCountByAddress = null,
-    Dictionary<ValueHash256, int>? CodeHashRefcounts = null,
-    Dictionary<ValueHash256, int>? CodeHashSizes = null);
+    CumulativeDepthStats DepthStats,
+    Dictionary<ValueHash256, long> SlotCountByAddress,
+    Dictionary<ValueHash256, int> CodeHashRefcounts,
+    Dictionary<ValueHash256, int> CodeHashSizes);

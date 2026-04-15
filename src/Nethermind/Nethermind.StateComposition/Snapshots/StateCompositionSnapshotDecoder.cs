@@ -85,8 +85,8 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         // Depth stats: present only if seeded. Stored as a leading marker long
         // (1 = present, 0 = absent) followed by 162 longs (9×16 + 2 scalars)
         // when present.
-        CumulativeDepthStats? depth = item.DepthStats;
-        if (depth is not null && depth.IsSeeded)
+        CumulativeDepthStats depth = item.DepthStats;
+        if (depth.IsSeeded)
         {
             length += EncodeLong(stream, 1L);
             foreach (long[] arr in depth.ByDepth)
@@ -131,13 +131,11 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
     private static int EncodeOrLengthMap<TValue>(
         RlpStream? stream,
-        IReadOnlyDictionary<ValueHash256, TValue>? map,
+        IReadOnlyDictionary<ValueHash256, TValue> map,
         System.Action<RlpStream, TValue> encodeValue,
         System.Func<TValue, int> lengthOfValue)
     {
-        int count = map?.Count ?? 0;
-        int total = EncodeInt(stream, count);
-        if (map is null) return total;
+        int total = EncodeInt(stream, map.Count);
         foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
         {
             if (stream is not null)
@@ -197,12 +195,14 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         int diffsSinceBaseline = ctx.DecodeInt();
         long scanBlockNumber = ctx.DecodeLong();
 
-        // Depth stats: marker long followed by 162 longs when present.
+        // Depth stats: marker long followed by 162 longs when present. The
+        // decoder always materializes an instance — an unseeded one when the
+        // snapshot was written before depth tracking was enabled — so the
+        // holder gates on IsSeeded instead of a null check.
         long depthPresent = ctx.DecodeLong();
-        CumulativeDepthStats? depthStats = null;
+        CumulativeDepthStats depthStats = new();
         if (depthPresent == 1L)
         {
-            depthStats = new CumulativeDepthStats();
             foreach (long[] arr in depthStats.ByDepth)
                 for (int i = 0; i < arr.Length; i++) arr[i] = ctx.DecodeLong();
             depthStats.TotalBranchNodes = ctx.DecodeLong();

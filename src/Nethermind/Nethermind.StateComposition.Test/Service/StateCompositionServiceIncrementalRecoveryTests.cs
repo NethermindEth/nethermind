@@ -89,9 +89,9 @@ public class StateCompositionServiceIncrementalRecoveryTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(holder.LastProcessedStateRoot, Is.Null,
+            Assert.That(holder.LastProcessedStateRoot, Is.EqualTo(Hash256.Zero),
                 "InvalidateBaseline must clear the baseline root so OnNewHeadBlock stops spawning diff tasks.");
-            Assert.That(holder.IncrementalStats, Is.Not.Null,
+            Assert.That(holder.IsIncrementalSeeded, Is.True,
                 "Cached incremental stats must survive invalidation so RPC keeps serving last-known values.");
             Assert.That(holder.IncrementalBlock, Is.EqualTo(100),
                 "Incremental block number must stay — only the root is deliberately dropped.");
@@ -152,7 +152,7 @@ public class StateCompositionServiceIncrementalRecoveryTests
         {
             Assert.That(Metrics.StateCompScansCompleted, Is.EqualTo(scansBefore + 1),
                 "ScheduleBaselineRescan must have invoked AnalyzeAsync, which bumps scans_completed.");
-            Assert.That(stateHolder.LastProcessedStateRoot, Is.Not.Null,
+            Assert.That(stateHolder.LastProcessedStateRoot, Is.Not.EqualTo(Hash256.Zero),
                 "After the rescan, the baseline must be reseeded from the new header root.");
         }
     }

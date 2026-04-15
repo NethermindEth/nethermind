@@ -120,8 +120,7 @@ public class StateCompositionServiceTests
         {
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(stateHolder.IsInitialized, Is.True);
-            Assert.That(stateHolder.LastScanMetadata, Is.Not.Null);
-            Assert.That(stateHolder.LastScanMetadata!.Value.IsComplete, Is.True);
+            Assert.That(stateHolder.LastScanMetadata.IsComplete, Is.True);
         }
     }
 
