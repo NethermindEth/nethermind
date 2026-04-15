@@ -15,10 +15,47 @@ namespace Nethermind.StateComposition.Diff;
 internal sealed partial class TrieDiffWalker
 {
     /// <summary>
-    /// Recursively collect all nodes in a subtree as either added or removed.
-    /// Also counts accounts, contracts, and storage slots at leaves.
+    /// Per-call leaf policy. Implementations customise only what happens when
+    /// <see cref="WalkStructure{TH}"/> reaches a <see cref="NodeType.Leaf"/> —
+    /// the branch/extension traversal (plus depth and node bookkeeping) is shared.
     /// </summary>
-    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int depth)
+    private interface ILeafHandler
+    {
+        void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage);
+    }
+
+    /// <summary>Count accounts/contracts/slots and recurse into storage tries at each leaf.</summary>
+    private struct SemanticLeafHandler(TrieDiffWalker walker) : ILeafHandler
+    {
+        public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+            => walker.CollectLeaf(leaf, ref path, added, isStorage);
+    }
+
+    /// <summary>Store each leaf in a dictionary keyed by full trie path for deferred matching.</summary>
+    private struct DictionaryLeafHandler(Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves) : ILeafHandler
+    {
+        public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
+        {
+            TreePath pathAtLeaf = path;
+            int prevLen = path.Length;
+            if (leaf.Key is not null) path.AppendMut(leaf.Key);
+            ValueHash256 fullPath = path.Path;
+            path.TruncateMut(prevLen);
+            leaves[fullPath] = (leaf, pathAtLeaf);
+        }
+    }
+
+    /// <summary>
+    /// Shared branch/extension walker. Records every structural node via
+    /// <see cref="RecordNode"/> and the depth histograms when tracking is on.
+    /// Leaves are delegated to <typeparamref name="TH"/> so each caller picks its
+    /// own policy — semantic counting vs. deferred-match dictionary store.
+    /// <c>where TH : struct, ILeafHandler</c> lets the JIT specialise and
+    /// devirtualise per handler type; no delegate allocation on the hot path.
+    /// </summary>
+    private void WalkStructure<TH>(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
+        bool isStorage, bool added, int depth, ref TH leafHandler)
+        where TH : struct, ILeafHandler
     {
         RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
 
@@ -54,19 +91,18 @@ internal sealed partial class TrieDiffWalker
                             path.AppendMut(i);
                             TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                             child.ResolveNode(resolver, in path);
-                            CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
+                            WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                             path.TruncateMut(prevLen);
                         }
                         else if (!node.IsChildNull(i))
                         {
-                            // Inline child
                             int prevLen = path.Length;
                             path.AppendMut(i);
                             TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
                             if (child is not null)
                             {
                                 child.ResolveNode(resolver, in path);
-                                CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
+                                WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                             }
                             path.TruncateMut(prevLen);
                         }
@@ -86,7 +122,7 @@ internal sealed partial class TrieDiffWalker
                     {
                         TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
                         child.ResolveNode(resolver, in path);
-                        CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
+                        WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                     }
                     else
                     {
@@ -95,7 +131,7 @@ internal sealed partial class TrieDiffWalker
                         if (child is not null)
                         {
                             child.ResolveNode(resolver, in path);
-                            CollectSubtree(child, ref path, resolver, isStorage, added, childDepth);
+                            WalkStructure(child, ref path, resolver, isStorage, added, childDepth, ref leafHandler);
                         }
                     }
 
@@ -104,9 +140,31 @@ internal sealed partial class TrieDiffWalker
                 }
 
             case NodeType.Leaf:
-                CollectLeaf(node, ref path, added, isStorage);
+                leafHandler.Handle(node, ref path, added, isStorage);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Recursively collect all nodes in a subtree as either added or removed.
+    /// Also counts accounts, contracts, and storage slots at leaves.
+    /// </summary>
+    private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int depth)
+    {
+        SemanticLeafHandler handler = new(this);
+        WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
+    }
+
+    /// <summary>
+    /// Walk a subtree recording all structural node changes (via RecordNode) and collecting
+    /// leaf entries into a dictionary keyed by full path. Leaf semantic counting is deferred
+    /// to the caller for correct diff matching.
+    /// </summary>
+    private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
+        bool isStorage, bool added, Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
+    {
+        DictionaryLeafHandler handler = new(leaves);
+        WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
     }
 
     /// <summary>
@@ -186,110 +244,6 @@ internal sealed partial class TrieDiffWalker
                     EndContractStorage();
                 }
             }
-        }
-    }
-
-    /// <summary>
-    /// Walk a subtree recording all structural node changes (via RecordNode) and collecting
-    /// leaf entries into a dictionary keyed by full path. Leaf semantic counting is deferred
-    /// to the caller for correct diff matching.
-    /// </summary>
-    private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
-        bool isStorage, bool added, Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
-    {
-        RecordNode(node.NodeType, node.FullRlp.Length, isStorage, added);
-
-        if (trackDepth)
-        {
-            int d = Math.Min(depth, 15);
-            switch (node.NodeType)
-            {
-                case NodeType.Branch:
-                    RecordDepthBranch(node, d, isStorage, added);
-                    break;
-                case NodeType.Extension:
-                    RecordDepthShort(node.FullRlp.Length, d, isStorage, added);
-                    break;
-                case NodeType.Leaf:
-                    RecordDepthLeaf(node.FullRlp.Length, d, isStorage, added);
-                    break;
-            }
-        }
-
-        switch (node.NodeType)
-        {
-            case NodeType.Branch:
-                {
-                    int childDepth = depth + 1;
-                    for (int i = 0; i < 16; i++)
-                    {
-                        Hash256? childHash = node.GetChildHash(i);
-                        if (childHash is not null)
-                        {
-                            int prevLen = path.Length;
-                            path.AppendMut(i);
-                            TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                            child.ResolveNode(resolver, in path);
-                            CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
-                            path.TruncateMut(prevLen);
-                        }
-                        else if (!node.IsChildNull(i))
-                        {
-                            int prevLen = path.Length;
-                            path.AppendMut(i);
-                            TrieNode? child = node.GetChildWithChildPath(resolver, ref path, i);
-                            if (child is not null)
-                            {
-                                child.ResolveNode(resolver, in path);
-                                CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
-                            }
-                            path.TruncateMut(prevLen);
-                        }
-                    }
-                    break;
-                }
-
-            case NodeType.Extension:
-                {
-                    Hash256? childHash = node.GetChildHash(1);
-                    int prevLen = path.Length;
-                    path.AppendMut(node.Key!);
-                    // Structural depth — see TrieDiffWalker.Extensions.DiffExtensions for rationale.
-                    int childDepth = depth + 1;
-                    if (childHash is not null)
-                    {
-                        TrieNode child = resolver.FindCachedOrUnknown(in path, childHash);
-                        child.ResolveNode(resolver, in path);
-                        CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
-                    }
-                    else
-                    {
-                        TreePath childPath = path;
-                        TrieNode? child = node.GetChildWithChildPath(resolver, ref childPath, 0);
-                        if (child is not null)
-                        {
-                            child.ResolveNode(resolver, in path);
-                            CollectSubtreeForDiff(child, ref path, resolver, isStorage, added, leaves, childDepth);
-                        }
-                    }
-                    path.TruncateMut(prevLen);
-                    break;
-                }
-
-            case NodeType.Leaf:
-                {
-                    // Store path BEFORE appending leaf key (needed for GetAddressHash)
-                    TreePath pathAtLeaf = path;
-
-                    // Compute full path for matching — use ValueHash256 directly to avoid allocation
-                    int prevLen = path.Length;
-                    if (node.Key is not null) path.AppendMut(node.Key);
-                    ValueHash256 fullPath = path.Path;
-                    path.TruncateMut(prevLen);
-
-                    leaves[fullPath] = (node, pathAtLeaf);
-                    break;
-                }
         }
     }
 
