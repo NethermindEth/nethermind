@@ -531,7 +531,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("Block gas limit exceeded"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
 
@@ -616,7 +616,7 @@ public class BlockchainBridgeTests
 
         CallOutput callOutput = _blockchainBridge.EstimateGas(header, tx, 1);
 
-        Assert.That(callOutput.Error, Is.EqualTo("gas limit below intrinsic gas"));
+        Assert.That(callOutput.Error, Is.EqualTo("gas required exceeds allowance (4000000)"));
     }
 
     [Test]

@@ -191,7 +191,12 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             if (err is not null)
             {
-                error ??= err;
+                bool allowanceFailure = err.StartsWith("gas required exceeds allowance", StringComparison.Ordinal);
+                bool gasRelatedExecutionFailure = tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas or TransactionResult.ErrorType.BlockGasLimitExceeded;
+                if (allowanceFailure || gasRelatedExecutionFailure)
+                    error = err;
+                else
+                    error ??= err;
             }
 
             return new CallOutput

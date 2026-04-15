@@ -424,6 +424,24 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Estimate_gas_returns_allowance_error_when_balance_insufficient_for_gas_price()
+    {
+        // Geth parity: when sender balance is too low to cover gas at the given gasPrice,
+        // cap rightBound to allowance = balance / gasPrice, execute at that cap, fail OOG,
+        // and return "gas required exceeds allowance (N)".
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        object transaction = JsonSerializer.Deserialize<object>(
+            """{"from":"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700","to":"0x252568abdeb9de59fd8963dfcd87be2db65f1ce1","gasPrice":"0xBA43B7400"}""")!;
+        object stateOverride = JsonSerializer.Deserialize<object>(
+            """{"0xa9ac1233699bdae25abebae4f9fb54dbb1b44700":{"balance":"0x100000000000"}}""")!;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        JToken.Parse(serialized).Should().BeEquivalentTo(
+            """{"jsonrpc":"2.0","error":{"code":-32000,"message":"gas required exceeds allowance (351)"},"id":67}""");
+    }
+
+    [Test]
     public async Task Eth_estimateGas_ignores_invalid_nonce()
     {
         using Context ctx = await Context.Create();
