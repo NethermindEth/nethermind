@@ -111,7 +111,15 @@ public class AccountChanges : IEquatable<AccountChanges>
                 _storageChanges.Add(kv.Key, kv.Value);
             }
         }
-        _storageReads.AddRange(other._storageReads);
+        // Only merge reads for slots that don't already have changes in this BAL.
+        // A prior tx's change already implies the slot value is known at later indices.
+        foreach (StorageRead read in other._storageReads)
+        {
+            if (!_storageChanges.ContainsKey(read.Key))
+            {
+                _storageReads.Add(read);
+            }
+        }
         _balanceChanges.AddRange(other._balanceChanges);
         _nonceChanges.AddRange(other._nonceChanges);
         _codeChanges.AddRange(other._codeChanges);
