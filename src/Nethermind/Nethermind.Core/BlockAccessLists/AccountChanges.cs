@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Comparers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -24,7 +25,7 @@ public class AccountChanges : IEquatable<AccountChanges>
     public IList<SlotChanges> StorageChanges => _storageChanges.Values;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IReadOnlyCollection<StorageRead> StorageReads => _storageReads;
+    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
@@ -43,7 +44,7 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
     private readonly SortedList<UInt256, SlotChanges> _storageChanges;
-    private readonly SortedSet<StorageRead> _storageReads;
+    private readonly SortedSet<UInt256> _storageReads;
     private readonly SortedList<int, BalanceChange> _balanceChanges;
     private readonly SortedList<int, NonceChange> _nonceChanges;
     private readonly SortedList<int, CodeChange> _codeChanges;
@@ -51,24 +52,24 @@ public class AccountChanges : IEquatable<AccountChanges>
     public AccountChanges()
     {
         Address = Address.Zero;
-        _storageChanges = [];
-        _storageReads = [];
-        _balanceChanges = [];
-        _nonceChanges = [];
-        _codeChanges = [];
+        _storageChanges = new(UInt256Comparer.Instance);
+        _storageReads = new(UInt256Comparer.Instance);
+        _balanceChanges = new(IntComparer.Instance);
+        _nonceChanges = new(IntComparer.Instance);
+        _codeChanges = new(IntComparer.Instance);
     }
 
     public AccountChanges(Address address)
     {
         Address = address;
-        _storageChanges = [];
-        _storageReads = [];
-        _balanceChanges = [];
-        _nonceChanges = [];
-        _codeChanges = [];
+        _storageChanges = new(UInt256Comparer.Instance);
+        _storageReads = new(UInt256Comparer.Instance);
+        _balanceChanges = new(IntComparer.Instance);
+        _nonceChanges = new(IntComparer.Instance);
+        _codeChanges = new(IntComparer.Instance);
     }
 
-    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<StorageRead> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
+    public AccountChanges(Address address, SortedList<UInt256, SlotChanges> storageChanges, SortedSet<UInt256> storageReads, SortedList<int, BalanceChange> balanceChanges, SortedList<int, NonceChange> nonceChanges, SortedList<int, CodeChange> codeChanges)
     {
         Address = address;
         _storageChanges = storageChanges;
@@ -115,13 +116,13 @@ public class AccountChanges : IEquatable<AccountChanges>
         // remove the now-redundant read. A change entry supersedes a read.
         foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
         {
-            _storageReads.Remove(new(kv.Key));
+            _storageReads.Remove(kv.Key);
         }
         // Only merge reads for slots that don't already have changes in this BAL.
         // A prior tx's change already implies the slot value is known at later indices.
-        foreach (StorageRead read in other._storageReads)
+        foreach (UInt256 read in other._storageReads)
         {
-            if (!_storageChanges.ContainsKey(read.Key))
+            if (!_storageChanges.ContainsKey(read))
             {
                 _storageReads.Add(read);
             }
@@ -143,7 +144,7 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (TryGetSlotChanges(key, out SlotChanges? slotChanges) && slotChanges.Changes.Count == 0)
         {
             _storageChanges.Remove(key);
-            _storageReads.Add(new(key));
+            _storageReads.Add(key);
         }
     }
 
@@ -164,16 +165,16 @@ public class AccountChanges : IEquatable<AccountChanges>
         {
             if (slotChanges.Changes.TryGetValue(index, out StorageChange storageChange))
             {
-                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>() { { index, storageChange } });
+                yield return new(slotChanges.Slot, new SortedList<int, StorageChange>(IntComparer.Instance) { { index, storageChange } });
             }
         }
     }
 
     public void AddStorageRead(UInt256 key)
-        => _storageReads.Add(new(key));
+        => _storageReads.Add(key);
 
     public void RemoveStorageRead(UInt256 key)
-        => _storageReads.Remove(new(key));
+        => _storageReads.Remove(key);
 
     public void SelfDestruct()
     {

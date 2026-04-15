@@ -10,8 +10,10 @@ namespace Nethermind.Core.BlockAccessLists;
 
 public struct CodeChange(int blockAccessIndex, byte[] newCode) : IIndexedChange, IEquatable<CodeChange>
 {
+    [JsonPropertyName("index")]
     public readonly int BlockAccessIndex { get; init; } = blockAccessIndex;
 
+    [JsonPropertyName("code")]
     [JsonConverter(typeof(ByteArrayConverter))]
     public readonly byte[] NewCode { get; init; } = newCode;
 

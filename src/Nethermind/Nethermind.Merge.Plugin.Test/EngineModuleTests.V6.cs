@@ -869,7 +869,7 @@ public partial class EngineModuleTests
             {
                 SortedList<int, NonceChange> fakeNonce = new() { { 1, new NonceChange(1, 5) } };
                 modifiedAccounts[TestItem.AddressF] = new AccountChanges(
-                    TestItem.AddressF, new(), new SortedSet<StorageRead>(), new(), fakeNonce, new());
+                    TestItem.AddressF, new(), new SortedSet<UInt256>(), new(), fakeNonce, new());
             }
 
             if (errorKind is BalErrorKind.SurplusReads)
@@ -896,7 +896,7 @@ public partial class EngineModuleTests
             storageChanges.Add(sc.Slot, sc with { Changes = changes });
         }
 
-        SortedSet<StorageRead> storageReads = new(ac.StorageReads);
+        SortedSet<UInt256> storageReads = new(ac.StorageReads);
 
         SortedList<int, BalanceChange> balanceChanges = new();
         foreach (BalanceChange bc in ac.BalanceChanges)

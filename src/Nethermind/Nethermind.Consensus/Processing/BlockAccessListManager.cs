@@ -381,10 +381,10 @@ public class BlockAccessListManager(
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
 
-            foreach (StorageRead storageRead in accountChanges.StorageReads)
+            foreach (UInt256 storageRead in accountChanges.StorageReads)
             {
-                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead.Key);
-                StorageCell storageCell = new(accountChanges.Address, storageRead.Key);
+                SlotChanges slotChanges = accountChanges.GetOrAddSlotChanges(storageRead);
+                StorageCell storageCell = new(accountChanges.Address, storageRead);
                 slotChanges.AddStorageChange(new(-1, new(stateProvider.Get(storageCell), true)));
             }
         }

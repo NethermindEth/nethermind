@@ -27,7 +27,7 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
     public bool HasAccount(Address address) => _accountChanges.ContainsKey(address);
 
     // todo: optimize to use hashmaps where appropriate, separate data structures for tracing and state reading
-    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = [];
+    private readonly SortedDictionary<Address, AccountChanges> _accountChanges = new(AddressComparer.Instance);
     private readonly Stack<Change> _changes = new();
 
     public BlockAccessList()
