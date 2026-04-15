@@ -140,13 +140,15 @@ internal partial class StateCompositionService
 
     /// <summary>
     /// Persist a snapshot at the configured interval and prune entries beyond the retention window.
-    /// The holder captures every field under a single lock so the write cannot tear.
+    /// The holder captures every field under a single lock so the write cannot tear. Graceful
+    /// shutdown force-flushes independently via <see cref="StopAsync"/>, so missing an interval
+    /// only costs a few blocks of incremental replay after a crash.
     /// </summary>
     private void MaybeWriteSnapshot(Block head, CumulativeSizeStats updated)
     {
         if (!_config.PersistSnapshots || head.Number % _config.SnapshotInterval != 0) return;
 
-        _snapshotStore.WriteSnapshot(_stateHolder.BuildSnapshot(updated, head.Number, head.Header.StateRoot!));
+        WriteSnapshotForHead(updated, head.Number, head.Header.StateRoot!);
 
         int blocksToKeep = _config.SnapshotBlocksToKeep;
         if (blocksToKeep <= 0) return;
