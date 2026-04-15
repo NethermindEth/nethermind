@@ -8,7 +8,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using Nethermind.Int256;
-using Nethermind.Serialization;
 
 namespace Nethermind.EraE.Proofs;
 
