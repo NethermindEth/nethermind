@@ -14,6 +14,7 @@ namespace Nethermind.StateComposition.Snapshots;
 /// <summary>
 /// RLP encoder/decoder for <see cref="StateCompositionSnapshot"/>.
 /// Field order:
+///   0. schema version byte (current = 1)
 ///   1. 13 longs (CumulativeSizeStats)
 ///   2. blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber
 ///   3. depthPresent (long; 1 = depth stats follow, 0 = absent)
@@ -25,13 +26,21 @@ namespace Nethermind.StateComposition.Snapshots;
 ///   7. slotCountByAddress: int count, then count × (keccak hash, long slot count)
 ///   8. codeHashRefcounts: int count, then count × (keccak hash, int refcount)
 ///   9. codeHashSizes: int count, then count × (keccak hash, int size)
-/// Legacy snapshots (pre-CodeBytes/SlotHistogram schema) will fail to decode and
-/// are discarded by the plugin, which then triggers a fresh scan to rebuild the
-/// baseline with the new schema.
+/// Legacy snapshots (wrong version or pre-version schema) fail to decode with
+/// <see cref="RlpException"/> and are discarded by the plugin, which then
+/// triggers a fresh scan to rebuild the baseline with the new schema.
 /// </summary>
 public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompositionSnapshot>
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
+
+    /// <summary>
+    /// Wire-format version tag written as the first field inside the snapshot
+    /// sequence. Incompatible field layout changes must bump this. The decoder
+    /// throws <see cref="RlpException"/> on mismatch so callers treat the payload
+    /// as missing and trigger a fresh scan.
+    /// </summary>
+    private const byte SchemaVersion = 1;
 
     private delegate TValue DecodeValueDelegate<TValue>(ref Rlp.ValueDecoderContext ctx);
 
@@ -52,6 +61,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     {
         int length = 0;
 
+        length += EncodeInt(stream, SchemaVersion);
         length += EncodeLong(stream, item.Stats.AccountsTotal);
         length += EncodeLong(stream, item.Stats.ContractsTotal);
         length += EncodeLong(stream, item.Stats.StorageSlotsTotal);
@@ -162,6 +172,10 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
     protected override StateCompositionSnapshot DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         ctx.ReadSequenceLength();
+
+        int schemaVersion = ctx.DecodeInt();
+        if (schemaVersion != SchemaVersion)
+            throw new RlpException($"StateComposition snapshot schema version {schemaVersion} does not match expected {SchemaVersion}");
 
         CumulativeSizeStats stats = new(
             AccountsTotal: ctx.DecodeLong(),
