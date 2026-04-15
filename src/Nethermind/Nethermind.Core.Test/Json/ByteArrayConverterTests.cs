@@ -490,17 +490,17 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
     public static IEnumerable<object[]> StrictInvalidHexCases() => new object[][]
     {
-        ["0xF",    ByteArrayConverter.ErrOddLength],
-        ["0x123",  ByteArrayConverter.ErrOddLength],
-        ["0x1fF",  ByteArrayConverter.ErrOddLength],
-        ["0xabc",  ByteArrayConverter.ErrOddLength],
-        ["F",        ByteArrayConverter.ErrMissingPrefix],
-        ["123",      ByteArrayConverter.ErrMissingPrefix],
-        ["abc",      ByteArrayConverter.ErrMissingPrefix],
-        ["1f",       ByteArrayConverter.ErrMissingPrefix],
-        ["DEADBEEF", ByteArrayConverter.ErrMissingPrefix],
-        ["0xxx",      ByteArrayConverter.ErrSyntax],
-        ["0x01zz01",  ByteArrayConverter.ErrSyntax],
+        ["0xF",    Bytes.ErrOddLength],
+        ["0x123",  Bytes.ErrOddLength],
+        ["0x1fF",  Bytes.ErrOddLength],
+        ["0xabc",  Bytes.ErrOddLength],
+        ["F",        Bytes.ErrMissingPrefix],
+        ["123",      Bytes.ErrMissingPrefix],
+        ["abc",      Bytes.ErrMissingPrefix],
+        ["1f",       Bytes.ErrMissingPrefix],
+        ["DEADBEEF", Bytes.ErrMissingPrefix],
+        ["0xxx",      Bytes.ErrSyntax],
+        ["0x01zz01",  Bytes.ErrSyntax],
     };
 
     public static IEnumerable<object[]> StrictEvenLengthCases() => new object[][]

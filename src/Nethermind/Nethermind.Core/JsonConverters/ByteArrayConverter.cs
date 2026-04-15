@@ -18,10 +18,6 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     // '0' = 0x30, 'x' = 0x78, little-endian: 0x7830
     private const ushort HexPrefix = 0x7830;
 
-    internal const string ErrMissingPrefix = "hex string without 0x prefix";
-    internal const string ErrOddLength = "hex string of odd length";
-    internal const string ErrSyntax = "invalid hex string";
-
     public override byte[]? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
@@ -49,10 +45,10 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         {
             hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
         }
-        else if (strictHexFormat) ThrowFormatException(ErrMissingPrefix);
+        else if (strictHexFormat) Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
 
         if (requireEvenLength && hex.Length % 2 != 0)
-            ThrowFormatException(ErrOddLength);
+            Bytes.ThrowFormatException(Bytes.ErrOddLength);
 
         return Bytes.FromUtf8HexString(hex);
     }
@@ -82,12 +78,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     sr.Rewind(1);
                     if (strictHexFormat)
-                        ThrowFormatException(ErrMissingPrefix);
+                        Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
                 }
             }
             else if (strictHexFormat)
             {
-                ThrowFormatException(ErrMissingPrefix);
+                Bytes.ThrowFormatException(Bytes.ErrMissingPrefix);
             }
         }
 
@@ -95,7 +91,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (totalHexChars <= 0) return [];
 
         if (requireEvenLength && (totalHexChars & 1) != 0)
-            ThrowFormatException(ErrOddLength);
+            Bytes.ThrowFormatException(Bytes.ErrOddLength);
 
         int odd = (int)(totalHexChars & 1);
         int outLen = (int)(totalHexChars >> 1) + odd;
@@ -111,7 +107,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
             firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
             if (firstNibble > 0x0F)
-                ThrowFormatException(ErrSyntax);
+                Bytes.ThrowFormatException(Bytes.ErrSyntax);
 
             Unsafe.Add(ref resultRef, outPos++) = firstNibble;
         }
@@ -177,9 +173,6 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
         Bytes.FromUtf8HexString(hex, span);
     }
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowFormatException(string? message = ErrSyntax) => throw new FormatException(message);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
