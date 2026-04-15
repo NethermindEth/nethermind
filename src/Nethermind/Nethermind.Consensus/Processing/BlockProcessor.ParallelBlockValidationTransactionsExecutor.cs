@@ -70,14 +70,14 @@ public partial class BlockProcessor
         {
             int len = block.Transactions.Length;
             BlockReceiptsTracer[] receiptsTracers = new BlockReceiptsTracer[len];
-            TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[len];
+            TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults = new TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[len];
 
             for (int i = 0; i < len; i++)
             {
                 BlockReceiptsTracer tracer = new();
                 tracer.StartNewBlockTrace(block);
                 receiptsTracers[i] = tracer;
-                gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>();
+                gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>();
             }
 
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler, token), token);
@@ -111,11 +111,11 @@ public partial class BlockProcessor
                             txIndex,
                             state.receiptsTracers[txIndex],
                             state.processingOptions);
-                        state.gasResults[txIndex].SetResult((tx.BlockGasUsed, null));
+                        state.gasResults[txIndex].SetResult((tx.BlockGasUsed, state.receiptsTracers[txIndex].BlockStateGasUsed, null));
                     }
                     catch (Exception ex)
                     {
-                        state.gasResults[txIndex].SetResult((null, ex));
+                        state.gasResults[txIndex].SetResult((null, 0, ex));
                     }
 
                     return state;

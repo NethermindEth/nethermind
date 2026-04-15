@@ -25,11 +25,24 @@ namespace Nethermind.Consensus.Processing
             protected IWorldState _stateProvider = stateProvider;
             protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
 
-            public virtual void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
+            public
+#if !ZK_EVM
+            virtual
+#endif
+            void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
-            public virtual void SetBlockAccessListManager(in IBlockAccessListManager balManager) { }
+            public
+#if !ZK_EVM
+            virtual
+#endif
+            void SetBlockAccessListManager(in IBlockAccessListManager balManager)
+            { }
 
-            public virtual TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
+            public
+#if !ZK_EVM
+            virtual
+#endif
+            TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, CancellationToken token)
             {
                 Metrics.ResetBlockStats();
 
@@ -42,7 +55,11 @@ namespace Nethermind.Consensus.Processing
                 return [.. receiptsTracer.TxReceipts];
             }
 
-            protected virtual void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            protected
+#if !ZK_EVM
+            virtual
+#endif
+            void ProcessTransaction(Block block, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = transactionProcessor.ProcessTransaction(currentTx, receiptsTracer, processingOptions, _stateProvider);
                 if (!result) ThrowInvalidTransactionException(result, block.Header, currentTx, index);

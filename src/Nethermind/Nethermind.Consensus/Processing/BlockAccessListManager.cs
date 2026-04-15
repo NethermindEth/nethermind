@@ -117,13 +117,14 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, long BlockStateGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
         ValidateBlockAccessList(block, 0);
 
-        long totalGas = 0;
+        long totalRegularGas = 0;
+        long totalStateGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
             if (token.IsCancellationRequested)
@@ -134,13 +135,14 @@ public class BlockAccessListManager(
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
             {
-                (long? blockGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
+                (long? blockGasUsed, long blockStateGasUsed, Exception? ex) = gasResults[j].Task.GetAwaiter().GetResult();
                 if (ex is not null)
                     ExceptionDispatchInfo.Capture(ex).Throw();
 
                 transactionProcessedEventHandler?.OnTransactionProcessed(new TxProcessedEventArgs(j, block.Transactions[j], block.Header, receiptsTracers[j].TxReceipts[0]));
 
-                totalGas += blockGasUsed.Value;
+                totalRegularGas += blockGasUsed.Value;
+                totalStateGas += blockStateGasUsed;
                 SpendGas(blockGasUsed.Value);
 
                 bool validateStorageReads = j == chunkEnd - 1;
@@ -148,12 +150,15 @@ public class BlockAccessListManager(
                 ValidateBlockAccessList(block, (ushort)(j + 1), validateStorageReads);
             }
 
-            if (totalGas > block.Header.GasLimit)
+            // EIP-8037: block gasUsed = max(sum_regular, sum_state)
+            long effectiveGas = Math.Max(totalRegularGas, totalStateGas);
+            if (effectiveGas > block.Header.GasLimit)
             {
-                throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {totalGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
+                throw new InvalidBlockException(block, $"Block gas limit exceeded: cumulative gas {effectiveGas} > block gas limit {block.Header.GasLimit} after transaction index {chunkEnd - 1}.");
             }
         }
-        _blockExecutionContext.Value.Header.GasUsed = totalGas;
+        // EIP-8037: 2D gas accounting — block gasUsed = max(sum_regular, sum_state)
+        _blockExecutionContext.Value.Header.GasUsed = Math.Max(totalRegularGas, totalStateGas);
     }
 
     public static void ApplyStateChanges(BlockAccessList suggestedBlockAccessList, IWorldState stateProvider, IReleaseSpec spec, bool shouldComputeStateRoot)
