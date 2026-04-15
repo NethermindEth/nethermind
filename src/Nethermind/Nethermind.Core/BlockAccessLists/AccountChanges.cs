@@ -111,6 +111,12 @@ public class AccountChanges : IEquatable<AccountChanges>
                 _storageChanges.Add(kv.Key, kv.Value);
             }
         }
+        // When a new change is merged for a slot that previously only had a read,
+        // remove the now-redundant read. A change entry supersedes a read.
+        foreach (KeyValuePair<UInt256, SlotChanges> kv in other._storageChanges)
+        {
+            _storageReads.Remove(new(kv.Key));
+        }
         // Only merge reads for slots that don't already have changes in this BAL.
         // A prior tx's change already implies the slot value is known at later indices.
         foreach (StorageRead read in other._storageReads)
