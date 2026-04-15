@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -25,14 +26,20 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
 
     private int _accountsAdded, _accountsRemoved;
     private int _contractsAdded, _contractsRemoved;
-    private int _accountTrieBranchesAdded, _accountTrieBranchesRemoved;
-    private int _accountTrieExtensionsAdded, _accountTrieExtensionsRemoved;
-    private int _accountTrieLeavesAdded, _accountTrieLeavesRemoved;
-    private long _accountTrieBytesAdded, _accountTrieBytesRemoved;
-    private int _storageTrieBranchesAdded, _storageTrieBranchesRemoved;
-    private int _storageTrieExtensionsAdded, _storageTrieExtensionsRemoved;
-    private int _storageTrieLeavesAdded, _storageTrieLeavesRemoved;
-    private long _storageTrieBytesAdded, _storageTrieBytesRemoved;
+
+    // 2D counter tables indexed by [isStorage ? 1 : 0, NodeKind].
+    // NodeKind mirrors the Branch=0, Extension=1, Leaf=2 layout used in RecordNode.
+    // Collapses 16 scalar counters into two compact tables + two byte-total pairs.
+    private const int AccountTrie = 0;
+    private const int StorageTrie = 1;
+    private const int BranchKind = 0;
+    private const int ExtensionKind = 1;
+    private const int LeafKind = 2;
+    private readonly int[,] _trieNodesAdded = new int[2, 3];
+    private readonly int[,] _trieNodesRemoved = new int[2, 3];
+    private readonly long[] _trieBytesAdded = new long[2];
+    private readonly long[] _trieBytesRemoved = new long[2];
+
     private long _storageSlotsAdded, _storageSlotsRemoved;
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
@@ -53,14 +60,14 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         return new TrieDiff(
             _accountsAdded, _accountsRemoved,
             _contractsAdded, _contractsRemoved,
-            _accountTrieBranchesAdded, _accountTrieBranchesRemoved,
-            _accountTrieExtensionsAdded, _accountTrieExtensionsRemoved,
-            _accountTrieLeavesAdded, _accountTrieLeavesRemoved,
-            _accountTrieBytesAdded, _accountTrieBytesRemoved,
-            _storageTrieBranchesAdded, _storageTrieBranchesRemoved,
-            _storageTrieExtensionsAdded, _storageTrieExtensionsRemoved,
-            _storageTrieLeavesAdded, _storageTrieLeavesRemoved,
-            _storageTrieBytesAdded, _storageTrieBytesRemoved,
+            _trieNodesAdded[AccountTrie, BranchKind], _trieNodesRemoved[AccountTrie, BranchKind],
+            _trieNodesAdded[AccountTrie, ExtensionKind], _trieNodesRemoved[AccountTrie, ExtensionKind],
+            _trieNodesAdded[AccountTrie, LeafKind], _trieNodesRemoved[AccountTrie, LeafKind],
+            _trieBytesAdded[AccountTrie], _trieBytesRemoved[AccountTrie],
+            _trieNodesAdded[StorageTrie, BranchKind], _trieNodesRemoved[StorageTrie, BranchKind],
+            _trieNodesAdded[StorageTrie, ExtensionKind], _trieNodesRemoved[StorageTrie, ExtensionKind],
+            _trieNodesAdded[StorageTrie, LeafKind], _trieNodesRemoved[StorageTrie, LeafKind],
+            _trieBytesAdded[StorageTrie], _trieBytesRemoved[StorageTrie],
             _storageSlotsAdded, _storageSlotsRemoved,
             _contractsWithStorageAdded, _contractsWithStorageRemoved,
             _emptyAccountsAdded, _emptyAccountsRemoved,
@@ -176,14 +183,10 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
     {
         _accountsAdded = 0; _accountsRemoved = 0;
         _contractsAdded = 0; _contractsRemoved = 0;
-        _accountTrieBranchesAdded = 0; _accountTrieBranchesRemoved = 0;
-        _accountTrieExtensionsAdded = 0; _accountTrieExtensionsRemoved = 0;
-        _accountTrieLeavesAdded = 0; _accountTrieLeavesRemoved = 0;
-        _accountTrieBytesAdded = 0; _accountTrieBytesRemoved = 0;
-        _storageTrieBranchesAdded = 0; _storageTrieBranchesRemoved = 0;
-        _storageTrieExtensionsAdded = 0; _storageTrieExtensionsRemoved = 0;
-        _storageTrieLeavesAdded = 0; _storageTrieLeavesRemoved = 0;
-        _storageTrieBytesAdded = 0; _storageTrieBytesRemoved = 0;
+        Array.Clear(_trieNodesAdded);
+        Array.Clear(_trieNodesRemoved);
+        Array.Clear(_trieBytesAdded);
+        Array.Clear(_trieBytesRemoved);
         _storageSlotsAdded = 0; _storageSlotsRemoved = 0;
         _contractsWithStorageAdded = 0; _contractsWithStorageRemoved = 0;
         _emptyAccountsAdded = 0; _emptyAccountsRemoved = 0;
