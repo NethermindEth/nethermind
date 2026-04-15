@@ -37,26 +37,40 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        stream.StartSequence(GetContentLength(item));
+        stream.StartSequence(EncodeOrLength(null, item));
+        EncodeOrLength(stream, item);
+    }
 
-        stream.Encode(item.Stats.AccountsTotal);
-        stream.Encode(item.Stats.ContractsTotal);
-        stream.Encode(item.Stats.StorageSlotsTotal);
-        stream.Encode(item.Stats.AccountTrieBranches);
-        stream.Encode(item.Stats.AccountTrieExtensions);
-        stream.Encode(item.Stats.AccountTrieLeaves);
-        stream.Encode(item.Stats.AccountTrieBytes);
-        stream.Encode(item.Stats.StorageTrieBranches);
-        stream.Encode(item.Stats.StorageTrieExtensions);
-        stream.Encode(item.Stats.StorageTrieLeaves);
-        stream.Encode(item.Stats.StorageTrieBytes);
-        stream.Encode(item.Stats.ContractsWithStorage);
-        stream.Encode(item.Stats.EmptyAccounts);
+    /// <summary>
+    /// Single-pass encoder/length-calculator. When <paramref name="stream"/> is null, returns
+    /// the content length only (used by <see cref="GetLength"/> and the <see cref="RlpStream.StartSequence"/>
+    /// prefix). When non-null, writes each field into the stream and still returns the content length.
+    /// Having a single method for both roles eliminates two parallel field lists that used to drift
+    /// when the schema changed.
+    /// </summary>
+    private static int EncodeOrLength(RlpStream? stream, StateCompositionSnapshot item)
+    {
+        int length = 0;
 
-        stream.Encode(item.BlockNumber);
-        stream.Encode(item.StateRoot);
-        stream.Encode(item.DiffsSinceBaseline);
-        stream.Encode(item.ScanBlockNumber);
+        length += EncodeLong(stream, item.Stats.AccountsTotal);
+        length += EncodeLong(stream, item.Stats.ContractsTotal);
+        length += EncodeLong(stream, item.Stats.StorageSlotsTotal);
+        length += EncodeLong(stream, item.Stats.AccountTrieBranches);
+        length += EncodeLong(stream, item.Stats.AccountTrieExtensions);
+        length += EncodeLong(stream, item.Stats.AccountTrieLeaves);
+        length += EncodeLong(stream, item.Stats.AccountTrieBytes);
+        length += EncodeLong(stream, item.Stats.StorageTrieBranches);
+        length += EncodeLong(stream, item.Stats.StorageTrieExtensions);
+        length += EncodeLong(stream, item.Stats.StorageTrieLeaves);
+        length += EncodeLong(stream, item.Stats.StorageTrieBytes);
+        length += EncodeLong(stream, item.Stats.ContractsWithStorage);
+        length += EncodeLong(stream, item.Stats.EmptyAccounts);
+
+        length += EncodeLong(stream, item.BlockNumber);
+        if (stream is not null) stream.Encode(item.StateRoot);
+        length += Rlp.LengthOf(item.StateRoot);
+        length += EncodeInt(stream, item.DiffsSinceBaseline);
+        length += EncodeLong(stream, item.ScanBlockNumber);
 
         // Depth stats: present only if seeded. Stored as a leading marker long
         // (1 = present, 0 = absent) followed by 162 longs (9×16 + 2 scalars)
@@ -64,103 +78,66 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         CumulativeDepthStats? depth = item.DepthStats;
         if (depth is not null && depth.IsSeeded)
         {
-            stream.Encode(1L);
+            length += EncodeLong(stream, 1L);
             foreach (long[] arr in depth.ByDepth)
-                foreach (long v in arr) stream.Encode(v);
-            stream.Encode(depth.TotalBranchNodes);
-            stream.Encode(depth.TotalBranchChildren);
+                foreach (long v in arr) length += EncodeLong(stream, v);
+            length += EncodeLong(stream, depth.TotalBranchNodes);
+            length += EncodeLong(stream, depth.TotalBranchChildren);
         }
         else
         {
-            stream.Encode(0L);
+            length += EncodeLong(stream, 0L);
         }
 
         // CodeBytesTotal + 16 slot-count histogram longs — always written so a
         // restarted node resumes these metrics from the last persisted baseline
         // instead of dropping to zero until the next full scan.
-        stream.Encode(item.Stats.CodeBytesTotal);
+        length += EncodeLong(stream, item.Stats.CodeBytesTotal);
         ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
-            stream.Encode(hist.IsDefault ? 0L : hist[i]);
+            length += EncodeLong(stream, hist.IsDefault ? 0L : hist[i]);
 
-        EncodeMap(stream, item.SlotCountByAddress, static (s, v) => s.Encode(v));
-        EncodeMap(stream, item.CodeHashRefcounts, static (s, v) => s.Encode(v));
-        EncodeMap(stream, item.CodeHashSizes, static (s, v) => s.Encode(v));
+        length += EncodeOrLengthMap(stream, item.SlotCountByAddress,
+            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
+        length += EncodeOrLengthMap(stream, item.CodeHashRefcounts,
+            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
+        length += EncodeOrLengthMap(stream, item.CodeHashSizes,
+            static (s, v) => s.Encode(v), static v => Rlp.LengthOf(v));
+
+        return length;
     }
 
-    private static int GetContentLength(StateCompositionSnapshot item)
+    private static int EncodeLong(RlpStream? stream, long value)
     {
-        int contentLength = 0;
-
-        contentLength += Rlp.LengthOf(item.Stats.AccountsTotal);
-        contentLength += Rlp.LengthOf(item.Stats.ContractsTotal);
-        contentLength += Rlp.LengthOf(item.Stats.StorageSlotsTotal);
-        contentLength += Rlp.LengthOf(item.Stats.AccountTrieBranches);
-        contentLength += Rlp.LengthOf(item.Stats.AccountTrieExtensions);
-        contentLength += Rlp.LengthOf(item.Stats.AccountTrieLeaves);
-        contentLength += Rlp.LengthOf(item.Stats.AccountTrieBytes);
-        contentLength += Rlp.LengthOf(item.Stats.StorageTrieBranches);
-        contentLength += Rlp.LengthOf(item.Stats.StorageTrieExtensions);
-        contentLength += Rlp.LengthOf(item.Stats.StorageTrieLeaves);
-        contentLength += Rlp.LengthOf(item.Stats.StorageTrieBytes);
-        contentLength += Rlp.LengthOf(item.Stats.ContractsWithStorage);
-        contentLength += Rlp.LengthOf(item.Stats.EmptyAccounts);
-
-        contentLength += Rlp.LengthOf(item.BlockNumber);
-        contentLength += Rlp.LengthOf(item.StateRoot);
-        contentLength += Rlp.LengthOf(item.DiffsSinceBaseline);
-        contentLength += Rlp.LengthOf(item.ScanBlockNumber);
-
-        CumulativeDepthStats? depth = item.DepthStats;
-        if (depth is not null && depth.IsSeeded)
-        {
-            contentLength += Rlp.LengthOf(1L);
-            foreach (long[] arr in depth.ByDepth)
-                foreach (long v in arr) contentLength += Rlp.LengthOf(v);
-            contentLength += Rlp.LengthOf(depth.TotalBranchNodes);
-            contentLength += Rlp.LengthOf(depth.TotalBranchChildren);
-        }
-        else
-        {
-            contentLength += Rlp.LengthOf(0L);
-        }
-
-        contentLength += Rlp.LengthOf(item.Stats.CodeBytesTotal);
-        ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
-        for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
-            contentLength += Rlp.LengthOf(hist.IsDefault ? 0L : hist[i]);
-
-        contentLength += GetMapLength(item.SlotCountByAddress, static v => Rlp.LengthOf(v));
-        contentLength += GetMapLength(item.CodeHashRefcounts, static v => Rlp.LengthOf(v));
-        contentLength += GetMapLength(item.CodeHashSizes, static v => Rlp.LengthOf(v));
-
-        return contentLength;
+        stream?.Encode(value);
+        return Rlp.LengthOf(value);
     }
 
-    private static int GetMapLength<TValue>(
+    private static int EncodeInt(RlpStream? stream, int value)
+    {
+        stream?.Encode(value);
+        return Rlp.LengthOf(value);
+    }
+
+    private static int EncodeOrLengthMap<TValue>(
+        RlpStream? stream,
         IReadOnlyDictionary<ValueHash256, TValue>? map,
+        System.Action<RlpStream, TValue> encodeValue,
         System.Func<TValue, int> lengthOfValue)
     {
         int count = map?.Count ?? 0;
-        int total = Rlp.LengthOf(count);
+        int total = EncodeInt(stream, count);
         if (map is null) return total;
         foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
-            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
-        return total;
-    }
-
-    private static void EncodeMap<TValue>(
-        RlpStream stream,
-        IReadOnlyDictionary<ValueHash256, TValue>? map,
-        System.Action<RlpStream, TValue> encodeValue)
-    {
-        stream.Encode(map?.Count ?? 0);
-        if (map is null) return;
-        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
         {
-            stream.Encode(new Hash256(kvp.Key));
-            encodeValue(stream, kvp.Value);
+            if (stream is not null)
+            {
+                stream.Encode(new Hash256(kvp.Key));
+                encodeValue(stream, kvp.Value);
+            }
+            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
         }
+        return total;
     }
 
     private static Dictionary<ValueHash256, TValue> DecodeMap<TValue>(
@@ -179,7 +156,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 
     public override int GetLength(StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        return Rlp.LengthOfSequence(GetContentLength(item));
+        return Rlp.LengthOfSequence(EncodeOrLength(null, item));
     }
 
     protected override StateCompositionSnapshot DecodeInternal(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
