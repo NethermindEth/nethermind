@@ -300,8 +300,16 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private byte[]? GetCodeCurrent(Address address)
         => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCode : null;
 
-    private ValueHash256? GetCodeHashCurrent(Address address)
-        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCodeHash : null;
+    private bool GetCodeHashCurrent(Address address, [NotNullWhen(true)] out ValueHash256? hash)
+    {
+        hash = null;
+        bool res = TryGetCodeChangeCurrent(address, out CodeChange? codeChange);
+        if (res)
+        {
+            hash = codeChange.Value.NewCodeHash;
+        }
+        return res;
+    }
 
     private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
@@ -320,7 +328,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         => GetCodeCurrent(address) ?? _innerWorldState.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
-        => GetCodeHashCurrent(address) ?? _innerWorldState.GetCodeHash(address);
+        => GetCodeHashCurrent(address, out ValueHash256? hash) ? hash.Value : _innerWorldState.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
