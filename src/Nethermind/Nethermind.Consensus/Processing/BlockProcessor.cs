@@ -52,7 +52,9 @@ public partial class BlockProcessor(
     protected readonly IBlockAccessListManager _balManager = balManager;
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
+#if !ZK_EVM
     private readonly BlockAccessListSystemContractHandler _balSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor, balManager);
+#endif
     private SystemContractHandler _systemContractHandler;
 
     /// <summary>
@@ -68,7 +70,11 @@ public partial class BlockProcessor(
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         _balManager.PrepareForProcessing(suggestedBlock, spec, options);
+#if !ZK_EVM
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
+#else
+        _systemContractHandler = _standardSystemContractHandler;
+#endif
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -325,25 +331,42 @@ public partial class BlockProcessor(
         public (Address? toAddress, AccessList? accessList) BeaconRootsAccessList(Block block, IReleaseSpec spec, bool includeStorageCells = true)
             => beaconBlockRootHandler.BeaconRootsAccessList(block, spec, includeStorageCells);
 
-        public virtual void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer = null)
+        public
+#if !ZK_EVM
+        virtual
+#endif
+        void StoreBeaconRoot(Block block, IReleaseSpec spec, ITxTracer tracer = null)
             => beaconBlockRootHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
 
         public AccessList? GetAccessList(Block block, IReleaseSpec spec)
             => beaconBlockRootHandler.GetAccessList(block, spec);
 
-        public virtual void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
+        public
+#if !ZK_EVM
+        virtual
+#endif
+        void ApplyBlockhashStateChanges(BlockHeader blockHeader, IReleaseSpec spec)
             => blockHashStore.ApplyBlockhashStateChanges(blockHeader, spec);
 
         public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber, IReleaseSpec spec)
             => blockHashStore.GetBlockHashFromState(currentBlockHeader, requiredBlockNumber, spec);
 
-        public virtual void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
+        public
+#if !ZK_EVM
+        virtual
+#endif
+        void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
             => executionRequestsProcessor.ProcessExecutionRequests(block, state, receipts, spec);
 
-        public virtual void ProcessWithdrawals(Block block, IReleaseSpec spec)
+        public
+#if !ZK_EVM
+        virtual
+#endif
+        void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => withdrawalProcessor.ProcessWithdrawals(block, spec);
     }
 
+#if !ZK_EVM
     public class BlockAccessListSystemContractHandler(
         IBeaconBlockRootHandler beaconBlockRootHandler,
         IBlockhashStore blockHashStore,
@@ -363,4 +386,5 @@ public partial class BlockProcessor(
         public override void ProcessWithdrawals(Block block, IReleaseSpec spec)
             => balManager.ProcessWithdrawals(block, spec);
     }
+#endif
 }
