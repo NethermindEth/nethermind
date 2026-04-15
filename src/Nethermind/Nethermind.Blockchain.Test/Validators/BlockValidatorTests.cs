@@ -250,15 +250,6 @@ public class BlockValidatorTests
             "BlockLevelAccessListNotEnabled")
         { TestName = "BlockLevelAccessListNotEnabled" };
 
-        yield return new TestCaseData(
-            Build.A.Block
-                .WithParent(parent)
-                .WithBlobGasUsed(0)
-                .WithWithdrawals([]).TestObject,
-            parent,
-            new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance)),
-            "MissingBlockLevelAccessList")
-        { TestName = "MissingBlockLevelAccessList" };
     }
 
     [TestCaseSource(nameof(BadSuggestedBlocks))]

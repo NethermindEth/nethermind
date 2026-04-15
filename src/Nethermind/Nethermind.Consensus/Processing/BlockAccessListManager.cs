@@ -70,14 +70,15 @@ public class BlockAccessListManager(
         if (Enabled)
         {
             _isBuilding = options.ContainsFlag(ProcessingOptions.ProducingBlock);
-            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding;
+            // Parallel execution requires the BAL body to be present on the block.
+            // Blocks from p2p/RLP fixtures only have the header hash, not the decoded BAL body.
+            ParallelExecutionEnabled = blocksConfig.ParallelExecution && !_isBuilding && suggestedBlock.BlockAccessList is not null;
             Reset();
             _gasRemaining = suggestedBlock.GasUsed;
 
             if (ParallelExecutionEnabled && suggestedBlock.Hash != _lastLoadedBal)
             {
                 _lastLoadedBal = suggestedBlock.Hash;
-                ArgumentNullException.ThrowIfNull(suggestedBlock.BlockAccessList);
                 LoadPreStateToSuggestedBlockAccessList(suggestedBlock.BlockAccessList);
             }
         }

@@ -399,22 +399,15 @@ public class BlockValidator(
 
     public virtual bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {
-        // n.b. block BAL could be null if it doesn't come from engine API eg. RLP tests
+        // n.b. block BAL body is a side-channel property only set by engine API or local production.
+        // It is NOT part of block RLP, so blocks from p2p/fixtures will have null BlockAccessList
+        // even when EIP-7928 is active. We only validate the body if it's present.
 
         if (!spec.BlockLevelAccessListsEnabled && block.BlockAccessList is not null)
         {
             error = BlockErrorMessages.BlockLevelAccessListNotEnabled;
 
             if (_logger.IsWarn) _logger.Warn($"Block level access list must be null in block {block.Hash} when EIP-7928 not activated.");
-
-            return false;
-        }
-
-        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
-        {
-            error = BlockErrorMessages.MissingBlockLevelAccessList;
-
-            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
 
             return false;
         }
