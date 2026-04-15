@@ -229,21 +229,11 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
 
-    // DeleteInvalidBlock delegates exclusively to _overlayTree, so BlockInvalidated
-    // only needs to be forwarded from there.  The _baseTree is a ReadOnlyBlockTree
-    // that never raises this event.
+    // DeleteInvalidBlock delegates exclusively to _overlayTree; _baseTree is ReadOnly and never raises this event.
     public event EventHandler<BlockEventArgs>? BlockInvalidated
     {
-        add
-        {
-            if (value is not null)
-                _overlayTree.BlockInvalidated += value;
-        }
-        remove
-        {
-            if (value is not null)
-                _overlayTree.BlockInvalidated -= value;
-        }
+        add => _overlayTree.BlockInvalidated += value;
+        remove => _overlayTree.BlockInvalidated -= value;
     }
 
     public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
