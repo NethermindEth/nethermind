@@ -69,7 +69,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db));
         TrieDiff diff = walker.ComputeDiff(root, root);
 
-        Assert.That(diff, Is.Default);
+        Assert.That(diff, Is.EqualTo(TrieDiff.Empty));
     }
 
     #endregion
@@ -930,8 +930,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
         TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
 
-        Assert.That(diff.DepthDelta, Is.Not.Null);
-        CumulativeDepthStats d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta;
 
         // Net leaf added at some depth — total ValueNodes across all depths must be +1
         long totalValueNodeDelta = 0;
@@ -954,8 +953,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
         TrieDiff diff = walker.ComputeDiff(root1, Keccak.EmptyTreeHash);
 
-        Assert.That(diff.DepthDelta, Is.Not.Null);
-        CumulativeDepthStats d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta;
 
         long totalValueNodeDelta = 0;
         for (int i = 0; i < 16; i++) totalValueNodeDelta += d.AccountValueNodes[i];
@@ -983,8 +981,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
-        Assert.That(diff.DepthDelta, Is.Not.Null);
-        CumulativeDepthStats d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta;
 
         // Adding a second account requires at least one branch net-new or restructured
         // The important invariant: TotalBranchNodes tracks the occupancy histogram change

@@ -42,7 +42,7 @@ public class StateCompositionRpcModuleTests
     }
 
     [Test]
-    public async Task GetCachedStats_ReturnsNullStats_WhenNotInitialized()
+    public async Task GetCachedStats_ReturnsDefaultStats_WhenNotInitialized()
     {
         StateCompositionStateHolder stateHolder = new();
 
@@ -54,7 +54,7 @@ public class StateCompositionRpcModuleTests
 
         ResultWrapper<CachedStatsResponse> result = await rpc.statecomp_getCachedStats();
 
-        Assert.That(result.Data.CurrentStats, Is.Null);
+        Assert.That(result.Data.LastScanMetadata.IsComplete, Is.False);
     }
 
     [Test]

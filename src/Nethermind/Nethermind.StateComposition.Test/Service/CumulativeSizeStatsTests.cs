@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Immutable;
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Diff;
 using NUnit.Framework;
 
 namespace Nethermind.StateComposition.Test.Service;
@@ -84,7 +86,10 @@ public class CumulativeSizeStatsTests
             StorageTrieBytesAdded: 400, StorageTrieBytesRemoved: 0,
             StorageSlotsAdded: 3, StorageSlotsRemoved: 0,
             ContractsWithStorageAdded: 1, ContractsWithStorageRemoved: 0,
-            EmptyAccountsAdded: 0, EmptyAccountsRemoved: 0);
+            EmptyAccountsAdded: 0, EmptyAccountsRemoved: 0,
+            DepthDelta: new CumulativeDepthStats(),
+            SlotCountChanges: Array.Empty<SlotCountChange>(),
+            CodeHashChanges: Array.Empty<CodeHashChange>());
 
         CumulativeSizeStats updated = baseline.ApplyDiff(diff);
 

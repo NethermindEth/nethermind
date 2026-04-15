@@ -307,15 +307,17 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         await _scanLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            CumulativeSizeStats? stats = _stateHolder.IncrementalStats;
-            Hash256? stateRoot = _stateHolder.LastProcessedStateRoot;
+            if (!_stateHolder.IsIncrementalSeeded) return;
+            Hash256 stateRoot = _stateHolder.LastProcessedStateRoot;
+            if (stateRoot == Hash256.Zero) return;
+
+            CumulativeSizeStats stats = _stateHolder.IncrementalStats;
             long blockNumber = _stateHolder.IncrementalBlock;
-            if (stats is null || stateRoot is null) return;
 
             if (_logger.IsInfo)
                 _logger.Info($"StateComposition: shutdown flush — writing snapshot at block {blockNumber}");
 
-            WriteSnapshotForHead(stats.Value, blockNumber, stateRoot);
+            WriteSnapshotForHead(stats, blockNumber, stateRoot);
         }
         finally
         {

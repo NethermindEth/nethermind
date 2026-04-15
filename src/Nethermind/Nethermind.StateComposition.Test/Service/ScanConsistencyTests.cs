@@ -381,7 +381,7 @@ public class ScanConsistencyTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(1));
-            Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.Zero);
+            Assert.That(stateHolder.LastScanMetadata.BlockNumber, Is.Zero);
         }
 
         // Second scan at root1 — overwrites cached stats
@@ -391,7 +391,7 @@ public class ScanConsistencyTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(stateHolder.CurrentStats.AccountsTotal, Is.EqualTo(3));
-            Assert.That(stateHolder.LastScanMetadata!.Value.BlockNumber, Is.EqualTo(1));
+            Assert.That(stateHolder.LastScanMetadata.BlockNumber, Is.EqualTo(1));
         }
     }
 }

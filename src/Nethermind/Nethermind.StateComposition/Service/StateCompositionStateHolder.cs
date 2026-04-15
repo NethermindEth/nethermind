@@ -19,14 +19,17 @@ internal sealed class StateCompositionStateHolder
 
     private StateCompositionStats _currentStats;
     private TrieDepthDistribution _currentDistribution;
-    private ScanMetadata? _lastScanMetadata;
+    private ScanMetadata _lastScanMetadata;
     private bool _isInitialized;
 
-    private CumulativeSizeStats? _incrementalStats;
+    private CumulativeSizeStats _incrementalStats;
+    private bool _isIncrementalSeeded;
     private readonly CumulativeDepthStats _currentDepthStats = new();
     private long _incrementalBlock;
     private int _diffsSinceBaseline;
-    private Hash256? _lastProcessedStateRoot;
+    // Sentinel: Hash256.Zero means "no baseline" (cold start or post-invalidation).
+    // OnNewHeadBlock and RunIncrementalDiff gate on this directly instead of nullables.
+    private Hash256 _lastProcessedStateRoot = Hash256.Zero;
 
     // Incremental trackers — keep the state needed to update CodeBytesTotal and
     // SlotCountHistogram when a TrieDiff lands. Seeded from each full scan, carried
@@ -47,14 +50,16 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _currentDistribution; }
     }
 
-    public ScanMetadata? LastScanMetadata
+    public ScanMetadata LastScanMetadata
     {
         get { lock (_lock) return _lastScanMetadata; }
     }
 
     public bool IsInitialized { get { lock (_lock) return _isInitialized; } }
 
-    public CumulativeSizeStats? IncrementalStats
+    public bool IsIncrementalSeeded { get { lock (_lock) return _isIncrementalSeeded; } }
+
+    public CumulativeSizeStats IncrementalStats
     {
         get { lock (_lock) return _incrementalStats; }
     }
@@ -79,7 +84,11 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _diffsSinceBaseline; }
     }
 
-    public Hash256? LastProcessedStateRoot
+    /// <summary>
+    /// Returns <see cref="Hash256.Zero"/> when no baseline is available
+    /// (cold start or post-<see cref="InvalidateBaseline"/>).
+    /// </summary>
+    public Hash256 LastProcessedStateRoot
     {
         get { lock (_lock) return _lastProcessedStateRoot; }
     }
@@ -91,7 +100,7 @@ internal sealed class StateCompositionStateHolder
             return new CachedStatsResponse
             {
                 CurrentStats = _incrementalStats,
-                BlockNumber = _incrementalStats is not null ? _incrementalBlock : null,
+                BlockNumber = _incrementalBlock,
                 DiffsSinceLastScan = _diffsSinceBaseline,
                 LastScanMetadata = _lastScanMetadata,
             };
@@ -116,7 +125,7 @@ internal sealed class StateCompositionStateHolder
                 blockNumber,
                 stateRoot,
                 _diffsSinceBaseline,
-                _lastScanMetadata?.BlockNumber ?? 0,
+                _lastScanMetadata.BlockNumber,
                 _currentDepthStats,
                 _slotCountByAddress,
                 _codeHashRefcounts,
@@ -158,6 +167,7 @@ internal sealed class StateCompositionStateHolder
         lock (_lock)
         {
             _incrementalStats = baseline;
+            _isIncrementalSeeded = true;
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline = 0;
             _lastProcessedStateRoot = stateRoot;
@@ -182,7 +192,7 @@ internal sealed class StateCompositionStateHolder
     /// </summary>
     public void InvalidateBaseline()
     {
-        lock (_lock) _lastProcessedStateRoot = null;
+        lock (_lock) _lastProcessedStateRoot = Hash256.Zero;
     }
 
     /// <summary>
@@ -203,8 +213,7 @@ internal sealed class StateCompositionStateHolder
     {
         lock (_lock)
         {
-            CumulativeSizeStats current = _incrementalStats!.Value;
-            CumulativeSizeStats updated = current.ApplyDiff(diff);
+            CumulativeSizeStats updated = _incrementalStats.ApplyDiff(diff);
 
             long codeBytes = updated.CodeBytesTotal;
 
@@ -221,20 +230,14 @@ internal sealed class StateCompositionStateHolder
                     histogram[i] = updated.SlotCountHistogram[i];
             }
 
-            if (diff.CodeHashChanges is not null)
+            foreach (CodeHashChange change in diff.CodeHashChanges)
             {
-                foreach (CodeHashChange change in diff.CodeHashChanges)
-                {
-                    ApplyCodeHashChange(change, codeSizeLookup, ref codeBytes);
-                }
+                ApplyCodeHashChange(change, codeSizeLookup, ref codeBytes);
             }
 
-            if (diff.SlotCountChanges is not null)
+            foreach (SlotCountChange change in diff.SlotCountChanges)
             {
-                foreach (SlotCountChange change in diff.SlotCountChanges)
-                {
-                    ApplySlotCountChange(change, histogram);
-                }
+                ApplySlotCountChange(change, histogram);
             }
 
             updated = updated with
@@ -247,8 +250,7 @@ internal sealed class StateCompositionStateHolder
             _incrementalBlock = blockNumber;
             _diffsSinceBaseline++;
             _lastProcessedStateRoot = stateRoot;
-            if (diff.DepthDelta is not null)
-                _currentDepthStats.AddInPlace(diff.DepthDelta);
+            _currentDepthStats.AddInPlace(diff.DepthDelta);
 
             return updated;
         }
@@ -326,6 +328,7 @@ internal sealed class StateCompositionStateHolder
         lock (_lock)
         {
             _incrementalStats = snapshot.Stats;
+            _isIncrementalSeeded = true;
             _incrementalBlock = snapshot.BlockNumber;
             _diffsSinceBaseline = snapshot.DiffsSinceBaseline;
             _lastProcessedStateRoot = snapshot.StateRoot;
@@ -334,15 +337,15 @@ internal sealed class StateCompositionStateHolder
             // getTrieDistribution() requires a fresh scan.
 
             _currentDepthStats.Reset();
-            if (snapshot.DepthStats is { IsSeeded: true } persisted)
-                _currentDepthStats.SeedFromSnapshot(persisted);
+            if (snapshot.DepthStats.IsSeeded)
+                _currentDepthStats.SeedFromSnapshot(snapshot.DepthStats);
 
             // Take ownership of the decoder-allocated dictionaries directly. The
             // decoder materializes fresh maps per call and does not retain them,
             // so no other writer can observe or mutate these instances.
-            _slotCountByAddress = snapshot.SlotCountByAddress ?? new Dictionary<ValueHash256, long>();
-            _codeHashRefcounts = snapshot.CodeHashRefcounts ?? new Dictionary<ValueHash256, int>();
-            _codeHashSizes = snapshot.CodeHashSizes ?? new Dictionary<ValueHash256, int>();
+            _slotCountByAddress = snapshot.SlotCountByAddress;
+            _codeHashRefcounts = snapshot.CodeHashRefcounts;
+            _codeHashSizes = snapshot.CodeHashSizes;
         }
     }
 }

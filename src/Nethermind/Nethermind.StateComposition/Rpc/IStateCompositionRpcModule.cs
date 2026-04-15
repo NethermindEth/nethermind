@@ -19,9 +19,9 @@ public interface IStateCompositionRpcModule : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get cached stats from last completed scan. " +
-                      "Stats field is null if never scanned. " +
-                      "LastScanMetadata carries scan freshness/completion info.",
-        ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":null}")]
+                      "Check LastScanMetadata.IsComplete to confirm a scan has run; " +
+                      "stats are zero-valued before the first scan completes.",
+        ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":{\"isComplete\":true}}")]
     Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats();
 
     [JsonRpcMethod(IsImplemented = true,

@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#nullable enable
+
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Diff;
 using Nethermind.StateComposition.Snapshots;
 using NUnit.Framework;
 
@@ -42,6 +45,26 @@ public class SnapshotRoundTripTests
             SlotCountHistogram = slotHist,
         };
 
+    private static StateCompositionSnapshot BuildSnapshot(
+        CumulativeSizeStats stats,
+        long blockNumber,
+        Hash256 stateRoot,
+        int diffsSinceBaseline = 0,
+        long scanBlockNumber = 0,
+        Dictionary<ValueHash256, long>? slotCountByAddress = null,
+        Dictionary<ValueHash256, int>? codeHashRefcounts = null,
+        Dictionary<ValueHash256, int>? codeHashSizes = null) =>
+        new(
+            stats,
+            blockNumber,
+            stateRoot,
+            diffsSinceBaseline,
+            scanBlockNumber,
+            new CumulativeDepthStats(),
+            slotCountByAddress ?? new Dictionary<ValueHash256, long>(),
+            codeHashRefcounts ?? new Dictionary<ValueHash256, int>(),
+            codeHashSizes ?? new Dictionary<ValueHash256, int>());
+
     private static StateCompositionSnapshot RoundTrip(StateCompositionSnapshot original)
     {
         StateCompositionSnapshotDecoder decoder = StateCompositionSnapshotDecoder.Instance;
@@ -59,8 +82,9 @@ public class SnapshotRoundTripTests
     {
         ImmutableArray<long> hist = [0, 5, 4, 3, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
         CumulativeSizeStats stats = BuildStats(codeBytes: 987_654, slotHist: hist);
-        StateCompositionSnapshot original = new(stats, BlockNumber: 1_000_000,
-            StateRoot: Keccak.Compute("root"), DiffsSinceBaseline: 42, ScanBlockNumber: 999_000);
+        StateCompositionSnapshot original = BuildSnapshot(stats,
+            blockNumber: 1_000_000, stateRoot: Keccak.Compute("root"),
+            diffsSinceBaseline: 42, scanBlockNumber: 999_000);
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
@@ -72,7 +96,7 @@ public class SnapshotRoundTripTests
     {
         ImmutableArray<long> hist = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768];
         CumulativeSizeStats stats = BuildStats(codeBytes: 1, slotHist: hist);
-        StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0);
+        StateCompositionSnapshot original = BuildSnapshot(stats, 1, Keccak.Compute("r"));
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
@@ -88,7 +112,7 @@ public class SnapshotRoundTripTests
         // array of zeros. This matches the Metrics fan-out contract, which
         // requires a length-16 array and does not defend against default.
         CumulativeSizeStats stats = BuildStats(codeBytes: 0, slotHist: default);
-        StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0);
+        StateCompositionSnapshot original = BuildSnapshot(stats, 1, Keccak.Compute("r"));
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
@@ -112,15 +136,14 @@ public class SnapshotRoundTripTests
         };
 
         CumulativeSizeStats stats = BuildStats(codeBytes: 10, slotHist: default);
-        StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0,
-            SlotCountByAddress: slotCounts);
+        StateCompositionSnapshot original = BuildSnapshot(stats, 1, Keccak.Compute("r"),
+            slotCountByAddress: slotCounts);
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.SlotCountByAddress, Is.Not.Null);
-            Assert.That(decoded.SlotCountByAddress!.Count, Is.EqualTo(2));
+            Assert.That(decoded.SlotCountByAddress.Count, Is.EqualTo(2));
             Assert.That(decoded.SlotCountByAddress[addr1], Is.EqualTo(42));
             Assert.That(decoded.SlotCountByAddress[addr2], Is.EqualTo(1_000_000));
         }
@@ -143,40 +166,18 @@ public class SnapshotRoundTripTests
         };
 
         CumulativeSizeStats stats = BuildStats(codeBytes: 1024 * 3 + 2048, slotHist: default);
-        StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0,
-            CodeHashRefcounts: refcounts,
-            CodeHashSizes: sizes);
+        StateCompositionSnapshot original = BuildSnapshot(stats, 1, Keccak.Compute("r"),
+            codeHashRefcounts: refcounts,
+            codeHashSizes: sizes);
 
         StateCompositionSnapshot decoded = RoundTrip(original);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.CodeHashRefcounts, Is.Not.Null);
-            Assert.That(decoded.CodeHashRefcounts![codeA], Is.EqualTo(3));
+            Assert.That(decoded.CodeHashRefcounts[codeA], Is.EqualTo(3));
             Assert.That(decoded.CodeHashRefcounts[codeB], Is.EqualTo(1));
-            Assert.That(decoded.CodeHashSizes, Is.Not.Null);
-            Assert.That(decoded.CodeHashSizes![codeA], Is.EqualTo(1024));
+            Assert.That(decoded.CodeHashSizes[codeA], Is.EqualTo(1024));
             Assert.That(decoded.CodeHashSizes[codeB], Is.EqualTo(2048));
-        }
-    }
-
-    [Test]
-    public void RoundTrip_NullTrackers_DecodesAsEmptyMaps()
-    {
-        // Backward-defensive: a snapshot written with null trackers (shouldn't happen
-        // post-patch, but harmless) must decode as empty dictionaries so the plugin
-        // treats it as "no baseline" and triggers a fresh scan.
-        CumulativeSizeStats stats = BuildStats(codeBytes: 0, slotHist: default);
-        StateCompositionSnapshot original = new(stats, 1, Keccak.Compute("r"), 0, 0);
-
-        StateCompositionSnapshot decoded = RoundTrip(original);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(decoded.SlotCountByAddress, Is.Not.Null);
-            Assert.That(decoded.SlotCountByAddress!, Is.Empty);
-            Assert.That(decoded.CodeHashRefcounts!, Is.Empty);
-            Assert.That(decoded.CodeHashSizes!, Is.Empty);
         }
     }
 }

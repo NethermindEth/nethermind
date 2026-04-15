@@ -3,11 +3,13 @@
 
 #nullable enable
 
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.StateComposition.Data;
+using Nethermind.StateComposition.Diff;
 using Nethermind.StateComposition.Service;
 using Nethermind.StateComposition.Visitors;
 using NUnit.Framework;
@@ -65,9 +67,9 @@ public class StateCompositionStateHolderTests
             StorageSlotsAdded: 0, StorageSlotsRemoved: 0,
             ContractsWithStorageAdded: 0, ContractsWithStorageRemoved: 0,
             EmptyAccountsAdded: 0, EmptyAccountsRemoved: 0,
-            DepthDelta: null,
-            SlotCountChanges: slotCountChanges,
-            CodeHashChanges: codeHashChanges);
+            DepthDelta: new CumulativeDepthStats(),
+            SlotCountChanges: slotCountChanges ?? Array.Empty<SlotCountChange>(),
+            CodeHashChanges: codeHashChanges ?? Array.Empty<CodeHashChange>());
 
     private static StateCompositionStateHolder HolderWithBaseline(
         CumulativeSizeStats baseline,
@@ -290,7 +292,7 @@ public class StateCompositionStateHolderTests
         long[] seed = new long[CumulativeSizeStats.SlotHistogramLength];
         seed[2] = 5;
         StateCompositionStateHolder holder = HolderWithBaseline(EmptyBaseline(histogram: seed));
-        ImmutableArray<long> capturedBaseline = holder.IncrementalStats!.Value.SlotCountHistogram;
+        ImmutableArray<long> capturedBaseline = holder.IncrementalStats.SlotCountHistogram;
 
         TrieDiff diff = DiffWithPayloads(slotCountChanges:
         [
