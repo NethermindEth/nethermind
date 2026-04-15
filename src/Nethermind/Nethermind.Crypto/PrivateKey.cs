@@ -52,10 +52,7 @@ namespace Nethermind.Crypto
 
         public Address Address => PublicKey.Address;
 
-        private bool Equals(PrivateKey other)
-        {
-            return Bytes.AreEqual(KeyBytes, other.KeyBytes);
-        }
+        private bool Equals(PrivateKey other) => Bytes.AreEqual(KeyBytes, other.KeyBytes);
 
         public override bool Equals(object obj)
         {
@@ -77,25 +74,13 @@ namespace Nethermind.Crypto
             return Equals((PrivateKey)obj);
         }
 
-        public override int GetHashCode()
-        {
-            return MemoryMarshal.Read<int>(KeyBytes);
-        }
+        public override int GetHashCode() => MemoryMarshal.Read<int>(KeyBytes);
 
-        private PublicKey ComputePublicKey()
-        {
-            return new(SecP256k1.GetPublicKey(KeyBytes, false));
-        }
+        private PublicKey ComputePublicKey() => new(SecP256k1.GetPublicKey(KeyBytes, false));
 
-        private CompressedPublicKey ComputeCompressedPublicKey()
-        {
-            return new(SecP256k1.GetPublicKey(KeyBytes, true));
-        }
+        private CompressedPublicKey ComputeCompressedPublicKey() => new(SecP256k1.GetPublicKey(KeyBytes, true));
 
-        public override string ToString()
-        {
-            return KeyBytes.ToHexString(true);
-        }
+        public override string ToString() => KeyBytes.ToHexString(true);
 
         public void Dispose()
         {

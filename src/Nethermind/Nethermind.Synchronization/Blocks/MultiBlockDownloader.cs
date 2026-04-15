@@ -4,6 +4,7 @@
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -40,7 +41,7 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
         {
             using IOwnedReadOnlyList<Hash256> receiptsHash = request.ReceiptsRequests.Select(b => b.Hash)
                 .ToPooledList(request.ReceiptsRequests.Count);
-            var ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
+            IOwnedReadOnlyList<TxReceipt[]?> ownedReceipts = await peerInfo.SyncPeer.GetReceipts(receiptsHash, cancellationToken);
             request.Receipts = ownedReceipts;
         }
     }

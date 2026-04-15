@@ -20,7 +20,7 @@ public class ReceiptsRootCalculator : IReceiptsRootCalculator
         Hash256 receiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _decoder);
         if (!spec.ValidateReceipts && receiptsRoot != suggestedRoot)
         {
-            var skipStateAndStatusReceiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _skipStateDecoder);
+            Hash256 skipStateAndStatusReceiptsRoot = ReceiptTrie.CalculateRoot(spec, receipts, _skipStateDecoder);
             if (skipStateAndStatusReceiptsRoot == suggestedRoot)
             {
                 return skipStateAndStatusReceiptsRoot;

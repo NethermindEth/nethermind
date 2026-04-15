@@ -17,8 +17,5 @@ public class RpcRpcModule(Lazy<RpcModuleProvider> rpcModuleProviders) : IRpcRpcM
     private IDictionary<string, string> EnabledModules => _enabledModules ??= rpcModuleProviders.Value
         .Enabled.ToDictionary((static s => s), static s => "1.0");
 
-    public ResultWrapper<IDictionary<string, string>> rpc_modules()
-    {
-        return ResultWrapper<IDictionary<string, string>>.Success(EnabledModules);
-    }
+    public ResultWrapper<IDictionary<string, string>> rpc_modules() => ResultWrapper<IDictionary<string, string>>.Success(EnabledModules);
 }

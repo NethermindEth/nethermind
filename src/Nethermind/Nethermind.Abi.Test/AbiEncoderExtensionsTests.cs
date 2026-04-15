@@ -11,9 +11,9 @@ namespace Nethermind.Abi.Test
         [Test]
         public void Encode_should_be_called()
         {
-            var abi = Substitute.For<IAbiEncoder>();
-            var parameters = new object[] { "p1" };
-            var abiSignature = new AbiSignature("test", AbiType.String);
+            IAbiEncoder abi = Substitute.For<IAbiEncoder>();
+            object[] parameters = new object[] { "p1" };
+            AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
 
             abi.Encode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), parameters);
@@ -23,9 +23,9 @@ namespace Nethermind.Abi.Test
         [Test]
         public void Decode_should_be_called()
         {
-            var abi = Substitute.For<IAbiEncoder>();
-            var data = new byte[] { 100, 200 };
-            var abiSignature = new AbiSignature("test", AbiType.String);
+            IAbiEncoder abi = Substitute.For<IAbiEncoder>();
+            byte[] data = new byte[] { 100, 200 };
+            AbiSignature abiSignature = new("test", AbiType.String);
             const AbiEncodingStyle abiEncodingStyle = AbiEncodingStyle.Packed;
 
             abi.Decode(new AbiEncodingInfo(abiEncodingStyle, abiSignature), data);

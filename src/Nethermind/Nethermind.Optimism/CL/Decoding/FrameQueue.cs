@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
@@ -45,20 +46,16 @@ public class FrameQueue(ILogManager logManager) : IFrameQueue
 
         if (frame.IsLast)
         {
-            var decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
+            ReadOnlyMemory<byte> decodedChannel = ChannelDecoder.DecodeChannel(_frameData.ToArray());
             _frameData.Clear();
 
-            var rlp = new Rlp.ValueDecoderContext(decodedChannel.Span);
-            var batchData = rlp.DecodeByteArrayMemory();
-            var batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
+            Rlp.ValueDecoderContext rlp = new(decodedChannel.Span);
+            Memory<byte> batchData = rlp.DecodeByteArrayMemory();
+            BatchV1[] batches = BatchDecoder.DecodeSpanBatches(batchData).ToArray();
             return batches;
         }
 
         return null;
     }
-    public void Clear()
-    {
-        _latestFrame = null;
-
-    }
+    public void Clear() => _latestFrame = null;
 }

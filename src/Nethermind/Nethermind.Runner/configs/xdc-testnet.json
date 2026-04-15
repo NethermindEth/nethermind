@@ -1,0 +1,24 @@
+{
+  "$schema": "https://raw.githubusercontent.com/NethermindEth/core-scripts/refs/heads/main/schemas/config.json",
+  "Init": {
+    "ChainSpecPath": "chainspec/xdc-testnet.json",
+    "BaseDbPath": "nethermind_db/xdc-testnet",
+    "LogFileName": "xdc.log"
+  },
+  "TxPool": {
+    "BlobsSupport": "Disabled"
+  },
+  "Sync": {
+    "FastSync": true,
+    "SnapSync": false,
+    "NeedToWaitForHeader": true,
+    "PivotNumber": 80400000,
+    "PivotHash": "0x2a1c36d5a2d8247161f3ddf1bbd628498928c87b910d3ac23283f73490b8a4a4",
+    "PivotTotalDifficulty": 336737235,
+    "AncientReceiptsBarrier": 56828700,
+    "AncientBodiesBarrier": 56828700
+  },
+  "Merge": {
+    "Enabled": false
+  }
+}

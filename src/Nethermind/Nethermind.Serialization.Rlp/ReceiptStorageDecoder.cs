@@ -12,16 +12,11 @@ using System.Diagnostics.CodeAnalysis;
 namespace Nethermind.Serialization.Rlp
 {
     [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
-    public sealed class ReceiptStorageDecoder : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
+    public sealed class ReceiptStorageDecoder(bool supportTxHash = true) : RlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        private readonly bool _supportTxHash;
+        private readonly bool _supportTxHash = supportTxHash;
         private const byte MarkTxHashByte = 255;
-
-        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(ReceiptStorageDecoder))]
-        public ReceiptStorageDecoder(bool supportTxHash = true)
-        {
-            _supportTxHash = supportTxHash;
-        }
 
         // Used by Rlp decoders discovery
         public ReceiptStorageDecoder() : this(true)
@@ -334,15 +329,9 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public void DecodeLogEntryStructRef(scoped ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors behaviour,
-            out LogEntryStructRef current)
-        {
-            LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
-        }
+            out LogEntryStructRef current) => LogEntryDecoder.DecodeStructRef(ref decoderContext, behaviour, out current);
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
-        {
-            return KeccakDecoder.Instance.DecodeArray(ref valueDecoderContext);
-        }
+        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext) => KeccakDecoder.Instance.DecodeArray(ref valueDecoderContext);
 
         public bool CanDecodeBloom => true;
     }

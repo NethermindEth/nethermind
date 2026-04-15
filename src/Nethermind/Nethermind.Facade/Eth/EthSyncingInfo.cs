@@ -11,30 +11,20 @@ using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.Facade.Eth
 {
-    public class EthSyncingInfo : IEthSyncingInfo
+    public class EthSyncingInfo(
+        IBlockTree blockTree,
+        ISyncPointers syncPointers,
+        ISyncConfig syncConfig,
+        ISyncModeSelector syncModeSelector,
+        ISyncProgressResolver syncProgressResolver,
+        ILogManager logManager) : IEthSyncingInfo
     {
-        private readonly IBlockTree _blockTree;
-        private readonly ISyncConfig _syncConfig;
-        private readonly ILogger _logger;
-        private readonly ISyncPointers _syncPointers;
-        private readonly ISyncModeSelector _syncModeSelector;
-        private readonly ISyncProgressResolver _syncProgressResolver;
-
-        public EthSyncingInfo(
-            IBlockTree blockTree,
-            ISyncPointers syncPointers,
-            ISyncConfig syncConfig,
-            ISyncModeSelector syncModeSelector,
-            ISyncProgressResolver syncProgressResolver,
-            ILogManager logManager)
-        {
-            _blockTree = blockTree;
-            _syncPointers = syncPointers;
-            _syncConfig = syncConfig;
-            _syncModeSelector = syncModeSelector;
-            _syncProgressResolver = syncProgressResolver;
-            _logger = logManager.GetClassLogger<EthSyncingInfo>();
-        }
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly ISyncConfig _syncConfig = syncConfig;
+        private readonly ILogger _logger = logManager.GetClassLogger<EthSyncingInfo>();
+        private readonly ISyncPointers _syncPointers = syncPointers;
+        private readonly ISyncModeSelector _syncModeSelector = syncModeSelector;
+        private readonly ISyncProgressResolver _syncProgressResolver = syncProgressResolver;
 
         public SyncingResult GetFullInfo()
         {
@@ -71,17 +61,14 @@ namespace Nethermind.Facade.Eth
             return SyncingResult.NotSyncing;
         }
 
-        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode)
+        private static SyncingResult ReturnSyncing(long headNumberOrZero, long bestSuggestedNumber, SyncMode syncMode) => new()
         {
-            return new SyncingResult
-            {
-                CurrentBlock = headNumberOrZero,
-                HighestBlock = bestSuggestedNumber,
-                StartingBlock = 0L,
-                SyncMode = syncMode,
-                IsSyncing = true
-            };
-        }
+            CurrentBlock = headNumberOrZero,
+            HighestBlock = bestSuggestedNumber,
+            StartingBlock = 0L,
+            SyncMode = syncMode,
+            IsSyncing = true
+        };
 
         private readonly Stopwatch _syncStopwatch = new();
 
@@ -107,9 +94,6 @@ namespace Nethermind.Facade.Eth
 
         public SyncMode SyncMode => _syncModeSelector.Current;
 
-        public bool IsSyncing()
-        {
-            return GetFullInfo().IsSyncing;
-        }
+        public bool IsSyncing() => GetFullInfo().IsSyncing;
     }
 }

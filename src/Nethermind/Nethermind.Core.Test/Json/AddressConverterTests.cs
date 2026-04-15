@@ -14,10 +14,7 @@ public class AddressConverterTests : ConverterTestBase<Address>
     static readonly AddressConverter converter = new();
 
     [TestCaseSource(nameof(AddressTestCases))]
-    public void Test_roundtrip(Address? value)
-    {
-        TestConverter(value!, static (address, address1) => address == address1, converter);
-    }
+    public void Test_roundtrip(Address? value) => TestConverter(value!, static (address, address1) => address == address1, converter);
 
     static IEnumerable<TestCaseData> AddressTestCases =
     [

@@ -28,7 +28,7 @@ public class AutoCancelTokenSourceTests
     [Test]
     public void AutoCancelPropagateParentCancellation()
     {
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using CancellationTokenSource cts = new();
 
         using AutoCancelTokenSource acts = cts.Token.CreateChildTokenSource();
 
@@ -42,7 +42,7 @@ public class AutoCancelTokenSourceTests
     [Test]
     public void When_a_task_failed_cancel_other_task_and_forward_the_right_exception()
     {
-        using AutoCancelTokenSource cts = new AutoCancelTokenSource();
+        using AutoCancelTokenSource cts = new();
 
         Task failedTask = Task.Run(() =>
         {
@@ -60,7 +60,7 @@ public class AutoCancelTokenSourceTests
             cts.Token.ThrowIfCancellationRequested();
         });
 
-        var act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
+        Func<Task> act = () => cts.WhenAllSucceed(failedTask, okTask, operationCancelledTask);
         act.Should().ThrowAsync<InvalidOperationException>();
     }
 }

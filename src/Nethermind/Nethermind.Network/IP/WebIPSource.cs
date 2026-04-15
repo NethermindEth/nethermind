@@ -9,16 +9,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.IP
 {
-    class WebIPSource : IIPSource
+    class WebIPSource(string url, ILogManager logManager) : IIPSource
     {
-        private readonly string _url;
-        private readonly ILogger _logger;
-
-        public WebIPSource(string url, ILogManager logManager)
-        {
-            _url = url;
-            _logger = logManager.GetClassLogger<WebIPSource>();
-        }
+        private readonly string _url = url;
+        private readonly ILogger _logger = logManager.GetClassLogger<WebIPSource>();
 
         public Task<(bool, IPAddress)> TryGetIP()
         {

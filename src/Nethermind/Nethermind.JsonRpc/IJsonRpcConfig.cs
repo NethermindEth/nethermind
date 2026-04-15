@@ -77,7 +77,7 @@ public interface IJsonRpcConfig : IConfig
 
 
             """,
-        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc]")]
+        DefaultValue = "[Eth,Subscribe,Trace,TxPool,Web3,Proof,Net,Parity,Health,Rpc]")]
     string[] EnabledModules { get; set; }
 
     [ConfigItem(

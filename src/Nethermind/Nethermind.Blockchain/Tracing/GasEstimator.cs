@@ -147,7 +147,7 @@ public class GasEstimator(
     private bool TryExecutableTransaction(Transaction transaction, BlockHeader block, long gasLimit,
         CancellationToken token, EstimateGasTracer gasTracer)
     {
-        Transaction txClone = new Transaction();
+        Transaction txClone = new();
         transaction.CopyTo(txClone);
         txClone.GasLimit = gasLimit;
 

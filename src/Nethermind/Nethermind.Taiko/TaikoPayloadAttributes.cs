@@ -14,10 +14,7 @@ public class TaikoPayloadAttributes : PayloadAttributes
     public BlockMetadata? BlockMetadata { get; set; }
     public L1Origin? L1Origin { get; set; }
 
-    public override long? GetGasLimit()
-    {
-        return BlockMetadata!.GasLimit;
-    }
+    public override long? GetGasLimit() => BlockMetadata!.GasLimit;
 
     public override PayloadAttributesValidationResult Validate(ISpecProvider specProvider, int fcuVersion,
         [NotNullWhen(false)] out string? error)

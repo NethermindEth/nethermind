@@ -97,7 +97,7 @@ public class NetworkModuleTest
 
         foreach ((Type MessageType, Type SerializerTypeInAssembly) in FindSerializersInAssembly(Assembly.GetAssembly(typeof(HelloMessageSerializer))))
         {
-            if (!serializersInContainer.TryGetValue(MessageType, out var serializer))
+            if (!serializersInContainer.TryGetValue(MessageType, out object serializer))
             {
                 Console.Out.WriteLine($".AddMessageSerializer<{MessageType}, {SerializerTypeInAssembly}>()");
                 continue;

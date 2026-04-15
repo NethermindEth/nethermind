@@ -20,8 +20,5 @@ public class PayloadAttributesRef
     public required L1BlockInfo L1BlockInfo { get; init; }
     public required OptimismPayloadAttributes PayloadAttributes { get; init; }
 
-    public override string ToString()
-    {
-        return $"Number: {Number}\n, SystemConfig: {SystemConfig}\n, L1BlockInfo: {L1BlockInfo}\n, PayloadAttributes: {PayloadAttributes}";
-    }
+    public override string ToString() => $"Number: {Number}\n, SystemConfig: {SystemConfig}\n, L1BlockInfo: {L1BlockInfo}\n, PayloadAttributes: {PayloadAttributes}";
 }

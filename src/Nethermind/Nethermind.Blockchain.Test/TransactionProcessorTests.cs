@@ -60,10 +60,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [TearDown]
-    public void Teardown()
-    {
-        _stateCloser.Dispose();
-    }
+    public void Teardown() => _stateCloser.Dispose();
 
     [Test]
     public void Can_process_simple_transaction()
@@ -371,7 +368,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, MuirGlacier.Instance);
 
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -410,7 +407,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -432,7 +429,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
 
     private void ConfirmEnoughEstimate(Transaction tx, Block block, long estimate)
     {
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
 
         CallOutputTracer outputTracer = new();
         tx.GasLimit = estimate;
@@ -463,7 +460,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = MuirGlacier.Instance;
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -504,7 +501,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
 
         EstimateGasTracer tracer = new();
         _transactionProcessor.CallAndRestore(tx, blkCtx, tracer);
@@ -543,7 +540,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         IReleaseSpec releaseSpec = _specProvider.GetSpec(block.Header);
         EthereumIntrinsicGas intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
 
-        var blkCtx = new BlockExecutionContext(block.Header, releaseSpec);
+        BlockExecutionContext blkCtx = new(block.Header, releaseSpec);
         _transactionProcessor.Execute(initTx, blkCtx, NullTxTracer.Instance);
 
         EstimateGasTracer tracer = new();
@@ -652,7 +649,7 @@ public class TransactionProcessorTests(bool eip155Enabled)
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.ByzantiumBlockNumber).WithTransactions(tx1, tx2).WithGasLimit(gasLimit).TestObject;
 
         Snapshot state = _stateProvider.TakeSnapshot();
-        var blkCtx = new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header));
+        BlockExecutionContext blkCtx = new(block.Header, _specProvider.GetSpec(block.Header));
         _transactionProcessor.BuildUp(tx1, blkCtx, NullTxTracer.Instance);
         _stateProvider.GetBalance(TestItem.PrivateKeyA.Address).Should().Be(AccountBalance - GasCostOf.Transaction);
 

@@ -61,9 +61,6 @@ namespace Nethermind.Serialization.Json
             }
         }
 
-        public override bool CanConvert(Type objectType)
-        {
-            return true;
-        }
+        public override bool CanConvert(Type objectType) => true;
     }
 }

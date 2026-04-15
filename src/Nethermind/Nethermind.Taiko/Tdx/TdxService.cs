@@ -56,7 +56,7 @@ public class TdxService : ITdxService
         _logger.Info("Bootstrapping TDX service");
 
         // Generate private key
-        using var keyGenerator = new PrivateKeyGenerator();
+        using PrivateKeyGenerator keyGenerator = new();
         _privateKey = keyGenerator.Generate();
         Address address = _privateKey.Address;
 
@@ -87,10 +87,7 @@ public class TdxService : ITdxService
         return _guestInfo;
     }
 
-    public TdxGuestInfo? GetGuestInfo()
-    {
-        return _guestInfo;
-    }
+    public TdxGuestInfo? GetGuestInfo() => _guestInfo;
 
     public TdxBlockHeaderSignature SignBlockHeader(BlockHeader blockHeader)
     {
@@ -179,7 +176,7 @@ public class TdxService : ITdxService
         string keyPath = GetKeyPath();
         if (OperatingSystem.IsLinux())
         {
-            using var fs = new FileStream(keyPath, new FileStreamOptions
+            using FileStream fs = new(keyPath, new FileStreamOptions
             {
                 Mode = FileMode.Create,
                 Access = FileAccess.Write,

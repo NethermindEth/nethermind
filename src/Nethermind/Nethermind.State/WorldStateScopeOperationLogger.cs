@@ -49,10 +49,7 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
             return res;
         }
 
-        public void HintGet(Address address, Account? account)
-        {
-            innerScope.HintGet(address, account);
-        }
+        public void HintGet(Address address, Account? account) => innerScope.HintGet(address, account);
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => innerScope.CodeDb;
 

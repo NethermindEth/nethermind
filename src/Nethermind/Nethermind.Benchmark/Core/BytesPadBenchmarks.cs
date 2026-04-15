@@ -24,21 +24,12 @@ namespace Nethermind.Benchmarks.Core
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _a = _scenarios[ScenarioIndex];
-        }
+        public void Setup() => _a = _scenarios[ScenarioIndex];
 
         [Benchmark]
-        public (byte[], byte[]) Improved()
-        {
-            return (_a.PadLeft(32), _a.PadRight(32));
-        }
+        public (byte[], byte[]) Improved() => (_a.PadLeft(32), _a.PadRight(32));
 
         [Benchmark]
-        public (byte[], byte[]) Current()
-        {
-            return (_a.PadLeft(32), _a.PadRight(32));
-        }
+        public (byte[], byte[]) Current() => (_a.PadLeft(32), _a.PadRight(32));
     }
 }

@@ -31,8 +31,7 @@ public class GethLikeCustomTraceConverter : JsonConverter<GethLikeCustomTrace>
         }
     }
 
-    public override GethLikeCustomTrace? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
+    public override GethLikeCustomTrace? Read(
+        ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         throw new NotSupportedException();
-    }
 }

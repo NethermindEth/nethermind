@@ -10,18 +10,9 @@ public class OrderedComponents<T>
     private IList<T> _components = new List<T>();
     public IEnumerable<T> Components => _components;
 
-    public void AddLast(T item)
-    {
-        _components.Add(item);
-    }
+    public void AddLast(T item) => _components.Add(item);
 
-    public void AddFirst(T item)
-    {
-        _components.Insert(0, item);
-    }
+    public void AddFirst(T item) => _components.Insert(0, item);
 
-    public void Clear()
-    {
-        _components.Clear();
-    }
+    public void Clear() => _components.Clear();
 }

@@ -15,8 +15,11 @@ namespace Nethermind.Evm.Test
     public class TransactionSubstateTests
     {
         [Test]
-        public void should_return_proper_revert_error_when_there_is_no_exception()
+        public void should_return_revert_sentinel_for_unknown_selector_with_abi_like_layout()
         {
+            // All-zero selector is not Error(string) or Panic(uint256). The old generic fallback
+            // block (removed to match Geth's UnpackRevert default) would have decoded this into
+            // "0x0506070809". Now it must return the Revert sentinel like any other unknown selector.
             byte[] data =
             {
                 0, 0, 0, 0,
@@ -33,12 +36,13 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         [Test]
         public void should_return_proper_revert_error_when_there_is_exception()
         {
+            // Unknown selector — custom error; Error must be the Revert sentinel, not the hex bytes.
             byte[] data = { 0x05, 0x06, 0x07, 0x08, 0x09 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
@@ -47,12 +51,14 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("\u0005\u0006\u0007\u0008\t");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         [Test]
-        public void should_return_weird_revert_error_when_there_is_exception()
+        public void should_return_revert_sentinel_when_error_function_selector_has_malformed_encoding()
         {
+            // Starts with Error(string) selector but the ABI offset field is 1 (not 32), so
+            // GetErrorMessage correctly rejects it. Error must fall back to the Revert sentinel.
             byte[] data = TransactionSubstate.ErrorFunctionSelector.Concat(Bytes.FromHexString("0x00000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000")).ToArray();
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(readOnlyMemory,
@@ -61,18 +67,16 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x08c379a000000001000000000000000000000000000000000000000012a9d65e7d180cfcf3601b6d00000000000000000000000000000000000000000000000000000001000276a400000000000000000000000000000000000000000000000000000000000000a0000000000000000000000000000000000000000000000000000000000000006a000000000300000000000115859c410282f6600012efb47fcfcad4f96c83d4ca676842fb03ef20a4770000000015f762bdaa80f6d9dc5518ff64cb7ba5717a10dabc4be3a41acd2c2f95ee22000012a9d65e7d180cfcf3601b6df0000000000000185594dac7eb0828ff000000000000000000000000");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
-        [Test]
-        [Description($"Replace with {nameof(should_return_proper_revert_error_when_revert_custom_error)} once fixed")]
-        public void should_return_proper_revert_error_when_revert_custom_error_badly_implemented()
-        {
-            // See: https://github.com/NethermindEth/nethermind/issues/6024
 
-            string hex =
-                "0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000";
-            byte[] data = Bytes.FromHexString(hex);
+        [Test]
+        public void should_return_revert_sentinel_for_custom_error_selector()
+        {
+            // keccak4("ActionFailed()") = 0x080a1c27 — unknown selector, no ABI decoding possible.
+            // Error must be the Revert sentinel so only data, not message, carries the raw bytes.
+            byte[] data = { 0x08, 0x0a, 0x1c, 0x27 };
             ReadOnlyMemory<byte> readOnlyMemory = new(data);
             TransactionSubstate transactionSubstate = new(
                 readOnlyMemory,
@@ -81,7 +85,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x220266b600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000040000000000000000000000000000000000000000000000000000000000000001741413231206469646e2774207061792070726566756e64000000000000000000");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
 
         private static IEnumerable<(byte[], string)> ErrorFunctionTestCases()
@@ -106,8 +110,8 @@ namespace Nethermind.Evm.Test
                 },
                 "Req::UnAuthAuditor");
 
-            // Invalid case
-            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, "0x08c379a0ff");
+            // Malformed Error(string) payload — GetErrorMessage rejects it, falls back to Revert sentinel.
+            yield return (new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0xFF }, TransactionSubstate.Revert);
         }
 
         private static IEnumerable<(byte[], string)> PanicFunctionTestCases()
@@ -136,8 +140,8 @@ namespace Nethermind.Evm.Test
                 },
                 "unknown panic code (0xff)");
 
-            // Invalid case
-            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, "0xf0288c28");
+            // Unknown selector — custom error; falls back to Revert sentinel.
+            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, TransactionSubstate.Revert);
         }
 
         [Test]
@@ -159,9 +163,10 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        [Ignore("Badly implemented")]
         public void should_return_proper_revert_error_when_revert_custom_error()
         {
+            // FailedOp(uint256,string) has an unknown selector — custom error. Error must be the
+            // Revert sentinel; the raw ABI bytes belong only in the data field of the RPC response.
             byte[] data =
             {
                 0x22, 0x02, 0x66, 0xb6, // Keccak of `FailedOp(uint256,string)` == 0x220266b6
@@ -178,7 +183,7 @@ namespace Nethermind.Evm.Test
                 new JournalCollection<LogEntry>(),
                 true,
                 true);
-            transactionSubstate.Error.Should().Be("0x41413231206469646e2774207061792070726566756e64");
+            transactionSubstate.Error.Should().Be(TransactionSubstate.Revert);
         }
     }
 }

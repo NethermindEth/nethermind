@@ -40,7 +40,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateSeal_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -49,8 +49,8 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateSeal_ValidSeal_ReturnsTrue()
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        EthereumEcdsa ecdsa = new(0);
+        XdcSealValidator validator = new(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         XdcBlockHeader header = Build.A.XdcBlockHeader()
         .TestObject;
         header.Beneficiary = TestItem.AddressA;
@@ -76,20 +76,20 @@ internal class XdcSealValidatorTests
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
         byte[] extraLongSignature = new byte[66];
-        var keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
+        byte[] keyASig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyA, header).BytesWithRecovery;
         keyASig.CopyTo(extraLongSignature, 0);
         yield return new TestCaseData(header, extraLongSignature);
 
         header = Build.A.XdcBlockHeader().TestObject;
         header.Beneficiary = TestItem.AddressA;
-        var keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
+        byte[] keyBSig = new EthereumEcdsa(0).Sign(TestItem.PrivateKeyB, header).BytesWithRecovery;
         yield return new TestCaseData(header, keyBSig);
     }
 
     [TestCaseSource(nameof(InvalidSignatureCases))]
     public void ValidateSeal_SignatureIsInvalid_ReturnsFalse(XdcBlockHeader header, byte[] validatorSig)
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         header.Validator = validatorSig;
 
         Assert.That(validator.ValidateSeal(header), Is.False);
@@ -98,7 +98,7 @@ internal class XdcSealValidatorTests
     [Test]
     public void ValidateParams_NotXdcHeader_ThrowArgumentException()
     {
-        XdcSealValidator validator = new XdcSealValidator(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
+        XdcSealValidator validator = new(Substitute.For<IMasternodesCalculator>(), Substitute.For<IEpochSwitchManager>(), Substitute.For<ISpecProvider>());
         BlockHeader header = Build.A.BlockHeader.TestObject;
 
         Assert.That(() => validator.ValidateSeal(header), Throws.InstanceOf<ArgumentException>());
@@ -166,11 +166,11 @@ internal class XdcSealValidatorTests
         {
             XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
 
-            PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+            PrivateKeyGenerator keyBuilder = new();
             PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
             PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
 
-            var extraFieldsV2 = new ExtraFieldsV2(1800, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1));
+            ExtraFieldsV2 extraFieldsV2 = new(1800, CreateQc(new BlockRoundInfo(Hash256.Zero, 1, 1), masterSigners, 1));
             headerBuilder.WithExtraFieldsV2(extraFieldsV2);
             headerBuilder.WithValidators(masterSigners.Select(m => m.Address).ToArray());
             headerBuilder.WithAuthor(masterSigners[0].Address);
@@ -181,11 +181,11 @@ internal class XdcSealValidatorTests
         {
             XdcBlockHeaderBuilder headerBuilder = Build.A.XdcBlockHeader();
 
-            PrivateKeyGenerator keyBuilder = new PrivateKeyGenerator();
+            PrivateKeyGenerator keyBuilder = new();
             PrivateKey[] masterSigners = Enumerable.Range(0, 108).Select(i => keyBuilder.Generate()).ToArray();
             PrivateKey[] qcSigners = masterSigners.Take(72).ToArray();
 
-            var extraFieldsV2 = new ExtraFieldsV2(901, CreateQc(new BlockRoundInfo(Hash256.Zero, 900, 1), masterSigners, 1));
+            ExtraFieldsV2 extraFieldsV2 = new(901, CreateQc(new BlockRoundInfo(Hash256.Zero, 900, 1), masterSigners, 1));
             headerBuilder.WithExtraFieldsV2(extraFieldsV2);
             headerBuilder.WithValidators(Array.Empty<byte>());
             headerBuilder.WithAuthor(masterSigners[1].Address);
@@ -218,14 +218,14 @@ internal class XdcSealValidatorTests
         bool isEpochSwitch = IsEpochSwitch(header, releaseSpec);
         epochSwitchManager.IsEpochSwitchAtBlock(Arg.Any<XdcBlockHeader>()).Returns(isEpochSwitch);
 
-        XdcSealValidator validator = new XdcSealValidator(masternodesCalculator, epochSwitchManager, specProvider);
+        XdcSealValidator validator = new(masternodesCalculator, epochSwitchManager, specProvider);
 
         Assert.That(validator.ValidateParams(parent, header), Is.EqualTo(expected));
     }
 
     private static QuorumCertificate CreateQc(BlockRoundInfo roundInfo, PrivateKey[] keys, ulong gapNumber)
     {
-        EthereumEcdsa ecdsa = new EthereumEcdsa(0);
+        EthereumEcdsa ecdsa = new(0);
 
         //Fake the sigs by signing empty hash
         IEnumerable<Signature> signatures = keys.Select(k => ecdsa.Sign(k, Keccak.Compute(Hash256.Zero.Bytes)));

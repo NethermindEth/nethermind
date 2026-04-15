@@ -55,15 +55,9 @@ public struct StackAccessTracker() : IDisposable
         }
     }
 
-    public readonly void ToBeDestroyed(Address address)
-    {
-        _trackingState.DestroyList.Add(address);
-    }
+    public readonly void ToBeDestroyed(Address address) => _trackingState.DestroyList.Add(address);
 
-    public readonly void WasCreated(Address address)
-    {
-        _trackingState.CreateList.Add(address);
-    }
+    public readonly void WasCreated(Address address) => _trackingState.CreateList.Add(address);
 
     public void TakeSnapshot()
     {

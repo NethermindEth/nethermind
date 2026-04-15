@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
 
@@ -15,7 +16,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.StorageRange.RootHash);
-            var accounts = message.StorageRange.Accounts;
+            IOwnedReadOnlyList<PathWithAccount> accounts = message.StorageRange.Accounts;
             int accountsCount = accounts.Count;
             int accountsPathsContentLength = accountsCount * Rlp.LengthOfKeccakRlp;
             rlpStream.StartSequence(accountsPathsContentLength);

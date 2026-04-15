@@ -18,7 +18,7 @@ namespace Nethermind.State.Flat.Sync.Snap;
 public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfig, ILogManager logManager) : ISnapTrieFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
-    private readonly Lock _lock = new Lock();
+    private readonly Lock _lock = new();
 
     private bool _initialized = false;
 

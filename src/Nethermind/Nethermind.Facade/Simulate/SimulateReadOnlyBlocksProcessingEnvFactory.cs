@@ -43,7 +43,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IBlockAccessListStore mainBalStore = new BlockAccessListStore(editableDbProvider.BlockAccessListDb);
 
         BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider, tmpHeaderStore, mainBalStore);
-        BlockTreeOverlay overrideBlockTree = new BlockTreeOverlay(baseBlockTree, tempBlockTree);
+        BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
@@ -110,9 +110,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             return !baseLogger.IsDebug ? NullLogger.Instance : baseLogger;
         }
 
-        public ILogger GetLogger(string loggerName)
-        {
-            return baseLogManager.GetLogger(loggerName);
-        }
+        public ILogger GetLogger(string loggerName) => baseLogManager.GetLogger(loggerName);
     }
 }

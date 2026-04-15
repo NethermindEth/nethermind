@@ -35,7 +35,7 @@ internal class SignTransactionManager(ISigner signer, ITxPool txPool, ILogger lo
     {
         byte[] inputData = [.. XdcConstants.SignMethod, .. number.PaddedBytes(32), .. hash.Bytes.PadLeft(32)];
 
-        var transaction = new Transaction();
+        Transaction transaction = new();
         transaction.Nonce = nonce;
         transaction.To = blockSignersAddress;
         transaction.Value = 0;

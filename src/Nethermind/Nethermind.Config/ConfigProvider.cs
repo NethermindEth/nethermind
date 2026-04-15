@@ -72,10 +72,7 @@ public class ConfigProvider : IConfigProvider
         }
     }
 
-    public T GetConfig<T>() where T : IConfig
-    {
-        return (T)GetConfig(typeof(T));
-    }
+    public T GetConfig<T>() where T : IConfig => (T)GetConfig(typeof(T));
 
     public IConfig GetConfig(Type configType)
     {
@@ -109,10 +106,7 @@ public class ConfigProvider : IConfigProvider
             ?.GetValue(value) : null;
     }
 
-    public void AddSource(IConfigSource configSource)
-    {
-        _configSource.Add(configSource);
-    }
+    public void AddSource(IConfigSource configSource) => _configSource.Add(configSource);
 
     public void Initialize()
     {
@@ -163,7 +157,7 @@ public class ConfigProvider : IConfigProvider
             Initialize();
         }
 
-        var propertySet = _instances.Values
+        HashSet<string> propertySet = _instances.Values
             .SelectMany(i => i.GetType()
                 .GetProperties()
                 .Select(p => GetKey(i.GetType().Name, p.Name)))
@@ -174,7 +168,7 @@ public class ConfigProvider : IConfigProvider
         // Skip the validation for ArgsConfigSource items as they are already validated by the CLI parser
         foreach (IConfigSource source in _configSource.Where(s => s is not ArgsConfigSource))
         {
-            var configs = source.GetConfigKeys();
+            IEnumerable<(string Category, string Name)> configs = source.GetConfigKeys();
 
             foreach ((string category, string name) in configs)
             {
@@ -185,7 +179,7 @@ public class ConfigProvider : IConfigProvider
             }
         }
 
-        var msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => $"ConfigType:{GetConfigSourceName(s.Source)}|Category:{s.Category}|Name:{s.Name}"));
+        string msg = string.Join(Environment.NewLine, incorrectSettings.Select(s => $"ConfigType:{GetConfigSourceName(s.Source)}|Category:{s.Category}|Name:{s.Name}"));
 
         return (msg, incorrectSettings);
 

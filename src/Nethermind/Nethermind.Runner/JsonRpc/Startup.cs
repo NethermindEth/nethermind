@@ -240,7 +240,7 @@ public class Startup : IStartup
 
         if (healthChecksConfig.Enabled)
         {
-            var fileProvider = new ManifestEmbeddedFileProvider(typeof(Startup).Assembly, "wwwroot");
+            ManifestEmbeddedFileProvider fileProvider = new(typeof(Startup).Assembly, "wwwroot");
 
             app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
             app.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
@@ -268,11 +268,8 @@ public class Startup : IStartup
         }
     }
 
-    private static bool IsResourceUnavailableError(JsonRpcResponse? response)
-    {
-        return response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
+    private static bool IsResourceUnavailableError(JsonRpcResponse? response) => response is JsonRpcErrorResponse { Error.Code: ErrorCodes.ModuleTimeout }
                     or JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded };
-    }
 
     private async Task PushErrorResponseAsync(HttpContext ctx, int statusCode, int errorCode, string message)
     {
@@ -418,7 +415,7 @@ public class Startup : IStartup
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteJsonRpcResponse(IBufferWriter<byte> writer, JsonRpcResponse response)
     {
-        using var jsonWriter = new Utf8JsonWriter(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
 
         jsonWriter.WriteStartObject();
         jsonWriter.WriteString("jsonrpc"u8, "2.0"u8);
@@ -477,10 +474,7 @@ public class Startup : IStartup
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void WriteOther(Utf8JsonWriter writer, object? id)
-        {
-            JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
-        }
+        void WriteOther(Utf8JsonWriter writer, object? id) => JsonSerializer.Serialize(writer, id, id.GetType(), EthereumJsonSerializer.JsonOptions);
     }
 
     private static async ValueTask WriteStreamableResponseAsync(
@@ -561,10 +555,7 @@ public class Startup : IStartup
             stream.AdvanceTo(consumed, examined);
         }
 
-        public override void CancelPendingRead()
-        {
-            stream.CancelPendingRead();
-        }
+        public override void CancelPendingRead() => stream.CancelPendingRead();
 
         public override void Complete(Exception? exception = null)
         {
