@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -191,6 +192,60 @@ public partial class DebugRpcModuleTests
         return contractAddress;
     }
 
+    [Test]
+    public async Task Debug_executionWitnessCall_returns_error_for_genesis()
+    {
+        using Context ctx = await Context.Create();
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = TestItem.AddressA.ToString() }, "0x0");
+
+        response.Should().BeOfType<JsonRpcErrorResponse>()
+            .Which.Error!.Message.Should().Be("Cannot generate witness for genesis block");
+    }
+
+    [Test]
+    public async Task Debug_executionWitnessCall_returns_witness_for_simple_call()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain blockchain = ctx.Blockchain;
+
+        // Create a block with a transfer so we have state beyond genesis
+        await CreateTransferTx(blockchain);
+
+        // Call against block 1 (post-transfer state)
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = TestItem.AddressB.ToString() }, "0x1");
+
+        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<Witness>()
+            .Subject;
+
+        witness.State.Should().NotBeEmpty("a call touching state should produce trie nodes");
+    }
+
+    [Test]
+    public async Task Debug_executionWitnessCall_against_contract()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain blockchain = ctx.Blockchain;
+
+        Block transferBlock = await CreateTransferTx(blockchain);
+        Address contractAddress = await CreateDeployTx(blockchain, transferBlock.Number);
+
+        // Call the deployed contract to generate a witness
+        long blockNumber = blockchain.BlockTree.Head!.Number;
+        JsonRpcResponse response = await RpcTest.TestRequest(ctx.DebugRpcModule, "debug_executionWitnessCall",
+            new { to = contractAddress.ToString(), gas = "0x30D40" },
+            $"0x{blockNumber:x}");
+
+        using Witness witness = response.Should().BeOfType<JsonRpcSuccessResponse>()
+            .Which.Result.Should().BeOfType<Witness>()
+            .Subject;
+
+        witness.State.Should().NotBeEmpty();
+        witness.Codes.Should().NotBeEmpty("calling a contract should capture its bytecode");
+    }
+
     private static IEnumerable<TestCaseData> ExecutionWitnessSource()
     {
         // 7 blocks in the test where this test case source is used
@@ -269,7 +324,7 @@ public partial class DebugRpcModuleTests
             Always.Valid,
             blockchain.LogManager);
 
-        using var scope = statelessEnv.WorldState.BeginScope(parent!);
+        using IDisposable scope = statelessEnv.WorldState.BeginScope(parent!);
         (Block processed, _) = statelessEnv.BlockProcessor.ProcessOne(
             expectedBlock,
             ProcessingOptions.ReadOnlyChain,

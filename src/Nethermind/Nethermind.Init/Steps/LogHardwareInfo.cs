@@ -22,7 +22,7 @@ public class LogHardwareInfo(ILogManager logManager) : IStep
 
         try
         {
-            var cpu = RuntimeInformation.GetCpuInfo();
+            CpuInfo? cpu = RuntimeInformation.GetCpuInfo();
             if (cpu is not null)
             {
                 _logger.Info($"CPU: {cpu.ProcessorName} ({cpu.PhysicalCoreCount}C{cpu.LogicalCoreCount}T)");

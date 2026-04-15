@@ -34,9 +34,6 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
             return new ReadOnlyTxProcessingScope(transactionProcessor, closer, worldState);
         }
 
-        public void Dispose()
-        {
-            lifetimeScope.Dispose();
-        }
+        public void Dispose() => lifetimeScope.Dispose();
     }
 }

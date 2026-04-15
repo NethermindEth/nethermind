@@ -322,7 +322,7 @@ public partial class PatriciaTree
         }
         else
         {
-            var child = existingNode.GetChild(TrieStore, ref currentPath, 0);
+            TrieNode child = existingNode.GetChild(TrieStore, ref currentPath, 0);
 
             if (existingNode.Key.Length == 1)
             {
@@ -473,7 +473,7 @@ public partial class PatriciaTree
 
         for (int i = 0; i < entries.Length && curIdx < TrieNode.BranchesCount; i++)
         {
-            var currentNib = entries[i].GetPathNibble(pathIndex);
+            byte currentNib = entries[i].GetPathNibble(pathIndex);
 
             if (currentNib > curIdx)
             {

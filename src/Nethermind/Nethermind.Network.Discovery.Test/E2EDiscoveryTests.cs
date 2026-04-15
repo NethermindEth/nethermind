@@ -34,7 +34,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     private IContainer CreateNode(PrivateKey nodeKey, IEnode? bootEnode = null)
     {
         ConfigProvider configProvider = new();
-        var loader = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance);
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
         ChainSpec spec = loader.LoadEmbeddedOrFromFile("chainspec/foundation.json");
         spec.Bootnodes = [];
 
@@ -58,15 +58,9 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
     }
 
     int _discoveryPort = 0;
-    private int AssignDiscoveryPort()
-    {
-        return Interlocked.Increment(ref _discoveryPort);
-    }
+    private int AssignDiscoveryPort() => Interlocked.Increment(ref _discoveryPort);
     int _discoveryIp = 1;
-    private int AssignDiscoveryIp()
-    {
-        return Interlocked.Increment(ref _discoveryIp);
-    }
+    private int AssignDiscoveryIp() => Interlocked.Increment(ref _discoveryIp);
 
     [Test]
     [Retry(3)]
@@ -95,7 +89,7 @@ public class E2EDiscoveryTests(DiscoveryVersion discoveryVersion)
         foreach (IContainer node in nodes)
         {
             IPeerPool pool = node.Resolve<IPeerPool>();
-            HashSet<PublicKey> expectedKeys = new HashSet<PublicKey>(nodeKeys);
+            HashSet<PublicKey> expectedKeys = new(nodeKeys);
             expectedKeys.Remove(node.Resolve<IEnode>().PublicKey);
 
             Assert.That(() => pool.Peers.Values.Select((p) => p.Node.Id).ToHashSet(),

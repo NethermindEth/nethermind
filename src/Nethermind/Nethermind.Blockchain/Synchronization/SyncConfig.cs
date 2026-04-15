@@ -90,11 +90,8 @@ namespace Nethermind.Blockchain.Synchronization
         public long ForwardSyncDownloadBufferMemoryBudget { get; set; } = 200.MiB;
         public long ForwardSyncBlockProcessingQueueMemoryBudget { get; set; } = 200.MiB;
 
-        public override string ToString()
-        {
-            return
-                $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
-        }
+        public override string ToString() =>
+            $"SyncConfig details. FastSync {FastSync}, PivotNumber: {PivotNumber} DownloadHeadersInFastSync {DownloadHeadersInFastSync}, DownloadBodiesInFastSync {DownloadBodiesInFastSync}, DownloadReceiptsInFastSync {DownloadReceiptsInFastSync}, AncientBodiesBarrier {AncientBodiesBarrier}, AncientReceiptsBarrier {AncientReceiptsBarrier}";
 
     }
 }

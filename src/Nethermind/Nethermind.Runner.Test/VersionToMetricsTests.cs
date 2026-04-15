@@ -39,8 +39,5 @@ public class VersionToMetricsTests
     [TestCase("0.2.3-prerelease", 2003)]
     [TestCase("0.0.3-prerelease", 3)]
     [TestCase("0.0.0-prerelease", 0)]
-    public void Converts_all_formats(string versionString, int versionNumber)
-    {
-        VersionToMetrics.ConvertToNumber(versionString).Should().Be(versionNumber);
-    }
+    public void Converts_all_formats(string versionString, int versionNumber) => VersionToMetrics.ConvertToNumber(versionString).Should().Be(versionNumber);
 }

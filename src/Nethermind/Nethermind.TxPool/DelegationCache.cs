@@ -11,24 +11,15 @@ internal sealed class DelegationCache
 {
     private readonly ConcurrentDictionary<AddressAsKey, int> _pendingDelegations = new();
 
-    public bool HasPending(AddressAsKey key)
-    {
-        return _pendingDelegations.ContainsKey(key);
-    }
+    public bool HasPending(AddressAsKey key) => _pendingDelegations.ContainsKey(key);
 
-    public void DecrementDelegationCount(AddressAsKey key)
-    {
-        InternalIncrement(key, false);
-    }
-    public void IncrementDelegationCount(AddressAsKey key)
-    {
-        InternalIncrement(key, true);
-    }
+    public void DecrementDelegationCount(AddressAsKey key) => InternalIncrement(key, false);
+    public void IncrementDelegationCount(AddressAsKey key) => InternalIncrement(key, true);
 
     private void InternalIncrement(AddressAsKey key, bool increment)
     {
         int value = increment ? 1 : -1;
-        var lastCount = _pendingDelegations.AddOrUpdate(key,
+        int lastCount = _pendingDelegations.AddOrUpdate(key,
             (k) =>
             {
                 if (increment)

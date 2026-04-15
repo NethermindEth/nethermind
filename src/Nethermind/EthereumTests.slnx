@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Nethermind/">
     <Project Path="Nethermind.Abi/Nethermind.Abi.csproj" />
+    <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
     <Project Path="Nethermind.Api/Nethermind.Api.csproj" />
     <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
     <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
@@ -37,6 +38,7 @@
     <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
     <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
     <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
+    <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
     <Project Path="Nethermind.Sockets/Nethermind.Sockets.csproj" />
     <Project Path="Nethermind.Specs.Test/Nethermind.Specs.Test.csproj" />
     <Project Path="Nethermind.Specs/Nethermind.Specs.csproj" />

@@ -9,10 +9,7 @@ namespace Nethermind.Synchronization.ParallelSync
     {
         private readonly bool _disposed = false;
 
-        protected ActivatedSyncFeed()
-        {
-            StateChanged += OnStateChanged;
-        }
+        protected ActivatedSyncFeed() => StateChanged += OnStateChanged;
 
         private void OnStateChanged(object? sender, SyncFeedStateEventArgs e)
         {
@@ -45,10 +42,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         protected abstract SyncMode ActivationSyncModes { get; }
 
-        public virtual void Dispose()
-        {
-            StateChanged -= OnStateChanged;
-        }
+        public virtual void Dispose() => StateChanged -= OnStateChanged;
 
         public virtual void InitializeFeed() { }
     }

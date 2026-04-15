@@ -127,7 +127,7 @@ namespace Nethermind.Network.Rlpx
                 // - so with two groups and 32 logical cores, we would have 128 threads
                 // Max at 8 threads per group for 16 threads total
                 // Min of 2 threads per group for 4 threads total
-                var threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
+                int threads = Math.Clamp(Environment.ProcessorCount / 2, min: 2, max: 8);
                 _bossGroup = new MultithreadEventLoopGroup(threads);
                 _workerGroup = new MultithreadEventLoopGroup(threads);
 
@@ -170,8 +170,8 @@ namespace Nethermind.Network.Rlpx
             {
                 _logger.Error($"{nameof(Init)} failed.", ex);
                 // Replacing to prevent double dispose which hangs
-                var bossGroup = Interlocked.Exchange(ref _bossGroup, null);
-                var workerGroup = Interlocked.Exchange(ref _workerGroup, null);
+                IEventLoopGroup bossGroup = Interlocked.Exchange(ref _bossGroup, null);
+                IEventLoopGroup workerGroup = Interlocked.Exchange(ref _workerGroup, null);
                 await Task.WhenAll(
                     bossGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
                     workerGroup?.ShutdownGracefullyAsync() ?? Task.CompletedTask,
@@ -329,8 +329,7 @@ namespace Nethermind.Network.Rlpx
             _ = connectTask.Result.DisconnectAsync();
         }
 
-        private void OnChannelCloseCompleted(Task _, object? state)
-        {
+        private void OnChannelCloseCompleted(Task _, object? state) =>
             // The close completion is completed before actual closing or remaining packet is processed.
             // So usually, we do get a disconnect reason from peer, we just receive it after this. So we need to
             // add some delay to account for whatever is holding the network pipeline.
@@ -340,7 +339,6 @@ namespace Nethermind.Network.Rlpx
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
-        }
 
         private void MarkDisconnectedAfterCloseDelay(Task _, object? state)
         {
@@ -414,10 +412,7 @@ namespace Nethermind.Network.Rlpx
                 _session.MsgDelivered += _refreshNodeFilter;
             }
 
-            public void AttachDisconnected()
-            {
-                _session.Disconnected += _onDisconnected;
-            }
+            public void AttachDisconnected() => _session.Disconnected += _onDisconnected;
 
             public void Detach()
             {
@@ -454,14 +449,9 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private sealed class InboundChannelInitializer : ChannelInitializer<IChannel>
+        private sealed class InboundChannelInitializer(RlpxHost rlpxHost) : ChannelInitializer<IChannel>
         {
-            private readonly RlpxHost _rlpxHost;
-
-            public InboundChannelInitializer(RlpxHost rlpxHost)
-            {
-                _rlpxHost = rlpxHost;
-            }
+            private readonly RlpxHost _rlpxHost = rlpxHost;
 
             protected override void InitChannel(IChannel channel)
             {
@@ -473,16 +463,10 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private sealed class OutboundChannelInitializer : ChannelInitializer<IChannel>
+        private sealed class OutboundChannelInitializer(RlpxHost rlpxHost, Node node) : ChannelInitializer<IChannel>
         {
-            private readonly RlpxHost _rlpxHost;
-            private readonly Node _node;
-
-            public OutboundChannelInitializer(RlpxHost rlpxHost, Node node)
-            {
-                _rlpxHost = rlpxHost;
-                _node = node;
-            }
+            private readonly RlpxHost _rlpxHost = rlpxHost;
+            private readonly Node _node = node;
 
             protected override void InitChannel(IChannel channel)
             {

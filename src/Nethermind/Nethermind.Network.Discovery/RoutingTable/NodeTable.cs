@@ -76,30 +76,18 @@ public class NodeTable : INodeTable
         bucket.RefreshNode(node);
     }
 
-    public ClosestNodesEnumerator GetClosestNodes()
-    {
-        return new ClosestNodesEnumerator(Buckets, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesEnumerator GetClosestNodes() => new(Buckets, _discoveryConfig.BucketSize);
 
-    public struct ClosestNodesEnumerator : IEnumerator<Node>, IEnumerable<Node>
+    public struct ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize) : IEnumerator<Node>, IEnumerable<Node>
     {
-        private readonly NodeBucket[] _buckets;
-        private readonly int _bucketSize;
+        private readonly NodeBucket[] _buckets = buckets;
+        private readonly int _bucketSize = bucketSize;
         private BondedItemsEnumerator _itemEnumerator;
         private bool _enumeratorSet;
-        private int _bucketIndex;
-        private int _count;
+        private int _bucketIndex = -1;
+        private int _count = 0;
 
-        public ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize)
-        {
-            _buckets = buckets;
-            _bucketSize = bucketSize;
-            Current = null!;
-            _bucketIndex = -1;
-            _count = 0;
-        }
-
-        public Node Current { get; private set; }
+        public Node Current { get; private set; } = null!;
 
         readonly object IEnumerator.Current => Current;
 
@@ -140,10 +128,7 @@ public class NodeTable : INodeTable
         readonly IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
-    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
-    {
-        return GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
-    }
+    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId) => GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
 
     public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId, int bucketSize)
     {
@@ -199,10 +184,7 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public readonly void Dispose()
-        {
-            _sortedNodes.Dispose();
-        }
+        public readonly void Dispose() => _sortedNodes.Dispose();
 
         public readonly ClosestNodesFromNodeEnumerator GetEnumerator() => this;
         readonly IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;

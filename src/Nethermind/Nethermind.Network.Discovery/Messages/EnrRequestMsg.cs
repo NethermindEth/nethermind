@@ -26,8 +26,5 @@ public class EnrRequestMsg : DiscoveryMsg
     }
 
     internal EnrRequestMsg(PublicKey farPublicKey, Memory<byte> hash, long expirationDate)
-        : base(farPublicKey, expirationDate)
-    {
-        Hash = hash;
-    }
+        : base(farPublicKey, expirationDate) => Hash = hash;
 }

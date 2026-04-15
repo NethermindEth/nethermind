@@ -11,19 +11,8 @@ using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
+    public class JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null) : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
-        {
-            Scheme = scheme;
-            Host = host;
-            Port = port;
-            RpcEndpoint = rpcEndpoint;
-            EnabledModules = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
-            IsAuthenticated = isAuthenticated;
-            MaxRequestBodySize = maxRequestBodySize;
-        }
-
         public static JsonRpcUrl Parse(string packedUrlValue)
         {
             ArgumentNullException.ThrowIfNull(packedUrlValue);
@@ -76,13 +65,13 @@ namespace Nethermind.JsonRpc
             return result;
         }
 
-        public long? MaxRequestBodySize { get; }
-        public bool IsAuthenticated { get; }
-        public string Scheme { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public RpcEndpoint RpcEndpoint { get; set; }
-        public IReadOnlySet<string> EnabledModules { get; set; }
+        public long? MaxRequestBodySize { get; } = maxRequestBodySize;
+        public bool IsAuthenticated { get; } = isAuthenticated;
+        public string Scheme { get; set; } = scheme;
+        public string Host { get; set; } = host;
+        public int Port { get; set; } = port;
+        public RpcEndpoint RpcEndpoint { get; set; } = rpcEndpoint;
+        public IReadOnlySet<string> EnabledModules { get; set; } = new HashSet<string>(enabledModules, StringComparer.OrdinalIgnoreCase);
 
         public bool IsModuleEnabled(string moduleName) => EnabledModules.Contains(moduleName);
 

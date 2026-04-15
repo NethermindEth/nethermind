@@ -9,20 +9,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfStateTest : GeneralStateTestBase, IStateTestRunner
+    public class PerfStateTest(ITestSourceLoader testsSource) : GeneralStateTestBase, IStateTestRunner
     {
-        private readonly ITestSourceLoader _testsSource;
-
-        public PerfStateTest(ITestSourceLoader testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        }
+        private readonly ITestSourceLoader _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
 
         public IEnumerable<EthereumTestResult> RunTests()
         {
-            List<EthereumTestResult> results = new List<EthereumTestResult>();
+            List<EthereumTestResult> results = new();
             Console.WriteLine("RUNNING tests");
-            Stopwatch stopwatch = new Stopwatch();
+            Stopwatch stopwatch = new();
             IEnumerable<GeneralStateTest> tests = _testsSource.LoadTests<GeneralStateTest>();
             bool isNewLine = true;
             foreach (GeneralStateTest test in tests)

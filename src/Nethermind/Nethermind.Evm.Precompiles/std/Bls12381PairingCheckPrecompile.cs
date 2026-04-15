@@ -26,7 +26,7 @@ public partial class Bls12381PairingCheckPrecompile
         G2 y = new(stackalloc long[G2.Sz]);
 
         using ArrayPoolListRef<long> buf = new(GT.Sz * 2, GT.Sz * 2);
-        var acc = GT.One(buf.AsSpan());
+        GT acc = GT.One(buf.AsSpan());
         GT p = new(buf.AsSpan()[GT.Sz..]);
 
         for (int i = 0; i < inputData.Length / PairSize; i++)

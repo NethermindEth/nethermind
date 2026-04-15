@@ -15,27 +15,18 @@ namespace Nethermind.Network.Benchmarks
         private Node _node;
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);
-        }
+        public void Setup() => _node = new Node(new PublicKey("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f"), "127.0.0.1", 1234);
 
         [Benchmark]
-        public void Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public void Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public void Light()
-        {
-            _ = new NodeStatsLight(_node);
-        }
+        public void Light() => _ = new NodeStatsLight(_node);
 
         [Benchmark]
         public long LightRep()
         {
-            NodeStatsLight stats = new NodeStatsLight(_node);
+            NodeStatsLight stats = new(_node);
             return stats.CurrentNodeReputation(_now);
         }
     }

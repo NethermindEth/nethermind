@@ -37,8 +37,5 @@ public readonly struct ArrayPoolSpan<T>(ArrayPool<T> arrayPool, int length) : ID
 
     public IEnumerator<T> GetEnumerator() => new PooledArrayEnumerator<T>(_array, _length);
 
-    IEnumerator IEnumerable.GetEnumerator()
-    {
-        return GetEnumerator();
-    }
+    IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

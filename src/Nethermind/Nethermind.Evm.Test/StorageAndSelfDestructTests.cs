@@ -70,7 +70,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(initTx, tx1, tx2).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer initTracer = new(block, initTx, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(initTx, blCtx, initTracer);
             AssertStorage(new StorageCell(contractAddress, 1), 0);
 
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             // AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -265,7 +265,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4, tx5).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer0 = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer0);
             AssertStorage(new StorageCell(deploymentAddress, 1), 0);
 
@@ -381,7 +381,7 @@ namespace Nethermind.Evm.Test
             Block block = Build.A.Block.WithNumber(MainnetSpecProvider.MuirGlacierBlockNumber).WithTransactions(tx0, tx1, tx2, tx3, tx4).WithGasLimit(2 * gasLimit).TestObject;
 
             ParityLikeTxTracer tracer = new(block, tx0, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);
-            var blCtx = new BlockExecutionContext(block.Header, Spec);
+            BlockExecutionContext blCtx = new(block.Header, Spec);
             _processor.Execute(tx0, blCtx, tracer);
 
             tracer = new ParityLikeTxTracer(block, tx1, ParityTraceTypes.Trace | ParityTraceTypes.StateDiff);

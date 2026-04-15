@@ -32,7 +32,7 @@ public class ZeroNettyFrameDecoderTests
     [SetUp]
     public void Setup()
     {
-        var (_, B) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets _, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         _frameCipher = new FrameCipher(B.AesSecret);
         _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, B);
@@ -62,10 +62,7 @@ public class ZeroNettyFrameDecoderTests
     }
 
     [TestCaseSource(nameof(CheckAndDecryptCases))]
-    public void Check_and_decrypt(string frame, Delivery delivery, string expectedOutput)
-    {
-        Test(frame, delivery, expectedOutput);
-    }
+    public void Check_and_decrypt(string frame, Delivery delivery, string expectedOutput) => Test(frame, delivery, expectedOutput);
 
     [Test]
     public void Rejects_frame_exceeding_configured_limit()

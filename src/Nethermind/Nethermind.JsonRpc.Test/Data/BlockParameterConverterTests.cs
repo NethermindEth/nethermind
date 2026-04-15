@@ -119,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }
@@ -132,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Data
 
             IJsonSerializer serializer = new EthereumJsonSerializer();
 
-            var result = serializer.Serialize(blockParameter);
+            string result = serializer.Serialize(blockParameter);
 
             Assert.That(result, Is.EqualTo(output));
         }

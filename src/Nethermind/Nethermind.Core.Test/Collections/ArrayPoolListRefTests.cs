@@ -259,7 +259,7 @@ public class ArrayPoolListRefTests
     [Test]
     public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
     {
-        var list = new ArrayPoolListRef<int>(0);
+        ArrayPoolListRef<int> list = new(0);
         list.Dispose();
         int _ = list.Count;
     }

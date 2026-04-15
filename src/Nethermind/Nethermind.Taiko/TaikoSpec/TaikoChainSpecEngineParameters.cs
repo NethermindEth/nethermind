@@ -15,6 +15,8 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
     public long? PacayaTransition { get; set; }
     public ulong? ShastaTimestamp { get; set; }
     public bool? UseSurgeGasPriceOracle { get; set; }
+    public ulong? Rip7728TransitionTimestamp { get; set; }
+    public ulong? L1StaticCallTransitionTimestamp { get; set; }
 
     public Address TaikoL2Address { get; set; } = new("0x1670000000000000000000000000000000010001");
 
@@ -33,6 +35,16 @@ public class TaikoChainSpecEngineParameters : IChainSpecEngineParameters
         if (ShastaTimestamp is not null)
         {
             timestamps.Add(ShastaTimestamp.Value);
+        }
+
+        if (Rip7728TransitionTimestamp is not null)
+        {
+            timestamps.Add(Rip7728TransitionTimestamp.Value);
+        }
+
+        if (L1StaticCallTransitionTimestamp is not null)
+        {
+            timestamps.Add(L1StaticCallTransitionTimestamp.Value);
         }
     }
 }

@@ -282,15 +282,9 @@ public struct TransactionDecodingResult
     public readonly string? Error;
     public readonly Transaction[] Transactions = [];
 
-    public TransactionDecodingResult(Transaction[] transactions)
-    {
-        Transactions = transactions;
-    }
+    public TransactionDecodingResult(Transaction[] transactions) => Transactions = transactions;
 
-    public TransactionDecodingResult(string error)
-    {
-        Error = error;
-    }
+    public TransactionDecodingResult(string error) => Error = error;
 }
 
 public struct BlockDecodingResult
@@ -298,13 +292,7 @@ public struct BlockDecodingResult
     public readonly string? Error;
     public readonly Block? Block;
 
-    public BlockDecodingResult(Block block)
-    {
-        Block = block;
-    }
+    public BlockDecodingResult(Block block) => Block = block;
 
-    public BlockDecodingResult(string error)
-    {
-        Error = error;
-    }
+    public BlockDecodingResult(string error) => Error = error;
 }

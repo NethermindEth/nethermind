@@ -33,10 +33,7 @@ internal class TestBlockTree : IBlockTree
     // TestBlockTree.DeleteInvalidBlock is a no-op, so this event never fires.
     public event EventHandler<BlockEventArgs>? BlockInvalidated { add { } remove { } }
 
-    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args)
-    {
-        BlockAddedToMain?.Invoke(this, args);
-    }
+    public void RaiseBlockAddedToMain(BlockReplacementEventArgs args) => BlockAddedToMain?.Invoke(this, args);
 
     public BlockHeader FindBestSuggestedHeader() => BestSuggestedHeader!;
 

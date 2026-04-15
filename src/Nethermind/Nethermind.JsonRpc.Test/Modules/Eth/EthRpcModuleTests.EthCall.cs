@@ -10,6 +10,7 @@ using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -210,7 +211,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList();
@@ -308,8 +309,8 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        var abiEncoder = new AbiEncoder();
-        var errorSignature = new AbiSignature(
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new(
             "Error",
             AbiType.String
         );
@@ -331,6 +332,55 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_with_custom_error_revert_puts_bytes_only_in_data()
+    {
+        // When a contract reverts with a custom error (unknown 4-byte selector), message must be
+        // plain "execution reverted" and the raw bytes must appear only in data — matching Geth.
+        // See: https://github.com/NethermindEth/nethermind/issues/11095
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] selector = Keccak.Compute("ActionFailed()").Bytes[..4].ToArray();
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithCustomError(selector)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x080a1c27"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_with_revert_sentinel_string_as_message_still_appends_decoded_message()
+    {
+        // require(false, "revert") produces Error(string) ABI-encoded with the literal string "revert".
+        // The old sentinel-based check would have mistaken this for the Revert sentinel and emitted
+        // plain "execution reverted". The raw-byte prefix check fixes this: we see the Error(string)
+        // selector in the revert data, so we correctly emit "execution reverted: revert".
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new("Error", AbiType.String);
+        string errorMessage = "revert"; // deliberately equals the sentinel constant
+        byte[] encodedError = abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, errorSignature, errorMessage);
+        string abiEncodedErrorMessage = encodedError.ToHexString(true);
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithSolidityErrorEncoding(errorMessage)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: revert","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [TestCase(
@@ -359,8 +409,8 @@ public partial class EthRpcModuleTests
     )]
     public async Task Eth_call_with_state_override(string name, string transactionJson, string stateOverrideJson, string expectedResult)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
@@ -386,16 +436,16 @@ public partial class EthRpcModuleTests
     )]
     public async Task Eth_call_with_state_override_does_not_affect_other_calls(string name, string transactionJson, string stateOverrideJson)
     {
-        var transaction = JsonSerializer.Deserialize<object>(transactionJson);
-        var stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
+        object? transaction = JsonSerializer.Deserialize<object>(transactionJson);
+        object? stateOverride = JsonSerializer.Deserialize<object>(stateOverrideJson);
 
         using Context ctx = await Context.Create();
 
-        var resultOverrideBefore = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        string resultOverrideBefore = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
-        var resultNoOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+        string resultNoOverride = await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
 
-        var resultOverrideAfter = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
+        string resultOverrideAfter = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         using (new AssertionScope())
         {
@@ -452,7 +502,7 @@ public partial class EthRpcModuleTests
 
         // Contract: GAS PUSH1 0 MSTORE PUSH1 32 PUSH1 0 RETURN
         // Returns gas available at start of execution as a 32-byte uint256
-        var stateOverride = JsonSerializer.Deserialize<object>(
+        object? stateOverride = JsonSerializer.Deserialize<object>(
             """{"0xc200000000000000000000000000000000000000":{"code":"0x5a60005260206000f3"}}""");
 
         // Request 100K gas — should be capped to 50K by GasCap

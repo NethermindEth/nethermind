@@ -268,7 +268,7 @@ namespace Nethermind.Consensus.Validators
             // we can check for long.MaxValue - maxGasLimitDifference < adjustedParentGasLimit to ensure that we are in range.
             // In hive we have tests that using long.MaxValue in the genesis block
             // Even if we add maxGasLimitDifference we don't get header.GasLimit higher than long.MaxValue
-            var gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
+            bool gasLimitNotTooHigh = notToHighWithOverflow || header.GasLimit < maxNextGasLimit;
 
             if (!gasLimitNotTooHigh)
             {

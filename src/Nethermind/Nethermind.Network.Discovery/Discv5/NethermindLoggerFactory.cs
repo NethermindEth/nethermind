@@ -9,10 +9,7 @@ namespace Nethermind.Network.Discovery;
 
 public sealed class NethermindLoggerFactory(ILogManager logManager, bool lowerLogLevel = false, MsLogLevel? maxLogLevel = null) : ILoggerFactory
 {
-    public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName)
-    {
-        return new NethermindLogger(logManager.GetLogger(categoryName), lowerLogLevel, maxLogLevel);
-    }
+    public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new NethermindLogger(logManager.GetLogger(categoryName), lowerLogLevel, maxLogLevel);
 
     public void Dispose() { }
 

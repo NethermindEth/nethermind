@@ -27,9 +27,9 @@ internal class QuorumCertificateDecoderTests
     public void Encode_DifferentValues_IsEquivalentAfterReencoding(QuorumCertificate quorumCert)
     {
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
+        RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
-        Rlp.ValueDecoderContext ctx = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+        Rlp.ValueDecoderContext ctx = new(stream.Data.AsSpan());
         QuorumCertificate decoded = decoder.Decode(ref ctx);
 
         decoded.Should().BeEquivalentTo(quorumCert);
@@ -41,17 +41,17 @@ internal class QuorumCertificateDecoderTests
     {
         QuorumCertificate quorumCert = new(new BlockRoundInfo(Hash256.Zero, 1, 1), [new Signature(new byte[64], 0), new Signature(new byte[64], 0), new Signature(new byte[64], 0)], 0);
         QuorumCertificateDecoder decoder = new();
-        RlpStream stream = new RlpStream(decoder.GetLength(quorumCert));
+        RlpStream stream = new(decoder.GetLength(quorumCert));
         decoder.Encode(stream, quorumCert);
         QuorumCertificate decoded;
         if (useRlpStream)
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
             decoded = decoder.Decode(ref decoderContext);
         }
         else
         {
-            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(stream.Data.AsSpan());
+            Rlp.ValueDecoderContext decoderContext = new(stream.Data.AsSpan());
             decoded = decoder.Decode(ref decoderContext);
         }
 
