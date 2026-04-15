@@ -25,14 +25,10 @@ public interface IStateCompositionRpcModule : IRpcModule
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get cached stats from last completed scan. " +
-                      "Stats field is null if never scanned.",
+                      "Stats field is null if never scanned. " +
+                      "LastScanMetadata carries scan freshness/completion info.",
         ExampleResponse = "{\"currentStats\":{\"accountsTotal\":12345678},\"blockNumber\":19000000,\"diffsSinceLastScan\":42,\"lastScanMetadata\":null}")]
     Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats();
-
-    [JsonRpcMethod(IsImplemented = true,
-        Description = "Get scan metadata (freshness, completion status).",
-        ExampleResponse = "{\"blockNumber\":19000000,\"stateRoot\":\"0xabc...\",\"completedAt\":\"2026-01-01T00:00:00Z\",\"duration\":\"00:05:30\",\"isComplete\":true}")]
-    Task<ResultWrapper<ScanMetadata?>> statecomp_getCacheMetadata();
 
     [JsonRpcMethod(IsImplemented = true,
         Description = "Get trie depth distribution with byte sizes. " +

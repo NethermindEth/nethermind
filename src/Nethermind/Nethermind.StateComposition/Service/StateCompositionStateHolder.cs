@@ -87,6 +87,25 @@ internal sealed class StateCompositionStateHolder
     }
 
     /// <summary>
+    /// Build the RPC <see cref="CachedStatsResponse"/> under a single <see cref="_lock"/> entry
+    /// so the four fields (stats, block, diff count, scan metadata) cannot tear against a
+    /// concurrent diff application.
+    /// </summary>
+    public CachedStatsResponse BuildCachedStatsResponse()
+    {
+        lock (_lock)
+        {
+            return new CachedStatsResponse
+            {
+                CurrentStats = _incrementalStats,
+                BlockNumber = _incrementalStats is not null ? _incrementalBlock : null,
+                DiffsSinceLastScan = _diffsSinceBaseline,
+                LastScanMetadata = _lastScanMetadata,
+            };
+        }
+    }
+
+    /// <summary>
     /// Build a fully-populated <see cref="StateCompositionSnapshot"/> atomically. Stats,
     /// baseline metadata, depth stats, and the three tracker dictionaries are all captured
     /// under a single <see cref="_lock"/> entry so the persisted snapshot cannot tear
