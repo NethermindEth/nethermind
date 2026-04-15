@@ -131,7 +131,16 @@ public class BlockAccessListBasedWorldState(
     }
 
     public ValueHash256 GetCodeHash(Address address)
-        => ValueKeccak.Compute(GetCode(address));
+    {
+        AccountChanges? accountChanges = _suggestedBlockAccessList.GetAccountChanges(address);
+
+        if (accountChanges is not null)
+        {
+            return accountChanges.GetCodeHash(blockAccessIndex);
+        }
+
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
+    }
 
     public byte[]? GetCode(Address address)
     {
