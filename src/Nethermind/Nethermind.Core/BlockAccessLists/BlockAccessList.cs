@@ -100,7 +100,6 @@ public class BlockAccessList : IEquatable<BlockAccessList>, IJournal<int>
 
     public void AddBalanceChange(Address address, UInt256 before, UInt256 after)
     {
-        string addy = address.ToString();
         bool isZeroBalanceChange = before == after;
         if (address == Address.SystemUser && isZeroBalanceChange)
         {

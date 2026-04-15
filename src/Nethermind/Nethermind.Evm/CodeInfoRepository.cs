@@ -64,7 +64,6 @@ public class CodeInfoRepository : ICodeInfoRepository
 
     private CodeInfo InternalGetCodeInfo(Address codeSource, IReleaseSpec vmSpec)
     {
-        string addy = codeSource.ToString();
         ValueHash256 codeHash = _worldState.GetCodeHash(codeSource);
         return _codeInfoLoader(codeSource, codeHash, vmSpec);
     }
