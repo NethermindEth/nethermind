@@ -193,13 +193,6 @@ internal sealed class StateCompositionVisitor(
     {
         VisitorCounters agg = GetAggregated();
 
-        // Materialize the merged SlotCountsByOwner list into a dict. Indexed
-        // assignment (not `new Dictionary(list)`) is required because the list
-        // may contain the zero-owner sentinel more than once across worker threads.
-        Dictionary<ValueHash256, long> slotCountByAddress = new(agg.SlotCountsByOwner.Count);
-        foreach (KeyValuePair<ValueHash256, long> kvp in agg.SlotCountsByOwner)
-            slotCountByAddress[kvp.Key] = kvp.Value;
-
         return new StateCompositionStats
         {
             BlockNumber = blockNumber,
@@ -223,7 +216,7 @@ internal sealed class StateCompositionVisitor(
             TopContractsByNodes = BuildSortedTopN(agg.TopN.TopByNodes, agg.TopN.TopByNodesCount, TopNTracker.CompareByTotalNodes),
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
             TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
-            SlotCountByAddress = slotCountByAddress,
+            SlotCountByAddress = agg.SlotCountsByOwner,
             CodeHashSizes = _codeHashSizes,
             CodeHashRefcounts = agg.CodeHashRefcounts,
         };
