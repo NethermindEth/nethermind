@@ -1094,7 +1094,7 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
 
         Assert.That(diff.DepthDelta, Is.Not.Null);
-        DepthDelta d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta!;
 
         // Net leaf added at some depth — total ValueNodes across all depths must be +1
         long totalValueNodeDelta = 0;
@@ -1118,7 +1118,7 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, Keccak.EmptyTreeHash);
 
         Assert.That(diff.DepthDelta, Is.Not.Null);
-        DepthDelta d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta!;
 
         long totalValueNodeDelta = 0;
         for (int i = 0; i < 16; i++) totalValueNodeDelta += d.AccountValueNodes[i];
@@ -1147,12 +1147,12 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, root2);
 
         Assert.That(diff.DepthDelta, Is.Not.Null);
-        DepthDelta d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta!;
 
         // Adding a second account requires at least one branch net-new or restructured
-        // The important invariant: TotalBranchNodesDelta tracks the occupancy histogram change
+        // The important invariant: TotalBranchNodes tracks the occupancy histogram change
         // Just verify the delta is consistent with total branch count change from the plain diff
-        Assert.That(d.TotalBranchNodesDelta, Is.GreaterThanOrEqualTo(0),
+        Assert.That(d.TotalBranchNodes, Is.GreaterThanOrEqualTo(0),
             "Adding a second account should not net-remove branch nodes");
     }
 
@@ -1174,7 +1174,7 @@ public class TrieDiffWalkerTests
         TrieDiffWalker walker = new(new RawScopedTrieStore(db), trackDepth: true);
         TrieDiff diff = walker.ComputeDiff(emptyRoot, root1);
 
-        DepthDelta d = diff.DepthDelta!;
+        CumulativeDepthStats d = diff.DepthDelta!;
 
         // For a pure leaf addition: ShortNodes delta at leaf depth should be >= ValueNodes delta
         // (ShortNodes also includes extensions, but in this trivial trie there are none)
@@ -1186,7 +1186,7 @@ public class TrieDiffWalkerTests
     }
 
     [Test]
-    public void DepthDelta_CumulativeDepthStats_ApplyDeltaMatchesSeedFromScan()
+    public void DepthDelta_CumulativeDepthStats_AddInPlaceMatchesSeedFromScan()
     {
         // Build a trie, scan it for baseline, then apply a delta for the change and check
         // that the cumulative depth stats are consistent (no off-by-one from Geth shifts).
@@ -1218,7 +1218,7 @@ public class TrieDiffWalkerTests
         TrieDiff diff = walker.ComputeDiff(root1, root2);
         Assert.That(diff.DepthDelta, Is.Not.Null);
 
-        cumDepth.ApplyDelta(diff.DepthDelta!);
+        cumDepth.AddInPlace(diff.DepthDelta!);
 
         // Full scan at root2 for expected depth stats
         using StateCompositionVisitor v2 = new(LimboLogs.Instance);

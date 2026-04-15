@@ -17,7 +17,7 @@ namespace Nethermind.StateComposition.Diff;
 /// </summary>
 internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, bool trackDepth = false)
 {
-    private readonly DepthDelta _depthDelta = new();
+    private readonly CumulativeDepthStats _depthDelta = new();
     private readonly List<SlotCountChange> _slotCountChanges = new();
     private readonly List<CodeHashChange> _codeHashChanges = new();
 
@@ -49,7 +49,7 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
     public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
     {
         ResetCounters();
-        if (trackDepth) _depthDelta.Clear();
+        if (trackDepth) _depthDelta.Reset();
 
         Hash256? oldHash = NormalizeHash(oldRoot);
         Hash256? newHash = NormalizeHash(newRoot);

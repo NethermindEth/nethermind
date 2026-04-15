@@ -53,7 +53,9 @@ public readonly record struct TrieDiff(
     int EmptyAccountsRemoved,
 
     // Optional per-depth distribution delta. Null when TrackDepthIncrementally is disabled.
-    DepthDelta? DepthDelta = null,
+    // Reuses CumulativeDepthStats as the delta container — identical field layout,
+    // merged into the holder's baseline via CumulativeDepthStats.AddInPlace.
+    CumulativeDepthStats? DepthDelta = null,
 
     // Per-account payloads that feed the incremental trackers in the state holder.
     // Null on diffs that don't need them (tests, synthetic apply paths).

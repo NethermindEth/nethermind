@@ -7,14 +7,14 @@ using NUnit.Framework;
 namespace Nethermind.StateComposition.Test.Diff;
 
 /// <summary>
-/// Verifies <see cref="CumulativeDepthStats"/> seeding, delta application, reset, and clone.
+/// Verifies <see cref="CumulativeDepthStats"/> seeding, in-place addition, reset, and clone.
 /// </summary>
 [TestFixture]
 public class CumulativeDepthStatsTests
 {
     /// <summary>
-    /// Produces an empty-but-seeded instance so <see cref="CumulativeDepthStats.ApplyDelta"/>
-    /// takes effect. Required since the IsSeeded gate no-ops deltas on a cold baseline
+    /// Produces an empty-but-seeded instance so <see cref="CumulativeDepthStats.AddInPlace"/>
+    /// takes effect. Required since the IsSeeded gate no-ops adds on a cold baseline
     /// (the gate is what prevents negative gauges across restarts).
     /// </summary>
     private static CumulativeDepthStats NewSeededEmpty()
@@ -25,27 +25,18 @@ public class CumulativeDepthStatsTests
     }
 
     [Test]
-    public void ApplyDelta_SingleBucketIncrement_OnlyTargetBucketChanges()
+    public void AddInPlace_SingleBucketIncrement_OnlyTargetBucketChanges()
     {
         CumulativeDepthStats stats = NewSeededEmpty();
 
-        DepthDelta delta = new()
+        CumulativeDepthStats delta = new()
         {
-            AccountValueNodes =
-            {
-                [5] = 1
-            },
-            AccountShortNodes =
-            {
-                [5] = 1
-            },
-            AccountNodeBytes =
-            {
-                [5] = 42
-            }
+            AccountValueNodes = { [5] = 1 },
+            AccountShortNodes = { [5] = 1 },
+            AccountNodeBytes = { [5] = 42 }
         };
 
-        stats.ApplyDelta(delta);
+        stats.AddInPlace(delta);
 
         using (Assert.EnterMultipleScope())
         {
@@ -54,7 +45,6 @@ public class CumulativeDepthStatsTests
             Assert.That(stats.AccountNodeBytes[5], Is.EqualTo(42));
         }
 
-        // All other buckets must be zero
         for (int i = 0; i < 16; i++)
         {
             if (i == 5) continue;
@@ -65,7 +55,6 @@ public class CumulativeDepthStatsTests
             }
         }
 
-        // Storage and branch occupancy untouched
         for (int i = 0; i < 16; i++)
         {
             using (Assert.EnterMultipleScope())
@@ -83,26 +72,20 @@ public class CumulativeDepthStatsTests
     }
 
     [Test]
-    public void ApplyDelta_MultipleDeltas_Compound()
+    public void AddInPlace_MultipleDeltas_Compound()
     {
         CumulativeDepthStats stats = NewSeededEmpty();
 
         for (int i = 0; i < 3; i++)
         {
-            DepthDelta delta = new()
+            CumulativeDepthStats delta = new()
             {
-                AccountFullNodes =
-                {
-                    [2] = 1
-                },
-                BranchOccupancy =
-                {
-                    [3] = 2
-                },
-                TotalBranchNodesDelta = 2,
-                TotalBranchChildrenDelta = 8 // 2 branches × 4 children each
+                AccountFullNodes = { [2] = 1 },
+                BranchOccupancy = { [3] = 2 },
+                TotalBranchNodes = 2,
+                TotalBranchChildren = 8 // 2 branches × 4 children each
             };
-            stats.ApplyDelta(delta);
+            stats.AddInPlace(delta);
         }
 
         using (Assert.EnterMultipleScope())
@@ -115,37 +98,23 @@ public class CumulativeDepthStatsTests
     }
 
     [Test]
-    public void ApplyDelta_NegativeDelta_Decrements()
+    public void AddInPlace_NegativeDelta_Decrements()
     {
         CumulativeDepthStats stats = NewSeededEmpty();
 
-        // First add 5 leaves at depth 7
-        DepthDelta addDelta = new()
+        CumulativeDepthStats addDelta = new()
         {
-            AccountValueNodes =
-            {
-                [7] = 5
-            },
-            AccountShortNodes =
-            {
-                [7] = 5
-            }
+            AccountValueNodes = { [7] = 5 },
+            AccountShortNodes = { [7] = 5 }
         };
-        stats.ApplyDelta(addDelta);
+        stats.AddInPlace(addDelta);
 
-        // Then remove 3
-        DepthDelta removeDelta = new()
+        CumulativeDepthStats removeDelta = new()
         {
-            AccountValueNodes =
-            {
-                [7] = -3
-            },
-            AccountShortNodes =
-            {
-                [7] = -3
-            }
+            AccountValueNodes = { [7] = -3 },
+            AccountShortNodes = { [7] = -3 }
         };
-        stats.ApplyDelta(removeDelta);
+        stats.AddInPlace(removeDelta);
 
         using (Assert.EnterMultipleScope())
         {
@@ -157,19 +126,18 @@ public class CumulativeDepthStatsTests
     [Test]
     public void Reset_ZerosAllArraysAndScalars()
     {
-        CumulativeDepthStats stats = new();
+        CumulativeDepthStats stats = NewSeededEmpty();
 
-        // Populate via delta
-        DepthDelta delta = new();
+        CumulativeDepthStats delta = new();
         for (int i = 0; i < 16; i++)
         {
             delta.AccountFullNodes[i] = i + 1;
             delta.StorageValueNodes[i] = i + 2;
             delta.BranchOccupancy[i] = i + 3;
         }
-        delta.TotalBranchNodesDelta = 99;
-        delta.TotalBranchChildrenDelta = 200;
-        stats.ApplyDelta(delta);
+        delta.TotalBranchNodes = 99;
+        delta.TotalBranchChildren = 200;
+        stats.AddInPlace(delta);
 
         stats.Reset();
 
@@ -194,30 +162,22 @@ public class CumulativeDepthStatsTests
     public void Clone_IsDeepCopy_MutatingOriginalDoesNotAffectClone()
     {
         CumulativeDepthStats original = NewSeededEmpty();
-        DepthDelta delta = new()
+        CumulativeDepthStats delta = new()
         {
-            AccountFullNodes =
-            {
-                [3] = 10
-            }
+            AccountFullNodes = { [3] = 10 }
         };
-        original.ApplyDelta(delta);
+        original.AddInPlace(delta);
 
         CumulativeDepthStats clone = original.Clone();
 
-        // Mutate the original
-        DepthDelta more = new()
+        CumulativeDepthStats more = new()
         {
-            AccountFullNodes =
-            {
-                [3] = 5
-            }
+            AccountFullNodes = { [3] = 5 }
         };
-        original.ApplyDelta(more);
+        original.AddInPlace(more);
 
         using (Assert.EnterMultipleScope())
         {
-            // Clone must be unaffected
             Assert.That(clone.AccountFullNodes[3], Is.EqualTo(10));
             Assert.That(original.AccountFullNodes[3], Is.EqualTo(15));
         }
