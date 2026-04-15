@@ -59,13 +59,13 @@ public sealed class VisitorCounters(int topN = 20)
     public readonly long[] StorageMaxDepthHistogram = new long[MaxTrackedDepth];
 
     /// <summary>
-    /// Per-contract (owner → slot count) pairs for every contract-with-storage finalized
-    /// on this thread. Appended in <see cref="FinalizeCurrentStorageTrie"/>, merged by
-    /// <see cref="MergeFrom"/> via list concatenation (each account is visited by exactly
+    /// Per-contract (owner → slot count) map for every contract-with-storage finalized
+    /// on this thread. Written in <see cref="FinalizeCurrentStorageTrie"/>, merged by
+    /// <see cref="MergeFrom"/> via dictionary copy (each account is visited by exactly
     /// one worker thread, so no cross-thread deduplication is required).
     /// Feeds the state holder's incremental slot-count tracker.
     /// </summary>
-    public readonly List<KeyValuePair<ValueHash256, long>> SlotCountsByOwner = new();
+    public readonly Dictionary<ValueHash256, long> SlotCountsByOwner = new();
 
     /// <summary>
     /// Per-code-hash reference count accumulated on this thread. Each account whose
@@ -150,7 +150,7 @@ public sealed class VisitorCounters(int topN = 20)
         // Remember this contract's exact slot count so the state holder can adjust
         // the histogram incrementally when later diffs move it between buckets.
         if (_currentStorageValueNodes > 0)
-            SlotCountsByOwner.Add(new KeyValuePair<ValueHash256, long>(_currentOwner, _currentStorageValueNodes));
+            SlotCountsByOwner[_currentOwner] = _currentStorageValueNodes;
 
         // Build per-depth Levels[16] summary into a reusable scratch array.
         // The scratch array is allocated once per VisitorCounters instance (lazily)
@@ -238,10 +238,10 @@ public sealed class VisitorCounters(int topN = 20)
         for (int i = 0; i < SlotCountHistogram.Length; i++)
             SlotCountHistogram[i] += other.SlotCountHistogram[i];
 
-        // Per-account slot counts: straight concatenation — each account is visited
-        // by exactly one worker, so no owner can appear in two thread-local lists.
-        if (other.SlotCountsByOwner.Count > 0)
-            SlotCountsByOwner.AddRange(other.SlotCountsByOwner);
+        // Per-account slot counts: straight copy — each account is visited by
+        // exactly one worker, so no owner can appear in two thread-local maps.
+        foreach (KeyValuePair<ValueHash256, long> kvp in other.SlotCountsByOwner)
+            SlotCountsByOwner[kvp.Key] = kvp.Value;
 
         // Code-hash refcounts: additive merge. Each account contributed one increment
         // on its own thread, so summing across threads yields the total refcount.
