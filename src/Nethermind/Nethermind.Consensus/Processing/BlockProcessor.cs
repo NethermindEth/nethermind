@@ -49,7 +49,11 @@ public partial class BlockProcessor(
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly ILogManager _logManager = logManager;
     protected readonly IWorldState _stateProvider = stateProvider;
+#if !ZK_EVM
     protected readonly IBlockAccessListManager _balManager = balManager;
+#else
+    private readonly IBlockAccessListManager _ = balManager;
+#endif
     protected readonly IBlockTransactionsExecutor _blockTransactionsExecutor = blockTransactionsExecutor;
     private readonly SystemContractHandler _standardSystemContractHandler = new(beaconBlockRootHandler, blockHashStore, withdrawalProcessor, executionRequestsProcessor);
 #if !ZK_EVM
@@ -69,8 +73,8 @@ public partial class BlockProcessor(
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
-        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
 #if !ZK_EVM
+        _balManager.PrepareForProcessing(suggestedBlock, spec, options);
         _systemContractHandler = _balManager.Enabled ? _balSystemContractHandler : _standardSystemContractHandler;
 #else
         _systemContractHandler = _standardSystemContractHandler;
@@ -121,7 +125,9 @@ public partial class BlockProcessor(
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
+#if !ZK_EVM
         _balManager.Setup(block);
+#endif
 
         _systemContractHandler.StoreBeaconRoot(block, spec);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
@@ -169,7 +175,9 @@ public partial class BlockProcessor(
             header.StateRoot = _stateProvider.StateRoot;
         }
 
+#if !ZK_EVM
         _balManager.SetBlockAccessList(block);
+#endif
 
         header.Hash = header.CalculateHash();
 
