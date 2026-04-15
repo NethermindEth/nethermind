@@ -333,7 +333,7 @@ public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
     {
         try
         {
-            return ByteArrayConverter.Convert(ref reader, strictHexFormat: false, requireEvenLength: true);
+            return ByteArrayConverter.Convert(ref reader, strictHexFormat: true, requireEvenLength: true);
         }
         catch (FormatException e)
         {

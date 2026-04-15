@@ -729,6 +729,7 @@ public partial class EthRpcModuleTests
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
     [TestCase("""{"data":"0xABC","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length data")]
     [TestCase("""{"input":"0x1ab"}""", TestName = "EIP1559 tx odd-length input")]
+    [TestCase("""{"data":"0x1ab","maxFeePerGas":"0x1"}""", TestName = "EIP1559 tx odd-length data")]
     public async Task Eth_call_odd_length_input_returns_invalid_params(string txJson)
     {
         using Context ctx = await Context.Create();

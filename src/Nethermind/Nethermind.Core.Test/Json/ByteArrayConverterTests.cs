@@ -496,14 +496,14 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ["0x1fF"],
         ["abc"],
         ["0xabc"],
+        ["1f"],
+        ["DEADBEEF"],
     };
 
     public static IEnumerable<object[]> StrictEvenLengthCases() => new object[][]
     {
         ["0x", Array.Empty<byte>()],
-        ["1f", new byte[] { 0x1f }],
         ["0x1f", new byte[] { 0x1f }],
-        ["DEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef }],
         ["0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef }],
     };
 
