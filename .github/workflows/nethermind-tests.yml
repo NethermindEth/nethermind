@@ -74,7 +74,7 @@ jobs:
           TEST_CHUNK: ${{ matrix.test.chunk }}
         run: |
           set +e
-          dotnet test --project ${{ matrix.test.project }}.csproj -c release --filter "FullyQualifiedName~Ethereum.Blockchain.Pyspec.Test.ZkEvm.Eip8025BlockChainTests"
+          dotnet test --project ${{ matrix.test.project }}.csproj -c release --filter "FullyQualifiedName~Ethereum.Blockchain.Pyspec.Test.ZkEvm.Eip7708BlockChainTests"
           rc=$?
           set -e
           if [[ $rc -eq 0 ]]; then
@@ -83,7 +83,7 @@ jobs:
             exit 1
           else
             echo "::warning::Test process crashed (exit code $rc), retrying..."
-            dotnet test --project ${{ matrix.test.project }}.csproj -c release --filter "FullyQualifiedName~Ethereum.Blockchain.Pyspec.Test.ZkEvm.Eip8025BlockChainTests"
+            dotnet test --project ${{ matrix.test.project }}.csproj -c release --filter "FullyQualifiedName~Ethereum.Blockchain.Pyspec.Test.ZkEvm.Eip7708BlockChainTests"
           fi
 
   tests-summary:
