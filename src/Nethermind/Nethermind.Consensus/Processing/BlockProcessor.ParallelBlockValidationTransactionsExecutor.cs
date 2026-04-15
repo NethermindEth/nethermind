@@ -80,7 +80,7 @@ public partial class BlockProcessor
                 gasResults[i] = new TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>();
             }
 
-            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
+            Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler, token), token);
 
             // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
             ParallelUnbalancedWork.For(

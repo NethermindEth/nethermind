@@ -30,6 +30,7 @@ using Nethermind.State;
 using Nethermind.Specs;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 using static Nethermind.State.BlockAccessListBasedWorldState;
+using System.Threading;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -116,7 +117,7 @@ public class BlockAccessListManager(
         }
     }
 
-    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler)
+    public void IncrementalValidation(Block block, TaskCompletionSource<(long? BlockGasUsed, Exception? Exception)>[] gasResults, BlockReceiptsTracer[] receiptsTracers, BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessedEventHandler, CancellationToken token)
     {
         int len = block.Transactions.Length;
         _txProcessorWithWorldStateManager.GetPreExecution().WorldState.MergeGeneratingBal(GeneratedBlockAccessList);
@@ -125,6 +126,11 @@ public class BlockAccessListManager(
         long totalGas = 0;
         for (int chunkStart = 0; chunkStart < len; chunkStart += GasValidationChunkSize)
         {
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
             int chunkEnd = Math.Min(chunkStart + GasValidationChunkSize, len);
             for (int j = chunkStart; j < chunkEnd; j++)
             {
@@ -382,7 +388,7 @@ public class BlockAccessListManager(
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&
-            !c.SlotChanges.GetEnumerator().MoveNext();
+            !c.SlotChanges.Any();
 
     private interface ITxProcessorWithWorldStateManager
     {
