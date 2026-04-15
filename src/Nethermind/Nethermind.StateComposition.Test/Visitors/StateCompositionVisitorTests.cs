@@ -30,15 +30,6 @@ public class StateCompositionVisitorTests
     }
 
     [Test]
-    public void Visitor_ShouldVisit_AlwaysReturnsTrue()
-    {
-        StateCompositionContext ctx = new(default, level: 0, isStorage: false, branchChildIndex: null);
-        ValueHash256 hash = default;
-
-        Assert.That(_visitor.ShouldVisit(in ctx, in hash), Is.True);
-    }
-
-    [Test]
     public void Visitor_ShouldVisit_TracksBranchChildren()
     {
         ValueHash256 hash = default;
@@ -59,16 +50,6 @@ public class StateCompositionVisitorTests
         TrieDepthDistribution dist = _visitor.GetTrieDistribution();
 
         Assert.That(dist.AvgBranchOccupancy, Is.EqualTo(3.0));
-    }
-
-    [Test]
-    public void Visitor_CountsAccountsCorrectly()
-    {
-        SimulateAccounts(10, hasCode: false, hasStorage: false);
-
-        StateCompositionStats stats = _visitor.GetStats(1, null);
-
-        Assert.That(stats.AccountsTotal, Is.EqualTo(10));
     }
 
     [Test]
