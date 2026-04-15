@@ -288,18 +288,9 @@ internal sealed class StateCompositionVisitor(
         if (count == 0)
             return ImmutableArray<TopContractEntry>.Empty;
 
-        // Sort descending using a struct comparer — avoids delegate allocation per call.
-        // AsSpan().ToArray() avoids the LINQ enumerator allocation of Take().ToArray().
-        // AsImmutableArray wraps the sorted buffer in-place (no defensive copy).
         TopContractEntry[] sorted = entries.AsSpan(0, count).ToArray();
-        Array.Sort(sorted, new DescendingComparer(comparer));
+        Array.Sort(sorted, 0, count, Comparer<TopContractEntry>.Create((a, b) => comparer(b, a)));
         return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(sorted);
-    }
-
-    private readonly struct DescendingComparer(TopNTracker.EntryComparer inner)
-        : System.Collections.Generic.IComparer<TopContractEntry>
-    {
-        public int Compare(TopContractEntry a, TopContractEntry b) => inner(b, a); // reversed for descending
     }
 
     private static double CalcAvgDepth(DepthCounter[] depths)
