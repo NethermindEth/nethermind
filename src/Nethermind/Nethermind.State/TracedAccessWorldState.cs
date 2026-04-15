@@ -122,7 +122,8 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     public ValueHash256 GetCodeHash(Address address)
     {
         AddAccountRead(address);
-        return _innerWorldState.GetCodeHash(address);
+        byte[]? currentCode = GetCodeCurrent(address);
+        return currentCode is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(currentCode);
     }
 
     public byte[]? GetCode(Address address)
