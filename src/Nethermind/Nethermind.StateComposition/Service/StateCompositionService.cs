@@ -71,8 +71,8 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
     /// caller collapses the single-operating-mode invariant, so a reviewer adding
     /// one must delete this comment as a tripwire:
     /// <list type="bullet">
-    /// <item><description>Plugin bootstrap: <see cref="StateCompositionPlugin.Init"/> when
-    /// no persisted snapshot is available.</description></item>
+    /// <item><description>Plugin bootstrap: <see cref="StateCompositionPlugin.Init"/>
+    /// schedules a background scan when no persisted snapshot is available.</description></item>
     /// <item><description>Incremental recovery: <see cref="ScheduleBaselineRescan"/>
     /// from the <see cref="Nethermind.Trie.MissingTrieNodeException"/> handler in
     /// <see cref="RunIncrementalDiff"/>.</description></item>
@@ -263,11 +263,22 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         _stateHolder.SetBaseline(stats, dist);
         _stateHolder.MarkScanCompleted(header.Number, header.StateRoot!, sw.Elapsed);
         CumulativeSizeStats cumulativeBaseline = CumulativeSizeStats.FromScanStats(stats);
-        _stateHolder.InitializeIncremental(
-            cumulativeBaseline, header.Number, header.StateRoot!, dist,
-            slotCountByAddress: stats.SlotCountByAddress,
-            codeHashRefcounts: stats.CodeHashRefcounts,
-            codeHashSizes: stats.CodeHashSizes);
+
+        // Hold _diffLock across InitializeIncremental and the snapshot write so an
+        // OnNewHeadBlock dispatch cannot mutate the tracker dictionaries between
+        // baseline install and the encoder iterating them. Lock order across the
+        // service is always _scanLock (held by the caller) → _diffLock; the diff
+        // path only ever takes _diffLock, so this nested acquire is deadlock-free.
+        lock (_diffLock)
+        {
+            _stateHolder.InitializeIncremental(
+                cumulativeBaseline, header.Number, header.StateRoot!, dist,
+                slotCountByAddress: stats.SlotCountByAddress,
+                codeHashRefcounts: stats.CodeHashRefcounts,
+                codeHashSizes: stats.CodeHashSizes);
+
+            WriteSnapshotForHead(cumulativeBaseline, header.Number, header.StateRoot!);
+        }
 
         // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
         // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
@@ -278,8 +289,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
         Metrics.StateCompIncrementalBlock = header.Number;
         Metrics.StateCompDiffsSinceBaseline = 0;
         Metrics.StateCompScansCompleted++;
-
-        WriteSnapshotForHead(cumulativeBaseline, header.Number, header.StateRoot!);
     }
 
     /// <summary>
@@ -295,29 +304,41 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
 
     /// <summary>
     /// Graceful shutdown hook invoked by <see cref="IServiceStopper"/> before the
-    /// snapshot RocksDB is disposed. Cancels any in-flight scan, waits for the scan
-    /// semaphore so no writer races with the flush, and force-writes the latest
-    /// incremental state (bypassing <see cref="IStateCompositionConfig.SnapshotInterval"/>)
-    /// so the next startup can resume without a full rescan.
+    /// snapshot RocksDB is disposed. Unsubscribes from <see cref="IBlockTree.NewHeadBlock"/>
+    /// to stop dispatching diffs, cancels any in-flight scan, then drains the diff
+    /// path via <see cref="_diffLock"/> so the snapshot capture and the RLP encoder
+    /// observe a consistent view of the holder. Force-writes the latest incremental
+    /// state (bypassing <see cref="IStateCompositionConfig.SnapshotInterval"/>) so the
+    /// next startup can resume without a full rescan.
     /// </summary>
     public async Task StopAsync()
     {
+        // Stop dispatching new diffs first. Delegate `-=` is idempotent, so this
+        // is safe even if Dispose later runs the same line.
+        _blockTree.NewHeadBlock -= OnNewHeadBlock;
+
         CancelScan();
 
         await _scanLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!_stateHolder.IsIncrementalSeeded) return;
-            Hash256 stateRoot = _stateHolder.LastProcessedStateRoot;
-            if (stateRoot == Hash256.Zero) return;
+            // Drain any in-flight diff and exclude the encoder race against the
+            // tracker dictionaries. With both _scanLock and _diffLock held, the
+            // holder cannot mutate while we capture and serialize.
+            lock (_diffLock)
+            {
+                if (!_stateHolder.IsIncrementalSeeded) return;
+                Hash256 stateRoot = _stateHolder.LastProcessedStateRoot;
+                if (stateRoot == Hash256.Zero) return;
 
-            CumulativeSizeStats stats = _stateHolder.IncrementalStats;
-            long blockNumber = _stateHolder.IncrementalBlock;
+                CumulativeSizeStats stats = _stateHolder.IncrementalStats;
+                long blockNumber = _stateHolder.IncrementalBlock;
 
-            if (_logger.IsInfo)
-                _logger.Info($"StateComposition: shutdown flush — writing snapshot at block {blockNumber}");
+                if (_logger.IsInfo)
+                    _logger.Info($"StateComposition: shutdown flush — writing snapshot at block {blockNumber}");
 
-            WriteSnapshotForHead(stats, blockNumber, stateRoot);
+                WriteSnapshotForHead(stats, blockNumber, stateRoot);
+            }
         }
         finally
         {
