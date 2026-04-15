@@ -61,10 +61,8 @@ public abstract class StateSyncFeedTestsBase(
     }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
-    }
 
     protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
     {
@@ -75,7 +73,7 @@ public abstract class StateSyncFeedTestsBase(
         return remoteStorageTree;
     }
 
-    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10)
+    protected IContainer PrepareDownloader(RemoteDbContext remote, Action<SyncPeerMock>? mockMutator = null, int syncDispatcherAllocateTimeoutMs = 10, Action<ContainerBuilder>? configureBuilder = null)
     {
         SyncPeerMock[] syncPeers = new SyncPeerMock[defaultPeerCount];
         for (int i = 0; i < defaultPeerCount; i++)
@@ -91,6 +89,8 @@ public abstract class StateSyncFeedTestsBase(
 
         ContainerBuilder builder = BuildTestContainerBuilder(remote, syncDispatcherAllocateTimeoutMs)
             .AddSingleton<SyncPeerMock[]>(syncPeers);
+
+        configureBuilder?.Invoke(builder);
 
         builder.RegisterBuildCallback((ctx) =>
         {
@@ -286,15 +286,11 @@ public abstract class StateSyncFeedTestsBase(
             return new ByteArrayListAdapter(responses);
         }
 
-        public void SetFilter(Hash256[]? availableHashes)
-        {
+        public void SetFilter(Hash256[]? availableHashes) =>
             _filter = availableHashes;
-        }
 
-        public void SetBlockTree(IBlockTree blockTree)
-        {
+        public void SetBlockTree(IBlockTree blockTree) =>
             _blockTree = blockTree;
-        }
 
         public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
@@ -307,15 +303,11 @@ public abstract class StateSyncFeedTestsBase(
             return false;
         }
 
-        public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
-        {
-            return Task.FromResult(_blockTree?.Head?.Header);
-        }
+        public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
+            Task.FromResult(_blockTree?.Head?.Header);
 
-        public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
-        {
-            return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
-        }
+        public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token) =>
+            Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
 
         public override Task<IByteArrayList> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token) =>
             GetTrieNodes(new GetTrieNodesRequest()
@@ -324,11 +316,8 @@ public abstract class StateSyncFeedTestsBase(
                 AccountAndStoragePaths = SnapProtocolHandler.GetPathGroups(request),
             }, token);
 
-        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
-        {
-            IByteArrayList? nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
-            return Task.FromResult(nodes!);
-        }
+        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
+            Task.FromResult(_snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token)!);
     }
 }
 

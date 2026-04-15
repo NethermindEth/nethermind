@@ -19,10 +19,7 @@ namespace Nethermind.Serialization.Rlp
         public AccountDecoder() { }
 
         [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(AccountDecoder))]
-        public AccountDecoder(bool slimFormat = false)
-        {
-            _slimFormat = slimFormat;
-        }
+        public AccountDecoder(bool slimFormat = false) => _slimFormat = slimFormat;
 
         public (Hash256 CodeHash, Hash256 StorageRoot) DecodeHashesOnly(ref Rlp.ValueDecoderContext context)
         {

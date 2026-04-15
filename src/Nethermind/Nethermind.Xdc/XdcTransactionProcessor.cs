@@ -17,28 +17,22 @@ using Nethermind.Xdc.Spec;
 
 namespace Nethermind.Xdc;
 
-internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
+internal class XdcTransactionProcessor(
+    ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
+    ISpecProvider? specProvider,
+    IWorldState? worldState,
+    IVirtualMachine? virtualMachine,
+    ICodeInfoRepository? codeInfoRepository,
+    ILogManager? logManager,
+    IMasternodeVotingContract masternodeVotingContract) : EthereumTransactionProcessorBase(
+        blobBaseFeeCalculator,
+        specProvider,
+        worldState,
+        virtualMachine,
+        codeInfoRepository,
+        logManager)
 {
-    private readonly IMasternodeVotingContract _masternodeVotingContract;
-
-    public XdcTransactionProcessor(
-        ITransactionProcessor.IBlobBaseFeeCalculator blobBaseFeeCalculator,
-        ISpecProvider? specProvider,
-        IWorldState? worldState,
-        IVirtualMachine? virtualMachine,
-        ICodeInfoRepository? codeInfoRepository,
-        ILogManager? logManager,
-        IMasternodeVotingContract masternodeVotingContract)
-        : base(
-            blobBaseFeeCalculator,
-            specProvider,
-            worldState,
-            virtualMachine,
-            codeInfoRepository,
-            logManager)
-    {
-        _masternodeVotingContract = masternodeVotingContract;
-    }
+    private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
 
     protected override void PayFees(
         Transaction tx,
@@ -107,10 +101,7 @@ internal class XdcTransactionProcessor : EthereumTransactionProcessorBase
         return base.ValidateSender(tx, header, spec, tracer, opts);
     }
 
-    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender)
-    {
-        return spec.BlackListedAddresses.Contains(sender);
-    }
+    private bool IsBlackListed(IXdcReleaseSpec spec, Address sender) => spec.BlackListedAddresses.Contains(sender);
 
     protected override TransactionResult Execute(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
     {

@@ -40,10 +40,7 @@ namespace Nethermind.Blockchain.Data
 
         public event EventHandler Changed;
 
-        public void Dispose()
-        {
-            _timer?.Dispose();
-        }
+        public void Dispose() => _timer?.Dispose();
 
         private void SetupWatcher(string filePath)
         {

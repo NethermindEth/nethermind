@@ -70,10 +70,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         }
     }
 
-    public void Start()
-    {
-        StartAsync().GetAwaiter().GetResult();
-    }
+    public void Start() => StartAsync().GetAwaiter().GetResult();
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -166,10 +163,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         _applicationLifetime?.NotifyStopped();
     }
 
-    public void Dispose()
-    {
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     public async ValueTask DisposeAsync()
     {

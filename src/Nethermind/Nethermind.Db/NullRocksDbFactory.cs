@@ -11,14 +11,8 @@ namespace Nethermind.Db
 
         public static NullDbFactory Instance { get; } = new();
 
-        public IDb CreateDb(DbSettings dbSettings)
-        {
-            throw new InvalidOperationException();
-        }
+        public IDb CreateDb(DbSettings dbSettings) => throw new InvalidOperationException();
 
-        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
-        {
-            throw new InvalidOperationException();
-        }
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => throw new InvalidOperationException();
     }
 }

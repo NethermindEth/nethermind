@@ -193,14 +193,9 @@ public class PluginLoaderTests
         public string Author => "TestPlugin2";
         public bool Enabled => true;
 
-        public IBlockProducer InitBlockProducer()
-        {
-            throw new NotImplementedException();
-        }
+        public IBlockProducer InitBlockProducer() => throw new NotImplementedException();
 
-        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer)
-        {
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) =>
             throw new NotImplementedException();
-        }
     }
 }

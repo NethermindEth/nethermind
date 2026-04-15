@@ -12,16 +12,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.KeyStore
 {
-    public class AesEncrypter : ISymmetricEncrypter
+    public class AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager) : ISymmetricEncrypter
     {
-        private readonly IKeyStoreConfig _config;
-        private readonly ILogger _logger;
-
-        public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
-        {
-            _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
-            _logger = logManager?.GetClassLogger<AesEncrypter>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
+        private readonly IKeyStoreConfig _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AesEncrypter>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
         {

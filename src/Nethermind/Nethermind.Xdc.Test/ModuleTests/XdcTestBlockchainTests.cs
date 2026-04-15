@@ -15,16 +15,12 @@ internal class XdcTestBlockchainTests
     private XdcTestBlockchain _blockchain;
 
     [SetUp]
-    public async Task Setup()
-    {
+    public async Task Setup() =>
         _blockchain = await XdcTestBlockchain.Create();
-    }
 
     [TearDown]
-    public void TearDown()
-    {
+    public void TearDown() =>
         _blockchain?.Dispose();
-    }
 
     [TestCase(180)]
     [TestCase(91)]

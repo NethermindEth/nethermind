@@ -17,14 +17,9 @@ namespace Nethermind.Synchronization.Test
     [TestFixture(AllocationContexts.State)]
     [TestFixture(AllocationContexts.All)]
     [Parallelizable(ParallelScope.All)]
-    public class PeerInfoTests
+    public class PeerInfoTests(AllocationContexts contexts)
     {
-        private readonly AllocationContexts _contexts;
-
-        public PeerInfoTests(AllocationContexts contexts)
-        {
-            _contexts = contexts;
-        }
+        private readonly AllocationContexts _contexts = contexts;
 
         [Test]
         public void Can_put_to_sleep_by_contexts()

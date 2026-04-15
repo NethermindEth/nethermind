@@ -18,29 +18,20 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Xdc;
 
-internal class QuorumCertificateManager : IQuorumCertificateManager
+internal class QuorumCertificateManager(
+    IXdcConsensusContext context,
+    IBlockTree blockTree,
+    ISpecProvider xdcConfig,
+    IEpochSwitchManager epochSwitchManager,
+    ILogManager logManager) : IQuorumCertificateManager
 {
-    public QuorumCertificateManager(
-        IXdcConsensusContext context,
-        IBlockTree blockTree,
-        ISpecProvider xdcConfig,
-        IEpochSwitchManager epochSwitchManager,
-        ILogManager logManager)
-    {
-        _context = context;
-        _blockTree = blockTree;
-        _specProvider = xdcConfig;
-        _epochSwitchManager = epochSwitchManager;
-        _logger = logManager.GetClassLogger<QuorumCertificateManager>();
-    }
+    private IXdcConsensusContext _context { get; } = context;
+    private readonly IBlockTree _blockTree = blockTree;
+    private IEpochSwitchManager _epochSwitchManager { get; } = epochSwitchManager;
 
-    private IXdcConsensusContext _context { get; }
-    private readonly IBlockTree _blockTree;
-    private IEpochSwitchManager _epochSwitchManager { get; }
+    private ILogger _logger = logManager.GetClassLogger<QuorumCertificateManager>();
 
-    private ILogger _logger;
-
-    private ISpecProvider _specProvider { get; }
+    private ISpecProvider _specProvider { get; } = xdcConfig;
     private readonly EthereumEcdsa _ethereumEcdsa = new(0);
     private readonly static VoteDecoder _voteDecoder = new();
 

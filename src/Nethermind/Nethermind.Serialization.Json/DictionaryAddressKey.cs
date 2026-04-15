@@ -51,17 +51,11 @@ namespace Nethermind.Serialization.Json
             return converter;
         }
 
-        private class DictionaryAddressKeyConverterInner<TKey, TValue> :
+        private class DictionaryAddressKeyConverterInner<TKey, TValue>(JsonSerializerOptions options) :
             JsonConverter<Dictionary<TKey, TValue>> where TKey : notnull
         {
-            private readonly JsonConverter<TValue> _valueConverter;
-
-            public DictionaryAddressKeyConverterInner(JsonSerializerOptions options)
-            {
-                // For performance, use the existing converter.
-                _valueConverter = (JsonConverter<TValue>)options
+            private readonly JsonConverter<TValue> _valueConverter = (JsonConverter<TValue>)options
                     .GetConverter(typeof(TValue));
-            }
 
             public override Dictionary<TKey, TValue> Read(
                 ref Utf8JsonReader reader,

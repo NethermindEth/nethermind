@@ -48,8 +48,5 @@ public class CachedBlockTreeBuilder
         }
     }
 
-    public static IBlockTree OfLength(int length)
-    {
-        return BuildCached($"{nameof(CachedBlockTreeBuilder)}-{length}", () => Build.A.BlockTree().OfChainLength(length));
-    }
+    public static IBlockTree OfLength(int length) => BuildCached($"{nameof(CachedBlockTreeBuilder)}-{length}", () => Build.A.BlockTree().OfChainLength(length));
 }

@@ -20,10 +20,8 @@ public partial class FlashbotsModuleTests
     TestKeyAndAddress? TestKeysAndAddress;
 
     [SetUp]
-    public void SetUp()
-    {
+    public void SetUp() =>
         TestKeysAndAddress = new TestKeyAndAddress();
-    }
 
     internal class TestKeyAndAddress
     {

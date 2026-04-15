@@ -702,9 +702,8 @@ public class SyncServerTests
             IBlockValidator? blockValidator = null,
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
-            ISpecProvider? specProvider = null)
-        {
-            return new SyncServer(
+            ISpecProvider? specProvider = null) =>
+            new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
@@ -718,6 +717,5 @@ public class SyncServerTests
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
                 LimboLogs.Instance);
-        }
     }
 }

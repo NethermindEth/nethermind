@@ -145,14 +145,8 @@ public class DbTrackerTests
     {
         private IDbMeta.DbMetric _metric = metric;
 
-        public override IDbMeta.DbMetric GatherMetric()
-        {
-            return _metric;
-        }
+        public override IDbMeta.DbMetric GatherMetric() => _metric;
 
-        internal void SetMetric(IDbMeta.DbMetric metric)
-        {
-            _metric = metric;
-        }
+        internal void SetMetric(IDbMeta.DbMetric metric) => _metric = metric;
     }
 }

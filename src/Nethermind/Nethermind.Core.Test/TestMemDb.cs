@@ -132,10 +132,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
     {
         private int idx = -1;
 
-        public void Dispose()
-        {
-            list.Dispose();
-        }
+        public void Dispose() => list.Dispose();
 
         public bool StartBefore(ReadOnlySpan<byte> value)
         {

@@ -2,7 +2,6 @@
 
 testing_buildBlockV1/build-block-empty-transactions (nethermind)
 testing_buildBlockV1/build-block-from-mempool (nethermind)
-testing_buildBlockV1/build-block-invalid-transaction (nethermind)
 testing_buildBlockV1/build-block-with-transactions (nethermind)
 
 # graphql

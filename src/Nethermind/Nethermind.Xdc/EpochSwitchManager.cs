@@ -14,18 +14,11 @@ using System.Linq;
 
 namespace Nethermind.Xdc;
 
-internal class EpochSwitchManager : IEpochSwitchManager
+internal class EpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager) : IEpochSwitchManager
 {
-    public EpochSwitchManager(ISpecProvider xdcSpecProvider, IBlockTree tree, ISnapshotManager snapshotManager)
-    {
-        _xdcSpecProvider = xdcSpecProvider;
-        _tree = tree;
-        _snapshotManager = snapshotManager;
-    }
-
-    private ISpecProvider _xdcSpecProvider { get; }
-    private IBlockTree _tree { get; }
-    private ISnapshotManager _snapshotManager { get; }
+    private ISpecProvider _xdcSpecProvider { get; } = xdcSpecProvider;
+    private IBlockTree _tree { get; } = tree;
+    private ISnapshotManager _snapshotManager { get; } = snapshotManager;
     private LruCache<ulong, BlockRoundInfo> _round2EpochBlockInfo { get; set; } = new(XdcConstants.InMemoryRound2Epochs, nameof(_round2EpochBlockInfo));
     private LruCache<ValueHash256, EpochSwitchInfo> _epochSwitches { get; set; } = new(XdcConstants.InMemoryEpochs, nameof(_epochSwitches));
 

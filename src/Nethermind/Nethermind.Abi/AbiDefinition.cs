@@ -26,15 +26,9 @@ namespace Nethermind.Abi
         public IReadOnlyList<AbiBaseDescription> Items => _items;
         public string Name { get; set; } = string.Empty;
 
-        public void SetBytecode(byte[] bytecode)
-        {
-            Bytecode = bytecode;
-        }
+        public void SetBytecode(byte[] bytecode) => Bytecode = bytecode;
 
-        public void SetDeployedBytecode(byte[] deployedBytecode)
-        {
-            DeployedBytecode = deployedBytecode;
-        }
+        public void SetDeployedBytecode(byte[] deployedBytecode) => DeployedBytecode = deployedBytecode;
 
         public void Add(AbiFunctionDescription function)
         {

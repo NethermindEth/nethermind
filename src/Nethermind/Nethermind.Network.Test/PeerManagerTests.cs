@@ -322,10 +322,7 @@ namespace Nethermind.Network.Test
             Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
         }
 
-        private void HandshakeOnCreate(object sender, SessionEventArgs e)
-        {
-            e.Session.Handshake(e.Session.RemoteNodeId);
-        }
+        private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
 
         [Test, Retry(5)]
         public async Task Will_fill_up_on_disconnects()
@@ -699,15 +696,9 @@ namespace Nethermind.Network.Test
                 CreatePeerManager();
             }
 
-            public void CreatePeerManager()
-            {
-                PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
-            }
+            public void CreatePeerManager() => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, LimboLogs.Instance);
 
-            public void SetupPersistedPeers(int count)
-            {
-                Storage.UpdateNodes(CreateNodes(count));
-            }
+            public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
             public void CreateIncomingSessions()
             {
@@ -787,26 +778,15 @@ namespace Nethermind.Network.Test
                 return enode;
             }
 
-            public async ValueTask DisposeAsync()
-            {
-                await PeerManager.StopAsync();
-            }
+            public async ValueTask DisposeAsync() => await PeerManager.StopAsync();
         }
 
-        private class RlpxMock : IRlpxHost
+        private class RlpxMock(List<Session> sessions) : IRlpxHost
         {
-            private readonly List<Session> _sessions;
+            private readonly List<Session> _sessions = sessions;
             public ISessionMonitor SessionMonitor { get; }
 
-            public RlpxMock(List<Session> sessions)
-            {
-                _sessions = sessions;
-            }
-
-            public Task Init()
-            {
-                return Task.CompletedTask;
-            }
+            public Task Init() => Task.CompletedTask;
 
             public Task<bool> ConnectAsync(Node node)
             {
@@ -847,10 +827,7 @@ namespace Nethermind.Network.Test
 
             public int ConnectAsyncCallsCount { get; set; }
 
-            public Task Shutdown()
-            {
-                return Task.CompletedTask;
-            }
+            public Task Shutdown() => Task.CompletedTask;
 
             public PublicKey LocalNodeId { get; } = TestItem.PublicKeyA;
             public int LocalPort => 0;
@@ -877,10 +854,7 @@ namespace Nethermind.Network.Test
 
             private bool _isFailing;
 
-            public void MakeItFail()
-            {
-                _isFailing = true;
-            }
+            public void MakeItFail() => _isFailing = true;
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false) => true;
         }
@@ -890,10 +864,7 @@ namespace Nethermind.Network.Test
             private readonly ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
                 new();
 
-            public NetworkNode[] GetPersistedNodes()
-            {
-                return _nodes.Values.ToArray();
-            }
+            public NetworkNode[] GetPersistedNodes() => _nodes.Values.ToArray();
 
             public void UpdateNode(NetworkNode node)
             {
@@ -909,10 +880,7 @@ namespace Nethermind.Network.Test
                 }
             }
 
-            public void RemoveNode(PublicKey nodeId)
-            {
-                _pendingChanges = true;
-            }
+            public void RemoveNode(PublicKey nodeId) => _pendingChanges = true;
 
             public void StartBatch()
             {
@@ -926,10 +894,7 @@ namespace Nethermind.Network.Test
 
             public int PersistedNodesCount => _nodes.Count;
 
-            public bool AnyPendingChange()
-            {
-                return _pendingChanges;
-            }
+            public bool AnyPendingChange() => _pendingChanges;
         }
     }
 }

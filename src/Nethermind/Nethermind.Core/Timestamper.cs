@@ -9,10 +9,7 @@ namespace Nethermind.Core
     {
         private readonly DateTime? _constantDate;
 
-        public Timestamper(DateTime? constantDate = null)
-        {
-            _constantDate = constantDate;
-        }
+        public Timestamper(DateTime? constantDate = null) => _constantDate = constantDate;
 
         public Timestamper(long timestamp)
         {

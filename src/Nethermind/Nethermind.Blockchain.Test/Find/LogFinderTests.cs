@@ -45,10 +45,7 @@ public class LogFinderTests
     private ISpecProvider? _specProvider;
 
     [SetUp]
-    public void SetUp()
-    {
-        SetUp(true);
-    }
+    public void SetUp() => SetUp(true);
 
     [TearDown]
     public void TearDown() => _bloomStorage?.Dispose();

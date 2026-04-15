@@ -68,10 +68,7 @@ public class GethLikeTxTraceConverterTests
 
 
     [TestCaseSource(nameof(CustomValueTracerResults))]
-    public void Read_custom_tracer_result_throws(object expectedValue, string json)
-    {
-        Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
-    }
+    public void Read_custom_tracer_result_throws(object expectedValue, string json) => Assert.Throws<JsonException>(() => _serializer.Deserialize<GethLikeTxTrace>(json));
 
     private static IEnumerable<TestCaseData> TraceAndJsonSource()
     {

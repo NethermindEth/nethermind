@@ -255,10 +255,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        public void PruneDownloadBuffer()
-        {
-            _downloadRequests.Clear();
-        }
+        public void PruneDownloadBuffer() => _downloadRequests.Clear();
 
         private void PruneRequestMap(IOwnedReadOnlyList<BlockHeader> currentHeaders)
         {
@@ -511,10 +508,7 @@ namespace Nethermind.Synchronization.Blocks
             return receiptsRoot == block.ReceiptsRoot;
         }
 
-        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock)
-        {
-            return shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
-        }
+        protected virtual BlockTreeSuggestOptions GetSuggestOption(bool shouldProcess, Block currentBlock) => shouldProcess ? BlockTreeSuggestOptions.ShouldProcess : BlockTreeSuggestOptions.None;
 
         private bool SuggestBlock(
             PeerInfo bestPeer,
@@ -638,10 +632,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public event EventHandler<SyncEventArgs>? SyncEvent;
 
-        private void InvokeEvent(SyncEventArgs args)
-        {
-            SyncEvent?.Invoke(this, args);
-        }
+        private void InvokeEvent(SyncEventArgs args) => SyncEvent?.Invoke(this, args);
 
         private void HandleSyncRequestResult(Task task, PeerInfo? peerInfo)
         {
@@ -703,14 +694,8 @@ namespace Nethermind.Synchronization.Blocks
             public bool HasReceipt => !Header.HasTransactions || Receipts?.Length > 0;
             private DateTimeOffset _blockRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedBodyDownload => Block is null && _blockRequestDeadline < DateTimeOffset.Now;
-            public void MarkBlockRequestSent()
-            {
-                _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
-            }
-            public void RetryBlockRequest()
-            {
-                _blockRequestDeadline = DateTimeOffset.MinValue;
-            }
+            public void MarkBlockRequestSent() => _blockRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            public void RetryBlockRequest() => _blockRequestDeadline = DateTimeOffset.MinValue;
 
             private DateTimeOffset _receiptRequestDeadline = DateTimeOffset.MinValue;
             public bool NeedReceiptDownload =>
@@ -718,14 +703,8 @@ namespace Nethermind.Synchronization.Blocks
                 !HasReceipt &&
                 _receiptRequestDeadline < DateTimeOffset.Now;
 
-            public void MarkReceiptRequestSent()
-            {
-                _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
-            }
-            public void RetryReceiptRequest()
-            {
-                _receiptRequestDeadline = DateTimeOffset.MinValue;
-            }
+            public void MarkReceiptRequestSent() => _receiptRequestDeadline = DateTimeOffset.UtcNow + RequestHardTimeout;
+            public void RetryReceiptRequest() => _receiptRequestDeadline = DateTimeOffset.MinValue;
 
             public PeerInfo? PeerInfo { get; set; } = PeerInfo;
             public Block? Block { get; set; } = Block;

@@ -12,10 +12,7 @@ namespace Nethermind.JsonRpc.Test;
 public class JsonRpcUrlCollectionTests
 {
     [SetUp]
-    public void Initialize()
-    {
-        _enabledModules = [ModuleType.Eth, ModuleType.Web3, ModuleType.Net];
-    }
+    public void Initialize() => _enabledModules = [ModuleType.Eth, ModuleType.Web3, ModuleType.Net];
 
     private string[] _enabledModules = null!;
 

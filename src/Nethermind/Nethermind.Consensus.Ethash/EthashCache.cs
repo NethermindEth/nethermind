@@ -29,10 +29,7 @@ namespace Nethermind.Consensus.Ethash
             private uint Item14;
             private uint Item15;
 
-            public Span<uint> AsUInts()
-            {
-                return MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
-            }
+            public Span<uint> AsUInts() => MemoryMarshal.Cast<Bucket, uint>(MemoryMarshal.CreateSpan(ref this, 1));
 
             public static Bucket Xor(Bucket a, Bucket b)
             {

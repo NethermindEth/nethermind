@@ -8,18 +8,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Receipts
 {
-    public class FullInfoReceiptFinder : IReceiptFinder
+    public class FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder) : IReceiptFinder
     {
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly IBlockFinder _blockFinder;
-
-        public FullInfoReceiptFinder(IReceiptStorage receiptStorage, IReceiptsRecovery receiptsRecovery, IBlockFinder blockFinder)
-        {
-            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-            _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
-            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
-        }
+        private readonly IReceiptStorage _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+        private readonly IReceiptsRecovery _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
+        private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
 
         public Hash256 FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
 

@@ -114,28 +114,16 @@ namespace Nethermind.Core.Test.Collections
 
 
         [Test]
-        public void except_with()
-        {
-            ChangeSetTest(_defaultSet.Except(_testSet), s => s.ExceptWith(_testSet));
-        }
+        public void except_with() => ChangeSetTest(_defaultSet.Except(_testSet), s => s.ExceptWith(_testSet));
 
         [Test]
-        public void intersect_with()
-        {
-            ChangeSetTest(_defaultSet.Intersect(_testSet), s => s.IntersectWith(_testSet));
-        }
+        public void intersect_with() => ChangeSetTest(_defaultSet.Intersect(_testSet), s => s.IntersectWith(_testSet));
 
         [Test]
-        public void symmetric_except_with()
-        {
-            ChangeSetTest(_defaultSet.Concat(_testSet).Except(_defaultSet.Intersect(_testSet)), s => s.SymmetricExceptWith(_testSet));
-        }
+        public void symmetric_except_with() => ChangeSetTest(_defaultSet.Concat(_testSet).Except(_defaultSet.Intersect(_testSet)), s => s.SymmetricExceptWith(_testSet));
 
         [Test]
-        public void union_with()
-        {
-            ChangeSetTest(_defaultSet.Union(_testSet), s => s.UnionWith(_testSet));
-        }
+        public void union_with() => ChangeSetTest(_defaultSet.Union(_testSet), s => s.UnionWith(_testSet));
 
         private void ChangeSetTest(IEnumerable<int> expected, Action<LinkedHashSet<int>> action)
         {

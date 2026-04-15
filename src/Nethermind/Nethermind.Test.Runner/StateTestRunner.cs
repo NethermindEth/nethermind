@@ -43,10 +43,7 @@ namespace Nethermind.Test.Runner
             Setup(null);
         }
 
-        private void WriteOut(List<EthereumTestResult> testResult)
-        {
-            Console.Out.Write(_serializer.Serialize(testResult, true));
-        }
+        private void WriteOut(List<EthereumTestResult> testResult) => Console.Out.Write(_serializer.Serialize(testResult, true));
 
         private void WriteErr(StateTestTxTrace txTrace)
         {

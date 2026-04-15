@@ -20,10 +20,7 @@ public class NullableLongConverterTests : ConverterTestBase<long?>
     [TestCase(int.MaxValue)]
     [TestCase(1L)]
     [TestCase(0L)]
-    public void Test_roundtrip(long value)
-    {
-        TestConverter((long?)value, static (a, b) => a.Equals(b), converter);
-    }
+    public void Test_roundtrip(long value) => TestConverter((long?)value, static (a, b) => a.Equals(b), converter);
 
     [TestCase("\"0xa00000\"", 10485760L)]
     [TestCase("\"0x0\"", 0L)]

@@ -86,10 +86,7 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
         stream.Encode(item.GapNumber);
     }
 
-    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     private int GetContentLength(QuorumCertificate? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
@@ -103,8 +100,5 @@ internal sealed class QuorumCertificateDecoder : RlpValueDecoder<QuorumCertifica
             + sigLength;
     }
 
-    private static int SignaturesLength(QuorumCertificate item)
-    {
-        return Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
-    }
+    private static int SignaturesLength(QuorumCertificate item) => Rlp.LengthOfSequence(Signature.Size) * (item.Signatures != null ? item.Signatures.Length : 0);
 }

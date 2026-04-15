@@ -45,10 +45,7 @@ public static class Wait
         Action<EventHandler> unregister)
     {
         TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        void handler(object? sender, EventArgs e)
-        {
-            completion.TrySetResult();
-        }
+        void handler(object? sender, EventArgs e) => completion.TrySetResult();
 
         register(handler);
 

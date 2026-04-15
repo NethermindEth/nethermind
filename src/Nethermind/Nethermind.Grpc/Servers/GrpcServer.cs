@@ -10,22 +10,16 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Grpc.Servers
 {
-    public class GrpcServer : NethermindService.NethermindServiceBase, IGrpcServer
+    public class GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager) : NethermindService.NethermindServiceBase, IGrpcServer
     {
         private const int MaxCapacity = 1000;
-        private readonly IJsonSerializer _jsonSerializer;
+        private readonly IJsonSerializer _jsonSerializer = jsonSerializer;
         private static readonly QueryResponse EmptyQueryResponse = new();
 
         private readonly ConcurrentDictionary<string, BlockingCollection<string>> _clientResults =
             new();
 
-        private readonly ILogger _logger;
-
-        public GrpcServer(IJsonSerializer jsonSerializer, ILogManager logManager)
-        {
-            _jsonSerializer = jsonSerializer;
-            _logger = logManager.GetClassLogger<GrpcServer>();
-        }
+        private readonly ILogger _logger = logManager.GetClassLogger<GrpcServer>();
 
         public override Task<QueryResponse> Query(QueryRequest request, ServerCallContext context)
             => Task.FromResult(EmptyQueryResponse);

@@ -338,15 +338,13 @@ public partial class BlockDownloaderTests
         }, configProvider);
     }
 
-    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs)
-    {
-        return CreateMergeNode((builder) =>
+    private IContainer CreateMergeNode(BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder treeBuilder, params IConfig[] configs) =>
+        CreateMergeNode((builder) =>
         {
             builder
                 .AddSingleton<IBlockTree>(treeBuilder.NotSyncedTree)
                 .AddKeyedSingleton<IDb>(DbNames.Metadata, treeBuilder.NotSyncedTreeBuilder.MetadataDb);
         }, configs);
-    }
 
     private record PostMergeContext(
         IBeaconPivot BeaconPivot,
@@ -380,12 +378,10 @@ public partial class BlockDownloaderTests
             }
         }
 
-        public override void ShouldFastSyncedUntil(long blockNumber)
-        {
+        public override void ShouldFastSyncedUntil(long blockNumber) =>
             // With post merge, best suggested header always follow beacon pivot but not necessarily synced.
             // But BestSuggestedBody is updated, unlike PreMerge.
             // I don't make the rules
             BlockTree.BestSuggestedBody!.Number.Should().Be(blockNumber);
-        }
     }
 }

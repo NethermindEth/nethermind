@@ -26,14 +26,9 @@ namespace Nethermind.Evm.Test.Tracing
     [TestFixture(true)]
     [TestFixture(false)]
     [Parallelizable(ParallelScope.All)]
-    public class GasEstimationTests
+    public class GasEstimationTests(bool useCreates)
     {
-        private readonly ExecutionType _executionType;
-
-        public GasEstimationTests(bool useCreates)
-        {
-            _executionType = useCreates ? ExecutionType.CREATE : ExecutionType.CALL;
-        }
+        private readonly ExecutionType _executionType = useCreates ? ExecutionType.CREATE : ExecutionType.CALL;
 
         [Test]
         public void Does_not_take_into_account_precompiles()
@@ -1298,10 +1293,7 @@ namespace Nethermind.Evm.Test.Tracing
                 _stateProvider.CommitTree(0);
             }
 
-            public void Dispose()
-            {
-                _closer.Dispose();
-            }
+            public void Dispose() => _closer.Dispose();
         }
     }
 }

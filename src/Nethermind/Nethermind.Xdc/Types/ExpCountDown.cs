@@ -73,8 +73,5 @@ public class ExpCountDown : IDisposable, IExpCountDown
         }
     }
 
-    public void Dispose()
-    {
-        _timer?.Dispose();
-    }
+    public void Dispose() => _timer?.Dispose();
 }

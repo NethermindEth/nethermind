@@ -20,14 +20,9 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDownloader : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader(ILogManager logManager) : ISyncDownloader<StateSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public StateSyncDownloader(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger<StateSyncDownloader>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<StateSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -187,15 +182,9 @@ namespace Nethermind.Synchronization.StateSync
                 Volatile.Write(ref s_cache, hashList);
             }
 
-            public void Initialize(IList<StateSyncItem> items)
-            {
-                _items = items;
-            }
+            public void Initialize(IList<StateSyncItem> items) => _items = items;
 
-            public void Reset()
-            {
-                _items = null;
-            }
+            public void Reset() => _items = null;
 
             public Hash256 this[int index] => _items[index].Hash;
 
@@ -219,10 +208,7 @@ namespace Nethermind.Synchronization.StateSync
         {
             private readonly HashList _innerList;
 
-            internal KeccakToValueKeccakList(HashList innerList)
-            {
-                _innerList = innerList;
-            }
+            internal KeccakToValueKeccakList(HashList innerList) => _innerList = innerList;
 
             public IEnumerator<ValueHash256> GetEnumerator()
             {
@@ -232,10 +218,7 @@ namespace Nethermind.Synchronization.StateSync
                 }
             }
 
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
             public int Count => _innerList.Count;
 

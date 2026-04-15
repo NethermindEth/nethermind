@@ -43,10 +43,7 @@ public class WriteBufferAdjusterTests
     }
 
     [Test]
-    public void ColumnCount_MatchesEnumValueCount()
-    {
-        WriteBufferAdjuster.ColumnCount.Should().Be(Enum.GetValues<FlatDbColumns>().Length);
-    }
+    public void ColumnCount_MatchesEnumValueCount() => WriteBufferAdjuster.ColumnCount.Should().Be(Enum.GetValues<FlatDbColumns>().Length);
 
     [Test]
     public void Wrap_WithDisableWAL_ReturnsRawBatch()

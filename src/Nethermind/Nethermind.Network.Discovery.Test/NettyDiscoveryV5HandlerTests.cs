@@ -35,10 +35,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [TearDown]
-        public async Task CleanUp()
-        {
-            await _channel.CloseAsync();
-        }
+        public async Task CleanUp() => await _channel.CloseAsync();
 
         [Test]
         public async Task ForwardsSentMessageToChannel()

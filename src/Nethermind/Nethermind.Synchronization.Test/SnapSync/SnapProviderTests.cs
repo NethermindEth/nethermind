@@ -33,20 +33,12 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 public class SnapProviderTests
 {
 
-    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null)
-    {
-        TestSyncConfig testConfig = testSyncConfig ?? new TestSyncConfig();
+    private ContainerBuilder CreateContainerBuilder(TestSyncConfig? testSyncConfig = null) =>
+        new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(testSyncConfig ?? new TestSyncConfig()));
 
-        ContainerBuilder builder = new ContainerBuilder()
-            .AddModule(new TestSynchronizerModule(testConfig));
-
-        return builder;
-    }
-
-    private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null)
-    {
-        return CreateContainerBuilder(testSyncConfig).Build();
-    }
+    private IContainer CreateContainer(TestSyncConfig? testSyncConfig = null) =>
+        CreateContainerBuilder(testSyncConfig).Build();
 
     [Test]
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()

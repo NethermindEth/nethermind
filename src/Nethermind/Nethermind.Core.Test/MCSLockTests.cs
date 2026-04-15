@@ -15,10 +15,7 @@ public class MCSLockTests
     private McsLock mcsLock;
 
     [SetUp]
-    public void Setup()
-    {
-        mcsLock = new McsLock();
-    }
+    public void Setup() => mcsLock = new McsLock();
 
     [Test]
     public void SingleThreadAcquireRelease()

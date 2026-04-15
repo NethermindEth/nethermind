@@ -32,9 +32,6 @@ namespace Nethermind.Blockchain
             _blockTree.BestPersistedState = e.BlockNumber;
         }
 
-        public void Dispose()
-        {
-            _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
-        }
+        public void Dispose() => _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
     }
 }

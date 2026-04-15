@@ -283,10 +283,7 @@ namespace Nethermind.JsonRpc.Test
                 return token!;
             }
 
-            public static bool IsEmpty(JsonNode? token)
-            {
-                return (token is null);
-            }
+            public static bool IsEmpty(JsonNode? token) => (token is null);
         }
     }
 }

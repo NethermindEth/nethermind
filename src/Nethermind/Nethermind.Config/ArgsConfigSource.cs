@@ -7,14 +7,9 @@ using System.Collections.Generic;
 
 namespace Nethermind.Config
 {
-    public class ArgsConfigSource : IConfigSource
+    public class ArgsConfigSource(Dictionary<string, string> args) : IConfigSource
     {
-        private readonly Dictionary<string, string> _args;
-
-        public ArgsConfigSource(Dictionary<string, string> args)
-        {
-            _args = new Dictionary<string, string>(args, StringComparer.OrdinalIgnoreCase);
-        }
+        private readonly Dictionary<string, string> _args = new(args, StringComparer.OrdinalIgnoreCase);
 
         public (bool IsSet, object Value) GetValue(Type type, string category, string name)
         {

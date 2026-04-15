@@ -17,10 +17,7 @@ namespace Nethermind.Core.Test.Collections
         private List<int> _original;
 
         [SetUp]
-        public void SetUp()
-        {
-            _original = new List<int> { 0, 1, 2, 3, 4, 5 };
-        }
+        public void SetUp() => _original = new List<int> { 0, 1, 2, 3, 4, 5 };
 
         [Test]
         public void Slice_WithStartAndCount_ReturnsCorrectSlice()

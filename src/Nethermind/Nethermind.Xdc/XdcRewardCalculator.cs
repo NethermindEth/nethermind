@@ -24,34 +24,24 @@ namespace Nethermind.Xdc
     ///   When TIPUpgradeReward activates, protector/observer beneficiaries must be added.
     /// - Current split implemented here: 90% to masternode owner, 10% to foundation.
     /// </summary>
-    public class XdcRewardCalculator : IRewardCalculator
+    public class XdcRewardCalculator(
+        IEpochSwitchManager epochSwitchManager,
+        ISpecProvider specProvider,
+        IBlockTree blockTree,
+        IMasternodeVotingContract masternodeVotingContract,
+        ISigningTxCache signingTxCache,
+        ITransactionProcessor transactionProcessor) : IRewardCalculator
     {
         // XDC rule: signing transactions are sampled/merged every N blocks (N=15 on XDC).
         // Only block numbers that are multiples of MergeSignRange are considered when tallying signers.
-        private readonly EthereumEcdsa _ethereumEcdsa;
-        private readonly IEpochSwitchManager _epochSwitchManager;
-        private readonly ISpecProvider _specProvider;
-        private readonly IBlockTree _blockTree;
-        private readonly IMasternodeVotingContract _masternodeVotingContract;
-        private readonly ISigningTxCache _signingTxCache;
-        private readonly ITransactionProcessor _transactionProcessor;
+        private readonly EthereumEcdsa _ethereumEcdsa = new(specProvider.ChainId);
+        private readonly IEpochSwitchManager _epochSwitchManager = epochSwitchManager;
+        private readonly ISpecProvider _specProvider = specProvider;
+        private readonly IBlockTree _blockTree = blockTree;
+        private readonly IMasternodeVotingContract _masternodeVotingContract = masternodeVotingContract;
+        private readonly ISigningTxCache _signingTxCache = signingTxCache;
+        private readonly ITransactionProcessor _transactionProcessor = transactionProcessor;
 
-        public XdcRewardCalculator(
-            IEpochSwitchManager epochSwitchManager,
-            ISpecProvider specProvider,
-            IBlockTree blockTree,
-            IMasternodeVotingContract masternodeVotingContract,
-            ISigningTxCache signingTxCache,
-            ITransactionProcessor transactionProcessor)
-        {
-            _ethereumEcdsa = new EthereumEcdsa(specProvider.ChainId);
-            _epochSwitchManager = epochSwitchManager;
-            _specProvider = specProvider;
-            _blockTree = blockTree;
-            _masternodeVotingContract = masternodeVotingContract;
-            _signingTxCache = signingTxCache;
-            _transactionProcessor = transactionProcessor;
-        }
         /// <summary>
         /// Calculates block rewards according to XDPoS consensus rules.
         ///

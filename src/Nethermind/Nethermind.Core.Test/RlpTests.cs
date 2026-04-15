@@ -63,10 +63,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value)
-        {
-            Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
-        }
+        public void Length_of_ulong_same_as_uint256([ValueSource(nameof(ULongValues))] ulong value) => Assert.That(Rlp.LengthOf(value), Is.EqualTo(Rlp.LengthOf((UInt256)value)));
 
         [Test]
         public void single_byte_encoding_decoding()
@@ -229,19 +226,13 @@ namespace Nethermind.Core.Test
             1,0,0,0,0,0,0,0,
             1,0,0,0,0,0,0,0
         }, true)]
-        public void Strange_bool(byte[] rlp, bool expectedBool)
-        {
-            rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
-        }
+        public void Strange_bool(byte[] rlp, bool expectedBool) => rlp.AsRlpValueContext().DecodeBool().Should().Be(expectedBool);
 
         [TestCase(new byte[] { 129, 127 })]
         [TestCase(new byte[] { 188, 0 })]
         [TestCase(new byte[] { 184, 55, 1 })]
         [TestCase(new byte[] { 193 })]
-        public void Strange_bool_exceptional_cases(byte[] rlp)
-        {
-            Assert.Throws<RlpException>(() => rlp.AsRlpValueContext().DecodeBool());
-        }
+        public void Strange_bool_exceptional_cases(byte[] rlp) => Assert.Throws<RlpException>(() => rlp.AsRlpValueContext().DecodeBool());
 
         [Test]
         public void Long_and_big_integer_encoded_the_same(
@@ -567,6 +558,17 @@ namespace Nethermind.Core.Test
                 remaining >>= 8;
             }
             return data;
+        }
+
+        [TestCase(new byte[] { 0xB8 }, Description = "Long string prefix 0xB8 (1 byte of length), but no length byte")]
+        [TestCase(new byte[] { 0xB9, 0x01 }, Description = "Long string prefix 0xB9 (2 bytes of length), but only 1 length byte")]
+        [TestCase(new byte[] { 0xBB, 0x00, 0x01 }, Description = "Long string prefix 0xBB (4 bytes of length), but only 2 length bytes")]
+        public void PeekLongPrefixAndContentLength_throws_on_truncated_data(byte[] truncatedData)
+        {
+            // These prefixes declare a multi-byte length field, but the data is truncated
+            // before all length bytes are present. The bounds check should catch this.
+            Action act = () => RlpHelpers.PeekNextRlpLength(truncatedData, 0);
+            act.Should().Throw<RlpException>();
         }
     }
 }

@@ -273,8 +273,5 @@ internal class VotesManager(
         vote.Signer = _signer.Address;
     }
 
-    public long GetVotesCount(Vote vote)
-    {
-        return _votePool.GetCount(vote);
-    }
+    public long GetVotesCount(Vote vote) => _votePool.GetCount(vote);
 }

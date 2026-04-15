@@ -234,20 +234,11 @@ namespace Nethermind.Synchronization.Reporting
             if (_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
-        private void WriteStateNodesReport()
-        {
-            _logger.Info("Syncing state nodes");
-        }
+        private void WriteStateNodesReport() => _logger.Info("Syncing state nodes");
 
-        private void WriteDbSyncReport()
-        {
-            _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
-        }
+        private void WriteDbSyncReport() => _logger.Info("Syncing previously downloaded blocks from DB (partial offline mode until it finishes)");
 
-        private void WriteNotStartedReport()
-        {
-            _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
-        }
+        private void WriteNotStartedReport() => _logger.Info($"Waiting for peers... {Math.Round((DateTime.UtcNow - StartTime).TotalSeconds)}s");
 
         private void WriteFullSyncReport()
         {
@@ -282,14 +273,8 @@ namespace Nethermind.Synchronization.Reporting
             }
         }
 
-        private void WriteBeaconSyncReport()
-        {
-            BeaconHeaders.LogProgress();
-        }
+        private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
-        public void Dispose()
-        {
-            _timer.Dispose();
-        }
+        public void Dispose() => _timer.Dispose();
     }
 }

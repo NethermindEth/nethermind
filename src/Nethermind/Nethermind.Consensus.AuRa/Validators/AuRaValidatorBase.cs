@@ -9,32 +9,23 @@ using Nethermind.Logging;
 
 namespace Nethermind.Consensus.AuRa.Validators
 {
-    public abstract class AuRaValidatorBase : IAuRaValidator
+    public abstract class AuRaValidatorBase(
+        IValidSealerStrategy validSealerStrategy,
+        IValidatorStore validatorStore,
+        ILogManager logManager,
+        long startBlockNumber,
+        bool forSealing) : IAuRaValidator
     {
         public const long DefaultStartBlockNumber = 1;
 
-        private readonly IValidSealerStrategy _validSealerStrategy;
-        private readonly ILogger _logger;
-
-        protected AuRaValidatorBase(
-            IValidSealerStrategy validSealerStrategy,
-            IValidatorStore validatorStore,
-            ILogManager logManager,
-            long startBlockNumber,
-            bool forSealing)
-        {
-            ValidatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
-            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
-            _logger = logManager?.GetClassLogger<AuRaValidatorBase>() ?? throw new ArgumentNullException(nameof(logManager));
-            InitBlockNumber = startBlockNumber;
-            ForSealing = forSealing;
-        }
+        private readonly IValidSealerStrategy _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
+        private readonly ILogger _logger = logManager?.GetClassLogger<AuRaValidatorBase>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public Address[] Validators { get; protected internal set; }
 
-        protected long InitBlockNumber { get; }
-        protected internal bool ForSealing { get; }
-        protected IValidatorStore ValidatorStore { get; }
+        protected long InitBlockNumber { get; } = startBlockNumber;
+        protected internal bool ForSealing { get; } = forSealing;
+        protected IValidatorStore ValidatorStore { get; } = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
 
         protected void InitValidatorStore()
         {

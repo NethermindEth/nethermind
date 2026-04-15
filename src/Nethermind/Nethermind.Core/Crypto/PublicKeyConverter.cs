@@ -35,8 +35,5 @@ public class PublicKeyConverter : JsonConverter<PublicKey>
     public override void Write(
         Utf8JsonWriter writer,
         PublicKey publicKey,
-        JsonSerializerOptions options)
-    {
-        ByteArrayConverter.Convert(writer, publicKey.Bytes);
-    }
+        JsonSerializerOptions options) => ByteArrayConverter.Convert(writer, publicKey.Bytes);
 }

@@ -32,10 +32,7 @@ namespace Nethermind.State
             return account.StorageRoot;
         }
 
-        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
-        {
-            return stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
-        }
+        public static byte[] GetCode(this IStateReader stateReader, BlockHeader? baseBlock, Address address) => stateReader.GetCode(GetCodeHash(stateReader, baseBlock, address)) ?? [];
 
         public static ValueHash256 GetCodeHash(this IStateReader stateReader, BlockHeader? baseBlock, Address address)
         {

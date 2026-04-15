@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -73,8 +74,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <summary>
         /// Traces list of transactions. Doesn't charge fees.
         /// </summary>
-        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TransactionForRpcWithTraceTypes[] calls, BlockParameter? blockParameter = null)
+        public ResultWrapper<IEnumerable<ParityTxTraceFromReplay>> trace_callMany(TraceCallManyRequest request, BlockParameter? blockParameter = null)
         {
+            using TraceCallManyRequest _ = request;
+            ArrayPoolList<TransactionForRpcWithTraceTypes> calls = request.Calls;
             blockParameter ??= BlockParameter.Latest;
 
             SearchResult<BlockHeader> headerSearch = blockFinder.SearchForHeader(blockParameter);
@@ -89,9 +92,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return GetStateFailureResult<IEnumerable<ParityTxTraceFromReplay>>(header);
             }
 
-            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Length);
-            Transaction[] txs = new Transaction[calls.Length];
-            for (int i = 0; i < calls.Length; i++)
+            Dictionary<Hash256, ParityTraceTypes> traceTypeByTransaction = new(calls.Count);
+            Transaction[] txs = new Transaction[calls.Count];
+            for (int i = 0; i < calls.Count; i++)
             {
                 calls[i].Transaction.EnsureDefaults(jsonRpcConfig.GasCap);
                 Result<Transaction> txResult = calls[i].Transaction.ToTransaction(validateUserInput: true, spec: specProvider.GetSpec(header));
@@ -106,7 +109,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 traceTypeByTransaction.Add(tx.Hash, traceTypes);
             }
 
-            Block block = new(header, txs, []);
+            Block block = new(header, new BlockBody(txs, []));
             IReadOnlyCollection<ParityLikeTxTrace>? traces = TraceBlock(block, new(traceTypeByTransaction));
             return ResultWrapper<IEnumerable<ParityTxTraceFromReplay>>.Success(traces.Select(static t => new ParityTxTraceFromReplay(t)));
         }
@@ -375,10 +378,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// Trace simulated blocks transactions (eth_simulateV1)
         /// </summary>
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
-            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null)
-        {
-            return new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
+            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) => new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: GetParityTypes(traceTypes ?? ["Trace"])), _secondsPerSlot)
                 .Execute(payload, blockParameter);
-        }
     }
 }
