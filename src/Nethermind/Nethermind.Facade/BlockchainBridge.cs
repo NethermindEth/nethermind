@@ -189,14 +189,11 @@ namespace Nethermind.Facade
             string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
 
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            if (err is not null)
-            {
-                bool allowanceFailure = err.StartsWith(GasEstimator.AllowanceExceedanceMsgPrefix, StringComparison.Ordinal);
-                if (allowanceFailure || error is null)
-                    // Allowance errors take precedence over any earlier revert: the revert was an artifact
-                    // of the gas cap, so surfacing it instead of the affordability error would be misleading.
-                    error = err;
-            }
+            bool allowanceFailure = err.StartsWith(GasEstimator.AllowanceExceedanceMsgPrefix, StringComparison.Ordinal);
+            if (allowanceFailure || error is null)
+                // Allowance errors take precedence over any earlier revert: the revert was an artifact
+                // of the gas cap, so surfacing it instead of the affordability error would be misleading.
+                error = err;
 
             return new CallOutput
             {

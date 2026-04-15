@@ -71,7 +71,7 @@ public class GasEstimator(
         rightBound = CapByAllowance(tx, available, rightBound);
 
         // If transaction is simple transfer return intrinsic gas
-        if (IsSimpleTransfer(tx) && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token))
+        if (IsSimpleTransfer(tx) && lowerBound <= rightBound && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token))
             return lowerBound;
 
         // Execute at the highest allowable gas limit first (Geth parity).
