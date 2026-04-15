@@ -179,14 +179,18 @@ public sealed class VisitorCounters(int topN = 20)
 
     private void RankCurrentContract(TopContractEntry candidate)
     {
-        if (!TopN.WouldInsert(candidate)) return;
+        bool inserted = false;
+        inserted |= TopN.TryInsertDepth(candidate);
+        inserted |= TopN.TryInsertNodes(candidate);
+        inserted |= TopN.TryInsertValueNodes(candidate);
+        inserted |= TopN.TryInsertSize(candidate);
+        if (!inserted) return;
 
         // Contract ranks: freeze a fresh copy of the scratch into ImmutableArray.
         // The scratch itself stays mutable for the next contract.
         TrieLevelStat[] frozenCopy = new TrieLevelStat[MaxTrackedDepth];
         Array.Copy(_levelScratch!, frozenCopy, MaxTrackedDepth);
-        candidate = candidate with { Levels = ImmutableCollectionsMarshal.AsImmutableArray(frozenCopy) };
-        TopN.Insert(candidate);
+        TopN.SetLevelsForOwner(candidate.Owner, ImmutableCollectionsMarshal.AsImmutableArray(frozenCopy));
     }
 
     public void MergeFrom(VisitorCounters other)
