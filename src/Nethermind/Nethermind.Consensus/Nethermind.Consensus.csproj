@@ -6,6 +6,7 @@
 
   <ItemGroup Condition="'$(EnableZkEvm)' == 'true'">
     <Compile Remove="Processing\BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs" />
+    <Compile Remove="Processing\BlockAccessListManager.cs" />
   </ItemGroup>
 
   <ItemGroup>
