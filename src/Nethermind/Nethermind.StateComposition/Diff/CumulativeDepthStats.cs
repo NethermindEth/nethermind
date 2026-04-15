@@ -170,14 +170,4 @@ public sealed class CumulativeDepthStats
         IsSeeded = true;
     }
 
-    public CumulativeDepthStats Clone()
-    {
-        CumulativeDepthStats c = new();
-        for (int s = 0; s < SlotCount; s++)
-            Array.Copy(ByDepth[s], c.ByDepth[s], DepthCount);
-        c.TotalBranchNodes = TotalBranchNodes;
-        c.TotalBranchChildren = TotalBranchChildren;
-        c.IsSeeded = IsSeeded;
-        return c;
-    }
 }

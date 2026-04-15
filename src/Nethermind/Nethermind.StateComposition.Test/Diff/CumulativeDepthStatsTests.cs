@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace Nethermind.StateComposition.Test.Diff;
 
 /// <summary>
-/// Verifies <see cref="CumulativeDepthStats"/> seeding, in-place addition, reset, and clone.
+/// Verifies <see cref="CumulativeDepthStats"/> seeding, in-place addition, and reset.
 /// </summary>
 [TestFixture]
 public class CumulativeDepthStatsTests
@@ -158,28 +158,4 @@ public class CumulativeDepthStatsTests
         }
     }
 
-    [Test]
-    public void Clone_IsDeepCopy_MutatingOriginalDoesNotAffectClone()
-    {
-        CumulativeDepthStats original = NewSeededEmpty();
-        CumulativeDepthStats delta = new()
-        {
-            AccountFullNodes = { [3] = 10 }
-        };
-        original.AddInPlace(delta);
-
-        CumulativeDepthStats clone = original.Clone();
-
-        CumulativeDepthStats more = new()
-        {
-            AccountFullNodes = { [3] = 5 }
-        };
-        original.AddInPlace(more);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(clone.AccountFullNodes[3], Is.EqualTo(10));
-            Assert.That(original.AccountFullNodes[3], Is.EqualTo(15));
-        }
-    }
 }

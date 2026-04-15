@@ -26,6 +26,6 @@ public readonly record struct StateCompositionSnapshot(
     int DiffsSinceBaseline,
     long ScanBlockNumber,
     CumulativeDepthStats? DepthStats = null,
-    IReadOnlyDictionary<ValueHash256, long>? SlotCountByAddress = null,
-    IReadOnlyDictionary<ValueHash256, int>? CodeHashRefcounts = null,
-    IReadOnlyDictionary<ValueHash256, int>? CodeHashSizes = null);
+    Dictionary<ValueHash256, long>? SlotCountByAddress = null,
+    Dictionary<ValueHash256, int>? CodeHashRefcounts = null,
+    Dictionary<ValueHash256, int>? CodeHashSizes = null);

@@ -34,21 +34,23 @@ public readonly record struct StateCompositionStats
     /// <summary>
     /// Per-contract slot count, keyed by account-hash. Seeds the state holder's
     /// incremental slot tracker so <see cref="SlotCountHistogram"/> can be updated
-    /// in-place by subsequent <see cref="TrieDiff"/>s.
+    /// in-place by subsequent <see cref="TrieDiff"/>s. The visitor hands ownership
+    /// of the backing dictionary to the holder, so the concrete type is exposed
+    /// to avoid a wrapper allocation at the hand-off.
     /// </summary>
-    public IReadOnlyDictionary<ValueHash256, long>? SlotCountByAddress { get; init; }
+    public Dictionary<ValueHash256, long>? SlotCountByAddress { get; init; }
 
     /// <summary>
     /// Distinct bytecode sizes observed during the scan, keyed by code hash.
     /// Together with <see cref="CodeHashRefcounts"/> these feed the incremental
     /// <see cref="CodeBytesTotal"/> tracker.
     /// </summary>
-    public IReadOnlyDictionary<ValueHash256, int>? CodeHashSizes { get; init; }
+    public Dictionary<ValueHash256, int>? CodeHashSizes { get; init; }
 
     /// <summary>
     /// Per-code-hash reference count — number of accounts whose CodeHash equals
     /// the given hash. Used to detect when the last account referencing a code
     /// hash disappears, so <see cref="CodeBytesTotal"/> can be decremented.
     /// </summary>
-    public IReadOnlyDictionary<ValueHash256, int>? CodeHashRefcounts { get; init; }
+    public Dictionary<ValueHash256, int>? CodeHashRefcounts { get; init; }
 }
