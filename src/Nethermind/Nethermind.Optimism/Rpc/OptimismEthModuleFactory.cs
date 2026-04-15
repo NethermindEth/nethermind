@@ -108,9 +108,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _sealer = sealer;
     }
 
-    public override IOptimismEthRpcModule Create()
-    {
-        return new OptimismEthRpcModule(
+    public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
             _rpcConfig,
             _blockchainBridgeFactory.CreateBlockchainBridge(),
             _blockFinder,
@@ -133,5 +131,4 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _logIndexConfig,
             _opSpecHelper
         );
-    }
 }

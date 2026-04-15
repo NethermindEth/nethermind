@@ -28,10 +28,7 @@ public static partial class Merkle
         }
     }
 
-    static Merkle()
-    {
-        BuildZeroHashes();
-    }
+    static Merkle() => BuildZeroHashes();
 
     public static ulong NextPowerOfTwo(uint v)
     {
@@ -44,10 +41,7 @@ public static partial class Merkle
         return BitOperations.RoundUpToPowerOf2(v);
     }
 
-    public static int NextPowerOfTwoExponent(ulong v)
-    {
-        return BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
-    }
+    public static int NextPowerOfTwoExponent(ulong v) => BitOperations.Log2(BitOperations.RoundUpToPowerOf2(v));
 
     public static int CountLeadingZeros(ulong x)
     {
@@ -57,10 +51,7 @@ public static partial class Merkle
         return BitOperations.LeadingZeroCount(x) + (BitOperations.IsPow2(x) ? 1 : 0);
     }
 
-    private static UInt256 Compute(Span<UInt256> span)
-    {
-        return MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
-    }
+    private static UInt256 Compute(Span<UInt256> span) => MemoryMarshal.Cast<byte, UInt256>(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(span)))[0];
 
     internal static UInt256 HashConcatenation(UInt256 left, UInt256 right, int level)
     {
@@ -75,10 +66,7 @@ public static partial class Merkle
         return Compute(concatenation);
     }
 
-    private static bool IsZeroHash(UInt256 span, int level)
-    {
-        return span.Equals(ZeroHashes[level]);
-    }
+    private static bool IsZeroHash(UInt256 span, int level) => span.Equals(ZeroHashes[level]);
 
     public static void MixIn(ref UInt256 root, int value)
     {
@@ -87,20 +75,44 @@ public static partial class Merkle
         root = HashConcatenation(root, lengthPart, 0);
     }
 
-    public static void Merkleize(out UInt256 root, bool value)
+    // EIP-7495 mixes the static active_fields bitvector into the progressive container root.
+    public static void MixInActiveFields(ref UInt256 root, ReadOnlySpan<byte> activeFields)
     {
-        root = value ? UInt256.One : UInt256.Zero;
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(activeFields.Length, 32, nameof(activeFields));
+
+        Span<byte> chunk = stackalloc byte[32];
+        activeFields.CopyTo(chunk);
+        root = HashConcatenation(root, new UInt256(chunk), 0);
     }
 
-    public static void Merkleize(out UInt256 root, byte value)
+    // EIP-7495 / EIP-7916 progressive merkleization keeps generalized indices stable across extensions.
+    public static void MerkleizeProgressive(out UInt256 root, ReadOnlySpan<UInt256> chunks, ulong numLeaves = 1)
     {
-        root = new UInt256(value);
+        ArgumentOutOfRangeException.ThrowIfZero(numLeaves, nameof(numLeaves));
+
+        if (chunks.Length == 0)
+        {
+            root = UInt256.Zero;
+            return;
+        }
+
+        int rightChunkCount = (int)Math.Min((ulong)chunks.Length, Math.Min(numLeaves, (ulong)int.MaxValue));
+        ReadOnlySpan<UInt256> leftChunks = chunks[rightChunkCount..];
+        UInt256 left = UInt256.Zero;
+        if (!leftChunks.IsEmpty)
+        {
+            MerkleizeProgressive(out left, leftChunks, checked(numLeaves * 4));
+        }
+
+        Merkleize(out UInt256 right, chunks[..rightChunkCount], numLeaves);
+        root = HashConcatenation(left, right, 0);
     }
 
-    public static void Merkleize(out UInt256 root, ushort value)
-    {
-        root = new UInt256(value);
-    }
+    public static void Merkleize(out UInt256 root, bool value) => root = value ? UInt256.One : UInt256.Zero;
+
+    public static void Merkleize(out UInt256 root, byte value) => root = new UInt256(value);
+
+    public static void Merkleize(out UInt256 root, ushort value) => root = new UInt256(value);
 
     public static void Merkleize(out UInt256 root, int value)
     {
@@ -108,10 +120,7 @@ public static partial class Merkle
         root = new UInt256((ulong)value, v, v, v);
     }
 
-    public static void Merkleize(out UInt256 root, uint value)
-    {
-        root = new UInt256(value);
-    }
+    public static void Merkleize(out UInt256 root, uint value) => root = new UInt256(value);
 
     public static void Merkleize(out UInt256 root, long value)
     {
@@ -119,20 +128,11 @@ public static partial class Merkle
         root = new UInt256((ulong)value, v, v, v);
     }
 
-    public static void Merkleize(out UInt256 root, ulong value)
-    {
-        root = new UInt256(value);
-    }
+    public static void Merkleize(out UInt256 root, ulong value) => root = new UInt256(value);
 
-    public static void Merkleize(out UInt256 root, UInt128 value)
-    {
-        root = new UInt256((ulong)(value & ulong.MaxValue), (ulong)(value >> 64));
-    }
+    public static void Merkleize(out UInt256 root, UInt128 value) => root = new UInt256((ulong)(value & ulong.MaxValue), (ulong)(value >> 64));
 
-    public static void Merkleize(out UInt256 root, UInt256 value)
-    {
-        root = value;
-    }
+    public static void Merkleize(out UInt256 root, UInt256 value) => root = value;
 
     public static void Merkleize(out UInt256 root, Bytes32 value)
     {

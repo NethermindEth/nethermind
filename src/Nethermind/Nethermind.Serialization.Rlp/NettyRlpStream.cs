@@ -57,10 +57,7 @@ namespace Nethermind.Serialization.Rlp
 
         public Memory<byte> AsMemory() => _buffer.AsMemory(_initialPosition);
 
-        public void Dispose()
-        {
-            _buffer.SafeRelease();
-        }
+        public void Dispose() => _buffer.SafeRelease();
 
         public static bool TryWriteByteArrayList(IByteBuffer byteBuffer, IByteArrayList list)
         {

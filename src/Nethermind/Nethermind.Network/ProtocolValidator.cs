@@ -49,15 +49,12 @@ namespace Nethermind.Network
             _peerManager = peerManager;
         }
 
-        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs)
+        public bool DisconnectOnInvalid(string protocol, ISession session, ProtocolInitializedEventArgs eventArgs) => protocol switch
         {
-            return protocol switch
-            {
-                Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
-                _ => true,
-            };
-        }
+            Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
+            Protocol.Eth => (session.Node.ValidatedProtocol = ValidateEthProtocol(session, eventArgs)).Value,
+            _ => true,
+        };
 
         private bool ValidateP2PProtocol(ISession session, ProtocolInitializedEventArgs eventArgs)
         {

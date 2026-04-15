@@ -188,14 +188,12 @@ public class XdcGasLimitCalculatorTests
         result.Should().Be(targetGasLimit);
     }
 
-    private static BlockHeader CreateParentHeader(long number, long gasLimit = 84_000_000L)
-    {
-        return Build.A.BlockHeader
+    private static BlockHeader CreateParentHeader(long number, long gasLimit = 84_000_000L) =>
+        Build.A.BlockHeader
             .WithNumber(number)
             .WithGasLimit(gasLimit)
             .WithHash(TestItem.KeccakA)
             .TestObject;
-    }
 
     private static IXdcReleaseSpec CreateXdcSpec(bool isDynamicGasLimitBlock)
     {

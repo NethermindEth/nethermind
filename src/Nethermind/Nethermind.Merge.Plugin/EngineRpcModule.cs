@@ -44,8 +44,5 @@ public partial class EngineRpcModule(
     public ResultWrapper<IEnumerable<string>> engine_exchangeCapabilities(IEnumerable<string> methods)
         => _capabilitiesHandler.Handle(methods);
 
-    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1)
-    {
-        return ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
-    }
+    public ResultWrapper<ClientVersionV1[]> engine_getClientVersionV1(ClientVersionV1 clientVersionV1) => ResultWrapper<ClientVersionV1[]>.Success([new ClientVersionV1()]);
 }

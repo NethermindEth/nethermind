@@ -62,10 +62,7 @@ public class ParityStyleTracerTests
     }
 
     [TearDown]
-    public async Task TearDownAsync()
-    {
-        await _container.DisposeAsync();
-    }
+    public async Task TearDownAsync() => await _container.DisposeAsync();
 
     [Test]
     public void Can_trace_raw_parity_style()

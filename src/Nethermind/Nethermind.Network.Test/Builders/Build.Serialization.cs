@@ -7,9 +7,6 @@ namespace Nethermind.Network.Test.Builders
 {
     public static class BuildExtensions
     {
-        public static SerializationBuilder SerializationService(this Build build)
-        {
-            return new();
-        }
+        public static SerializationBuilder SerializationService(this Build build) => new();
     }
 }

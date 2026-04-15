@@ -278,10 +278,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.ReportAccountRefreshFinished();
         }
 
-        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
-        {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
-        }
+        private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath) => _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash, requestedPath.StorageHashLimit);
 
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
@@ -330,15 +327,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
 
-        public void UpdatePivot()
-        {
-            _progressTracker.UpdatePivot();
-        }
+        public void UpdatePivot() => _progressTracker.UpdatePivot();
 
-        public void Dispose()
-        {
-            _codeExistKeyCache.Clear();
-        }
+        public void Dispose() => _codeExistKeyCache.Clear();
 
     }
 }

@@ -29,30 +29,19 @@ namespace Nethermind.Network.Test.Builders
             return this;
         }
 
-        protected override void BeforeReturn()
-        {
-            TestObject = new MessageSerializationService(_serializers);
-        }
+        protected override void BeforeReturn() => TestObject = new MessageSerializationService(_serializers);
 
-        public SerializationBuilder WithEncryptionHandshake()
-        {
-            return With(new AuthMessageSerializer())
+        public SerializationBuilder WithEncryptionHandshake() => With(new AuthMessageSerializer())
                 .With(new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())))
                 .With(new AckMessageSerializer())
                 .With(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
-        }
 
-        public SerializationBuilder WithP2P()
-        {
-            return With(new Nethermind.Network.P2P.Messages.PingMessageSerializer())
+        public SerializationBuilder WithP2P() => With(new Nethermind.Network.P2P.Messages.PingMessageSerializer())
                 .With(new Nethermind.Network.P2P.Messages.PongMessageSerializer())
                 .With(new Nethermind.Network.P2P.Messages.HelloMessageSerializer())
                 .With(new Nethermind.Network.P2P.Messages.DisconnectMessageSerializer());
-        }
 
-        public SerializationBuilder WithEth()
-        {
-            return With(new BlockHeadersMessageSerializer())
+        public SerializationBuilder WithEth() => With(new BlockHeadersMessageSerializer())
                 .With(new BlockBodiesMessageSerializer())
                 .With(new GetBlockBodiesMessageSerializer())
                 .With(new GetBlockHeadersMessageSerializer())
@@ -60,19 +49,13 @@ namespace Nethermind.Network.Test.Builders
                 .With(new NewBlockMessageSerializer())
                 .With(new TransactionsMessageSerializer())
                 .With(new StatusMessageSerializer());
-        }
 
-        public SerializationBuilder WithEth65()
-        {
-            return WithEth()
+        public SerializationBuilder WithEth65() => WithEth()
                 .With(new NewPooledTransactionHashesMessageSerializer())
                 .With(new GetPooledTransactionsMessageSerializer())
                 .With(new PooledTransactionsMessageSerializer());
-        }
 
-        public SerializationBuilder WithEth66()
-        {
-            return WithEth65()
+        public SerializationBuilder WithEth66() => WithEth65()
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockBodiesMessageSerializer())
@@ -83,34 +66,21 @@ namespace Nethermind.Network.Test.Builders
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessageSerializer())
                 .With(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(new ReceiptsMessageSerializer(MainnetSpecProvider.Instance)));
-        }
 
-        public SerializationBuilder WithEth68()
-        {
-            return WithEth66()
+        public SerializationBuilder WithEth68() => WithEth66()
                 .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
-        }
 
-        public SerializationBuilder WithEth69(ISpecProvider specProvider)
-        {
-            return WithEth68()
+        public SerializationBuilder WithEth69(ISpecProvider specProvider) => WithEth68()
                 .With<ReceiptsMessage69>(new ReceiptsMessageSerializer69(specProvider))
                 .With(new StatusMessageSerializer69())
                 .With(new BlockRangeUpdateMessageSerializer());
-        }
 
-        public SerializationBuilder WithEth70(ISpecProvider specProvider)
-        {
-            return WithEth69(specProvider)
+        public SerializationBuilder WithEth70(ISpecProvider specProvider) => WithEth69(specProvider)
                 .With<GetReceiptsMessage70>(new GetReceiptsMessageSerializer70(new GetReceiptsMessageSerializer()))
                 .With<ReceiptsMessage70>(new ReceiptsMessageSerializer70(specProvider));
-        }
 
-        public SerializationBuilder WithNodeData()
-        {
-            return With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
+        public SerializationBuilder WithNodeData() => With(new Network.P2P.Subprotocols.NodeData.Messages.GetNodeDataMessageSerializer())
                 .With(new Network.P2P.Subprotocols.NodeData.Messages.NodeDataMessageSerializer());
-        }
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {

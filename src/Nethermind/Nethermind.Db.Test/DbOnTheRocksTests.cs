@@ -293,12 +293,9 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
-            return new(dbName, dbPath)
-            {
-            };
-        }
+        };
     }
 
     [TestFixture(true)]
@@ -459,18 +456,12 @@ namespace Nethermind.Db.Test
             AllocatedSpan.Should().Be(0);
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
-            return new(dbName, dbPath)
-            {
-            };
-        }
+        };
 
         [Test]
-        public void Can_get_all_on_empty()
-        {
-            _ = _db.GetAll().ToList();
-        }
+        public void Can_get_all_on_empty() => _ = _db.GetAll().ToList();
 
         [Test]
         public void Smoke_test_iterator()
@@ -651,9 +642,6 @@ namespace Nethermind.Db.Test
         IFileSystem? fileSystem = null
         ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
-        {
-            throw new RocksDbSharpException("Corruption: test corruption");
-        }
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException("Corruption: test corruption");
     }
 }

@@ -286,8 +286,7 @@ namespace Nethermind.AuRa.Test.Transactions
             BlockHeader blockHeader,
             Address target,
             byte[] prioritizedFnSignature,
-            UInt256 value)
-        {
+            UInt256 value) =>
             priorities.TryGetValue(blockHeader,
                     Arg.Is<TxPriorityContract.Destination>(d => d.Target == target && Bytes.AreEqual(d.FnSignature, prioritizedFnSignature)),
                     out Arg.Any<TxPriorityContract.Destination>())
@@ -296,6 +295,5 @@ namespace Nethermind.AuRa.Test.Transactions
                     x[2] = new TxPriorityContract.Destination(target, prioritizedFnSignature, value);
                     return true;
                 });
-        }
     }
 }

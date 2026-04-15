@@ -43,10 +43,7 @@ public class ColumnsDbTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _db.Dispose();
-    }
+    public void TearDown() => _db.Dispose();
 
     [Test]
     public void SmokeTest()

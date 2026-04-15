@@ -19,13 +19,10 @@ public class PortInUseException(Exception exception, params int[] ports) : IOExc
 
     private static int[] GetPorts(string[] urls) => urls.Select(static u => new Uri(u).Port).ToArray();
 
-    private static string GetReason(params int[] ports)
+    private static string GetReason(params int[] ports) => ports.Length switch
     {
-        return ports.Length switch
-        {
-            0 => "One of the configured ports is in use.",
-            1 => $"Port {ports[0]} is in use.",
-            _ => $"One or more of the ports {string.Join(',', ports)} are in use."
-        };
-    }
+        0 => "One of the configured ports is in use.",
+        1 => $"Port {ports[0]} is in use.",
+        _ => $"One or more of the ports {string.Join(',', ports)} are in use."
+    };
 }

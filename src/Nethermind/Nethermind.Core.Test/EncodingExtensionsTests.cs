@@ -17,10 +17,7 @@ public class EncodingExtensionsTests
         private ReadOnlyChunk<T>? _first;
         private ReadOnlyChunk<T>? _current;
 
-        public ReadOnlySequenceBuilder()
-        {
-            _first = _current = null;
-        }
+        public ReadOnlySequenceBuilder() => _first = _current = null;
 
         public ReadOnlySequenceBuilder<T> WithSegment(ReadOnlyMemory<T> memory)
         {
@@ -48,10 +45,7 @@ public class EncodingExtensionsTests
 
         private sealed class ReadOnlyChunk<TT> : ReadOnlySequenceSegment<TT>
         {
-            public ReadOnlyChunk(ReadOnlyMemory<TT> memory)
-            {
-                Memory = memory;
-            }
+            public ReadOnlyChunk(ReadOnlyMemory<TT> memory) => Memory = memory;
 
             public ReadOnlyChunk<TT> Append(ReadOnlyMemory<TT> memory)
             {

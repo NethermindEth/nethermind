@@ -116,44 +116,28 @@ public class XdcModuleTestOverrides(IConfigProvider configProvider, ILogManager 
 
     internal class TrustyForensics : IForensicsProcessor
     {
-        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool)
-        {
-            return Task.CompletedTask;
-        }
+        public Task DetectEquivocationInVotePool(Vote vote, IEnumerable<Vote> votePool) =>
+            Task.CompletedTask;
 
-        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo)
-        {
-            return (Hash256.Zero, new List<string>(), new List<string>());
-        }
+        public (Hash256 AncestorHash, IList<string> FirstPath, IList<string> SecondPath) FindAncestorBlockHash(BlockRoundInfo firstBlockInfo, BlockRoundInfo secondBlockInfo) =>
+            (Hash256.Zero, new List<string>(), new List<string>());
 
-        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ForensicsMonitoring(IEnumerable<XdcBlockHeader> headerQcToBeCommitted, QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
 
-        public Task ProcessForensics(QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ProcessForensics(QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
 
-        public Task ProcessVoteEquivocation(Vote incomingVote)
-        {
-            return Task.CompletedTask;
-        }
+        public Task ProcessVoteEquivocation(Vote incomingVote) =>
+            Task.CompletedTask;
 
-        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SendForensicProof(QuorumCertificate firstQc, QuorumCertificate secondQc) =>
+            Task.CompletedTask;
 
-        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SendVoteEquivocationProof(Vote vote1, Vote vote2, Address signer) =>
+            Task.CompletedTask;
 
-        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC)
-        {
-            return Task.CompletedTask;
-        }
+        public Task SetCommittedQCs(IEnumerable<XdcBlockHeader> headers, QuorumCertificate incomingQC) =>
+            Task.CompletedTask;
     }
 }

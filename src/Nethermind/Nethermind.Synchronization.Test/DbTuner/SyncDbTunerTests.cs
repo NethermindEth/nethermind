@@ -54,28 +54,20 @@ public class SyncDbTunerTests
     }
 
     [Test]
-    public void WhenSnapIsOn_TriggerStateDbTune()
-    {
+    public void WhenSnapIsOn_TriggerStateDbTune() =>
         TestFeedAndDbTune(_snapSyncFeed, _stateDb);
-    }
 
     [Test]
-    public void WhenSnapIsOn_TriggerCodeDbTune()
-    {
+    public void WhenSnapIsOn_TriggerCodeDbTune() =>
         TestFeedAndDbTune(_snapSyncFeed, _codeDb);
-    }
 
     [Test]
-    public void WhenBodiesIsOn_TriggerBlocksDbTune()
-    {
+    public void WhenBodiesIsOn_TriggerBlocksDbTune() =>
         TestFeedAndDbTune(_bodiesSyncFeed, _blockDb, _blocksTuneType);
-    }
 
     [Test]
-    public void WhenReceiptsIsOn_TriggerReceiptsDbTune()
-    {
+    public void WhenReceiptsIsOn_TriggerReceiptsDbTune() =>
         TestFeedAndDbTune(_receiptSyncFeed, _receiptDb);
-    }
 
     private void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db, ITunableDb.TuneType? tuneType = null)
     {

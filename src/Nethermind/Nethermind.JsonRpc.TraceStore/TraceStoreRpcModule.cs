@@ -271,10 +271,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
 
 
     // VmTrace uses flags IsTracingCode, IsTracingInstructions
-    private static void FilterStateVmTrace(ParityLikeTxTrace trace)
-    {
-        trace.VmTrace = null;
-    }
+    private static void FilterStateVmTrace(ParityLikeTxTrace trace) => trace.VmTrace = null;
 
     // StateDiff uses flags IsTracingState, IsTracingStorage
     private static void FilterStateDiff(ParityLikeTxTrace trace)
@@ -290,11 +287,7 @@ public class TraceStoreRpcModule(ITraceRpcModule traceModule,
     }
 
     // Trace uses flags IsTracingActions, IsTracingReceipt
-    private static void FilterTrace(ParityLikeTxTrace trace)
-    {
-        trace.Output = null;
-        // trace action?
-    }
+    private static void FilterTrace(ParityLikeTxTrace trace) => trace.Output = null;// trace action?
 
     private static void FilterRewards(List<ParityLikeTxTrace> traces)
     {

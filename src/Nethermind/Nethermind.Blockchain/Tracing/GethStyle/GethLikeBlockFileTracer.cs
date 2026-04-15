@@ -111,8 +111,5 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         return string.Format(_fileNameFormat, index, hash, suffix);
     }
 
-    public void Dispose()
-    {
-        DisposeFileStreamIfAny();
-    }
+    public void Dispose() => DisposeFileStreamIfAny();
 }

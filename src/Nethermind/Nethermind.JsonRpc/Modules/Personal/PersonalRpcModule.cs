@@ -24,10 +24,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
             return ResultWrapper<Address>.Success(privateKey.Address);
         }
 
-        public ResultWrapper<Address[]> personal_listAccounts()
-        {
-            return ResultWrapper<Address[]>.Success(wallet.GetAccounts());
-        }
+        public ResultWrapper<Address[]> personal_listAccounts() => ResultWrapper<Address[]>.Success(wallet.GetAccounts());
 
         public ResultWrapper<bool> personal_lockAccount(Address address)
         {
@@ -52,10 +49,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
-        {
-            throw new NotImplementedException();
-        }
+        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase) => throw new NotImplementedException();
 
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {

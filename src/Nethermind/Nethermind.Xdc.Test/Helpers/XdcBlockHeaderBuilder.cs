@@ -20,8 +20,7 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
     public new XdcBlockHeader TestObject => (XdcBlockHeader)base.TestObject;
 
 
-    public XdcBlockHeaderBuilder()
-    {
+    public XdcBlockHeaderBuilder() =>
         TestObjectInternal = new XdcBlockHeader(
             Keccak.Compute("parent"),
             Keccak.OfAnEmptySequenceRlp,
@@ -43,7 +42,6 @@ public class XdcBlockHeaderBuilder : BlockHeaderBuilder
             Validator = new byte[65],
             Penalties = Array.Empty<byte>(),
         };
-    }
 
     public XdcBlockHeaderBuilder WithExtraFieldsV2(ExtraFieldsV2 extraFieldsV2)
     {

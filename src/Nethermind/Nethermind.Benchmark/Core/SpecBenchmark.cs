@@ -11,10 +11,7 @@ namespace Nethermind.Benchmarks.Core
         private ISpecProvider _provider;
 
         [GlobalSetup]
-        public void Setup()
-        {
-            _provider = MainnetSpecProvider.Instance;
-        }
+        public void Setup() => _provider = MainnetSpecProvider.Instance;
 
         [Benchmark]
         public void WithInheritance()

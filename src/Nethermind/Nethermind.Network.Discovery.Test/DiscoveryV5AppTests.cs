@@ -32,10 +32,7 @@ public class DiscoveryV5AppTests
     private DiscoveryV5App _discoveryV5App = null!;
 
     [OneTimeSetUp]
-    public void OneTimeSetup()
-    {
-        Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
-    }
+    public void OneTimeSetup() => Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
 
     [SetUp]
     public void Setup()

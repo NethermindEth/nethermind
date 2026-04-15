@@ -14,21 +14,12 @@ namespace Nethermind.Db
                 .ToDictionary(it => it.key, it => it.db);
         private readonly IColumnsDb<T> _baseColumnDb = baseColumnDb;
 
-        public IDb GetColumnDb(T key)
-        {
-            return _readOnlyColumns[key!];
-        }
+        public IDb GetColumnDb(T key) => _readOnlyColumns[key!];
 
         public IEnumerable<T> ColumnKeys => _readOnlyColumns.Keys;
-        public IColumnsWriteBatch<T> StartWriteBatch()
-        {
-            return new InMemoryColumnWriteBatch<T>(this);
-        }
+        public IColumnsWriteBatch<T> StartWriteBatch() => new InMemoryColumnWriteBatch<T>(this);
 
-        public IColumnDbSnapshot<T> CreateSnapshot()
-        {
-            return _baseColumnDb.CreateSnapshot();
-        }
+        public IColumnDbSnapshot<T> CreateSnapshot() => _baseColumnDb.CreateSnapshot();
 
         public void ClearTempChanges()
         {

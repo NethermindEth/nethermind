@@ -52,12 +52,10 @@ public class MergeFinalizationManagerTests
     }
 
     [Test]
-    public void Double_dispose_does_not_throw()
-    {
+    public void Double_dispose_does_not_throw() =>
         Assert.DoesNotThrow(() =>
         {
             _manager.Dispose();
             _manager.Dispose();
         });
-    }
 }

@@ -113,10 +113,7 @@ internal class MasternodeVotingContract(
         return candidates;
     }
 
-    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size)
-    {
-        return slot + new UInt256(index * size);
-    }
+    private UInt256 CalculateArrayKey(UInt256 slot, ulong index, ulong size) => slot + new UInt256(index * size);
 
     /// <summary>
     /// Returns an array of masternode candidates sorted by stake

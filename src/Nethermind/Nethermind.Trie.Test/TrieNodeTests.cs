@@ -644,10 +644,7 @@ public class TrieNodeTests
     }
 
     [Test]
-    public void Size_of_keccak_is_correct()
-    {
-        Hash256.MemorySize.Should().Be(48);
-    }
+    public void Size_of_keccak_is_correct() => Hash256.MemorySize.Should().Be(48);
 
     [Test]
     public void Size_of_rlp_stream_is_correct()
@@ -1019,24 +1016,15 @@ public class TrieNodeTests
     {
         private readonly ConcurrentDictionary<TreePath, TrieNode> _nodes = new();
 
-        private TrieNode GetOrAddNode(in TreePath path, TrieNode node)
-        {
-            return _nodes.GetOrAdd(path, node);
-        }
+        private TrieNode GetOrAddNode(in TreePath path, TrieNode node) => _nodes.GetOrAdd(path, node);
 
-        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash)
-        {
-            return _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
-        }
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => _nodes.GetOrAdd(path, new TrieNode(NodeType.Unknown, hash));
 
         public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
         public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
-        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address)
-        {
-            throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
-        }
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new InvalidOperationException($"{nameof(GetStorageTrieNodeResolver)} not supported");
 
         public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
         public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(this);
@@ -1047,10 +1035,7 @@ public class TrieNodeTests
             {
             }
 
-            public TrieNode CommitNode(ref TreePath path, TrieNode node)
-            {
-                return trieStore.GetOrAddNode(path, node);
-            }
+            public TrieNode CommitNode(ref TreePath path, TrieNode node) => trieStore.GetOrAddNode(path, node);
         }
     }
 
@@ -1096,20 +1081,11 @@ public class TrieNodeTests
         {
         }
 
-        public void VisitBranch(in TreePathContext ctx, TrieNode node)
-        {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (ctx.Path, node), out _) += 1;
-        }
+        public void VisitBranch(in TreePathContext ctx, TrieNode node) => CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (ctx.Path, node), out _) += 1;
 
-        public void VisitExtension(in TreePathContext ctx, TrieNode node)
-        {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node), out _) += 1;
-        }
+        public void VisitExtension(in TreePathContext ctx, TrieNode node) => CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node), out _) += 1;
 
-        public void VisitLeaf(in TreePathContext ctx, TrieNode node)
-        {
-            CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()), out _) += 1;
-        }
+        public void VisitLeaf(in TreePathContext ctx, TrieNode node) => CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, node.Value.ToArray()), out _) += 1;
 
         public void VisitAccount(in TreePathContext ctx, TrieNode node, in AccountStruct account)
         {

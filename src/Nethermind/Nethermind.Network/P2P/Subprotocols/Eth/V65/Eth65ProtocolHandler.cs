@@ -89,10 +89,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        protected virtual void Handle(NewPooledTransactionHashesMessage msg)
-        {
-            RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
-        }
+        protected virtual void Handle(NewPooledTransactionHashesMessage msg) => RequestPooledTransactions<GetPooledTransactionsMessage>(msg.Hashes);
 
         protected void AddNotifiedTransactions(IReadOnlyList<Hash256> hashes)
         {

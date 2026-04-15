@@ -14,19 +14,10 @@ namespace Nethermind.Consensus.AuRa.Services
         private readonly IAuRaStepCalculator _auRaStepCalculator = auRaStepCalculator;
         private readonly IValidatorStore _validatorStore = validatorStore;
 
-        public ulong? MaxSecondsIntervalForProcessingBlocksHint()
-        {
-            return CurrentStepDuration() * HealthHintConstants.ProcessingSafetyMultiplier;
-        }
+        public ulong? MaxSecondsIntervalForProcessingBlocksHint() => CurrentStepDuration() * HealthHintConstants.ProcessingSafetyMultiplier;
 
-        public ulong? MaxSecondsIntervalForProducingBlocksHint()
-        {
-            return (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * CurrentStepDuration() * HealthHintConstants.ProducingSafetyMultiplier;
-        }
+        public ulong? MaxSecondsIntervalForProducingBlocksHint() => (ulong)Math.Max(_validatorStore.GetValidators().Length, 1) * CurrentStepDuration() * HealthHintConstants.ProducingSafetyMultiplier;
 
-        private uint CurrentStepDuration()
-        {
-            return Math.Max((uint)_auRaStepCalculator.CurrentStepDuration, 1);
-        }
+        private uint CurrentStepDuration() => Math.Max((uint)_auRaStepCalculator.CurrentStepDuration, 1);
     }
 }

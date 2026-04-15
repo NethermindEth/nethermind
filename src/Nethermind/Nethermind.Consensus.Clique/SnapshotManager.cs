@@ -194,15 +194,9 @@ namespace Nethermind.Consensus.Clique
             return signer && !authorize || !signer && authorize;
         }
 
-        public bool IsInTurn(Snapshot snapshot, long number, Address signer)
-        {
-            return (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
-        }
+        public bool IsInTurn(Snapshot snapshot, long number, Address signer) => (long)number % snapshot.Signers.Count == snapshot.Signers.IndexOfKey(signer);
 
-        private bool IsEpochTransition(long number)
-        {
-            return (ulong)number % _cliqueConfig.Epoch == 0;
-        }
+        private bool IsEpochTransition(long number) => (ulong)number % _cliqueConfig.Epoch == 0;
 
         private Snapshot? GetSnapshot(long number, Hash256 hash)
         {

@@ -25,10 +25,7 @@ namespace Nethermind.Db
             GC.SuppressFinalize(this);
         }
 
-        public void Clear()
-        {
-            _writes.Clear();
-        }
+        public void Clear() => _writes.Clear();
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
         {
@@ -36,9 +33,6 @@ namespace Nethermind.Db
             _writeFlags = flags;
         }
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
-        {
-            throw new NotSupportedException("Merging is not supported by this implementation.");
-        }
+        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException("Merging is not supported by this implementation.");
     }
 }

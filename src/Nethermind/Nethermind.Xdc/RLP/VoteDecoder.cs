@@ -68,16 +68,9 @@ public sealed class VoteDecoder : RlpValueDecoder<Vote>
         return new Rlp(rlpStream.Data.ToArray());
     }
 
-    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
-    }
+    public override int GetLength(Vote item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
-    public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors)
-    {
-        return
-            ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
+    public int GetContentLength(Vote item, RlpBehaviors rlpBehaviors) => ((rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing ? Rlp.LengthOfSequence(Signature.Size) : 0)
             + Rlp.LengthOf(item.GapNumber)
             + _xdcBlockInfoDecoder.GetLength(item.ProposedBlockInfo, rlpBehaviors);
-    }
 }

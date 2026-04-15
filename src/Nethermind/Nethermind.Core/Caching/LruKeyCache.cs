@@ -100,11 +100,8 @@ namespace Nethermind.Core.Caching
             _cacheMap.Add(key, node);
 
             [DoesNotReturn]
-            static void ThrowInvalidOperation()
-            {
-                throw new InvalidOperationException(
+            static void ThrowInvalidOperation() => throw new InvalidOperationException(
                                     $"{nameof(LruKeyCache<TKey>)} called {nameof(Replace)} when empty.");
-            }
         }
     }
 }

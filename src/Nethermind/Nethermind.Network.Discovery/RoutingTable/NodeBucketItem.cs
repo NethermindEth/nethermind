@@ -13,10 +13,7 @@ public class NodeBucketItem(Node? node, DateTime lastContactTime)
 
     public bool IsBonded(DateTime utcNow) => LastContactTime > utcNow - TimeSpan.FromDays(2);
 
-    public void OnContactReceived()
-    {
-        LastContactTime = DateTime.UtcNow;
-    }
+    public void OnContactReceived() => LastContactTime = DateTime.UtcNow;
 
     public override bool Equals(object? obj)
     {
@@ -33,8 +30,5 @@ public class NodeBucketItem(Node? node, DateTime lastContactTime)
         return false;
     }
 
-    public override int GetHashCode()
-    {
-        return Node?.GetHashCode() ?? 0;
-    }
+    public override int GetHashCode() => Node?.GetHashCode() ?? 0;
 }

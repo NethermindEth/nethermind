@@ -38,15 +38,9 @@ namespace Nethermind.Network
             _onDisconnected = OnDisconnected;
         }
 
-        public void Start()
-        {
-            StartPingTimer();
-        }
+        public void Start() => StartPingTimer();
 
-        public void Stop()
-        {
-            StopPingTimer();
-        }
+        public void Stop() => StopPingTimer();
 
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
         public IEnumerable<ISession> Sessions => _sessions.Values;

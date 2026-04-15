@@ -30,14 +30,8 @@ namespace Nethermind.Consensus.Processing
             }
         }
 
-        public void AddFirst(IBlockPreprocessorStep blockPreprocessorStep)
-        {
-            _recoverySteps.AddFirst(blockPreprocessorStep);
-        }
+        public void AddFirst(IBlockPreprocessorStep blockPreprocessorStep) => _recoverySteps.AddFirst(blockPreprocessorStep);
 
-        public void AddLast(IBlockPreprocessorStep blockPreprocessorStep)
-        {
-            _recoverySteps.AddLast(blockPreprocessorStep);
-        }
+        public void AddLast(IBlockPreprocessorStep blockPreprocessorStep) => _recoverySteps.AddLast(blockPreprocessorStep);
     }
 }

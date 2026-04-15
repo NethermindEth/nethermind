@@ -297,10 +297,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
 
-            void Log(Transaction tx, in AcceptTxResult accepted)
-            {
-                Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
-            }
+            void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
@@ -392,10 +389,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             Send(msg);
         }
 
-        protected override void OnDisposed()
-        {
+        protected override void OnDisposed() =>
             // Clear Events
             ProtocolInitialized = null;
-        }
     }
 }

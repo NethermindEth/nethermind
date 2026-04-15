@@ -11,10 +11,7 @@ namespace Nethermind.Db
         private readonly ConcurrentDictionary<TKey, IWriteBatch> _writeBatches = new();
         private readonly IColumnsDb<TKey> _columnsDb = columnsDb;
 
-        public IWriteBatch GetColumnBatch(TKey key)
-        {
-            return _writeBatches.GetOrAdd(key, key => new InMemoryWriteBatch(_columnsDb.GetColumnDb(key)));
-        }
+        public IWriteBatch GetColumnBatch(TKey key) => _writeBatches.GetOrAdd(key, key => new InMemoryWriteBatch(_columnsDb.GetColumnDb(key)));
 
         public void Clear()
         {

@@ -35,15 +35,9 @@ namespace Nethermind.Wallet
             }
         }
 
-        public void Import(byte[] keyData, SecureString passphrase)
-        {
-            _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
-        }
+        public void Import(byte[] keyData, SecureString passphrase) => _keyStore.StoreKey(new PrivateKey(keyData), passphrase);
 
-        public Address[] GetAccounts()
-        {
-            return _keyStore.GetKeyAddresses().Addresses.ToArray();
-        }
+        public Address[] GetAccounts() => _keyStore.GetKeyAddresses().Addresses.ToArray();
 
         public Address NewAccount(SecureString passphrase)
         {
@@ -51,10 +45,7 @@ namespace Nethermind.Wallet
             return privateKey.Address;
         }
 
-        public bool UnlockAccount(Address address, SecureString passphrase)
-        {
-            return UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
-        }
+        public bool UnlockAccount(Address address, SecureString passphrase) => UnlockAccount(address, passphrase, TimeSpan.FromSeconds(300));
 
         public bool UnlockAccount(Address address, SecureString passphrase, TimeSpan? timeSpan)
         {

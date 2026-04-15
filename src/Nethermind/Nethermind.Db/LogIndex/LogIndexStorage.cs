@@ -367,11 +367,9 @@ namespace Nethermind.Db.LogIndex
             return usedAlgo;
         }
 
-        private static void ForceMerge(IDb db)
-        {
+        private static void ForceMerge(IDb db) =>
             // Fetching RocksDB key values forces it to merge corresponding parts
             db.GetAllValues().ForEach(static _ => { });
-        }
 
         public Task StopAsync() => StopAsync(acquireLock: true);
 

@@ -83,10 +83,7 @@ internal class TrieStoreDirtyNodesCache
         return nodeRecord.Node;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
     }
 
     public TrieNode FromCachedRlpOrUnknown(in Key key)
@@ -107,10 +104,7 @@ internal class TrieStoreDirtyNodesCache
         return trieNode;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void Trace(TrieNode trieNode)
-        {
-            _logger.Trace($"Creating new node {trieNode}");
-        }
+        void Trace(TrieNode trieNode) => _logger.Trace($"Creating new node {trieNode}");
     }
 
     public bool IsNodeCached(in Key key)
@@ -155,12 +149,9 @@ internal class TrieStoreDirtyNodesCache
         return false;
     }
 
-    public bool TryGetRecord(Key key, out NodeRecord nodeRecord)
-    {
-        return _storeByHash
+    public bool TryGetRecord(Key key, out NodeRecord nodeRecord) => _storeByHash
             ? _byHashObjectCache.TryGetValue(key.Keccak, out nodeRecord)
             : _byKeyObjectCache.TryGetValue(key, out nodeRecord);
-    }
 
     private NodeRecord GetOrAdd(in Key key, TrieStoreDirtyNodesCache cache) => _storeByHash
         ? _byHashObjectCache.GetOrAdd(key.Keccak, static (keccak, cache) =>
@@ -176,19 +167,13 @@ internal class TrieStoreDirtyNodesCache
             return new NodeRecord(trieNode, -1);
         }, cache);
 
-    public NodeRecord GetOrAdd(in Key key, NodeRecord record)
-    {
-        return _storeByHash
+    public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
             ? _byHashObjectCache.AddOrUpdate(key.Keccak, static (key, arg) => arg,
                 RecordReplacementLogic, record)
             : _byKeyObjectCache.AddOrUpdate(key, static (key, arg) => arg,
                 RecordReplacementLogic, record);
-    }
 
-    private static NodeRecord RecordReplacementLogic(Key key, NodeRecord current, NodeRecord arg)
-    {
-        return RecordReplacementLogic(null, current, arg);
-    }
+    private static NodeRecord RecordReplacementLogic(Key key, NodeRecord current, NodeRecord arg) => RecordReplacementLogic(null, current, arg);
 
     private static NodeRecord RecordReplacementLogic(Hash256AsKey keyHash, NodeRecord current, NodeRecord arg)
     {
@@ -480,25 +465,13 @@ internal class TrieStoreDirtyNodesCache
             return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
         }
 
-        public bool Equals(Key other)
-        {
-            return other.Keccak == Keccak && other.Path == Path && other.Address == Address;
-        }
+        public bool Equals(Key other) => other.Keccak == Keccak && other.Path == Path && other.Address == Address;
 
-        public override bool Equals(object? obj)
-        {
-            return obj is Key other && Equals(other);
-        }
+        public override bool Equals(object? obj) => obj is Key other && Equals(other);
 
-        public override string ToString()
-        {
-            return $"A:{Address} P:{Path} K:{Keccak}";
-        }
+        public override string ToString() => $"A:{Address} P:{Path} K:{Keccak}";
 
-        public bool IsRoot()
-        {
-            return Address is null && Path.Length == 0;
-        }
+        public bool IsRoot() => Address is null && Path.Length == 0;
     }
 
     public void CopyTo(TrieStoreDirtyNodesCache otherCache)

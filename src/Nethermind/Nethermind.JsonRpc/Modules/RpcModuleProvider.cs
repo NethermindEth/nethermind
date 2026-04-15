@@ -110,10 +110,7 @@ namespace Nethermind.JsonRpc.Modules
             }
         }
 
-        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule
-        {
-            return (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
-        }
+        private Pool GetPool<T>(IRpcModulePool<T> pool) where T : IRpcModule => (async canBeShared => await pool.GetModule(canBeShared), m => pool.ReturnModule((T)m), pool);
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
@@ -231,10 +228,7 @@ namespace Nethermind.JsonRpc.Modules
                     return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke([]));
 
                     [DoesNotReturn, StackTraceHidden]
-                    static void ThrowNotJsonRpc()
-                    {
-                        throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
-                    }
+                    static void ThrowNotJsonRpc() => throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
                 }
 
                 internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
@@ -255,10 +249,7 @@ namespace Nethermind.JsonRpc.Modules
                 IsOptional = 0b10,
             }
 
-            public ResolvedMethodInfo()
-            {
-                ExpectedParameters = [];
-            }
+            public ResolvedMethodInfo() => ExpectedParameters = [];
 
             public ResolvedMethodInfo(
                 string moduleType,
@@ -306,10 +297,7 @@ namespace Nethermind.JsonRpc.Modules
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
 
-            public override string ToString()
-            {
-                return MethodInfo.Name;
-            }
+            public override string ToString() => MethodInfo.Name;
 
             private static bool IsNullableParameter(ParameterInfo parameterInfo)
             {

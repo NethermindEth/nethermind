@@ -10,6 +10,7 @@ using FluentAssertions;
 using FluentAssertions.Execution;
 using FluentAssertions.Json;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
@@ -331,6 +332,55 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         Assert.That(
             serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: {{errorMessage}}","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_with_custom_error_revert_puts_bytes_only_in_data()
+    {
+        // When a contract reverts with a custom error (unknown 4-byte selector), message must be
+        // plain "execution reverted" and the raw bytes must appear only in data — matching Geth.
+        // See: https://github.com/NethermindEth/nethermind/issues/11095
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        byte[] selector = Keccak.Compute("ActionFailed()").Bytes[..4].ToArray();
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithCustomError(selector)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted","data":"0x080a1c27"},"id":67}"""));
+    }
+
+    [Test]
+    public async Task Eth_call_with_revert_sentinel_string_as_message_still_appends_decoded_message()
+    {
+        // require(false, "revert") produces Error(string) ABI-encoded with the literal string "revert".
+        // The old sentinel-based check would have mistaken this for the Revert sentinel and emitted
+        // plain "execution reverted". The raw-byte prefix check fixes this: we see the Error(string)
+        // selector in the revert data, so we correctly emit "execution reverted: revert".
+        using Context ctx = await Context.CreateWithLondonEnabled();
+
+        AbiEncoder abiEncoder = new();
+        AbiSignature errorSignature = new("Error", AbiType.String);
+        string errorMessage = "revert"; // deliberately equals the sentinel constant
+        byte[] encodedError = abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, errorSignature, errorMessage);
+        string abiEncodedErrorMessage = encodedError.ToHexString(true);
+
+        byte[] code = Prepare.EvmCode
+            .RevertWithSolidityErrorEncoding(errorMessage)
+            .Done;
+
+        string dataStr = code.ToHexString();
+        TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
+            $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
+        string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
+        Assert.That(
+            serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","error":{"code":3,"message":"execution reverted: revert","data":"{{abiEncodedErrorMessage}}"},"id":67}"""));
     }
 
     [TestCase(

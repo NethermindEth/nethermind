@@ -532,10 +532,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        public AddBlockResult SuggestHeader(BlockHeader header)
-        {
-            return Suggest(null, header);
-        }
+        public AddBlockResult SuggestHeader(BlockHeader header) => Suggest(null, header);
 
         public async ValueTask<AddBlockResult> SuggestBlockAsync(Block block, BlockTreeSuggestOptions suggestOptions = BlockTreeSuggestOptions.ShouldProcess)
         {
@@ -654,10 +651,7 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public Hash256? FindHash(long number)
-        {
-            return GetBlockHashOnMainOrBestDifficultyHash(number);
-        }
+        public Hash256? FindHash(long number) => GetBlockHashOnMainOrBestDifficultyHash(number);
 
         public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
         {
@@ -1415,15 +1409,10 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="number"></param>
         /// <returns></returns>
-        private bool ShouldCache(long number)
-        {
-            return number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
-        }
+        private bool ShouldCache(long number) =>
+            number == _genesisBlockNumber || Head is null || number >= Head.Number - BlockStore.CacheSize;
 
-        public ChainLevelInfo? FindLevel(long number)
-        {
-            return _chainLevelInfoRepository.LoadLevel(number);
-        }
+        public ChainLevelInfo? FindLevel(long number) => _chainLevelInfoRepository.LoadLevel(number);
 
         public Hash256? HeadHash => Head?.Hash;
         public Hash256? GenesisHash => Genesis?.Hash;
@@ -1509,12 +1498,10 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        private bool IsTotalDifficultyAlwaysZero()
-        {
+        private bool IsTotalDifficultyAlwaysZero() =>
             // In some Ethereum tests and possible testnets difficulty of all blocks might be zero
             // We also checking TTD is zero to ensure that block after genesis have zero difficulty
-            return Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
-        }
+            Genesis?.Difficulty == 0 && SpecProvider.TerminalTotalDifficulty == 0;
 
         private void SetTotalDifficultyFromBlockInfo(BlockHeader header, BlockInfo blockInfo)
         {

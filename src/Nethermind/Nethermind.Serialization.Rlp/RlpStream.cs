@@ -43,20 +43,11 @@ namespace Nethermind.Serialization.Rlp
                                   + MemorySizes.Align(MemorySizes.ArrayOverhead + Length)
                                   + MemorySizes.Align(sizeof(int));
 
-        public RlpStream(int length)
-        {
-            _data = new byte[length];
-        }
+        public RlpStream(int length) => _data = new byte[length];
 
-        public RlpStream(byte[] data)
-        {
-            _data = data;
-        }
+        public RlpStream(byte[] data) => _data = data;
 
-        public RlpStream(in CappedArray<byte> data)
-        {
-            _data = data;
-        }
+        public RlpStream(in CappedArray<byte> data) => _data = data;
 
         public void EncodeArray<T>(T?[]? items, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

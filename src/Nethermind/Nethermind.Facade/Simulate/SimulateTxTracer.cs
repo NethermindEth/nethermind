@@ -79,45 +79,39 @@ public sealed class SimulateTxTracer : TxTracer
         _logs.Add(log);
     }
 
-    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        TraceResult = new SimulateCallResult
+        GasUsed = (ulong)gasSpent.SpentGas,
+        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        ReturnData = output,
+        Status = StatusCode.Success,
+        Logs = _logs.Select((entry, i) => new Log
         {
-            GasUsed = (ulong)gasSpent.SpentGas,
-            MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
-            ReturnData = output,
-            Status = StatusCode.Success,
-            Logs = _logs.Select((entry, i) => new Log
-            {
-                Address = entry.Address,
-                Topics = entry.Topics,
-                Data = entry.Data,
-                LogIndex = _logIndexStart + (ulong)i,
-                TransactionHash = _tx.Hash!,
-                TransactionIndex = _txIndex,
-                BlockHash = _currentBlockHash,
-                BlockNumber = _currentBlockNumber,
-                BlockTimestamp = _currentBlockTimestamp
-            }).ToList()
-        };
-    }
+            Address = entry.Address,
+            Topics = entry.Topics,
+            Data = entry.Data,
+            LogIndex = _logIndexStart + (ulong)i,
+            TransactionHash = _tx.Hash!,
+            TransactionIndex = _txIndex,
+            BlockHash = _currentBlockHash,
+            BlockNumber = _currentBlockNumber,
+            BlockTimestamp = _currentBlockTimestamp
+        }).ToList()
+    };
 
-    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) => TraceResult = new SimulateCallResult
     {
-        TraceResult = new SimulateCallResult
+        GasUsed = (ulong)gasSpent.SpentGas,
+        MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
+        Error = new Error
         {
-            GasUsed = (ulong)gasSpent.SpentGas,
-            MaxUsedGas = (ulong)gasSpent.EffectiveMaxUsedGas,
-            Error = new Error
-            {
-                Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
-                EvmException = _exceptionType,
-                Data = output
-            },
-            ReturnData = [],
-            Status = StatusCode.Failure
-        };
-    }
+            Message = error is TransactionSubstate.Revert ? "execution reverted" : "execution reverted: " + error,
+            EvmException = _exceptionType,
+            Data = output
+        },
+        ReturnData = [],
+        Status = StatusCode.Failure
+    };
 
     private EvmExceptionType _exceptionType = EvmExceptionType.None;
 

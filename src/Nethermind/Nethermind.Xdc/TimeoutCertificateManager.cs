@@ -294,9 +294,6 @@ public class TimeoutCertificateManager : ITimeoutCertificateManager
         return stream.GetValueHash();
     }
 
-    public long GetTimeoutsCount(Timeout timeout)
-    {
-        return _timeouts.GetCount(timeout);
-    }
+    public long GetTimeoutsCount(Timeout timeout) => _timeouts.GetCount(timeout);
 
 }

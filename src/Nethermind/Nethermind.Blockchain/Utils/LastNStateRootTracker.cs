@@ -31,10 +31,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         if (_blockTree.Head is not null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        ResetAvailableStateRoots(e.Block.Header, false);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => ResetAvailableStateRoots(e.Block.Header, false);
 
     private void ResetAvailableStateRoots(BlockHeader? newHead, bool resetQueue)
     {
@@ -84,13 +81,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 
-    public bool HasStateRoot(Hash256 stateRoot)
-    {
-        return _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
-    }
+    public bool HasStateRoot(Hash256 stateRoot) => _availableStateRoots.TryGetValue(stateRoot, out int num) && num > 0;
 
-    public void Dispose()
-    {
-        _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
-    }
+    public void Dispose() => _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
 }

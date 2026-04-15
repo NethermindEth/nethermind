@@ -98,13 +98,10 @@ public class FlatWorldStateScopeProviderTests
             ;
         }
 
-        private void ConfigureFlatWorldStateScope()
-        {
-            _containerBuilder.RegisterType<FlatWorldStateScope>()
+        private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
                 .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
                 ;
-        }
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
 

@@ -65,10 +65,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowObjectDisposed()
-        {
-            throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
-        }
+        static void ThrowObjectDisposed() => throw new ObjectDisposedException(nameof(ArrayPoolList<T>));
     }
 
     IEnumerator<T> IEnumerable<T>.GetEnumerator() => GetEnumerator();
@@ -127,10 +124,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         [DoesNotReturn]
         [StackTraceHidden]
-        static void ThrowMultiDimensionalArray()
-        {
-            throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
-        }
+        static void ThrowMultiDimensionalArray() => throw new ArgumentException("Only single dimensional arrays are supported.", nameof(array));
     }
 
     public void ReduceCount(int count)

@@ -11,8 +11,5 @@ public readonly struct MerkleTreeNode(Bytes32 hash, ulong index)
     public Bytes32 Hash { get; } = hash;
     public ulong Index { get; } = index;
 
-    public override string ToString()
-    {
-        return $"{Hash.Unwrap().ToHexString(true)}, {Index}";
-    }
+    public override string ToString() => $"{Hash.Unwrap().ToHexString(true)}, {Index}";
 }

@@ -190,12 +190,9 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
         return new UInt256(iterationCount, overflow);
     }
 
-    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength)
-    {
-        return releaseSpec.IsEip7823Enabled
+    private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength) => releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823)
             : baseLength >= uint.MaxValue || modulusLength >= uint.MaxValue;
-    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)

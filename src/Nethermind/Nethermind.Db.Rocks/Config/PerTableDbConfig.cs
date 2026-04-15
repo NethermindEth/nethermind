@@ -66,10 +66,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public bool FlushOnExit => ReadConfig<bool?>(nameof(FlushOnExit)) ?? true;
     public IntPtr? BlockCache => null;
 
-    private T? ReadConfig<T>(string propertyName)
-    {
-        return ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
-    }
+    private T? ReadConfig<T>(string propertyName) => ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
 
     private string[] GetPrefixes()
     {

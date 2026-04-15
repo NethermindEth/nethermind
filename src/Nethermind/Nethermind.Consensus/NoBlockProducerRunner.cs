@@ -9,19 +9,13 @@ namespace Nethermind.Consensus;
 
 public class NoBlockProducerRunner : IBlockProducerRunner
 {
-    public Task StopAsync()
-    {
-        return Task.CompletedTask;
-    }
+    public Task StopAsync() => Task.CompletedTask;
 
     public void Start()
     {
     }
 
-    public bool IsProducingBlocks(ulong? maxProducingInterval)
-    {
-        return false;
-    }
+    public bool IsProducingBlocks(ulong? maxProducingInterval) => false;
 
     public event EventHandler<BlockEventArgs>? BlockProduced { add { } remove { } }
 }

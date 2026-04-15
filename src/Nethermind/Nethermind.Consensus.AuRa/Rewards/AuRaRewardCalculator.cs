@@ -133,22 +133,16 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 return false;
             }
 
-            public static BlockRewardType ToBlockRewardType(ushort kind)
+            public static BlockRewardType ToBlockRewardType(ushort kind) => kind switch
             {
-                return kind switch
-                {
-                    Author => BlockRewardType.Block,
-                    External => BlockRewardType.External,
-                    EmptyStep => BlockRewardType.EmptyStep,
-                    ushort uncle when IsValidDistance(uncle - uncleOffset) => BlockRewardType.Uncle,
-                    _ => throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind)),
-                };
-            }
+                Author => BlockRewardType.Block,
+                External => BlockRewardType.External,
+                EmptyStep => BlockRewardType.EmptyStep,
+                ushort uncle when IsValidDistance(uncle - uncleOffset) => BlockRewardType.Uncle,
+                _ => throw new ArgumentException($"Invalid BlockRewardType for kind {kind}", nameof(kind)),
+            };
 
-            private static bool IsValidDistance(long distance)
-            {
-                return distance >= minDistance && distance <= maxDistance;
-            }
+            private static bool IsValidDistance(long distance) => distance >= minDistance && distance <= maxDistance;
         }
     }
 }

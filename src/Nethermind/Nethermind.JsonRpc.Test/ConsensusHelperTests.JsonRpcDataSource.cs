@@ -41,10 +41,7 @@ public partial class ConsensusHelperTests
                 Params = parameters
             };
 
-        public void Dispose()
-        {
-            _httpClient?.Dispose();
-        }
+        public void Dispose() => _httpClient?.Dispose();
 
         protected class JsonRpcSuccessResponse<T> : JsonRpcSuccessResponse
         {
