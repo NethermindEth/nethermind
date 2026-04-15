@@ -33,10 +33,21 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
 
+    // Nine per-depth arrays of CumulativeDepthStats, in the order they are
+    // written to and read back from the RLP stream. Central list so Encode,
+    // GetContentLength, and DecodeInternal cannot drift.
+    private static long[][] DepthArrays(CumulativeDepthStats d) =>
+    [
+        d.AccountFullNodes, d.AccountShortNodes, d.AccountValueNodes, d.AccountNodeBytes,
+        d.StorageFullNodes, d.StorageShortNodes, d.StorageValueNodes, d.StorageNodeBytes,
+        d.BranchOccupancy,
+    ];
+
+    private delegate TValue DecodeValueDelegate<TValue>(ref Rlp.ValueDecoderContext ctx);
+
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetContentLength(item);
-        stream.StartSequence(contentLength);
+        stream.StartSequence(GetContentLength(item));
 
         stream.Encode(item.Stats.AccountsTotal);
         stream.Encode(item.Stats.ContractsTotal);
@@ -58,21 +69,14 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         stream.Encode(item.ScanBlockNumber);
 
         // Depth stats: present only if seeded. Stored as a leading marker long
-        // (1 = present, 0 = absent) followed by 162 longs (10×16 + 2 scalars)
+        // (1 = present, 0 = absent) followed by 162 longs (9×16 + 2 scalars)
         // when present.
         CumulativeDepthStats? depth = item.DepthStats;
         if (depth is not null && depth.IsSeeded)
         {
             stream.Encode(1L);
-            EncodeLongArray(stream, depth.AccountFullNodes);
-            EncodeLongArray(stream, depth.AccountShortNodes);
-            EncodeLongArray(stream, depth.AccountValueNodes);
-            EncodeLongArray(stream, depth.AccountNodeBytes);
-            EncodeLongArray(stream, depth.StorageFullNodes);
-            EncodeLongArray(stream, depth.StorageShortNodes);
-            EncodeLongArray(stream, depth.StorageValueNodes);
-            EncodeLongArray(stream, depth.StorageNodeBytes);
-            EncodeLongArray(stream, depth.BranchOccupancy);
+            foreach (long[] arr in DepthArrays(depth))
+                foreach (long v in arr) stream.Encode(v);
             stream.Encode(depth.TotalBranchNodes);
             stream.Encode(depth.TotalBranchChildren);
         }
@@ -89,9 +93,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
             stream.Encode(hist.IsDefault ? 0L : hist[i]);
 
-        EncodeSlotCountMap(stream, item.SlotCountByAddress);
-        EncodeIntMap(stream, item.CodeHashRefcounts);
-        EncodeIntMap(stream, item.CodeHashSizes);
+        EncodeMap(stream, item.SlotCountByAddress, static (s, v) => s.Encode(v));
+        EncodeMap(stream, item.CodeHashRefcounts, static (s, v) => s.Encode(v));
+        EncodeMap(stream, item.CodeHashSizes, static (s, v) => s.Encode(v));
     }
 
     private static int GetContentLength(StateCompositionSnapshot item)
@@ -112,26 +116,17 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         contentLength += Rlp.LengthOf(item.Stats.ContractsWithStorage);
         contentLength += Rlp.LengthOf(item.Stats.EmptyAccounts);
 
-        // Metadata
         contentLength += Rlp.LengthOf(item.BlockNumber);
         contentLength += Rlp.LengthOf(item.StateRoot);
         contentLength += Rlp.LengthOf(item.DiffsSinceBaseline);
         contentLength += Rlp.LengthOf(item.ScanBlockNumber);
 
-        // Depth stats marker + 162 longs when seeded
         CumulativeDepthStats? depth = item.DepthStats;
         if (depth is not null && depth.IsSeeded)
         {
             contentLength += Rlp.LengthOf(1L);
-            contentLength += GetLongArrayContentLength(depth.AccountFullNodes);
-            contentLength += GetLongArrayContentLength(depth.AccountShortNodes);
-            contentLength += GetLongArrayContentLength(depth.AccountValueNodes);
-            contentLength += GetLongArrayContentLength(depth.AccountNodeBytes);
-            contentLength += GetLongArrayContentLength(depth.StorageFullNodes);
-            contentLength += GetLongArrayContentLength(depth.StorageShortNodes);
-            contentLength += GetLongArrayContentLength(depth.StorageValueNodes);
-            contentLength += GetLongArrayContentLength(depth.StorageNodeBytes);
-            contentLength += GetLongArrayContentLength(depth.BranchOccupancy);
+            foreach (long[] arr in DepthArrays(depth))
+                foreach (long v in arr) contentLength += Rlp.LengthOf(v);
             contentLength += Rlp.LengthOf(depth.TotalBranchNodes);
             contentLength += Rlp.LengthOf(depth.TotalBranchChildren);
         }
@@ -140,112 +135,58 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             contentLength += Rlp.LengthOf(0L);
         }
 
-        // CodeBytesTotal + 16 slot-count histogram longs
         contentLength += Rlp.LengthOf(item.Stats.CodeBytesTotal);
         ImmutableArray<long> hist = item.Stats.SlotCountHistogram;
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
             contentLength += Rlp.LengthOf(hist.IsDefault ? 0L : hist[i]);
 
-        contentLength += GetSlotCountMapLength(item.SlotCountByAddress);
-        contentLength += GetIntMapLength(item.CodeHashRefcounts);
-        contentLength += GetIntMapLength(item.CodeHashSizes);
+        contentLength += GetMapLength(item.SlotCountByAddress, static v => Rlp.LengthOf(v));
+        contentLength += GetMapLength(item.CodeHashRefcounts, static v => Rlp.LengthOf(v));
+        contentLength += GetMapLength(item.CodeHashSizes, static v => Rlp.LengthOf(v));
 
         return contentLength;
     }
 
-    private static int GetLongArrayContentLength(long[] arr)
-    {
-        int total = 0;
-        foreach (long v in arr) total += Rlp.LengthOf(v);
-        return total;
-    }
-
-    private static void EncodeLongArray(RlpStream stream, long[] arr)
-    {
-        foreach (long v in arr) stream.Encode(v);
-    }
-
-    private static void DecodeLongArray(ref Rlp.ValueDecoderContext ctx, long[] dest)
-    {
-        for (int i = 0; i < dest.Length; i++) dest[i] = ctx.DecodeLong();
-    }
-
-    private static int GetSlotCountMapLength(IReadOnlyDictionary<ValueHash256, long>? map)
+    // Null map ⇒ encoded as count=0. Kept for backward-safety with legacy snapshots
+    // written before BuildSnapshot centralised tracker population; the decoder
+    // reads them back as an empty dict so the plugin treats that baseline as
+    // "no trackers" and triggers a fresh scan.
+    private static int GetMapLength<TValue>(
+        IReadOnlyDictionary<ValueHash256, TValue>? map,
+        System.Func<TValue, int> lengthOfValue)
     {
         int count = map?.Count ?? 0;
         int total = Rlp.LengthOf(count);
         if (map is null) return total;
-
-        foreach (KeyValuePair<ValueHash256, long> kvp in map)
-        {
-            total += Rlp.LengthOfKeccakRlp;
-            total += Rlp.LengthOf(kvp.Value);
-        }
+        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
+            total += Rlp.LengthOfKeccakRlp + lengthOfValue(kvp.Value);
         return total;
     }
 
-    private static void EncodeSlotCountMap(RlpStream stream, IReadOnlyDictionary<ValueHash256, long>? map)
+    private static void EncodeMap<TValue>(
+        RlpStream stream,
+        IReadOnlyDictionary<ValueHash256, TValue>? map,
+        System.Action<RlpStream, TValue> encodeValue)
     {
-        int count = map?.Count ?? 0;
-        stream.Encode(count);
+        stream.Encode(map?.Count ?? 0);
         if (map is null) return;
-
-        foreach (KeyValuePair<ValueHash256, long> kvp in map)
+        foreach (KeyValuePair<ValueHash256, TValue> kvp in map)
         {
             stream.Encode(new Hash256(kvp.Key));
-            stream.Encode(kvp.Value);
+            encodeValue(stream, kvp.Value);
         }
     }
 
-    private static Dictionary<ValueHash256, long> DecodeSlotCountMap(ref Rlp.ValueDecoderContext ctx)
+    private static Dictionary<ValueHash256, TValue> DecodeMap<TValue>(
+        ref Rlp.ValueDecoderContext ctx,
+        DecodeValueDelegate<TValue> decodeValue)
     {
         int count = ctx.DecodeInt();
-        Dictionary<ValueHash256, long> map = new(count);
+        Dictionary<ValueHash256, TValue> map = new(count);
         for (int i = 0; i < count; i++)
         {
             ValueHash256 key = ctx.DecodeKeccak()!;
-            long value = ctx.DecodeLong();
-            map[key] = value;
-        }
-        return map;
-    }
-
-    private static int GetIntMapLength(IReadOnlyDictionary<ValueHash256, int>? map)
-    {
-        int count = map?.Count ?? 0;
-        int total = Rlp.LengthOf(count);
-        if (map is null) return total;
-
-        foreach (KeyValuePair<ValueHash256, int> kvp in map)
-        {
-            total += Rlp.LengthOfKeccakRlp;
-            total += Rlp.LengthOf(kvp.Value);
-        }
-        return total;
-    }
-
-    private static void EncodeIntMap(RlpStream stream, IReadOnlyDictionary<ValueHash256, int>? map)
-    {
-        int count = map?.Count ?? 0;
-        stream.Encode(count);
-        if (map is null) return;
-
-        foreach (KeyValuePair<ValueHash256, int> kvp in map)
-        {
-            stream.Encode(new Hash256(kvp.Key));
-            stream.Encode(kvp.Value);
-        }
-    }
-
-    private static Dictionary<ValueHash256, int> DecodeIntMap(ref Rlp.ValueDecoderContext ctx)
-    {
-        int count = ctx.DecodeInt();
-        Dictionary<ValueHash256, int> map = new(count);
-        for (int i = 0; i < count; i++)
-        {
-            ValueHash256 key = ctx.DecodeKeccak()!;
-            int value = ctx.DecodeInt();
-            map[key] = value;
+            map[key] = decodeValue(ref ctx);
         }
         return map;
     }
@@ -274,7 +215,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             ContractsWithStorage: ctx.DecodeLong(),
             EmptyAccounts: ctx.DecodeLong());
 
-        // Metadata
         long blockNumber = ctx.DecodeLong();
         Hash256 stateRoot = ctx.DecodeKeccak()!;
         int diffsSinceBaseline = ctx.DecodeInt();
@@ -286,21 +226,13 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depthPresent == 1L)
         {
             depthStats = new CumulativeDepthStats();
-            DecodeLongArray(ref ctx, depthStats.AccountFullNodes);
-            DecodeLongArray(ref ctx, depthStats.AccountShortNodes);
-            DecodeLongArray(ref ctx, depthStats.AccountValueNodes);
-            DecodeLongArray(ref ctx, depthStats.AccountNodeBytes);
-            DecodeLongArray(ref ctx, depthStats.StorageFullNodes);
-            DecodeLongArray(ref ctx, depthStats.StorageShortNodes);
-            DecodeLongArray(ref ctx, depthStats.StorageValueNodes);
-            DecodeLongArray(ref ctx, depthStats.StorageNodeBytes);
-            DecodeLongArray(ref ctx, depthStats.BranchOccupancy);
+            foreach (long[] arr in DepthArrays(depthStats))
+                for (int i = 0; i < arr.Length; i++) arr[i] = ctx.DecodeLong();
             depthStats.TotalBranchNodes = ctx.DecodeLong();
             depthStats.TotalBranchChildren = ctx.DecodeLong();
             depthStats.MarkSeeded();
         }
 
-        // CodeBytesTotal + 16 slot-count histogram longs
         long codeBytesTotal = ctx.DecodeLong();
         long[] hist = new long[CumulativeSizeStats.SlotHistogramLength];
         for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++) hist[i] = ctx.DecodeLong();
@@ -311,9 +243,9 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
             SlotCountHistogram = ImmutableArray.Create(hist),
         };
 
-        Dictionary<ValueHash256, long> slotCountByAddress = DecodeSlotCountMap(ref ctx);
-        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeIntMap(ref ctx);
-        Dictionary<ValueHash256, int> codeHashSizes = DecodeIntMap(ref ctx);
+        Dictionary<ValueHash256, long> slotCountByAddress = DecodeMap<long>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeLong());
+        Dictionary<ValueHash256, int> codeHashRefcounts = DecodeMap<int>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
+        Dictionary<ValueHash256, int> codeHashSizes = DecodeMap<int>(ref ctx, static (ref Rlp.ValueDecoderContext c) => c.DecodeInt());
 
         return new StateCompositionSnapshot(
             stats, blockNumber, stateRoot, diffsSinceBaseline, scanBlockNumber, depthStats,
