@@ -521,7 +521,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_BlockGasLimitExceededError()
+    public void EstimateGas_tx_block_gas_limit_exceeded_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;
@@ -606,7 +606,7 @@ public class BlockchainBridgeTests
     }
 
     [Test]
-    public void EstimateGas_tx_returns_GasLimitBelowIntrinsicGasError()
+    public void EstimateGas_tx_gas_limit_below_intrinsic_gas_returns_allowance_error()
     {
         BlockHeader header = Build.A.BlockHeader
             .TestObject;

@@ -84,9 +84,6 @@ public class GasEstimator(
             return 0;
         }
 
-        // If transaction is simple transfer return intrinsic gas
-        if (tx.To is not null && tx.Data.IsEmpty && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token)) return lowerBound;
-
         // Cap rightBound to what the sender can afford (Geth parity: allowance = (balance - value) / gasPrice).
         // With the shrunk gas limit the TransactionProcessor balance check passes, the EVM runs,
         // and fails at intrinsic gas with OOG — producing "gas required exceeds allowance (N)".
@@ -96,9 +93,12 @@ public class GasEstimator(
             rightBound = Math.Min(rightBound, allowance);
         }
 
+        // If transaction is simple transfer return intrinsic gas
+        if (tx.To is not null && tx.Data.IsEmpty && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token)) return lowerBound;
+
         // Execute at the highest allowable gas limit first (Geth parity).
-        // If it fails with OOG the sender cannot afford the tx even at maximum affordable gas.
-        // If it fails for any other reason (revert etc.) return that error immediately.
+        // If it fails with OOG (or another gas-related pre-check failure), return allowance exceeded.
+        // If it fails for a non-gas reason (for example revert), return that error immediately.
         if (!TryExecutableTransaction(tx, header, rightBound, gasTracer, token, out bool isGasRelatedFailure))
         {
             err = (gasTracer.OutOfGas || isGasRelatedFailure)
