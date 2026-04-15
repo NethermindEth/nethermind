@@ -22,7 +22,7 @@ public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string SealEngineType => XdcConstants.XDPoSSubnet;
     public IModule Module => new XdcSubnetModule();
 
-    public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
+    public Task Init(INethermindApi nethermindApi) => _xdcPlugin.Init(nethermindApi);
 
     public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol();
 
