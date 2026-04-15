@@ -102,8 +102,8 @@ public class GasEstimator(
                 : GetError(gasTracer);
 
             return 0;
-        }    
-       
+        }
+
         // Execute binary search to find the optimal gas estimation.
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
     }
