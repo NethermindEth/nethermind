@@ -69,7 +69,7 @@ public class PayloadByNumberProtocol(
             return null;
         }
 
-        Stream? decompressor = await ReadPayloadData(downChannel);
+        using Stream? decompressor = await ReadPayloadData(downChannel);
 
         if (decompressor is null)
         {
