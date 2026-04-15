@@ -11,6 +11,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,6 +24,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
+using Nethermind.State;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -288,5 +290,45 @@ public class BlockProcessorTests
             .SetName("BlockValidationTransactionsExecutor_uses_block_gas_for_bal_validation_budget");
         yield return new TestCaseData(ProcessingOptions.NoValidation, false)
             .SetName("BlockValidationTransactionsExecutor_skips_bal_validation_when_no_validation_requested");
+    }
+
+    [TestCase(2000, false, TestName = "BAL_read_budget_at_2000_gas_passes")]
+    [TestCase(1999, true, TestName = "BAL_read_budget_at_1999_gas_fails")]
+    public void ValidateBlockAccessList_storage_read_budget_uses_ItemCost(long gasRemaining, bool shouldThrow)
+    {
+        // One extra storage read in suggested BAL costs Eip7928Constants.ItemCost (2000) gas
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        BlockAccessListManager balManager = new(
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            Substitute.For<IBlockhashProvider>(),
+            LimboLogs.Instance,
+            new BlocksConfig { ParallelExecution = false },
+            new WithdrawalProcessorFactory(LimboLogs.Instance));
+
+        // Prepare with a block that has gasUsed = gasRemaining (sets _gasRemaining)
+        BlockAccessList suggestedBal = new();
+        suggestedBal.AddAccountRead(TestItem.AddressA);
+        suggestedBal.AddStorageRead(TestItem.AddressA, 1);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasUsed(gasRemaining)
+            .WithBlockAccessList(suggestedBal)
+            .TestObject;
+
+        balManager.PrepareForProcessing(block, Amsterdam.Instance, ProcessingOptions.None);
+        // Generated BAL has the account but no storage reads
+        balManager.GeneratedBlockAccessList.AddAccountRead(TestItem.AddressA);
+
+        if (shouldThrow)
+        {
+            Assert.Throws<BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException>(
+                () => balManager.ValidateBlockAccessList(block, 0));
+        }
+        else
+        {
+            Assert.DoesNotThrow(() => balManager.ValidateBlockAccessList(block, 0));
+        }
     }
 }

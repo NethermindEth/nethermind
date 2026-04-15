@@ -16,7 +16,9 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -32,8 +34,9 @@ namespace Nethermind.Evm.Test;
 /// Verifies that executing EVM code correctly records state accesses into a
 /// <see cref="BlockAccessList"/> via <see cref="TracedAccessWorldState"/>.
 /// </summary>
-[TestFixture]
-public class Eip7928Tests() : VirtualMachineTestsBase
+[TestFixture(false)]
+[TestFixture(true)]
+public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
 {
     protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.AmsterdamBlockTimestamp;
@@ -57,7 +60,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     /// </summary>
     private (TracedAccessWorldState tracedState, EthereumTransactionProcessor processor) CreateTracedProcessor()
     {
-        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
         ILogManager logManager = LimboLogs.Instance;
         IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
@@ -965,7 +968,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
     [TestCase("0x5000001000000000000000000000000000000004", TestName = "RandomAddress")]
     public void CodeInfoRepository_getcachedcodeinfo_records_account_read_in_bal(string address)
     {
-        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
 
@@ -981,6 +984,40 @@ public class Eip7928Tests() : VirtualMachineTestsBase
             Assert.That(accountChanges.NonceChanges, Is.Empty);
             Assert.That(accountChanges.CodeChanges, Is.Empty);
         }
+    }
+
+    [Test]
+    public void Tx_exceeding_block_gas_limit_rejected_in_parallel_mode()
+    {
+        TracedAccessWorldState tracedState = new(TestState, parallel: true);
+        ILogManager logManager = LimboLogs.Instance;
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
+        EthereumCodeInfoRepository codeInfoRepo = new(tracedState);
+        EthereumVirtualMachine machine = new(blockhashProvider, SpecProvider, logManager);
+        TransactionProcessor<EthereumGasPolicy> processor = new(
+            BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, machine, codeInfoRepo, logManager, parallel: true);
+
+        TestState.CreateAccount(TestItem.AddressA, 10.Ether);
+        TestState.Commit(SpecProvider.GenesisSpec);
+
+        long blockGasLimit = 100_000;
+        BlockHeader header = Build.A.BlockHeader
+            .WithGasLimit(blockGasLimit)
+            .WithNumber(1)
+            .TestObject;
+        processor.SetBlockExecutionContext(new BlockExecutionContext(header, Amsterdam.Instance));
+
+        Transaction tx = Build.A.Transaction
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(blockGasLimit + 1)
+            .WithGasPrice(1)
+            .WithValue(0)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+
+        TransactionResult result = processor.Execute(tx, NullTxTracer.Instance);
+
+        Assert.That(result, Is.EqualTo(TransactionResult.BlockGasLimitExceeded));
     }
 
     [Test]
@@ -1000,7 +1037,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
         TestState.CommitTree(0);
 
-        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
 
         CodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(delegatedAccount, true, Amsterdam.Instance, out Address? delegationAddress);
@@ -1028,7 +1065,7 @@ public class Eip7928Tests() : VirtualMachineTestsBase
         TestState.Commit(SpecProvider.GenesisSpec);
         TestState.CommitTree(0);
 
-        TracedAccessWorldState tracedState = new(TestState, parallel: false);
+        TracedAccessWorldState tracedState = new(TestState, parallel: parallel);
 
         CacheCodeInfoRepository repo = new(tracedState, new EthereumPrecompileProvider());
         CodeInfo result = repo.GetCachedCodeInfo(TestItem.AddressB, false, Amsterdam.Instance, out Address? delegationAddress);

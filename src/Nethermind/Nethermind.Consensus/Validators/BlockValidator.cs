@@ -410,6 +410,15 @@ public class BlockValidator(
             return false;
         }
 
+        if (spec.BlockLevelAccessListsEnabled && block.BlockAccessList is null)
+        {
+            error = BlockErrorMessages.MissingBlockLevelAccessList;
+
+            if (_logger.IsWarn) _logger.Warn($"Block level access list cannot be null in block {block.Hash} when EIP-7928 activated.");
+
+            return false;
+        }
+
         if (block.BlockAccessList is not null)
         {
             if (!ValidateBlockLevelAccessListHashMatches(block, out Hash256 blockLevelAccessListHash))

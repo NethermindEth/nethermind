@@ -111,7 +111,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.GetBalance(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Balance access for {address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public UInt256 GetNonce(Address address)
@@ -123,7 +123,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.GetNonce(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Nonce access for {address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public ValueHash256 GetCodeHash(Address address)
@@ -138,7 +138,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.GetCode(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Code access for {address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public byte[]? GetCode(in ValueHash256 _)
@@ -182,7 +182,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.AccountExists(blockAccessIndex);
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Account {address} not found in block access list when checking existence at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public bool IsContract(Address address)
@@ -198,7 +198,7 @@ public class BlockAccessListBasedWorldState(
             return accountChanges.EmptyBeforeBlock;
         }
 
-        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Storage empty check for {address} not in block access list at index {blockAccessIndex}.");
+        throw new InvalidBlockLevelAccessListException(_suggestedBlockHeader ?? default, $"Suggested block-level access list missing account changes for {address} at index {blockAccessIndex}.");
     }
 
     public bool IsDeadAccount(Address address)

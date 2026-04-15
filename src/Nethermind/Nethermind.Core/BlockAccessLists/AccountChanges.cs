@@ -364,7 +364,8 @@ public class AccountChanges : IEquatable<AccountChanges>
         if (changes.Count == 0)
             return false;
 
-        KeyValuePair<int, T> lastChange = changes.Last();
+        int c = changes.Count;
+        KeyValuePair<int, T> lastChange = new(changes.Keys[c - 1], changes.Values[c - 1]);
 
         if (lastChange.Key == index)
         {

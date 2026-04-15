@@ -29,6 +29,7 @@ using Nethermind.State;
 namespace Nethermind.Merge.Plugin.Test
 {
     [Parallelizable(ParallelScope.All)]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("NUnit", "NUnit1034:Class is used as a base class and should be abstract", Justification = "Concrete fixture; derived ParallelEngineModuleTests reruns with parallel flag")]
     public partial class EngineModuleTests : BaseEngineModuleTests
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;

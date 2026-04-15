@@ -519,6 +519,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    [NonParallelizable]
     public async Task Cannot_build_invalid_block_with_the_branch()
     {
         TimeSpan delay = TimeSpan.FromMilliseconds(10);

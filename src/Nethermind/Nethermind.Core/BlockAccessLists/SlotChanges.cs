@@ -43,7 +43,7 @@ public record SlotChanges(UInt256 Slot, SortedList<int, StorageChange> Changes)
         if (Changes.Count == 0)
             return false;
 
-        StorageChange lastChange = Changes.Values.Last();
+        StorageChange lastChange = Changes.Values[Changes.Count - 1];
 
         if (lastChange.BlockAccessIndex == index)
         {

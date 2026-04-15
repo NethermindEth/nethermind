@@ -323,11 +323,14 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
         if (parallel)
         {
             AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(storageCell.Address);
-            accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
-
-            if (slotChanges is not null && slotChanges.Changes.Count == 1)
+            if (accountChanges is not null)
             {
-                return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
+                accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
+
+                if (slotChanges is not null && slotChanges.Changes.Count == 1)
+                {
+                    return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
+                }
             }
         }
 

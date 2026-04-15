@@ -82,7 +82,7 @@ public partial class BlockProcessor
 
             Task incrementalValidationTask = Task.Run(() => balManager.IncrementalValidation(block, gasResults, receiptsTracers, _transactionProcessedEventHandler), token);
 
-            // todo: change to Parallel.For?
+            // ParallelUnbalancedWork handles uneven tx execution times better than Parallel.For
             ParallelUnbalancedWork.For(
                 0,
                 len + 1,
@@ -92,8 +92,9 @@ public partial class BlockProcessor
                 {
                     if (i == 0)
                     {
-                        // todo: this is a bit weird, but there was an error about accessing WorldState when executing using Task.Run
-                        // need to investigate more
+                        // ApplyStateChanges mutates the shared stateProvider so runs inside
+                        // the parallel loop (slot 0) rather than via Task.Run. Parallel tx
+                        // workers read from BAL-backed world states, not stateProvider.
                         BlockAccessListManager.ApplyStateChanges(state.block.BlockAccessList, state.stateProvider, state.specProvider.GetSpec(state.block.Header), !state.block.Header.IsGenesis || !state.specProvider.GenesisStateUnavailable);
                         return state;
                     }

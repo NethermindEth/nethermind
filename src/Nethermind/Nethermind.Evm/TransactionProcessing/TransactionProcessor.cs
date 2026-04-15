@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -169,7 +170,12 @@ namespace Nethermind.Evm.TransactionProcessing
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             if (tx.IsSystem() || (opts & ~ExecutionOptions.Warmup) == ExecutionOptions.SkipValidation)
             {
-                _systemTransactionProcessor ??= new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
+                if (_systemTransactionProcessor is null)
+                {
+                    Interlocked.CompareExchange(ref _systemTransactionProcessor,
+                        new SystemTransactionProcessor<TGasPolicy>(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager),
+                        null);
+                }
                 return _systemTransactionProcessor.Execute(tx, tracer, opts);
             }
 
@@ -484,19 +490,16 @@ namespace Nethermind.Evm.TransactionProcessing
                 return TransactionResult.GasLimitBelowIntrinsicGas;
             }
 
-            if (!_parallel)
+            long maxTransactionGasLimit = _parallel || spec.IsEip8037Enabled
+                ? header.GasLimit
+                : header.GasLimit - header.GasUsed;
+            if (tx.GasLimit > maxTransactionGasLimit)
             {
-                long maxTransactionGasLimit = spec.IsEip8037Enabled
-                    ? header.GasLimit
-                    : header.GasLimit - header.GasUsed;
-                if (tx.GasLimit > maxTransactionGasLimit)
-                {
-                    string limitDescription = spec.IsEip8037Enabled
-                        ? $"{header.GasLimit}"
-                        : $"{header.GasLimit} - {header.GasUsed}";
-                    TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
-                    return TransactionResult.BlockGasLimitExceeded;
-                }
+                string limitDescription = _parallel || spec.IsEip8037Enabled
+                    ? $"{header.GasLimit}"
+                    : $"{header.GasLimit} - {header.GasUsed}";
+                TraceLogInvalidTx(tx, $"BLOCK_GAS_LIMIT_EXCEEDED {tx.GasLimit} > {limitDescription}");
+                return TransactionResult.BlockGasLimitExceeded;
             }
 
             return TransactionResult.Ok;

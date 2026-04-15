@@ -24,9 +24,10 @@ namespace Nethermind.Store.Test;
 /// correctly record account reads, balance changes, nonce changes, code changes,
 /// and storage reads/writes into the generating <see cref="BlockAccessList"/>.
 /// </summary>
-[TestFixture]
+[TestFixture(false)]
+[TestFixture(true)]
 [Parallelizable(ParallelScope.All)]
-public class TracedAccessWorldStateTests
+public class TracedAccessWorldStateTests(bool parallel)
 {
     private static readonly IReleaseSpec Spec = Amsterdam.Instance;
 
@@ -34,7 +35,7 @@ public class TracedAccessWorldStateTests
     /// Creates a <see cref="TracedAccessWorldState"/> wrapping a real <see cref="WorldState"/>,
     /// with an optional genesis setup callback. Returns the traced state and a scope that must be disposed.
     /// </summary>
-    private static (TracedAccessWorldState tws, IDisposable scope) CreateTracingState(
+    private (TracedAccessWorldState tws, IDisposable scope) CreateTracingState(
         Action<IWorldState>? genesisSetup = null)
     {
         IWorldState inner = TestWorldStateFactory.CreateForTest();
@@ -48,7 +49,7 @@ public class TracedAccessWorldStateTests
         }
 
         BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
-        TracedAccessWorldState tws = new(inner, parallel: false);
+        TracedAccessWorldState tws = new(inner, parallel: parallel);
         IDisposable scope = tws.BeginScope(baseBlock);
         tws.SetIndex(0);
         return (tws, scope);

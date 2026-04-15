@@ -153,11 +153,11 @@ public class BlockAccessListManager(
     {
         foreach (AccountChanges accountChanges in suggestedBlockAccessList.AccountChanges)
         {
-            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges.Last().BlockAccessIndex != -1)
+            if (accountChanges.BalanceChanges.Count > 0 && accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].BlockAccessIndex != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
                 UInt256 oldBalance = accountChanges.GetBalance(0);
-                UInt256 newBalance = accountChanges.BalanceChanges.Last().PostBalance;
+                UInt256 newBalance = accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].PostBalance;
                 if (newBalance > oldBalance)
                 {
                     stateProvider.AddToBalance(accountChanges.Address, newBalance - oldBalance, spec);
@@ -168,24 +168,25 @@ public class BlockAccessListManager(
                 }
             }
 
-            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges.Last().BlockAccessIndex != -1)
+            if (accountChanges.NonceChanges.Count > 0 && accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].BlockAccessIndex != -1)
             {
                 stateProvider.CreateAccountIfNotExists(accountChanges.Address, 0, 0);
-                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges.Last().NewNonce);
+                stateProvider.SetNonce(accountChanges.Address, accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].NewNonce);
             }
 
-            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges.Last().BlockAccessIndex != -1)
+            if (accountChanges.CodeChanges.Count > 0 && accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].BlockAccessIndex != -1)
             {
-                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges.Last().NewCode, spec);
+                stateProvider.InsertCode(accountChanges.Address, accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].NewCode, spec);
             }
 
             foreach (SlotChanges slotChange in accountChanges.StorageChanges)
             {
                 StorageCell storageCell = new(accountChanges.Address, slotChange.Slot);
                 // could be empty since prestate loaded
-                if (slotChange.Changes.Count > 0 && slotChange.Changes.Last().Key != -1)
+                int slotCount = slotChange.Changes.Count;
+                if (slotCount > 0 && slotChange.Changes.Keys[slotCount - 1] != -1)
                 {
-                    stateProvider.Set(storageCell, [.. slotChange.Changes.Last().Value.NewValue.ToBigEndian().WithoutLeadingZeros()]);
+                    stateProvider.Set(storageCell, [.. slotChange.Changes.Values[slotCount - 1].NewValue.ToBigEndian().WithoutLeadingZeros()]);
                 }
             }
         }
@@ -315,7 +316,7 @@ public class BlockAccessListManager(
             AdvanceSuggested();
         }
 
-        if (validateStorageReads && _gasRemaining < (suggestedReads - generatedReads) * GasCostOf.ColdSLoad)
+        if (validateStorageReads && _gasRemaining < (suggestedReads - generatedReads) * Eip7928Constants.ItemCost)
         {
             throw new InvalidBlockLevelAccessListException(block.Header, "Suggested block-level access list contained invalid storage reads.");
         }
