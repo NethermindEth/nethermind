@@ -114,7 +114,7 @@ internal partial class StateCompositionService : IDisposable
                 FullScanMemoryBudget = memoryBudget,
             };
 
-            using PeriodicTimer progressTimer = StartProgressLogging(sw, visitor);
+            using PeriodicTimer progressTimer = StartProgressLogging(sw, visitor, linkedCts.Token);
 
             await Task.Run(() =>
                 _stateReader.RunTreeVisitor(visitor, header, options), linkedCts.Token).ConfigureAwait(false);
@@ -223,14 +223,14 @@ internal partial class StateCompositionService : IDisposable
         return clamped;
     }
 
-    private PeriodicTimer StartProgressLogging(Stopwatch sw, StateCompositionVisitor visitor)
+    private PeriodicTimer StartProgressLogging(Stopwatch sw, StateCompositionVisitor visitor, CancellationToken token)
     {
         PeriodicTimer progressTimer = new(TimeSpan.FromSeconds(8));
         _ = Task.Run(async () =>
         {
             try
             {
-                while (await progressTimer.WaitForNextTickAsync(CancellationToken.None).ConfigureAwait(false))
+                while (await progressTimer.WaitForNextTickAsync(token).ConfigureAwait(false))
                 {
                     if (_logger.IsInfo)
                     {
@@ -246,7 +246,7 @@ internal partial class StateCompositionService : IDisposable
                     }
                 }
             }
-            catch (ObjectDisposedException) { }
+            catch (OperationCanceledException) { }
         }, CancellationToken.None);
         return progressTimer;
     }
