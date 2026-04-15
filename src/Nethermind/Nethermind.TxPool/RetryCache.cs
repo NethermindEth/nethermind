@@ -110,7 +110,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
 
         if (_expiringQueueCounter > _expiringQueueLimit)
         {
-            if (_logger.IsDebug) _logger.Warn($"{typeof(TResourceId)} retry queue is full");
+            if (_logger.IsTrace) _logger.Trace($"{typeof(TResourceId)} retry queue is full");
 
             return AnnounceResult.RequestRequired;
         }
