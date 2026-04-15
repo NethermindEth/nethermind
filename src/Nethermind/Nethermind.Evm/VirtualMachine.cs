@@ -1137,10 +1137,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
             {
-    #if DEBUG
+#if DEBUG
                 // Allow the debugger to inspect and possibly pause execution for debugging purposes.
                 debugger?.TryWait(ref _currentState, ref programCounter, ref gas, ref stack.Head);
-    #endif
+#endif
                 // Fetch the current instruction from the code section.
                 Instruction instruction = Unsafe.Add(ref code, programCounter);
 
