@@ -9,6 +9,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 using Nethermind.StateComposition.Data;
 using Nethermind.StateComposition.Service;
@@ -27,6 +28,16 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public bool Enabled => config.Enabled;
     public bool MustInitialize => true;
     public IModule Module => new StateCompositionModule();
+
+    public void InitTxTypesAndRlpDecoders(INethermindApi api)
+    {
+        // Register the snapshot RLP decoder in the global registry so any code
+        // using Rlp.Decode<StateCompositionSnapshot>() can resolve it. The local
+        // StateCompositionSnapshotStore path still uses the .Instance singleton
+        // directly, but global registration keeps the plugin consistent with the
+        // rest of the Nethermind RLP ecosystem.
+        Rlp.RegisterDecoders(typeof(StateCompositionSnapshotDecoder).Assembly, true);
+    }
 
     public Task Init(INethermindApi nethermindApi)
     {
