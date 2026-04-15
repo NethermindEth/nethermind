@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -276,9 +275,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private UInt256? GetBalanceCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.BalanceChanges.Count == 1)
+        if (accountChanges is not null && accountChanges.BalanceChanges.Count >= 1)
         {
-            return accountChanges.BalanceChanges.First().PostBalance;
+            return accountChanges.BalanceChanges[accountChanges.BalanceChanges.Count - 1].PostBalance;
         }
         return null;
     }
@@ -289,9 +288,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private UInt256? GetNonceCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.NonceChanges.Count == 1)
+        if (accountChanges is not null && accountChanges.NonceChanges.Count >= 1)
         {
-            return accountChanges.NonceChanges.First().NewNonce;
+            return accountChanges.NonceChanges[accountChanges.NonceChanges.Count - 1].NewNonce;
         }
 
         return null;
@@ -300,9 +299,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private byte[]? GetCodeCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && accountChanges.CodeChanges.Count == 1)
+        if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
         {
-            return accountChanges.CodeChanges.First().NewCode;
+            return accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].NewCode;
         }
 
         return null;
@@ -327,9 +326,9 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
             {
                 accountChanges.TryGetSlotChanges(storageCell.Index, out SlotChanges? slotChanges);
 
-                if (slotChanges is not null && slotChanges.Changes.Count == 1)
+                if (slotChanges is not null && slotChanges.Changes.Count >= 1)
                 {
-                    return slotChanges.Changes.First().Value.NewValue.ToBigEndian();
+                    return slotChanges.Changes.Values[slotChanges.Changes.Count - 1].NewValue.ToBigEndian();
                 }
             }
         }
@@ -343,7 +342,7 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     private bool? AccountExistsCurrent(Address address)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
-        if (accountChanges is not null && (accountChanges.NonceChanges.Count == 1 || accountChanges.BalanceChanges.Count == 1))
+        if (accountChanges is not null && (accountChanges.NonceChanges.Count >= 1 || accountChanges.BalanceChanges.Count >= 1))
         {
             // if nonce or balance is changed in this tx must exist
             // could have been created this tx

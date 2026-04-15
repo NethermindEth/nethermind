@@ -412,4 +412,105 @@ public class TracedAccessWorldStateTests(bool parallel)
             Assert.That(ac, Is.Null);
         }
     }
+
+    // ── C1 regression: within a single tx, balance/nonce/code changes are replaced
+    // via Pop+Push, keeping Count == 1. Verify the replacement uses BAL state, not inner. ──
+
+    [Test]
+    public void RepeatedBalanceChanges_SameTx_UsesLatestBalValue()
+    {
+        // Account starts at 1000. Two AddToBalance(100) calls in the same tx:
+        //   1st: old=1000 (from inner), new=1100 → recorded at Index 0
+        //   2nd: old=1100 (from BAL Count==1 entry), new=1200 → replaces at Index 0
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 1000));
+        using (scope)
+        {
+            tws.AddToBalance(TestItem.AddressA, 100, Spec, out UInt256 oldBalance1);
+            tws.AddToBalance(TestItem.AddressA, 100, Spec, out UInt256 oldBalance2);
+
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oldBalance1, Is.EqualTo((UInt256)1000), "first old balance from inner state");
+                Assert.That(oldBalance2, Is.EqualTo((UInt256)1100), "second old balance from BAL, not inner");
+                Assert.That(ac, Is.Not.Null);
+                // Within same tx, Pop+Push replaces entry: Count stays 1
+                Assert.That(ac!.BalanceChanges, Has.Count.EqualTo(1));
+                Assert.That(ac.BalanceChanges[0].PostBalance, Is.EqualTo((UInt256)1200));
+            }
+        }
+    }
+
+    [Test]
+    public void RepeatedNonceChanges_SameTx_UsesLatestNonceValue()
+    {
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce1);
+            tws.IncrementNonce(TestItem.AddressA, 1, out UInt256 oldNonce2);
+
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oldNonce1, Is.EqualTo((UInt256)0), "first old nonce from inner");
+                Assert.That(oldNonce2, Is.EqualTo((UInt256)1), "second old nonce from BAL");
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.NonceChanges, Has.Count.EqualTo(1));
+                Assert.That(ac.NonceChanges[0].NewNonce, Is.EqualTo(2ul));
+            }
+        }
+    }
+
+    [Test]
+    public void RepeatedCodeChanges_SameTx_UsesLatestCode()
+    {
+        byte[] code1 = [0x60, 0x01];
+        byte[] code2 = [0x60, 0x02];
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code1), code1, Spec);
+            // Second InsertCode should see code1 as old code (from BAL), not empty (from inner)
+            tws.InsertCode(TestItem.AddressA, ValueKeccak.Compute(code2), code2, Spec);
+
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                // CodeChange doesn't Pop+Push, so both entries accumulate
+                Assert.That(ac!.CodeChanges.Count, Is.GreaterThanOrEqualTo(1));
+                Assert.That(ac.CodeChanges[ac.CodeChanges.Count - 1].NewCode, Is.EquivalentTo(code2));
+            }
+        }
+    }
+
+    [Test]
+    public void RepeatedStorageWrites_SameTx_UsesLatestValue_InParallel()
+    {
+        if (!parallel) Assert.Ignore("Storage cache only used in parallel mode");
+
+        StorageCell cell = new(TestItem.AddressA, 1);
+        (TracedAccessWorldState tws, IDisposable scope) = CreateTracingState(ws =>
+            ws.CreateAccount(TestItem.AddressA, 0));
+        using (scope)
+        {
+            tws.Set(cell, [0x01]);
+            tws.Set(cell, [0x02]);
+
+            AccountChanges? ac = tws.GetGeneratingBlockAccessList().GetAccountChanges(TestItem.AddressA);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ac, Is.Not.Null);
+                Assert.That(ac!.StorageChanges, Has.Count.EqualTo(1));
+                SlotChanges slotChanges = ac.StorageChanges[0];
+                // Storage changes also Pop+Push at same Index, so Count stays 1
+                Assert.That(slotChanges.Changes, Has.Count.EqualTo(1));
+                Assert.That(slotChanges.Changes.Values[0].NewValue, Is.EqualTo((UInt256)2));
+            }
+        }
+    }
 }
