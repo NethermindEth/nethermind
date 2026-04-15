@@ -13,6 +13,22 @@ namespace Nethermind.Logging
         void Trace(string text);
         void Error(string text, Exception ex = null);
 
+        /// <summary>
+        /// Logs a warning tagged with a <see cref="LogEventKind"/>. Sinks that support structured
+        /// events (e.g. NLog → Seq) attach the kind as a queryable property so operators can
+        /// filter these events separately from plain warnings. Default implementation drops the
+        /// kind and falls through to <see cref="Warn(string)"/>.
+        /// </summary>
+        void Warn(string text, LogEventKind kind) => Warn(text);
+
+        /// <summary>
+        /// Logs an error tagged with a <see cref="LogEventKind"/>. Sinks that support structured
+        /// events (e.g. NLog → Seq) attach the kind as a queryable property so operators can
+        /// filter these events separately from plain errors. Default implementation drops the
+        /// kind and falls through to <see cref="Error(string, Exception)"/>.
+        /// </summary>
+        void Error(string text, LogEventKind kind, Exception ex = null) => Error(text, ex);
+
         bool IsInfo { get; }
         bool IsWarn { get; }
         bool IsDebug { get; }

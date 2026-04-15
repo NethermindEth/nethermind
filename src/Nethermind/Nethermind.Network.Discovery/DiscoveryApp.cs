@@ -278,7 +278,7 @@ public class DiscoveryApp : IDiscoveryApp
         }
         catch (Exception e)
         {
-            if (_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
+            _logger.DebugError("Error during discovery initialization", e);
         }
     }
 
