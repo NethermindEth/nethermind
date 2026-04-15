@@ -337,7 +337,7 @@ public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
         }
         catch (FormatException e)
         {
-            throw new JsonException(e.Message, e);
+            throw new JsonException("hex string of odd length", e);
         }
     }
 
