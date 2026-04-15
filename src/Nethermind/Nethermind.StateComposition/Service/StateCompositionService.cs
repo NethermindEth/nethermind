@@ -280,8 +280,6 @@ internal partial class StateCompositionService : IStoppableService, IDisposable
             WriteSnapshotForHead(cumulativeBaseline, header.Number, header.StateRoot!);
         }
 
-        // ContractsWithStorage and EmptyAccounts are now part of CumulativeSizeStats and
-        // are wired through UpdateFromCumulativeStats — incremental diffs keep them current.
         Metrics.UpdateFromCumulativeStats(cumulativeBaseline);
         Metrics.UpdateDepthDistribution(_stateHolder.CurrentDepthStats);
         Metrics.StateCompScanDurationSeconds = sw.Elapsed.TotalSeconds;
