@@ -6,14 +6,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.EraE.Proofs;
 
-public class HistoricalSummariesRpcProvider(
+public sealed class HistoricalSummariesRpcProvider(
     Uri baseUrl,
     HttpClient? httpClient = null,
     TimeSpan? requestTimeout = null,
-    int maxRetries = 3,
+    int maxAttempts = 3,
     ILogManager? logManager = null) : IHistoricalSummariesProvider
 {
-    private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
+    private readonly BeaconApiHttpClient _beaconApiHttpClient = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
+    private readonly BeaconApiRetry<HistoricalSummary[]> _beaconApiRetry = new(maxAttempts);
     private readonly SemaphoreSlim _lock = new(1, 1);
     private const string Endpoint = "/eth/v2/debug/beacon/states";
 
@@ -21,7 +22,7 @@ public class HistoricalSummariesRpcProvider(
 
     public void Dispose()
     {
-        _client.Dispose();
+        _beaconApiHttpClient.Dispose();
         _lock.Dispose();
     }
 
@@ -60,9 +61,8 @@ public class HistoricalSummariesRpcProvider(
     private Task<HistoricalSummary[]> LoadWithRetryAsync(
         string stateId,
         CancellationToken cancellationToken) =>
-        BeaconApiRetry.RetryAsync(
+        _beaconApiRetry.ExecuteAsync(
             ct => LoadHistoricalSummariesAsync(stateId, ct),
-            maxRetries,
             cancellationToken);
 
     private async Task<HistoricalSummary[]> LoadHistoricalSummariesAsync(
@@ -70,7 +70,7 @@ public class HistoricalSummariesRpcProvider(
         CancellationToken cancellationToken)
     {
         Uri fullUri = new(baseUrl, $"{Endpoint}/{stateId}");
-        using JsonDocument? document = await _client.GetAsync(fullUri, cancellationToken).ConfigureAwait(false);
+        using JsonDocument? document = await _beaconApiHttpClient.GetAsync(fullUri, cancellationToken).ConfigureAwait(false);
         return document is null ? [] : ParseHistoricalSummaries(document.RootElement);
     }
 

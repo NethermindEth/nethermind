@@ -11,11 +11,12 @@ public sealed class BeaconApiRootsProvider(
     Uri baseUrl,
     HttpClient? httpClient = null,
     TimeSpan? requestTimeout = null,
-    int maxRetries = 3,
+    int maxAttempts = 3,
     ILogManager? logManager = null)
     : IBeaconRootsProvider
 {
     private readonly BeaconApiHttpClient _client = new(httpClient, requestTimeout ?? TimeSpan.FromSeconds(30), logManager?.GetClassLogger<BeaconApiHttpClient>() ?? default);
+    private readonly BeaconApiRetry<(ValueHash256, ValueHash256)?> _beaconApiRetry = new(maxAttempts);
 
     public void Dispose() => _client.Dispose();
 
@@ -25,18 +26,18 @@ public sealed class BeaconApiRootsProvider(
 
     private Task<(ValueHash256, ValueHash256)?> FetchWithRetryAsync(
         long slot, CancellationToken cancellationToken) =>
-        BeaconApiRetry.RetryAsync(async ct =>
+        _beaconApiRetry.ExecuteAsync(async ct =>
         {
             ValueHash256? blockRoot = await FetchBlockRootAsync(slot, ct).ConfigureAwait(false);
             if (!blockRoot.HasValue)
-                return default((ValueHash256, ValueHash256)?);
+                return null;
 
             ValueHash256? stateRoot = await FetchStateRootAsync(slot, ct).ConfigureAwait(false);
             if (!stateRoot.HasValue)
-                return default;
+                return null;
 
             return (blockRoot.Value, stateRoot.Value);
-        }, maxRetries, cancellationToken);
+        }, cancellationToken);
 
     private async Task<ValueHash256?> FetchBlockRootAsync(long slot, CancellationToken cancellationToken)
     {

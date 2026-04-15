@@ -6,17 +6,15 @@ using Polly.Retry;
 
 namespace Nethermind.EraE.Proofs;
 
-internal static class BeaconApiRetry
+internal sealed class BeaconApiRetry<T>
 {
-    internal static Task<T> RetryAsync<T>(
-        Func<CancellationToken, Task<T>> operation,
-        int maxRetries,
-        CancellationToken cancellationToken)
-    {
-        ResiliencePipeline<T> pipeline = new ResiliencePipelineBuilder<T>()
+    private readonly ResiliencePipeline<T> _pipeline;
+
+    internal BeaconApiRetry(int maxAttempts) =>
+        _pipeline = new ResiliencePipelineBuilder<T>()
             .AddRetry(new RetryStrategyOptions<T>
             {
-                MaxRetryAttempts = maxRetries - 1,
+                MaxRetryAttempts = maxAttempts,
                 ShouldHandle = new PredicateBuilder<T>()
                     .Handle<HttpRequestException>()
                     .Handle<TaskCanceledException>()
@@ -25,6 +23,7 @@ internal static class BeaconApiRetry
                     TimeSpan.FromSeconds(Math.Pow(2, args.AttemptNumber + 1)))
             })
             .Build();
-        return pipeline.ExecuteAsync(async ct => await operation(ct), cancellationToken).AsTask();
-    }
+
+    internal Task<T> ExecuteAsync(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken) =>
+        _pipeline.ExecuteAsync(ct => new ValueTask<T>(operation(ct)), cancellationToken).AsTask();
 }
