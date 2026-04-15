@@ -270,7 +270,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        string dataStr = BaseFeeReturnCode.ToHexString();
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $"{{\"from\": \"{SecondaryTestAddress}\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -283,7 +283,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        string dataStr = BaseFeeReturnCode.ToHexString();
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $"{{\"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -296,7 +296,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        string dataStr = BaseFeeReturnCode.ToHexString();
+        string dataStr = BaseFeeReturnCode.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $"{{\"type\": \"0x2\", \"value\":\"{1.Ether}\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -326,7 +326,7 @@ public partial class EthRpcModuleTests
             .RevertWithSolidityErrorEncoding(errorMessage)
             .Done;
 
-        string dataStr = code.ToHexString();
+        string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -348,7 +348,7 @@ public partial class EthRpcModuleTests
             .RevertWithCustomError(selector)
             .Done;
 
-        string dataStr = code.ToHexString();
+        string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -375,7 +375,7 @@ public partial class EthRpcModuleTests
             .RevertWithSolidityErrorEncoding(errorMessage)
             .Done;
 
-        string dataStr = code.ToHexString();
+        string dataStr = code.ToHexString(true);
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
             $$"""{"from": "{{SecondaryTestAddress}}", "type": "0x2", "data": "{{dataStr}}", "gas": 1000000}""");
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
@@ -466,7 +466,7 @@ public partial class EthRpcModuleTests
         long blockGasLimit = Convert.ToInt64(JToken.Parse(blockResponse).SelectToken("result.gasLimit")!.Value<string>(), 16);
 
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\", \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(
@@ -742,7 +742,7 @@ public partial class EthRpcModuleTests
     {
         string gasParam = specifiedGasLimit.HasValue ? $", \"gas\": \"0x{specifiedGasLimit.Value:X}\"" : "";
         TransactionForRpc transaction = ctx.Test.JsonSerializer.Deserialize<TransactionForRpc>(
-            $"{{\"from\": \"{SecondaryTestAddress}\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString()}\"}}");
+            $"{{\"from\": \"{SecondaryTestAddress}\"{gasParam}, \"data\": \"{InfiniteLoopCode.ToHexString(true)}\"}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
         JToken.Parse(serialized).Should().BeEquivalentTo(

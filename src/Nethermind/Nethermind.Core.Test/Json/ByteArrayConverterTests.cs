@@ -456,7 +456,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
     };
 
     [TestCaseSource(nameof(StrictOddLengthCases))]
-    public void StrictConverter_OddLength_ShouldThrowJsonException(string hex)
+    public void StrictConverter_InvalidHex_ShouldThrowJsonException(string hex)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
 

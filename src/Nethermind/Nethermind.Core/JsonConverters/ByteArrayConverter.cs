@@ -45,10 +45,10 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         {
             hex = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref hexRef, 2), length - 2);
         }
-        else if (strictHexFormat) ThrowFormatException();
+        else if (strictHexFormat) ThrowFormatException("hex string without 0x prefix");
 
         if (requireEvenLength && hex.Length % 2 != 0)
-            ThrowFormatException();
+            ThrowFormatException("hex string of odd length");
 
         return Bytes.FromUtf8HexString(hex);
     }
@@ -78,12 +78,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
                 {
                     sr.Rewind(1);
                     if (strictHexFormat)
-                        ThrowFormatException();
+                        ThrowFormatException("hex string without 0x prefix");
                 }
             }
             else if (strictHexFormat)
             {
-                ThrowFormatException();
+                ThrowFormatException("hex string without 0x prefix");
             }
         }
 
@@ -91,7 +91,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         if (totalHexChars <= 0) return [];
 
         if (requireEvenLength && (totalHexChars & 1) != 0)
-            ThrowFormatException();
+            ThrowFormatException("hex string of odd length");
 
         int odd = (int)(totalHexChars & 1);
         int outLen = (int)(totalHexChars >> 1) + odd;
@@ -175,7 +175,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowFormatException() => throw new FormatException();
+    private static void ThrowFormatException(string? message = null) => throw new FormatException(message);
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowInvalidOperationException() => throw new InvalidOperationException();
@@ -337,7 +337,7 @@ public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
         }
         catch (FormatException e)
         {
-            throw new JsonException("hex string of odd length", e);
+            throw new JsonException(e.Message, e);
         }
     }
 
