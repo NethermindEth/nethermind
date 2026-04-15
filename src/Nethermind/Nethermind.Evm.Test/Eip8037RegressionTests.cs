@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -325,15 +326,17 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
         const long blockGasLimit = 500_000;
         (Block block, Transaction firstTx) = PrepareTx(Activation, 100_000, stateHeavyCode, value: 0, blockGasLimit: blockGasLimit);
 
-        TestAllTracerWithOutput firstTracer = CreateTracer();
+        TestAllTracerWithOutput tracer = CreateTracer();
         TransactionResult firstResult = _processor.Execute(
             firstTx,
             new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
-            firstTracer);
+            tracer);
 
         Assert.That(firstResult, Is.EqualTo(TransactionResult.Ok));
-        Assert.That(firstTracer.GasConsumedResult.BlockStateGas, Is.GreaterThan(firstTx.BlockGasUsed),
+        Assert.That(tracer.GasConsumedResult.BlockStateGas, Is.GreaterThan(firstTx.BlockGasUsed),
             "The first tx should be state-gas dominated so header.gasUsed tracks the state dimension.");
+
+        block.Header.GasUsed = Math.Max(tracer.CumulativeRegularGasUsed, tracer.GasConsumedResult.BlockStateGas);
 
         long legacyRemaining = block.Header.GasLimit - block.Header.GasUsed;
         long secondTxGasLimit = legacyRemaining + 1;
@@ -352,15 +355,14 @@ public class Eip8037RegressionTests : VirtualMachineTestsBase
             value: 0,
             blockGasLimit: blockGasLimit);
 
-        TestAllTracerWithOutput secondTracer = CreateTracer();
         TransactionResult secondResult = _processor.Execute(
             secondTx,
             new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
-            secondTracer);
+            tracer);
 
         Assert.That(secondTxGasLimit, Is.GreaterThan(legacyRemaining));
         Assert.That(secondResult, Is.EqualTo(TransactionResult.Ok));
-        Assert.That(secondTracer.GasConsumedResult.EffectiveBlockGas, Is.LessThan(legacyRemaining));
+        Assert.That(tracer.GasConsumedResult.EffectiveBlockGas, Is.LessThan(legacyRemaining));
         Assert.That(block.Header.GasUsed, Is.LessThanOrEqualTo(block.Header.GasLimit));
     }
 

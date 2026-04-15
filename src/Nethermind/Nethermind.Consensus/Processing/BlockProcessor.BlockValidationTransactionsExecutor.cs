@@ -31,7 +31,8 @@ namespace Nethermind.Consensus.Processing
             {
                 Metrics.ResetBlockStats();
 
-                bool shouldValidateBlockAccessList = _balBuilder is not null && !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+                bool shouldValidateBlockAccessList = _balBuilder is not null && shouldValidate;
                 long? gasRemaining = shouldValidateBlockAccessList ? _balBuilder!.GasUsed() : null;
 
                 if (shouldValidateBlockAccessList)
@@ -45,7 +46,7 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
 
-                    if (!processingOptions.ContainsFlag(ProcessingOptions.NoValidation) && block.Header.GasUsed > block.Header.GasLimit)
+                    if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                     {
                         throw new InvalidBlockException(block, BlockErrorMessages.ExceededGasLimit);
                     }

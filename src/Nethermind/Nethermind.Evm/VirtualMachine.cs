@@ -1130,9 +1130,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
         // Pin the opcode methods array to obtain a fixed pointer, avoiding repeated bounds checks.
         // If we don't use a pointer we have bounds checks (however only 256 opcodes and opcode is a byte so know always in bounds).
         delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>[] opcodeArray = _opcodeMethods;
-        int opCodeCount = 0;
         fixed (delegate*<VirtualMachine<TGasPolicy>, ref EvmStack, ref TGasPolicy, ref int, EvmExceptionType>* opcodeMethods = &opcodeArray[0])
         {
+            int opCodeCount = 0;
             ref Instruction code = ref MemoryMarshal.GetReference(codeSection);
             // Iterate over the instructions using a while loop because opcodes may modify the program counter.
             while ((uint)programCounter < (uint)codeSection.Length)
@@ -1195,8 +1195,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>(
                 if (ReturnData is not null)
                     break;
             }
+
+            OpCodeCount += opCodeCount;
         }
-        OpCodeCount += opCodeCount;
 
         // Update the current VM state if no fatal exception occurred, or if the exception is of type Stop or Revert.
         if (exceptionType is EvmExceptionType.None or EvmExceptionType.Stop or EvmExceptionType.Revert)

@@ -427,3 +427,19 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
     void ReportFees(UInt256 fees, UInt256 burntFees);
 }
+
+/// <summary>
+/// Exposes block-local gas accounting needed to validate transaction gas allowance.
+/// </summary>
+public interface IBlockGasAccountingTracer
+{
+    /// <summary>
+    /// Cumulative pre-refund regular block gas used by already processed transactions.
+    /// </summary>
+    long CumulativeRegularGasUsed { get; }
+
+    /// <summary>
+    /// Cumulative post-refund receipt gas used by already processed transactions.
+    /// </summary>
+    long CumulativeReceiptGasUsed { get; }
+}

@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Text;
-using System.Text.Json.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -80,10 +79,6 @@ public class BlockHeader
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
-    [JsonIgnore]
-    public long RegularGasUsed { get; set; }
-    [JsonIgnore]
-    public long ReceiptGasUsed { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)

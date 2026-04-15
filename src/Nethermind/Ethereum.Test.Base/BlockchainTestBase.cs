@@ -373,16 +373,11 @@ public abstract class BlockchainTestBase
                 Assert.That(payloadStatus.ValidationError, Is.Not.Null,
                     $"engine_newPayloadV{newPayloadVersion} returned INVALID without validation error. Expected: {validationError}");
 
-                string[] expectedErrors = validationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                string[] normalizedValidationErrors = NormalizeValidationErrors(payloadStatus.ValidationError!);
-                bool matchesExpectedError = expectedErrors.Any(expectedError =>
-                    payloadStatus.ValidationError.Contains(expectedError, StringComparison.Ordinal) ||
-                    normalizedValidationErrors.Any(normalizedValidationError =>
-                        string.Equals(normalizedValidationError, expectedError, StringComparison.Ordinal)));
+                string[] mappedValidationErrors = MapValidationErrorsToEestExceptions(payloadStatus.ValidationError!);
 
-                Assert.That(matchesExpectedError, Is.True,
+                Assert.That(MatchesExpectedValidationError(payloadStatus.ValidationError!, mappedValidationErrors, validationError), Is.True,
                     $"engine_newPayloadV{newPayloadVersion} returned unexpected validation error. " +
-                    $"Actual: {payloadStatus.ValidationError}. Normalized: {string.Join("|", normalizedValidationErrors)}. Expected: {validationError}");
+                    $"Actual: {payloadStatus.ValidationError}. Normalized: {string.Join("|", mappedValidationErrors)}. Expected: {validationError}");
             }
 
             if (payloadStatus.Status == PayloadStatus.Valid)
@@ -393,7 +388,17 @@ public abstract class BlockchainTestBase
         }
     }
 
-    private static readonly (string ExpectedError, string Substring)[] s_validationErrorSubstringMappings =
+    private static bool MatchesExpectedValidationError(string validationError, string[] mappedValidationErrors, string expectedValidationError)
+    {
+        string[] expectedErrors = expectedValidationError.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return expectedErrors.Any(expectedError =>
+            validationError.Contains(expectedError, StringComparison.Ordinal) ||
+            mappedValidationErrors.Any(mappedValidationError =>
+                string.Equals(mappedValidationError, expectedError, StringComparison.Ordinal)));
+    }
+
+    // Mirrors execution-specs NethermindExceptionMapper: client validation text -> EEST exception ids.
+    private static readonly (string ExpectedError, string Substring)[] ValidationErrorSubstringMappings =
     [
         ("TransactionException.SENDER_NOT_EOA", "sender has deployed code"),
         ("TransactionException.INTRINSIC_GAS_TOO_LOW", "intrinsic gas too low"),
@@ -437,7 +442,7 @@ public abstract class BlockchainTestBase
 
     private const RegexOptions ValidationErrorRegexOptions = RegexOptions.CultureInvariant | RegexOptions.Compiled;
 
-    private static readonly (string ExpectedError, Regex Pattern)[] s_validationErrorRegexMappings =
+    private static readonly (string ExpectedError, Regex Pattern)[] ValidationErrorRegexMappings =
     [
         ("TransactionException.INSUFFICIENT_ACCOUNT_FUNDS", ValidationErrorRegex(@"insufficient sender balance|insufficient MaxFeePerGas for sender balance")),
         ("TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", ValidationErrorRegex(@"Transaction \d+ is not valid")),
@@ -458,11 +463,11 @@ public abstract class BlockchainTestBase
         ("BlockException.SYSTEM_CONTRACT_CALL_FAILED", ValidationErrorRegex(@"InvalidBlockLevelAccessList: Suggested block-level access list missing account changes")),
     ];
 
-    private static string[] NormalizeValidationErrors(string validationError)
+    private static string[] MapValidationErrorsToEestExceptions(string validationError)
     {
         List<string> normalizedErrors = [];
 
-        foreach ((string expectedError, string substring) in s_validationErrorSubstringMappings)
+        foreach ((string expectedError, string substring) in ValidationErrorSubstringMappings)
         {
             if (validationError.Contains(substring, StringComparison.Ordinal))
             {
@@ -470,7 +475,7 @@ public abstract class BlockchainTestBase
             }
         }
 
-        foreach ((string expectedError, Regex pattern) in s_validationErrorRegexMappings)
+        foreach ((string expectedError, Regex pattern) in ValidationErrorRegexMappings)
         {
             if (pattern.IsMatch(validationError))
             {
