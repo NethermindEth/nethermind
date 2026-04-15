@@ -71,9 +71,9 @@ public class StateCompositionStateHolderTests
 
     private static StateCompositionStateHolder HolderWithBaseline(
         CumulativeSizeStats baseline,
-        IReadOnlyDictionary<ValueHash256, long>? slotCountByAddress = null,
-        IReadOnlyDictionary<ValueHash256, int>? codeHashRefcounts = null,
-        IReadOnlyDictionary<ValueHash256, int>? codeHashSizes = null)
+        Dictionary<ValueHash256, long>? slotCountByAddress = null,
+        Dictionary<ValueHash256, int>? codeHashRefcounts = null,
+        Dictionary<ValueHash256, int>? codeHashSizes = null)
     {
         StateCompositionStateHolder holder = new();
         holder.InitializeIncremental(

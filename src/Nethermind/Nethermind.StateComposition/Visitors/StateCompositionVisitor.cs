@@ -187,8 +187,11 @@ internal sealed class StateCompositionVisitor(
 
     // Ownership transfers on the three tracker maps: the visitor is one-shot
     // (internal sealed, used under a `using` in StateCompositionService) and the
-    // holder takes its own defensive copy inside InitializeIncremental. Callers
-    // must not reuse the visitor post-GetStats.
+    // holder takes direct ownership of the backing dictionaries in
+    // InitializeIncremental. Callers must not reuse the visitor post-GetStats.
+    // _codeHashSizes is a ConcurrentDictionary during the parallel scan — it is
+    // converted to a plain Dictionary exactly once here so downstream consumers
+    // do not pay the concurrent-dict overhead on every diff.
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
     {
         VisitorCounters agg = GetAggregated();
@@ -217,7 +220,7 @@ internal sealed class StateCompositionVisitor(
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
             TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
             SlotCountByAddress = agg.SlotCountsByOwner,
-            CodeHashSizes = _codeHashSizes,
+            CodeHashSizes = new Dictionary<ValueHash256, int>(_codeHashSizes),
             CodeHashRefcounts = agg.CodeHashRefcounts,
         };
     }

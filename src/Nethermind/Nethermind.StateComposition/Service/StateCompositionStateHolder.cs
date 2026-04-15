@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
@@ -58,10 +59,15 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _incrementalStats; }
     }
 
-    public CumulativeDepthStats CurrentDepthStats
-    {
-        get { lock (_lock) return _currentDepthStats.Clone(); }
-    }
+    /// <summary>
+    /// Returns the live cumulative depth stats reference. Single-writer invariant:
+    /// mutations happen under <see cref="_lock"/> by either <c>PublishScanResults</c>
+    /// or <see cref="ApplyIncrementalDiffAndUpdate"/>, both of which run serialized.
+    /// Readers (metrics publishers) iterate immediately after receiving the ref and
+    /// do not cache it past the publish, so returning the instance avoids an O(9x16)
+    /// copy on every diff.
+    /// </summary>
+    public CumulativeDepthStats CurrentDepthStats => _currentDepthStats;
 
     public long IncrementalBlock
     {
@@ -92,6 +98,12 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
+    /// <summary>
+    /// Build a snapshot that points at the live tracker state. The caller serializes
+    /// the returned record synchronously (see <see cref="Snapshots.StateCompositionSnapshotStore.WriteSnapshot"/>)
+    /// under the single-writer invariant, so handing out the underlying references
+    /// is safe and avoids copying three dictionaries and a <c>long[9][16]</c> grid.
+    /// </summary>
     public StateCompositionSnapshot BuildSnapshot(
         CumulativeSizeStats stats,
         long blockNumber,
@@ -105,10 +117,10 @@ internal sealed class StateCompositionStateHolder
                 stateRoot,
                 _diffsSinceBaseline,
                 _lastScanMetadata?.BlockNumber ?? 0,
-                _currentDepthStats.Clone(),
-                new Dictionary<ValueHash256, long>(_slotCountByAddress),
-                new Dictionary<ValueHash256, int>(_codeHashRefcounts),
-                new Dictionary<ValueHash256, int>(_codeHashSizes));
+                _currentDepthStats,
+                _slotCountByAddress,
+                _codeHashRefcounts,
+                _codeHashSizes);
         }
     }
 
@@ -139,9 +151,9 @@ internal sealed class StateCompositionStateHolder
 
     public void InitializeIncremental(CumulativeSizeStats baseline, long blockNumber, Hash256 stateRoot,
         TrieDepthDistribution? depthDistribution = null,
-        IReadOnlyDictionary<ValueHash256, long>? slotCountByAddress = null,
-        IReadOnlyDictionary<ValueHash256, int>? codeHashRefcounts = null,
-        IReadOnlyDictionary<ValueHash256, int>? codeHashSizes = null)
+        Dictionary<ValueHash256, long>? slotCountByAddress = null,
+        Dictionary<ValueHash256, int>? codeHashRefcounts = null,
+        Dictionary<ValueHash256, int>? codeHashSizes = null)
     {
         lock (_lock)
         {
@@ -153,15 +165,12 @@ internal sealed class StateCompositionStateHolder
             if (depthDistribution.HasValue)
                 _currentDepthStats.SeedFromScan(depthDistribution.Value);
 
-            _slotCountByAddress = slotCountByAddress is null
-                ? new Dictionary<ValueHash256, long>()
-                : new Dictionary<ValueHash256, long>(slotCountByAddress);
-            _codeHashRefcounts = codeHashRefcounts is null
-                ? new Dictionary<ValueHash256, int>()
-                : new Dictionary<ValueHash256, int>(codeHashRefcounts);
-            _codeHashSizes = codeHashSizes is null
-                ? new Dictionary<ValueHash256, int>()
-                : new Dictionary<ValueHash256, int>(codeHashSizes);
+            // Caller hands ownership of the tracker maps to the holder. The visitor
+            // produces them once at scan completion and no longer references them;
+            // decoder-loaded maps are freshly materialized per decode call.
+            _slotCountByAddress = slotCountByAddress ?? new Dictionary<ValueHash256, long>();
+            _codeHashRefcounts = codeHashRefcounts ?? new Dictionary<ValueHash256, int>();
+            _codeHashSizes = codeHashSizes ?? new Dictionary<ValueHash256, int>();
         }
     }
 
@@ -199,11 +208,18 @@ internal sealed class StateCompositionStateHolder
 
             long codeBytes = updated.CodeBytesTotal;
 
-            // Histogram copy-on-write: keep the baseline ImmutableArray untouched so
-            // callers that captured it before this diff still see the pre-diff values.
-            long[] histogram = new long[CumulativeSizeStats.SlotHistogramLength];
+            // Histogram copy-on-write: build a fresh ImmutableArray so callers that
+            // captured the baseline before this diff still see the pre-diff values.
+            // CreateBuilder(16) + MoveToImmutable() hands the backing array to the
+            // ImmutableArray without a second allocation/copy pass.
+            ImmutableArray<long>.Builder histogram =
+                ImmutableArray.CreateBuilder<long>(CumulativeSizeStats.SlotHistogramLength);
+            histogram.Count = CumulativeSizeStats.SlotHistogramLength;
             if (!updated.SlotCountHistogram.IsDefault)
-                updated.SlotCountHistogram.CopyTo(histogram);
+            {
+                for (int i = 0; i < CumulativeSizeStats.SlotHistogramLength; i++)
+                    histogram[i] = updated.SlotCountHistogram[i];
+            }
 
             if (diff.CodeHashChanges is not null)
             {
@@ -224,7 +240,7 @@ internal sealed class StateCompositionStateHolder
             updated = updated with
             {
                 CodeBytesTotal = codeBytes,
-                SlotCountHistogram = System.Collections.Immutable.ImmutableArray.Create(histogram),
+                SlotCountHistogram = histogram.MoveToImmutable(),
             };
 
             _incrementalStats = updated;
@@ -282,7 +298,7 @@ internal sealed class StateCompositionStateHolder
     /// slot count drops to zero leave it. The histogram therefore always counts
     /// exactly the contracts in <see cref="_slotCountByAddress"/>.
     /// </summary>
-    private void ApplySlotCountChange(in SlotCountChange change, long[] histogram)
+    private void ApplySlotCountChange(in SlotCountChange change, ImmutableArray<long>.Builder histogram)
     {
         bool hadEntry = _slotCountByAddress.TryGetValue(change.AddressHash, out long oldCount);
         long newCount = oldCount + change.SlotDelta;
@@ -321,15 +337,12 @@ internal sealed class StateCompositionStateHolder
             if (snapshot.DepthStats is { IsSeeded: true } persisted)
                 _currentDepthStats.SeedFromSnapshot(persisted);
 
-            _slotCountByAddress = snapshot.SlotCountByAddress is null
-                ? new Dictionary<ValueHash256, long>()
-                : new Dictionary<ValueHash256, long>(snapshot.SlotCountByAddress);
-            _codeHashRefcounts = snapshot.CodeHashRefcounts is null
-                ? new Dictionary<ValueHash256, int>()
-                : new Dictionary<ValueHash256, int>(snapshot.CodeHashRefcounts);
-            _codeHashSizes = snapshot.CodeHashSizes is null
-                ? new Dictionary<ValueHash256, int>()
-                : new Dictionary<ValueHash256, int>(snapshot.CodeHashSizes);
+            // Take ownership of the decoder-allocated dictionaries directly. The
+            // decoder materializes fresh maps per call and does not retain them,
+            // so no other writer can observe or mutate these instances.
+            _slotCountByAddress = snapshot.SlotCountByAddress ?? new Dictionary<ValueHash256, long>();
+            _codeHashRefcounts = snapshot.CodeHashRefcounts ?? new Dictionary<ValueHash256, int>();
+            _codeHashSizes = snapshot.CodeHashSizes ?? new Dictionary<ValueHash256, int>();
         }
     }
 }
