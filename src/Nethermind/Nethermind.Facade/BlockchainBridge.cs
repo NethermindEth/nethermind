@@ -191,8 +191,10 @@ namespace Nethermind.Facade
             long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
             if (err is not null)
             {
-                bool allowanceFailure = err.StartsWith("gas required exceeds allowance", StringComparison.Ordinal);
+                bool allowanceFailure = err.StartsWith(GasEstimator.AllowanceExceedanceMsgPrefix, StringComparison.Ordinal);
                 if (allowanceFailure)
+                    // Allowance errors take precedence over any earlier revert: the revert was an artifact
+                    // of the gas cap, so surfacing it instead of the affordability error would be misleading.
                     error = err;
                 else
                     error ??= err;
