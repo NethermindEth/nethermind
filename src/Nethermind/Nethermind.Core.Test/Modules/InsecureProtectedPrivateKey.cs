@@ -10,8 +10,5 @@ public class InsecureProtectedPrivateKey(PrivateKey privateKey) : IProtectedPriv
 {
     public PublicKey PublicKey => privateKey.PublicKey;
     public CompressedPublicKey CompressedPublicKey => privateKey.CompressedPublicKey;
-    public PrivateKey Unprotect()
-    {
-        return privateKey;
-    }
+    public PrivateKey Unprotect() => privateKey;
 }

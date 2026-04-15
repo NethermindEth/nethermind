@@ -293,29 +293,21 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
-            return new(dbName, dbPath)
-            {
-            };
-        }
+        };
     }
 
     [TestFixture(true)]
     [TestFixture(false)]
     [Parallelizable(ParallelScope.None)]
-    public class DbOnTheRocksDbTests
+    public class DbOnTheRocksDbTests(bool useColumnDb)
     {
         string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
         private IDb _db = null!;
         IDisposable? _dbDisposable = null!;
 
-        private readonly bool _useColumnDb = false;
-
-        public DbOnTheRocksDbTests(bool useColumnDb)
-        {
-            _useColumnDb = useColumnDb;
-        }
+        private readonly bool _useColumnDb = useColumnDb;
 
         [SetUp]
         public void Setup()
@@ -464,18 +456,12 @@ namespace Nethermind.Db.Test
             AllocatedSpan.Should().Be(0);
         }
 
-        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName) => new(dbName, dbPath)
         {
-            return new(dbName, dbPath)
-            {
-            };
-        }
+        };
 
         [Test]
-        public void Can_get_all_on_empty()
-        {
-            _ = _db.GetAll().ToList();
-        }
+        public void Can_get_all_on_empty() => _ = _db.GetAll().ToList();
 
         [Test]
         public void Smoke_test_iterator()
@@ -645,24 +631,17 @@ namespace Nethermind.Db.Test
         }
     }
 
-    class CorruptedDbOnTheRocks : DbOnTheRocks
+    class CorruptedDbOnTheRocks(
+        string basePath,
+        DbSettings dbSettings,
+        IDbConfig dbConfig,
+        IRocksDbConfigFactory rocksDbConfigFactory,
+        ILogManager logManager,
+        IList<string>? columnFamilies = null,
+        RocksDbSharp.Native? rocksDbNative = null,
+        IFileSystem? fileSystem = null
+        ) : DbOnTheRocks(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
     {
-        public CorruptedDbOnTheRocks(
-            string basePath,
-            DbSettings dbSettings,
-            IDbConfig dbConfig,
-            IRocksDbConfigFactory rocksDbConfigFactory,
-            ILogManager logManager,
-            IList<string>? columnFamilies = null,
-            RocksDbSharp.Native? rocksDbNative = null,
-            IFileSystem? fileSystem = null
-        ) : base(basePath, dbSettings, dbConfig, rocksDbConfigFactory, logManager, columnFamilies, rocksDbNative, fileSystem)
-        {
-        }
-
-        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
-        {
-            throw new RocksDbSharpException("Corruption: test corruption");
-        }
+        protected override RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db) => throw new RocksDbSharpException("Corruption: test corruption");
     }
 }

@@ -20,37 +20,28 @@ using System;
 
 namespace Nethermind.Xdc;
 
-internal class XdcBlockProducer : BlockProducerBase
+internal class XdcBlockProducer(
+    IEpochSwitchManager epochSwitchManager,
+    IMasternodesCalculator masternodesCalculator,
+    IXdcConsensusContext xdcContext,
+    ITxSource txSource,
+    IBlockchainProcessor processor,
+    ISealer sealer,
+    IBlockTree blockTree,
+    IWorldState stateProvider,
+    IGasLimitCalculator? gasLimitCalculator,
+    ITimestamper? timestamper,
+    ISpecProvider specProvider,
+    ILogManager logManager,
+    IDifficultyCalculator? difficultyCalculator,
+    IBlocksConfig? blocksConfig) : BlockProducerBase(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
 {
-    protected readonly IEpochSwitchManager epochSwitchManager;
-    protected readonly IMasternodesCalculator masternodesCalculator;
-    protected readonly IXdcConsensusContext xdcContext;
-    protected readonly ISealer sealer;
-    protected readonly ISpecProvider specProvider;
+    protected readonly IEpochSwitchManager epochSwitchManager = epochSwitchManager;
+    protected readonly IMasternodesCalculator masternodesCalculator = masternodesCalculator;
+    protected readonly IXdcConsensusContext xdcContext = xdcContext;
+    protected readonly ISealer sealer = sealer;
+    protected readonly ISpecProvider specProvider = specProvider;
     private static readonly ExtraConsensusDataDecoder _extraConsensusDataDecoder = new();
-
-    public XdcBlockProducer(
-        IEpochSwitchManager epochSwitchManager,
-        IMasternodesCalculator masternodesCalculator,
-        IXdcConsensusContext xdcContext,
-        ITxSource txSource,
-        IBlockchainProcessor processor,
-        ISealer sealer,
-        IBlockTree blockTree,
-        IWorldState stateProvider,
-        IGasLimitCalculator? gasLimitCalculator,
-        ITimestamper? timestamper,
-        ISpecProvider specProvider,
-        ILogManager logManager,
-        IDifficultyCalculator? difficultyCalculator,
-        IBlocksConfig? blocksConfig) : base(txSource, processor, sealer, blockTree, stateProvider, gasLimitCalculator, timestamper, specProvider, logManager, difficultyCalculator, blocksConfig)
-    {
-        this.epochSwitchManager = epochSwitchManager;
-        this.masternodesCalculator = masternodesCalculator;
-        this.xdcContext = xdcContext;
-        this.sealer = sealer;
-        this.specProvider = specProvider;
-    }
 
     protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes payloadAttributes)
     {

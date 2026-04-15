@@ -48,10 +48,7 @@ internal class TransactionProcessorEip7702Tests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser.Dispose();
-    }
+    public void TearDown() => _worldStateCloser.Dispose();
 
     [Test]
     public void Execute_TxHasAuthorizationWithCodeThatSavesCallerAddress_ExpectedAddressIsSaved()

@@ -18,13 +18,8 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization.Peers
 {
-    public class PeerInfo
+    public class PeerInfo(ISyncPeer syncPeer)
     {
-        public PeerInfo(ISyncPeer syncPeer)
-        {
-            SyncPeer = syncPeer;
-        }
-
         public NodeClientType PeerClientType => SyncPeer?.ClientType ?? NodeClientType.Unknown;
 
         public AllocationContexts AllocatedContexts { get; private set; }
@@ -33,7 +28,7 @@ namespace Nethermind.Synchronization.Peers
 
         private ConcurrentDictionary<AllocationContexts, DateTime?> SleepingSince { get; } = new();
 
-        public ISyncPeer SyncPeer { get; }
+        public ISyncPeer SyncPeer { get; } = syncPeer;
 
         public bool IsInitialized => SyncPeer.IsInitialized;
 
@@ -61,24 +56,15 @@ namespace Nethermind.Synchronization.Peers
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool CanBeAllocated(AllocationContexts contexts)
-        {
-            return !IsAsleep(contexts) &&
+        public bool CanBeAllocated(AllocationContexts contexts) => !IsAsleep(contexts) &&
                    !IsAllocated(contexts) &&
                    this.SupportsAllocation(contexts);
-        }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsAsleep(AllocationContexts contexts)
-        {
-            return (contexts & SleepingContexts) != AllocationContexts.None;
-        }
+        public bool IsAsleep(AllocationContexts contexts) => (contexts & SleepingContexts) != AllocationContexts.None;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool IsAllocated(AllocationContexts contexts)
-        {
-            return (contexts & AllocatedContexts) != AllocationContexts.None;
-        }
+        public bool IsAllocated(AllocationContexts contexts) => (contexts & AllocatedContexts) != AllocationContexts.None;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryAllocate(AllocationContexts contexts)
@@ -93,10 +79,7 @@ namespace Nethermind.Synchronization.Peers
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Free(AllocationContexts contexts)
-        {
-            AllocatedContexts &= ~contexts;
-        }
+        public void Free(AllocationContexts contexts) => AllocatedContexts &= ~contexts;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void PutToSleep(AllocationContexts contexts, DateTime dateTime)
@@ -182,10 +165,7 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private static string BuildContextString(AllocationContexts contexts)
-        {
-            return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
-        }
+        private static string BuildContextString(AllocationContexts contexts) => $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}{((contexts & AllocationContexts.ForwardHeader) == AllocationContexts.ForwardHeader ? "F" : " ")}";
 
         public void EnsureInitialized()
         {

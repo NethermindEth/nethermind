@@ -12,17 +12,12 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.Blocks
 {
-    public class ByTotalDifficultyPeerAllocationStrategy : IPeerAllocationStrategy
+    public class ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead) : IPeerAllocationStrategy
     {
-        private readonly long? _minBlocksAhead;
+        private readonly long? _minBlocksAhead = minBlocksAhead;
 
         private const decimal MinDiffPercentageForSpeedSwitch = 0.10m;
         private const int MinDiffForSpeedSwitch = 10;
-
-        public ByTotalDifficultyPeerAllocationStrategy(long? minBlocksAhead)
-        {
-            _minBlocksAhead = minBlocksAhead;
-        }
 
         private static long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
         {

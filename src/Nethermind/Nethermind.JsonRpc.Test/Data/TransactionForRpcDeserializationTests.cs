@@ -25,10 +25,7 @@ public class TransactionForRpcDeserializationTests
     }
 
     [Test]
-    public void Test_TxTypeIsDeclined_WhenUnknown()
-    {
-        Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>("""{"type":"0x10"}"""));
-    }
+    public void Test_TxTypeIsDeclined_WhenUnknown() => Assert.Throws<JsonException>(() => _serializer.Deserialize<TransactionForRpc>("""{"type":"0x10"}"""));
 
     public static IEnumerable TxJsonTestCases
     {

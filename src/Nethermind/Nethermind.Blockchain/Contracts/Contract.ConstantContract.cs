@@ -45,14 +45,9 @@ namespace Nethermind.Blockchain.Contracts
                 Call<T1, T2>(new CallInfo(parentHeader, functionName, sender, arguments) { ContractAddress = contractAddress });
         }
 
-        protected abstract class ConstantContractBase : IConstantContract
+        protected abstract class ConstantContractBase(Contract contract) : IConstantContract
         {
-            protected readonly Contract _contract;
-
-            protected ConstantContractBase(Contract contract)
-            {
-                _contract = contract;
-            }
+            protected readonly Contract _contract = contract;
 
             protected Transaction GenerateTransaction(CallInfo callInfo) =>
                 _contract.GenerateTransaction<SystemTransaction>(callInfo.ContractAddress, callInfo.FunctionName, callInfo.Sender, DefaultConstantContractGasLimit, callInfo.ParentHeader, callInfo.Arguments);
@@ -68,15 +63,9 @@ namespace Nethermind.Blockchain.Contracts
         /// <summary>
         /// Constant version of the contract. Allows to call contract methods without state modification.
         /// </summary>
-        protected class ConstantContract : ConstantContractBase
+        protected class ConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : ConstantContractBase(contract)
         {
-            private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-
-            public ConstantContract(Contract contract, IReadOnlyTxProcessorSource readOnlyTxProcessorSource)
-                : base(contract)
-            {
-                _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
-            }
+            private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource = readOnlyTxProcessorSource ?? throw new ArgumentNullException(nameof(readOnlyTxProcessorSource));
 
             public override object[] Call(CallInfo callInfo)
             {
@@ -106,23 +95,15 @@ namespace Nethermind.Blockchain.Contracts
             }
         }
 
-        public class CallInfo
+        public class CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
         {
-            public BlockHeader ParentHeader { get; }
-            public string FunctionName { get; }
-            public Address Sender { get; }
-            public object[] Arguments { get; }
+            public BlockHeader ParentHeader { get; } = parentHeader;
+            public string FunctionName { get; } = functionName;
+            public Address Sender { get; } = sender;
+            public object[] Arguments { get; } = arguments;
             public object[]? Result { get; set; }
             public object[]? MissingContractResult { get; set; }
             public Address? ContractAddress { get; set; }
-
-            public CallInfo(BlockHeader parentHeader, string functionName, Address sender, params object[] arguments)
-            {
-                ParentHeader = parentHeader;
-                FunctionName = functionName;
-                Sender = sender;
-                Arguments = arguments;
-            }
 
             public bool IsDefaultResult => ReferenceEquals(Result, MissingContractResult);
         }

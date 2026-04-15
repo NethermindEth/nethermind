@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Core
 {
-    public class ManualTimestamper : ITimestamper
+    public class ManualTimestamper(DateTime initialValue) : ITimestamper
     {
         public ManualTimestamper() : this(DateTime.UtcNow) { }
 
@@ -19,21 +19,10 @@ namespace Nethermind.Core
             }
         }
 
-        public ManualTimestamper(DateTime initialValue)
-        {
-            UtcNow = initialValue;
-        }
+        public DateTime UtcNow { get; set; } = initialValue;
 
-        public DateTime UtcNow { get; set; }
+        public void Add(TimeSpan timeSpan) => UtcNow += timeSpan;
 
-        public void Add(TimeSpan timeSpan)
-        {
-            UtcNow += timeSpan;
-        }
-
-        public void Set(DateTime utcNow)
-        {
-            UtcNow = utcNow;
-        }
+        public void Set(DateTime utcNow) => UtcNow = utcNow;
     }
 }

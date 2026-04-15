@@ -61,10 +61,7 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _keyC = Bytes.FromHexString("00000000001aa");
         private static readonly byte[] _keyD = Bytes.FromHexString("00000000001bb");
 
-        private IPruningTrieStore CreateTrieStore(IDb? memDb = null)
-        {
-            return TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
-        }
+        private IPruningTrieStore CreateTrieStore(IDb? memDb = null) => TestTrieStoreFactory.Build(memDb ?? new MemDb(), Prune.WhenCacheReaches(1.MB), Persist.EveryBlock, _logManager);
 
         [Test]
         public void Single_leaf()
@@ -772,12 +769,9 @@ namespace Nethermind.Trie.Test
 
                 return trieStore;
             }
-            public override string ToString()
-            {
-                return (
+            public override string ToString() => (
                     $"persistEveryN: {PersistEveryN}, " +
                     $"lookup: {LookupLimit}");
-            }
 
             public bool IsMissingAccountExpected(int depth)
             {

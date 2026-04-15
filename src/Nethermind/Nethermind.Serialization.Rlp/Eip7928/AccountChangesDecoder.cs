@@ -83,15 +83,12 @@ public class AccountChangesDecoder : IRlpValueDecoder<AccountChanges>, IRlpStrea
         stream.EncodeArray([.. item.CodeChanges], rlpBehaviors);
     }
 
-    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors)
-    {
-        return Rlp.LengthOfAddressRlp
+    public static int GetContentLength(AccountChanges item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfAddressRlp
             + SequenceLength(item.StorageChanges, SlotChangesDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.StorageReads, StorageReadDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.BalanceChanges, BalanceChangeDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.NonceChanges, NonceChangeDecoder.Instance, rlpBehaviors)
             + SequenceLength(item.CodeChanges, CodeChangeDecoder.Instance, rlpBehaviors);
-    }
 
     private static int SequenceLength<T>(IEnumerable<T> items, IRlpStreamEncoder<T> encoder, RlpBehaviors rlpBehaviors)
     {

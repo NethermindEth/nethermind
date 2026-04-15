@@ -10,18 +10,13 @@ namespace Nethermind.Crypto
 {
     public partial class ProtectedData
     {
-        private class AspNetWrapper : IProtector
+        private class AspNetWrapper(string keyStoreDir) : IProtector
         {
             private const string AppName = "Nethermind";
             private const string BaseName = AppName + "_";
             private const string ProtectionDir = "protection_keys";
 
-            private readonly string _keyStoreDir;
-
-            public AspNetWrapper(string keyStoreDir)
-            {
-                _keyStoreDir = keyStoreDir;
-            }
+            private readonly string _keyStoreDir = keyStoreDir;
 
             public byte[] Protect(byte[] userData, byte[] optionalEntropy, DataProtectionScope scope)
             {
@@ -35,12 +30,9 @@ namespace Nethermind.Crypto
                 return protector.Unprotect(encryptedData);
             }
 
-            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy)
-            {
-                return scope == DataProtectionScope.CurrentUser
+            private IDataProtector GetProtector(DataProtectionScope scope, byte[] optionalEntropy) => scope == DataProtectionScope.CurrentUser
                     ? GetUserProtector(optionalEntropy)
                     : GetMachineProtector(optionalEntropy);
-            }
 
             private IDataProtector GetUserProtector(byte[] optionalEntropy)
             {

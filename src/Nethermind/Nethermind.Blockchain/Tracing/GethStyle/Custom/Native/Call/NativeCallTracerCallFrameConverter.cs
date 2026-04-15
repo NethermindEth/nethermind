@@ -90,8 +90,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
         }
     }
 
-    public override NativeCallTracerCallFrame Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
+    public override NativeCallTracerCallFrame Read(
+        ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         throw new NotSupportedException();
-    }
 }

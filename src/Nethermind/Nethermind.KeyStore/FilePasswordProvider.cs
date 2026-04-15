@@ -9,14 +9,9 @@ using Nethermind.Core;
 
 namespace Nethermind.KeyStore
 {
-    public class FilePasswordProvider : BasePasswordProvider
+    public class FilePasswordProvider(Func<Address, string> addressToFileMapper) : BasePasswordProvider
     {
-        private readonly Func<Address, string> _addressToFileMapper;
-
-        public FilePasswordProvider(Func<Address, string> addressToFileMapper)
-        {
-            _addressToFileMapper = addressToFileMapper ?? throw new ArgumentNullException(nameof(addressToFileMapper));
-        }
+        private readonly Func<Address, string> _addressToFileMapper = addressToFileMapper ?? throw new ArgumentNullException(nameof(addressToFileMapper));
 
         public override SecureString GetPassword(Address address)
         {

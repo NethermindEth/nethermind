@@ -21,34 +21,17 @@ namespace Nethermind.Sockets.Test;
 
 public class WebSocketExtensionsTests
 {
-    private class WebSocketMock : WebSocket
+    private class WebSocketMock(Queue<WebSocketReceiveResult> receiveResults) : WebSocket
     {
-        private readonly Queue<WebSocketReceiveResult> _receiveResults;
+        private readonly Queue<WebSocketReceiveResult> _receiveResults = receiveResults;
 
-        public WebSocketMock(Queue<WebSocketReceiveResult> receiveResults)
-        {
-            _receiveResults = receiveResults;
-        }
+        public override void Abort() => throw new NotImplementedException();
 
-        public override void Abort()
-        {
-            throw new NotImplementedException();
-        }
+        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public override Task CloseAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
-        {
-            return Task.CompletedTask;
-        }
+        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken) => throw new NotImplementedException();
 
-        public override Task CloseOutputAsync(WebSocketCloseStatus closeStatus, string statusDescription, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
-
-        public override void Dispose()
-        {
-            throw new NotImplementedException();
-        }
+        public override void Dispose() => throw new NotImplementedException();
 
         public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
         {
@@ -65,10 +48,7 @@ public class WebSocketExtensionsTests
             return Task.FromResult(_receiveResults.Dequeue());
         }
 
-        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken)
-        {
-            throw new NotImplementedException();
-        }
+        public override Task SendAsync(ArraySegment<byte> buffer, WebSocketMessageType messageType, bool endOfMessage, CancellationToken cancellationToken) => throw new NotImplementedException();
 
         public override WebSocketCloseStatus? CloseStatus { get; }
         public override string CloseStatusDescription { get; }

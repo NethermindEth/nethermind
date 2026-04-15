@@ -34,14 +34,11 @@ namespace Nethermind.Xdc.Test;
 
 internal class SpecialTransactionsTests
 {
-    private bool IsTimeForOnchainSignature(IXdcReleaseSpec spec, long blockNumber)
-    {
-        return blockNumber % spec.MergeSignRange == 0;
-    }
+    private bool IsTimeForOnchainSignature(IXdcReleaseSpec spec, long blockNumber) =>
+        blockNumber % spec.MergeSignRange == 0;
 
-    private Task ProposeBatchTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, int count, XdcTestBlockchain chain)
-    {
-        return Task.Run(() =>
+    private Task ProposeBatchTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, int count, XdcTestBlockchain chain) =>
+        Task.Run(() =>
         {
             (PrivateKey, PrivateKey) swap(PrivateKey a, PrivateKey b) => (b, a);
 
@@ -51,7 +48,6 @@ internal class SpecialTransactionsTests
                 CreateTransferTxFrom(source, destination, amount, chain);
             }
         });
-    }
 
     private Transaction CreateTransferTxFrom(PrivateKey source, PrivateKey destination, UInt256 amount, XdcTestBlockchain chain)
     {

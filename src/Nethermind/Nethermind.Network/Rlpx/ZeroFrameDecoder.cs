@@ -38,10 +38,7 @@ namespace Nethermind.Network.Rlpx
             IFrameCipher frameCipher,
             FrameMacProcessor frameMacProcessor,
             int maxFrameSize)
-            : this(frameCipher, frameMacProcessor)
-        {
-            _maxFrameSize = maxFrameSize;
-        }
+            : this(frameCipher, frameMacProcessor) => _maxFrameSize = maxFrameSize;
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
@@ -135,10 +132,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DecryptHeader()
-        {
-            _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
-        }
+        private void DecryptHeader() => _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AuthenticateHeader(IByteBuffer input)

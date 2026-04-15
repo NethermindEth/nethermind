@@ -15,10 +15,7 @@ namespace Nethermind.JsonRpc.Converters;
 
 public class TxReceiptConverter : JsonConverter<TxReceipt>
 {
-    public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-    {
-        return JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
-    }
+    public override TxReceipt? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => JsonSerializer.Deserialize<ReceiptForRpc>(ref reader, options)?.ToReceipt();
 
     public override void Write(Utf8JsonWriter writer, TxReceipt value, JsonSerializerOptions options)
     {

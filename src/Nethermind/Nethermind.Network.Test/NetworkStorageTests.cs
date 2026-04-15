@@ -32,10 +32,7 @@ public class NetworkStorageTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _tempDir.Dispose();
-    }
+    public void TearDown() => _tempDir.Dispose();
 
     private TempPath _tempDir;
     private INetworkStorage _storage;

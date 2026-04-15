@@ -118,10 +118,7 @@ public class ExecutionProcessorTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        _worldStateCloser?.Dispose();
-    }
+    public void TearDown() => _worldStateCloser?.Dispose();
 
     private static Hash256 CalculateHash(
         TestExecutionRequest[] depositRequests,
@@ -181,8 +178,5 @@ public class ExecutionProcessorTests
             .WithAddress(DepositContractAddress).TestObject;
 
     [Test]
-    public void ShouldUseCorrectDepositTopic()
-    {
-        Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
-    }
+    public void ShouldUseCorrectDepositTopic() => Assert.That(ExecutionRequestsProcessor.DepositEventAbi.Hash, Is.EqualTo(new Hash256("0x649bbc62d0e31342afea4e5cd82d4049e7e1ee912fc0889aa790803be39038c5")));
 }

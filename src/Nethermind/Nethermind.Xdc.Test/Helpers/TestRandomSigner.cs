@@ -31,8 +31,6 @@ internal class TestRandomSigner(List<PrivateKey> masternodeCandidates, IBlockTre
         return _ecdsa.Sign(Key, in message);
     }
 
-    public ValueTask Sign(Transaction tx)
-    {
+    public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException();
-    }
 }

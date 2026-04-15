@@ -93,10 +93,7 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         }
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
-    {
-        return new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
-    }
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
 
     public void Flush() => _inner.Flush();
 

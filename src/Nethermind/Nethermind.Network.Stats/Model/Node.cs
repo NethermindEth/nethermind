@@ -131,10 +131,7 @@ namespace Nethermind.Stats.Model
 
         public bool? ValidatedProtocol { get; set; }
 
-        private static IPEndPoint GetIPEndPoint(string host, int port)
-        {
-            return new IPEndPoint(IPAddress.Parse(host), port);
-        }
+        private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 
         public override bool Equals(object obj)
         {
@@ -157,19 +154,16 @@ namespace Nethermind.Stats.Model
 
         public string ToString(string format) => ToString(format, null);
 
-        public string ToString(string format, IFormatProvider formatProvider)
+        public string ToString(string format, IFormatProvider formatProvider) => format switch
         {
-            return format switch
-            {
-                Format.Short => $"{Host}:{Port}",
-                Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
-                Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
-                Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
-                Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
-                Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
-                _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
-            };
-        }
+            Format.Short => $"{Host}:{Port}",
+            Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
+            Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
+            Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
+            Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",
+            Format.WithPublicKey => $"enode://{Id.ToString(false)}@{Host}:{Port}|{Id.Address}",
+            _ => $"enode://{Id.ToString(false)}@{Host}:{Port}"
+        };
 
         public bool Equals(Node other)
         {

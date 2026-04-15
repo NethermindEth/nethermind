@@ -23,32 +23,22 @@ namespace Nethermind.Consensus.AuRa.Transactions
     /// A production implementation of a randomness contract can be found here:
     /// https://github.com/poanetwork/posdao-contracts/blob/master/contracts/RandomAuRa.sol
     /// </summary>
-    public class RandomContractTxSource : ITxSource
+    public class RandomContractTxSource(
+        IList<IRandomContract> contracts,
+        IEciesCipher eciesCipher,
+        ISigner signer,
+        IProtectedPrivateKey previousCryptoKey, // this is for backwards-compatibility when upgrading validator node
+        ICryptoRandom cryptoRandom,
+        ILogManager logManager) : ITxSource
     {
-        private readonly IEciesCipher _eciesCipher;
-        private readonly ISigner _signer;
-        private readonly IProtectedPrivateKey _previousCryptoKey;
-        private readonly IList<IRandomContract> _contracts;
-        private readonly ICryptoRandom _random;
-        private readonly ILogger _logger;
+        private readonly IEciesCipher _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
+        private readonly ISigner _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+        private readonly IProtectedPrivateKey _previousCryptoKey = previousCryptoKey ?? throw new ArgumentNullException(nameof(previousCryptoKey));
+        private readonly IList<IRandomContract> _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
+        private readonly ICryptoRandom _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+        private readonly ILogger _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool SupportsBlobs => false;
-
-        public RandomContractTxSource(
-            IList<IRandomContract> contracts,
-            IEciesCipher eciesCipher,
-            ISigner signer,
-            IProtectedPrivateKey previousCryptoKey, // this is for backwards-compatibility when upgrading validator node
-            ICryptoRandom cryptoRandom,
-            ILogManager logManager)
-        {
-            _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
-            _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-            _previousCryptoKey = previousCryptoKey ?? throw new ArgumentNullException(nameof(previousCryptoKey));
-            _random = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _logger = logManager?.GetClassLogger<RandomContractTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
-        }
 
         public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttribute, bool filterSources)
         {

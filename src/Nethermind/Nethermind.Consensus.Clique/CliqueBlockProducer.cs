@@ -90,10 +90,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Hash256 hash)
-    {
-        _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
-    }
+    public void ProduceOnTopOf(Hash256 hash) => _signalsQueue.Writer.TryWrite(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
 
     public IReadOnlyDictionary<Address, bool> GetProposals() => _blockProducer.Proposals.ToDictionary();
 
@@ -215,10 +212,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
         return tcs.Task;
     }
 
-    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
-    {
-        _signalsQueue.Writer.TryWrite(e.Block);
-    }
+    private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e) => _signalsQueue.Writer.TryWrite(e.Block);
 
     private async Task ConsumeSignal()
     {

@@ -29,10 +29,7 @@ public class MerkleTests
     [TestCase(4U, 4U)]
     [TestCase(uint.MaxValue / 2, 2147483648U)]
     [TestCase(uint.MaxValue / 2 + 1, 2147483648U)]
-    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
 
     [TestCase(ulong.MinValue, 1UL)]
     [TestCase(1UL, 1UL)]
@@ -41,10 +38,7 @@ public class MerkleTests
     [TestCase(4UL, 4UL)]
     [TestCase(ulong.MaxValue / 2, 9223372036854775808UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 9223372036854775808UL)]
-    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwo(value), Is.EqualTo(expectedResult));
 
     [TestCase(ulong.MinValue, 0UL)]
     [TestCase(1UL, 0UL)]
@@ -53,16 +47,10 @@ public class MerkleTests
     [TestCase(4UL, 2UL)]
     [TestCase(ulong.MaxValue / 2, 63UL)]
     [TestCase(ulong.MaxValue / 2 + 1, 63UL)]
-    public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult)
-    {
-        Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
-    }
+    public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult) => Assert.That(Merkle.NextPowerOfTwoExponent(value), Is.EqualTo(expectedResult));
 
     [Test]
-    public void Zero_hashes_0_is_correct()
-    {
-        Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
-    }
+    public void Zero_hashes_0_is_correct() => Assert.That(Merkle.ZeroHashes[0], Is.EqualTo(UInt256.Zero));
 
     [Test]
     public void Can_merkleize_bool()

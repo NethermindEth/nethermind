@@ -36,9 +36,7 @@ public class EthRpcSimulateTestsBase
         return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
-    private static string GetECRecoverContractJsonAbi(string name = "recover")
-    {
-        return $@"
+    private static string GetECRecoverContractJsonAbi(string name = "recover") => $@"
 [
   {{
     ""payable"": false,
@@ -77,7 +75,6 @@ public class EthRpcSimulateTestsBase
 	""type"": ""function""
   }}
 ]";
-    }
 
     public static byte[] GetTxData(TestRpcBlockchain chain, PrivateKey account, string name = "recover")
     {

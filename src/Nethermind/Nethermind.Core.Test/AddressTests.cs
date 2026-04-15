@@ -50,10 +50,7 @@ public class AddressTests
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", true, true)]
     [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", false, false)]
     [TestCase("52908400098527886E0F7030069857D2E4169EE7", false, true)]
-    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult)
-    {
-        Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
-    }
+    public void Can_check_if_address_is_valid(string addressHex, bool allowPrefix, bool expectedResult) => Assert.That(Address.IsValidAddress(addressHex, allowPrefix), Is.EqualTo(expectedResult));
 
     [Test]
     public void Bytes_are_correctly_assigned()

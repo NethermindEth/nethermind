@@ -54,10 +54,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Restore(Snapshot.Empty);
     }
 
-    private WorldState BuildStorageProvider(Context ctx)
-    {
-        return ctx.StateProvider;
-    }
+    private WorldState BuildStorageProvider(Context ctx) => ctx.StateProvider;
 
     [TestCase(-1)]
     [TestCase(0)]
@@ -803,56 +800,29 @@ public class StorageProviderTests(bool useFlat)
     private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
     {
 
-        public bool HasRoot(BlockHeader baseBlock)
-        {
-            return scopeProvider.HasRoot(baseBlock);
-        }
+        public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
 
-        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock)
-        {
-            return new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
-        }
+        public IWorldStateScopeProvider.IScope BeginScope(BlockHeader baseBlock) => new ScopeDecorator(scopeProvider.BeginScope(baseBlock), writtenData);
 
         private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
         {
-            public void Dispose()
-            {
-                baseScope.Dispose();
-            }
+            public void Dispose() => baseScope.Dispose();
 
             public Hash256 RootHash => baseScope.RootHash;
 
-            public void UpdateRootHash()
-            {
-                baseScope.UpdateRootHash();
-            }
+            public void UpdateRootHash() => baseScope.UpdateRootHash();
 
-            public Account Get(Address address)
-            {
-                return baseScope.Get(address);
-            }
+            public Account Get(Address address) => baseScope.Get(address);
 
-            public void HintGet(Address address, Account account)
-            {
-                baseScope.HintGet(address, account);
-            }
+            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
 
             public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
 
-            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
-            {
-                return baseScope.CreateStorageTree(address);
-            }
+            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => baseScope.CreateStorageTree(address);
 
-            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
-            {
-                return new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
-            }
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatchDecorator(baseScope.StartWriteBatch(estimatedAccountNum), writtenData);
 
-            public void Commit(long blockNumber)
-            {
-                baseScope.Commit(blockNumber);
-            }
+            public void Commit(long blockNumber) => baseScope.Commit(blockNumber);
         }
 
         private class WriteBatchDecorator(
@@ -861,10 +831,7 @@ public class StorageProviderTests(bool useFlat)
         )
             : IWorldStateScopeProvider.IWorldStateWriteBatch
         {
-            public void Dispose()
-            {
-                writeBatch.Dispose();
-            }
+            public void Dispose() => writeBatch.Dispose();
 
             public event EventHandler<IWorldStateScopeProvider.AccountUpdated> OnAccountUpdated
             {
@@ -872,16 +839,9 @@ public class StorageProviderTests(bool useFlat)
                 remove => writeBatch.OnAccountUpdated -= value;
             }
 
-            public void Set(Address key, Account account)
-            {
-                writeBatch.Set(key, account);
-            }
+            public void Set(Address key, Account account) => writeBatch.Set(key, account);
 
-            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries)
-            {
-                return new StorageWriteBatchDecorator(writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, writtenData);
-
-            }
+            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => new StorageWriteBatchDecorator(writeBatch.CreateStorageWriteBatch(key, estimatedEntries), key, writtenData);
         }
 
         private class StorageWriteBatchDecorator(
@@ -890,10 +850,7 @@ public class StorageProviderTests(bool useFlat)
             WrittenData writtenData
         ) : IWorldStateScopeProvider.IStorageWriteBatch
         {
-            public void Dispose()
-            {
-                baseStorageBatch?.Dispose();
-            }
+            public void Dispose() => baseStorageBatch?.Dispose();
 
             public void Set(in UInt256 index, byte[] value)
             {

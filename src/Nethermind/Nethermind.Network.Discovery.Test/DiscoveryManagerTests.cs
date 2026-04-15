@@ -47,10 +47,7 @@ namespace Nethermind.Network.Discovery.Test
         private PublicKey _publicKey = null!;
 
         [SetUp]
-        public void Initialize()
-        {
-            SetupDiscoveryManager();
-        }
+        public void Initialize() => SetupDiscoveryManager();
 
         private void SetupDiscoveryManager(IDiscoveryConfig? config = null)
         {

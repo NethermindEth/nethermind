@@ -204,9 +204,7 @@ public class PeerPoolTests
         Assert.That(replacedPeer.Node.IsStatic, Is.False);
     }
 
-    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount)
-    {
-        return new PeerPool(
+    private static PeerPool CreatePeerPool(TestNodeSource nodeSource, ITrustedNodesManager trustedNodesManager, int maxActivePeers, int maxCandidatePeerCount) => new(
             nodeSource,
             Substitute.For<INodeStatsManager>(),
             new NetworkStorage(new TestMemDb(), LimboLogs.Instance),
@@ -217,7 +215,6 @@ public class PeerPoolTests
             },
             LimboLogs.Instance,
             trustedNodesManager);
-    }
 
     private sealed class TestNetworkStorage : INetworkStorage
     {
@@ -227,9 +224,9 @@ public class PeerPoolTests
 
         public NetworkNode[] GetPersistedNodes() => Array.Empty<NetworkNode>();
         public int PersistedNodesCount => 0;
-        public void UpdateNode(NetworkNode node) { Pending = true; }
-        public void UpdateNodes(IEnumerable<NetworkNode> nodes) { Pending = true; }
-        public void RemoveNode(PublicKey nodeId) { Pending = true; }
+        public void UpdateNode(NetworkNode node) => Pending = true;
+        public void UpdateNodes(IEnumerable<NetworkNode> nodes) => Pending = true;
+        public void RemoveNode(PublicKey nodeId) => Pending = true;
         public void StartBatch() { Interlocked.Increment(ref _startBatchCountBacking); StartBatchCount = _startBatchCountBacking; }
         public void Commit() { Interlocked.Increment(ref _commitCountBacking); CommitCount = _commitCountBacking; }
         public bool AnyPendingChange() => Pending;

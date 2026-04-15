@@ -15,18 +15,11 @@ namespace Nethermind.Crypto;
 /// <summary>
 ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
 /// </summary>
-public class EciesCipher : IEciesCipher
+public class EciesCipher(ICryptoRandom cryptoRandom) : IEciesCipher
 {
     private const int KeySize = 128;
-    private readonly ICryptoRandom _cryptoRandom;
-    private readonly PrivateKeyGenerator _keyGenerator;
-
-    public EciesCipher(ICryptoRandom cryptoRandom)
-    {
-        _cryptoRandom = cryptoRandom;
-        _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
-    }
-
+    private readonly ICryptoRandom _cryptoRandom = cryptoRandom;
+    private readonly PrivateKeyGenerator _keyGenerator = new(cryptoRandom);
     private static readonly int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
     public (bool, byte[]) Decrypt(PrivateKey privateKey, byte[] cipherText, byte[]? macData = null)

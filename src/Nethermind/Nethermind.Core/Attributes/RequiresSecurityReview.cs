@@ -6,13 +6,8 @@ using System;
 namespace Nethermind.Core.Attributes
 {
     [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method | AttributeTargets.Property)]
-    public class RequiresSecurityReviewAttribute : Attribute
+    public class RequiresSecurityReviewAttribute(string comment) : Attribute
     {
-        private readonly string _comment;
-
-        public RequiresSecurityReviewAttribute(string comment)
-        {
-            _comment = comment;
-        }
+        private readonly string _comment = comment;
     }
 }

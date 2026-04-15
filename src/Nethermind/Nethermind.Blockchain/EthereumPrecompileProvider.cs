@@ -39,13 +39,8 @@ public class EthereumPrecompileProvider() : IPrecompileProvider
             [KzgPointEvaluationPrecompile.Address] = new(KzgPointEvaluationPrecompile.Instance),
 
             [SecP256r1Precompile.Address] = new(SecP256r1Precompile.Instance),
-
-            [L1SloadPrecompile.Address] = new(L1SloadPrecompile.Instance),
         }.ToFrozenDictionary();
     }
 
-    public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles()
-    {
-        return Precompiles;
-    }
+    public FrozenDictionary<AddressAsKey, CodeInfo> GetPrecompiles() => Precompiles;
 }

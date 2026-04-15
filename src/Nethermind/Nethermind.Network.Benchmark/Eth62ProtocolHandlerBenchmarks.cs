@@ -100,10 +100,7 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [Benchmark]
-        public void JustSerialize()
-        {
-            _ser.ZeroSerialize(_txMsg);
-        }
+        public void JustSerialize() => _ser.ZeroSerialize(_txMsg);
 
         [Benchmark]
         public void SerializeAndCreatePacket()

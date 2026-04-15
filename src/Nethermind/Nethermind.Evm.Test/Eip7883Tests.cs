@@ -33,15 +33,12 @@ public class Eip7883Tests
         public UInt256 ExpLength { get; set; }
         public UInt256 ModulusLength { get; set; }
         public long Result { get; set; }
-        public override string ToString()
-        {
-            return $"Lp: {Lp}, " +
+        public override string ToString() => $"Lp: {Lp}, " +
                    $"FusakaEnabled: {FusakaEnabled}, " +
                    $"BaseLength: {BaseLength}, " +
                    $"ExpLength: {ExpLength}, " +
                    $"ModulusLength: {ModulusLength}, " +
                    $"Result: {Result}";
-        }
     }
 
     private static IEnumerable<Eip7883TestCase> Eip7883TestCases()

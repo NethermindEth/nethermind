@@ -21,10 +21,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     public override byte[]? Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        return Convert(ref reader);
-    }
+        JsonSerializerOptions options) => Convert(ref reader);
 
     [SkipLocalsInit]
     public static byte[]? Convert(ref Utf8JsonReader reader, bool strictHexFormat = false)
@@ -180,10 +177,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     public override void Write(
         Utf8JsonWriter writer,
         byte[] bytes,
-        JsonSerializerOptions options)
-    {
-        Convert(writer, bytes, skipLeadingZeros: false);
-    }
+        JsonSerializerOptions options) => Convert(writer, bytes, skipLeadingZeros: false);
 
     /// <summary>
     /// Writes bytes as a hex string value (e.g. "0xabcd") using WriteRawValue.
@@ -318,8 +312,5 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         return result;
     }
 
-    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
-    {
-        Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
-    }
+    public override void WriteAsPropertyName(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options) => Convert(writer, value, static (w, h) => w.WritePropertyName(h), skipLeadingZeros: false, addQuotations: false, addHexPrefix: true);
 }

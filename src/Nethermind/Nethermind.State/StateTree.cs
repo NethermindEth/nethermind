@@ -23,17 +23,11 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool)
-        {
-            TrieType = TrieType.State;
-        }
+            : base(new MemDb(), Keccak.EmptyTreeHash, true, NullLogManager.Instance, bufferPool: bufferPool) => TrieType = TrieType.State;
 
         [DebuggerStepThrough]
         public StateTree(IScopedTrieStore? store, ILogManager? logManager)
-            : base(store, Keccak.EmptyTreeHash, true, logManager)
-        {
-            TrieType = TrieType.State;
-        }
+            : base(store, Keccak.EmptyTreeHash, true, logManager) => TrieType = TrieType.State;
 
         public StateTree(ITrieStore? store, ILogManager? logManager)
             : base(store.GetTrieStore(null), logManager)
@@ -74,10 +68,7 @@ namespace Nethermind.State
             Set(keccak.BytesAsSpan, account is null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
 
-        public StateTreeBulkSetter BeginSet(int estimatedEntries)
-        {
-            return new StateTreeBulkSetter(estimatedEntries, this);
-        }
+        public StateTreeBulkSetter BeginSet(int estimatedEntries) => new(estimatedEntries, this);
 
         public class StateTreeBulkSetter(int estimatedEntries, StateTree tree) : IDisposable
         {
@@ -117,19 +108,10 @@ namespace Nethermind.State
             return rlp;
         }
 
-        public Account? Get(Address address)
-        {
-            return Get(address, null);
-        }
+        public Account? Get(Address address) => Get(address, null);
 
-        public void UpdateRootHash()
-        {
-            UpdateRootHash(true);
-        }
+        public void UpdateRootHash() => UpdateRootHash(true);
 
-        public void Commit()
-        {
-            Commit(false, WriteFlags.None);
-        }
+        public void Commit() => Commit(false, WriteFlags.None);
     }
 }

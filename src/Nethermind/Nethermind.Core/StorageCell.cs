@@ -92,9 +92,6 @@ namespace Nethermind.Core
             return hash ^ _address.Value.GetHashCode();
         }
 
-        public override string ToString()
-        {
-            return $"{_address.Value}.{Index}";
-        }
+        public override string ToString() => $"{_address.Value}.{Index}";
     }
 }

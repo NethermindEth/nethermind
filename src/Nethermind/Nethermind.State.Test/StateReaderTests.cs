@@ -80,15 +80,9 @@ namespace Nethermind.Store.Test
             (IWorldState provider, IStateReader reader) = TestWorldStateFactory.CreateForTestWithStateReader(dbProvider, LimboLogs.Instance);
             using IDisposable _ = provider.BeginScope(IWorldState.PreGenesis);
 
-            void UpdateStorageValue(byte[] newValue)
-            {
-                provider.Set(storageCell, newValue);
-            }
+            void UpdateStorageValue(byte[] newValue) => provider.Set(storageCell, newValue);
 
-            void AddOneToBalance()
-            {
-                provider.AddToBalance(_address1, 1, spec);
-            }
+            void AddOneToBalance() => provider.AddToBalance(_address1, 1, spec);
 
             void CommitEverything()
             {
@@ -150,9 +144,7 @@ namespace Nethermind.Store.Test
             reader.GetStorage(Build.A.BlockHeader.WithStateRoot(stateRoot0).TestObject, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
         }
 
-        private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value)
-        {
-            return Task.Run(
+        private Task StartTask(IStateReader reader, BlockHeader baseBlock, UInt256 value) => Task.Run(
                 () =>
                 {
                     for (int i = 0; i < 10000; i++)
@@ -161,11 +153,8 @@ namespace Nethermind.Store.Test
                         Assert.That(balance, Is.EqualTo(value));
                     }
                 });
-        }
 
-        private Task StartStorageTask(IStateReader reader, BlockHeader baseBlock, StorageCell storageCell, byte[] value)
-        {
-            return Task.Run(
+        private Task StartStorageTask(IStateReader reader, BlockHeader baseBlock, StorageCell storageCell, byte[] value) => Task.Run(
                 () =>
                 {
                     for (int i = 0; i < 1000; i++)
@@ -174,7 +163,6 @@ namespace Nethermind.Store.Test
                         result.Should().BeEquivalentTo(value);
                     }
                 });
-        }
 
         [Test]
         public void Get_storage()

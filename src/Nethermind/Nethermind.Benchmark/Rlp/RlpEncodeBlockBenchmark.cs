@@ -59,16 +59,10 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public byte[] Improved()
-        {
-            throw new NotImplementedException();
-        }
+        public byte[] Improved() => throw new NotImplementedException();
 
         [Benchmark]
-        public byte[] Improved2()
-        {
-            return _blockDecoder.Encode(_block).Bytes;
-        }
+        public byte[] Improved2() => _blockDecoder.Encode(_block).Bytes;
 
         [Benchmark]
         public byte[] Improved3()
@@ -80,9 +74,6 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Serialization.Rlp.Rlp.Encode(_block).Bytes;
-        }
+        public byte[] Current() => Serialization.Rlp.Rlp.Encode(_block).Bytes;
     }
 }

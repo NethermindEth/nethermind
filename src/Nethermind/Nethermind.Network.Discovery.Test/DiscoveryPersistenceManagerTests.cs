@@ -48,10 +48,7 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [TearDown]
-        public void Teardown()
-        {
-            _discoveryDb.Dispose();
-        }
+        public void Teardown() => _discoveryDb.Dispose();
 
         [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()

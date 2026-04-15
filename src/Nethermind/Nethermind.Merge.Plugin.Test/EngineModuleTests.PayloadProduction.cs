@@ -741,9 +741,8 @@ public partial class EngineModuleTests
     private Func<IBlockProducer, ITxPool, IBlockImprovementContextFactory, ITimerFactory, ILogManager, IPayloadPreparationService> ConfigurePayloadPreparationService(
         TimeSpan timePerSlot,
         TimeSpan? delay = null
-    )
-    {
-        return (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
+    ) =>
+        (producer, txPool, ctxFactory, timer, logManager) => new PayloadPreparationService(
             producer,
             txPool,
             ctxFactory,
@@ -751,7 +750,6 @@ public partial class EngineModuleTests
             logManager,
             timePerSlot,
             improvementDelay: delay);
-    }
 
     [TestCaseSource(nameof(OsakaTransitionInvalidatedTransactionsTestCaseSource))]
     public async Task Lightweight_transaction_validation_is_applied_on_new_head(Transaction tx, IReleaseSpec initialSpec, IReleaseSpec nextBlockSpec, bool isForked)

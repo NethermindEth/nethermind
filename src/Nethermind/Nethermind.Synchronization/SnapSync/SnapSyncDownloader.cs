@@ -12,14 +12,9 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncDownloader : ISyncDownloader<SnapSyncBatch>
+    public class SnapSyncDownloader(ILogManager? logManager) : ISyncDownloader<SnapSyncBatch>
     {
-        private readonly ILogger Logger;
-
-        public SnapSyncDownloader(ILogManager? logManager)
-        {
-            Logger = logManager.GetClassLogger<SnapSyncDownloader>();
-        }
+        private readonly ILogger Logger = logManager.GetClassLogger<SnapSyncDownloader>();
 
         public async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {

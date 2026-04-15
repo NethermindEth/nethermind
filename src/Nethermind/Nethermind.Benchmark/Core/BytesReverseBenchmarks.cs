@@ -48,16 +48,10 @@ namespace Nethermind.Benchmarks.Core
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Current()
-        {
-            return Bytes.Reverse(_a);
-        }
+        public byte[] Current() => Bytes.Reverse(_a);
 
         [Benchmark]
-        public void Improved()
-        {
-            _a.AsSpan().Reverse();
-        }
+        public void Improved() => _a.AsSpan().Reverse();
 
         [Benchmark]
         public void SwapVersion()

@@ -67,10 +67,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             }
         }
 
-        public void Dispose()
-        {
-            _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
-        }
+        public void Dispose() => _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
 
         public override void OnBlockProcessingStart(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
