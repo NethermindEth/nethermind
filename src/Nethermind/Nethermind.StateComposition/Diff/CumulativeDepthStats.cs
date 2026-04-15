@@ -9,11 +9,33 @@ using Nethermind.StateComposition.Service;
 namespace Nethermind.StateComposition.Diff;
 
 /// <summary>
+/// Fixed slot index for the nine per-depth counter rows in
+/// <see cref="CumulativeDepthStats.ByDepth"/>. The numeric order is load-bearing:
+/// it pins the RLP layout that the snapshot decoder writes and reads back.
+/// </summary>
+public enum DepthSlot
+{
+    AccountFull = 0,
+    AccountShort = 1,
+    AccountValue = 2,
+    AccountBytes = 3,
+    StorageFull = 4,
+    StorageShort = 5,
+    StorageValue = 6,
+    StorageBytes = 7,
+    BranchOccupancy = 8,
+}
+
+/// <summary>
 /// Mutable cumulative per-depth trie node counters. Doubles as the per-block
 /// delta container produced by <see cref="TrieDiffWalker"/> — same shape, same
 /// field semantics, merged into the holder's baseline via <see cref="AddInPlace"/>.
 ///
-/// Physical-depth storage: arrays are indexed by physical depth [0..15].
+/// Storage layout: a single <c>long[9][16]</c> jagged array indexed by
+/// <see cref="DepthSlot"/>. Every cumulative operation (Reset, Clone, AddInPlace,
+/// IsEmpty, SeedFromSnapshot) is one loop instead of nine field-by-field copies.
+///
+/// Physical-depth storage: rows are indexed by physical depth [0..15].
 /// The Geth +1 shift for ValueNodeCount is applied only at presentation time
 /// in <see cref="Metrics.UpdateDepthDistribution"/> — never stored here.
 ///
@@ -22,18 +44,29 @@ namespace Nethermind.StateComposition.Diff;
 /// </summary>
 public sealed class CumulativeDepthStats
 {
-    public long[] AccountFullNodes { get; } = new long[16];
-    public long[] AccountShortNodes { get; } = new long[16];
-    public long[] AccountValueNodes { get; } = new long[16];
-    public long[] AccountNodeBytes { get; } = new long[16];
+    internal const int SlotCount = 9;
+    internal const int DepthCount = 16;
 
-    public long[] StorageFullNodes { get; } = new long[16];
-    public long[] StorageShortNodes { get; } = new long[16];
-    public long[] StorageValueNodes { get; } = new long[16];
-    public long[] StorageNodeBytes { get; } = new long[16];
+    /// <summary>Nine contiguous <c>long[16]</c> rows, indexed by <see cref="DepthSlot"/>.</summary>
+    public long[][] ByDepth { get; }
 
+    public CumulativeDepthStats()
+    {
+        ByDepth = new long[SlotCount][];
+        for (int s = 0; s < SlotCount; s++) ByDepth[s] = new long[DepthCount];
+    }
+
+    public long[] AccountFullNodes => ByDepth[(int)DepthSlot.AccountFull];
+    public long[] AccountShortNodes => ByDepth[(int)DepthSlot.AccountShort];
+    public long[] AccountValueNodes => ByDepth[(int)DepthSlot.AccountValue];
+    public long[] AccountNodeBytes => ByDepth[(int)DepthSlot.AccountBytes];
+    public long[] StorageFullNodes => ByDepth[(int)DepthSlot.StorageFull];
+    public long[] StorageShortNodes => ByDepth[(int)DepthSlot.StorageShort];
+    public long[] StorageValueNodes => ByDepth[(int)DepthSlot.StorageValue];
+    public long[] StorageNodeBytes => ByDepth[(int)DepthSlot.StorageBytes];
     /// <summary>Branch occupancy histogram: index i = count of account-trie branches with (i+1) children.</summary>
-    public long[] BranchOccupancy { get; } = new long[16];
+    public long[] BranchOccupancy => ByDepth[(int)DepthSlot.BranchOccupancy];
+
     public long TotalBranchNodes { get; set; }
     public long TotalBranchChildren { get; set; }
 
@@ -56,54 +89,37 @@ public sealed class CumulativeDepthStats
     public void AddInPlace(CumulativeDepthStats other)
     {
         if (!IsSeeded) return;
-        for (int i = 0; i < 16; i++)
+        for (int s = 0; s < SlotCount; s++)
         {
-            AccountFullNodes[i] += other.AccountFullNodes[i];
-            AccountShortNodes[i] += other.AccountShortNodes[i];
-            AccountValueNodes[i] += other.AccountValueNodes[i];
-            AccountNodeBytes[i] += other.AccountNodeBytes[i];
-            StorageFullNodes[i] += other.StorageFullNodes[i];
-            StorageShortNodes[i] += other.StorageShortNodes[i];
-            StorageValueNodes[i] += other.StorageValueNodes[i];
-            StorageNodeBytes[i] += other.StorageNodeBytes[i];
-            BranchOccupancy[i] += other.BranchOccupancy[i];
+            long[] dst = ByDepth[s];
+            long[] src = other.ByDepth[s];
+            for (int d = 0; d < DepthCount; d++) dst[d] += src[d];
         }
         TotalBranchNodes += other.TotalBranchNodes;
         TotalBranchChildren += other.TotalBranchChildren;
     }
 
     /// <summary>
-    /// Returns true when every array element and both scalars are zero.
+    /// Returns true when every slot row and both scalars are zero.
     /// Used by the diff walker to skip <see cref="Metrics.UpdateDepthDistribution"/>
     /// republishes for blocks that do not change the depth distribution.
     /// </summary>
     public bool IsEmpty()
     {
         if (TotalBranchNodes != 0 || TotalBranchChildren != 0) return false;
-        for (int i = 0; i < 16; i++)
+        for (int s = 0; s < SlotCount; s++)
         {
-            if (AccountFullNodes[i] != 0 || AccountShortNodes[i] != 0
-                || AccountValueNodes[i] != 0 || AccountNodeBytes[i] != 0
-                || StorageFullNodes[i] != 0 || StorageShortNodes[i] != 0
-                || StorageValueNodes[i] != 0 || StorageNodeBytes[i] != 0
-                || BranchOccupancy[i] != 0)
-                return false;
+            long[] row = ByDepth[s];
+            for (int d = 0; d < DepthCount; d++)
+                if (row[d] != 0) return false;
         }
         return true;
     }
 
-    /// <summary>Zero all arrays and scalars. Used when a fresh scan re-baselines.</summary>
+    /// <summary>Zero all rows and scalars. Used when a fresh scan re-baselines.</summary>
     public void Reset()
     {
-        Array.Clear(AccountFullNodes);
-        Array.Clear(AccountShortNodes);
-        Array.Clear(AccountValueNodes);
-        Array.Clear(AccountNodeBytes);
-        Array.Clear(StorageFullNodes);
-        Array.Clear(StorageShortNodes);
-        Array.Clear(StorageValueNodes);
-        Array.Clear(StorageNodeBytes);
-        Array.Clear(BranchOccupancy);
+        for (int s = 0; s < SlotCount; s++) Array.Clear(ByDepth[s]);
         TotalBranchNodes = 0;
         TotalBranchChildren = 0;
         IsSeeded = false;
@@ -126,31 +142,27 @@ public sealed class CumulativeDepthStats
 
         foreach (TrieLevelStat stat in dist.AccountTrieLevels)
         {
-            int d = stat.Depth < 16 ? stat.Depth : 15;
+            int d = stat.Depth < DepthCount ? stat.Depth : DepthCount - 1;
             AccountFullNodes[d] = stat.FullNodeCount;
             AccountShortNodes[d] = stat.ShortNodeCount;
             AccountNodeBytes[d] = stat.TotalSize;
-            // ValueNodeCount in stat is shifted: stat.ValueNodeCount = physical leaves at depth d-1
-            // Reverse the shift: store physical leaves at depth d-1
-            if (d > 0)
-                AccountValueNodes[d - 1] = stat.ValueNodeCount;
+            if (d > 0) AccountValueNodes[d - 1] = stat.ValueNodeCount;
         }
 
         foreach (TrieLevelStat stat in dist.StorageTrieLevels)
         {
-            int d = stat.Depth < 16 ? stat.Depth : 15;
+            int d = stat.Depth < DepthCount ? stat.Depth : DepthCount - 1;
             StorageFullNodes[d] = stat.FullNodeCount;
             StorageShortNodes[d] = stat.ShortNodeCount;
             StorageNodeBytes[d] = stat.TotalSize;
-            if (d > 0)
-                StorageValueNodes[d - 1] = stat.ValueNodeCount;
+            if (d > 0) StorageValueNodes[d - 1] = stat.ValueNodeCount;
         }
 
-        for (int i = 0; i < dist.BranchOccupancyDistribution.Length && i < 16; i++)
+        for (int i = 0; i < dist.BranchOccupancyDistribution.Length && i < DepthCount; i++)
             BranchOccupancy[i] = dist.BranchOccupancyDistribution[i];
 
         long nodes = 0, children = 0;
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < DepthCount; i++)
         {
             nodes += BranchOccupancy[i];
             children += BranchOccupancy[i] * (i + 1);
@@ -168,21 +180,14 @@ public sealed class CumulativeDepthStats
 
     /// <summary>
     /// Install a baseline previously persisted in a snapshot. Copies the
-    /// raw physical-depth arrays as-is — no Geth shift conversion (the snapshot is
+    /// raw physical-depth rows as-is — no Geth shift conversion (the snapshot is
     /// already in unshifted form).
     /// </summary>
     public void SeedFromSnapshot(CumulativeDepthStats source)
     {
         Reset();
-        Array.Copy(source.AccountFullNodes, AccountFullNodes, 16);
-        Array.Copy(source.AccountShortNodes, AccountShortNodes, 16);
-        Array.Copy(source.AccountValueNodes, AccountValueNodes, 16);
-        Array.Copy(source.AccountNodeBytes, AccountNodeBytes, 16);
-        Array.Copy(source.StorageFullNodes, StorageFullNodes, 16);
-        Array.Copy(source.StorageShortNodes, StorageShortNodes, 16);
-        Array.Copy(source.StorageValueNodes, StorageValueNodes, 16);
-        Array.Copy(source.StorageNodeBytes, StorageNodeBytes, 16);
-        Array.Copy(source.BranchOccupancy, BranchOccupancy, 16);
+        for (int s = 0; s < SlotCount; s++)
+            Array.Copy(source.ByDepth[s], ByDepth[s], DepthCount);
         TotalBranchNodes = source.TotalBranchNodes;
         TotalBranchChildren = source.TotalBranchChildren;
         IsSeeded = true;
@@ -192,15 +197,8 @@ public sealed class CumulativeDepthStats
     public CumulativeDepthStats Clone()
     {
         CumulativeDepthStats c = new();
-        Array.Copy(AccountFullNodes, c.AccountFullNodes, 16);
-        Array.Copy(AccountShortNodes, c.AccountShortNodes, 16);
-        Array.Copy(AccountValueNodes, c.AccountValueNodes, 16);
-        Array.Copy(AccountNodeBytes, c.AccountNodeBytes, 16);
-        Array.Copy(StorageFullNodes, c.StorageFullNodes, 16);
-        Array.Copy(StorageShortNodes, c.StorageShortNodes, 16);
-        Array.Copy(StorageValueNodes, c.StorageValueNodes, 16);
-        Array.Copy(StorageNodeBytes, c.StorageNodeBytes, 16);
-        Array.Copy(BranchOccupancy, c.BranchOccupancy, 16);
+        for (int s = 0; s < SlotCount; s++)
+            Array.Copy(ByDepth[s], c.ByDepth[s], DepthCount);
         c.TotalBranchNodes = TotalBranchNodes;
         c.TotalBranchChildren = TotalBranchChildren;
         c.IsSeeded = IsSeeded;

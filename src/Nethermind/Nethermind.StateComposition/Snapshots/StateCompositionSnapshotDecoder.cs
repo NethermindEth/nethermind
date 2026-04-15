@@ -33,16 +33,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
 {
     public static StateCompositionSnapshotDecoder Instance { get; } = new();
 
-    // Nine per-depth arrays of CumulativeDepthStats, in the order they are
-    // written to and read back from the RLP stream. Central list so Encode,
-    // GetContentLength, and DecodeInternal cannot drift.
-    private static long[][] DepthArrays(CumulativeDepthStats d) =>
-    [
-        d.AccountFullNodes, d.AccountShortNodes, d.AccountValueNodes, d.AccountNodeBytes,
-        d.StorageFullNodes, d.StorageShortNodes, d.StorageValueNodes, d.StorageNodeBytes,
-        d.BranchOccupancy,
-    ];
-
     private delegate TValue DecodeValueDelegate<TValue>(ref Rlp.ValueDecoderContext ctx);
 
     public override void Encode(RlpStream stream, StateCompositionSnapshot item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -75,7 +65,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depth is not null && depth.IsSeeded)
         {
             stream.Encode(1L);
-            foreach (long[] arr in DepthArrays(depth))
+            foreach (long[] arr in depth.ByDepth)
                 foreach (long v in arr) stream.Encode(v);
             stream.Encode(depth.TotalBranchNodes);
             stream.Encode(depth.TotalBranchChildren);
@@ -125,7 +115,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depth is not null && depth.IsSeeded)
         {
             contentLength += Rlp.LengthOf(1L);
-            foreach (long[] arr in DepthArrays(depth))
+            foreach (long[] arr in depth.ByDepth)
                 foreach (long v in arr) contentLength += Rlp.LengthOf(v);
             contentLength += Rlp.LengthOf(depth.TotalBranchNodes);
             contentLength += Rlp.LengthOf(depth.TotalBranchChildren);
@@ -226,7 +216,7 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         if (depthPresent == 1L)
         {
             depthStats = new CumulativeDepthStats();
-            foreach (long[] arr in DepthArrays(depthStats))
+            foreach (long[] arr in depthStats.ByDepth)
                 for (int i = 0; i < arr.Length; i++) arr[i] = ctx.DecodeLong();
             depthStats.TotalBranchNodes = ctx.DecodeLong();
             depthStats.TotalBranchChildren = ctx.DecodeLong();
