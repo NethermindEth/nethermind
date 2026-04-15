@@ -388,7 +388,7 @@ public class BlockAccessListManager(
         => c.BalanceChange is null &&
             c.NonceChange is null &&
             c.CodeChange is null &&
-            !c.SlotChanges.GetEnumerator().MoveNext();
+            !c.SlotChanges.Any();
 
     private interface ITxProcessorWithWorldStateManager
     {
