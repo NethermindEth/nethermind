@@ -455,61 +455,51 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ["0xzz"],
     };
 
-    [TestCaseSource(nameof(StrictInvalidHexCases))]
-    public void StrictConverter_InvalidHex_ShouldThrowJsonExceptionWithGethMessage(string hex, string expectedMessage)
-    {
-        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
 
-        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+[TestCaseSource(nameof(StrictHexCases))]
+public void StrictConverter_HexCases(string name, string hex, object expected)
+{
+    byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+
+    foreach (ReadOnlySequence<byte> seq in Segmentations(json))
+    {
+        Utf8JsonReader reader = new(seq);
+        reader.Read();
+
+        try
         {
-            Utf8JsonReader reader = new(seq);
-            reader.Read();
-            EvenLengthByteArrayConverter converter = new();
-            JsonException? caught = null;
-            try { converter.Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default); }
-            catch (JsonException ex) { caught = ex; }
-            caught.Should().NotBeNull();
-            caught!.Message.Should().Be(expectedMessage);
+            byte[]? result = new EvenLengthByteArrayConverter()
+                .Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default);
+
+            Assert.That(result, Is.EqualTo((byte[])expected));
+        }
+        catch (JsonException ex)
+        {
+            Assert.That(ex.Message, Is.EqualTo((string)expected));
         }
     }
+}
 
-    [TestCaseSource(nameof(StrictEvenLengthCases))]
-    public void StrictConverter_EvenLength_ShouldParse(string hex, byte[] expected)
-    {
-        byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
+public static IEnumerable<TestCaseData> StrictHexCases()
+{
+    yield return new("Rejects_SingleNibble", "0xF", Bytes.ErrOddLength);
+    yield return new("Rejects_ThreeDigits_Numeric", "0x123", Bytes.ErrOddLength);
+    yield return new("Rejects_ThreeDigits_MixedCase", "0x1fF", Bytes.ErrOddLength);
+    yield return new("Rejects_ThreeDigits_Alpha", "0xabc", Bytes.ErrOddLength);
 
-        foreach (ReadOnlySequence<byte> seq in Segmentations(json))
-        {
-            Utf8JsonReader reader = new(seq);
-            reader.Read();
-            EvenLengthByteArrayConverter converter = new();
-            byte[]? result = converter.Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default);
-            result.Should().Equal(expected);
-        }
-    }
+    yield return new("Rejects_NoPrefix_SingleDigit", "F", Bytes.ErrMissingPrefix);
+    yield return new("Rejects_NoPrefix_Numeric", "123", Bytes.ErrMissingPrefix);
+    yield return new("Rejects_NoPrefix_Alpha", "abc", Bytes.ErrMissingPrefix);
+    yield return new("Rejects_NoPrefix_Byte", "1f", Bytes.ErrMissingPrefix);
+    yield return new("Rejects_NoPrefix_LongHex", "DEADBEEF", Bytes.ErrMissingPrefix);
 
-    public static IEnumerable<object[]> StrictInvalidHexCases() => new object[][]
-    {
-        ["0xF",    Bytes.ErrOddLength],
-        ["0x123",  Bytes.ErrOddLength],
-        ["0x1fF",  Bytes.ErrOddLength],
-        ["0xabc",  Bytes.ErrOddLength],
-        ["F",        Bytes.ErrMissingPrefix],
-        ["123",      Bytes.ErrMissingPrefix],
-        ["abc",      Bytes.ErrMissingPrefix],
-        ["1f",       Bytes.ErrMissingPrefix],
-        ["DEADBEEF", Bytes.ErrMissingPrefix],
-        ["0xxx",      Bytes.ErrSyntax],
-        ["0x01zz01",  Bytes.ErrSyntax],
-    };
+    yield return new("Rejects_InvalidPrefixFormat", "0xxx", Bytes.ErrSyntax);
+    yield return new("Rejects_InvalidHexCharacters", "0x01zz01", Bytes.ErrSyntax);
 
-    public static IEnumerable<object[]> StrictEvenLengthCases() => new object[][]
-    {
-        ["0x", Array.Empty<byte>()],
-        ["0x1f", new byte[] { 0x1f }],
-        ["0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef }],
-    };
-
+    yield return new("Parses_EmptyHex", "0x", Array.Empty<byte>());
+    yield return new("Parses_SingleByte", "0x1f", new byte[] { 0x1f });
+    yield return new("Parses_DeadBeef", "0xDEADBEEF", new byte[] { 0xde, 0xad, 0xbe, 0xef });
+}
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>
     {
         public BufferSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
