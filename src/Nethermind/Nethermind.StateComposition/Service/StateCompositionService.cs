@@ -206,19 +206,21 @@ internal partial class StateCompositionService : IDisposable
 
     private (int topN, int parallelism, long memoryBudget) ResolveScanOptions()
     {
-        int topN = Math.Clamp(_config.TopNContracts, 1, MaxTopNContracts);
-        if (_config.TopNContracts != topN && _logger.IsWarn)
-            _logger.Warn($"StateComposition: TopNContracts={_config.TopNContracts} out of range [1, {MaxTopNContracts}]; clamped to {topN}");
-
-        int parallelism = Math.Clamp(_config.ScanParallelism, 1, MaxScanParallelism);
-        if (_config.ScanParallelism != parallelism && _logger.IsWarn)
-            _logger.Warn($"StateComposition: ScanParallelism={_config.ScanParallelism} out of range [1, {MaxScanParallelism}]; clamped to {parallelism}");
-
+        int topN = ClampWithWarn(_config.TopNContracts, 1, MaxTopNContracts, nameof(_config.TopNContracts));
+        int parallelism = ClampWithWarn(_config.ScanParallelism, 1, MaxScanParallelism, nameof(_config.ScanParallelism));
         long memoryBudget = Math.Max(MinMemoryBudgetBytes, _config.ScanMemoryBudgetBytes);
         if (_config.ScanMemoryBudgetBytes < MinMemoryBudgetBytes && _logger.IsWarn)
             _logger.Warn($"StateComposition: ScanMemoryBudgetBytes={_config.ScanMemoryBudgetBytes} below minimum ({MinMemoryBudgetBytes} = 1 MiB); clamped to {memoryBudget}");
 
         return (topN, parallelism, memoryBudget);
+    }
+
+    private int ClampWithWarn(int value, int min, int max, string name)
+    {
+        int clamped = Math.Clamp(value, min, max);
+        if (value != clamped && _logger.IsWarn)
+            _logger.Warn($"StateComposition: {name}={value} out of range [{min}, {max}]; clamped to {clamped}");
+        return clamped;
     }
 
     private PeriodicTimer StartProgressLogging(Stopwatch sw, StateCompositionVisitor visitor)
