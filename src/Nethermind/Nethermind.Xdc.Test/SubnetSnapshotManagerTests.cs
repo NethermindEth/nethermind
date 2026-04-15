@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -17,6 +17,8 @@ using NUnit.Framework;
 
 namespace Nethermind.Xdc.Test;
 
+[Parallelizable(ParallelScope.All)]
+[FixtureLifeCycle(LifeCycle.InstancePerTestCase)]
 internal class SubnetSnapshotManagerTests
 {
     private ISnapshotManager _snapshotManager;
@@ -61,7 +63,6 @@ internal class SubnetSnapshotManagerTests
         // Act
         SubnetSnapshot? result = _snapshotManager.GetSnapshotByGapNumber(gapBlock) as SubnetSnapshot;
 
-        // assert that it was retrieved from cache
         result.Should().BeEquivalentTo(snapshot);
     }
 
@@ -102,9 +103,8 @@ internal class SubnetSnapshotManagerTests
 
         blockTree.BlockAddedToMain += Raise.EventWith(new BlockReplacementEventArgs(new Block(header)));
         Snapshot? result = snapshotManager.GetSnapshotByGapNumber(gapNumber);
-        result.Should().BeOfType<SubnetSnapshot>();
 
-        SubnetSnapshot subnetSnapshot = (SubnetSnapshot)result!;
+        SubnetSnapshot subnetSnapshot = result.Should().BeOfType<SubnetSnapshot>().Subject;
         subnetSnapshot.HeaderHash.Should().Be(header.Hash!);
         subnetSnapshot.NextEpochPenalties.Should().BeEquivalentTo(penalties);
     }

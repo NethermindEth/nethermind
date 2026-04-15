@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
@@ -107,6 +107,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
+
     private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
     {
         if (e.Block.Hash is null || !_blockTree.WasProcessed(e.Block.Number, e.Block.Hash))
