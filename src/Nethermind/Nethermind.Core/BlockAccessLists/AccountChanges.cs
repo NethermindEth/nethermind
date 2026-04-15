@@ -286,16 +286,14 @@ public class AccountChanges : IEquatable<AccountChanges>
 
     public byte[] GetCode(int blockAccessIndex)
     {
-        byte[] lastCode = [];
-        foreach (KeyValuePair<int, CodeChange> change in _codeChanges)
-        {
-            if (change.Key >= blockAccessIndex)
-            {
-                return lastCode;
-            }
-            lastCode = change.Value.NewCode;
-        }
-        return lastCode;
+        GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
+        return codeChange!.Value.NewCode;
+    }
+
+    public ValueHash256 GetCodeHash(int blockAccessIndex)
+    {
+        GetCodeChange(blockAccessIndex, out CodeChange? codeChange);
+        return codeChange!.Value.NewCodeHash;
     }
 
     public HashSet<UInt256> GetAllSlots(int blockAccessIndex)
@@ -319,9 +317,6 @@ public class AccountChanges : IEquatable<AccountChanges>
         }
         return slots;
     }
-
-    public ValueHash256 GetCodeHash(int blockAccessIndex) =>
-        ValueKeccak.Compute(GetCode(blockAccessIndex));
 
     // check if account exists at start of tx at index
     public bool AccountExists(int blockAccessIndex)
@@ -370,6 +365,19 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore]
     public bool AccountChanged => _wasChanged;
     private bool _wasChanged = false;
+
+    private void GetCodeChange(int blockAccessIndex, out CodeChange? codeChange)
+    {
+        codeChange = null;
+        foreach (KeyValuePair<int, CodeChange> change in _codeChanges)
+        {
+            if (change.Key >= blockAccessIndex)
+            {
+                return;
+            }
+            codeChange = change.Value;
+        }
+    }
 
     private static bool PopChange<T>(SortedList<int, T> changes, int index, [NotNullWhen(true)] out T? change) where T : IIndexedChange
     {

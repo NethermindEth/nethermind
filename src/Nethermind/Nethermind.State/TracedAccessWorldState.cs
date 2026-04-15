@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
@@ -298,25 +299,29 @@ public class TracedAccessWorldState(IWorldState innerWorldState, bool parallel) 
     }
 
     private byte[]? GetCodeCurrent(Address address)
+        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCode : null;
+
+    private ValueHash256? GetCodeHashCurrent(Address address)
+        => TryGetCodeChangeCurrent(address, out CodeChange? codeChange) ? codeChange.Value.NewCodeHash : null;
+
+    private bool TryGetCodeChangeCurrent(Address address, [NotNullWhen(true)] out CodeChange? codeChange)
     {
         AccountChanges? accountChanges = _generatingBlockAccessList.GetAccountChanges(address);
         if (accountChanges is not null && accountChanges.CodeChanges.Count >= 1)
         {
-            return accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1].NewCode;
+            codeChange = accountChanges.CodeChanges[accountChanges.CodeChanges.Count - 1];
+            return true;
         }
 
-        return null;
+        codeChange = null;
+        return false;
     }
 
     private byte[]? GetCodeInternal(Address address)
         => GetCodeCurrent(address) ?? _innerWorldState.GetCode(address);
 
     private ValueHash256 GetCodeHashInternal(Address address)
-    {
-        // todo: store code hash?
-        byte[]? code = GetCodeCurrent(address);
-        return code is null ? _innerWorldState.GetCodeHash(address) : ValueKeccak.Compute(code);
-    }
+        => GetCodeHashCurrent(address) ?? _innerWorldState.GetCodeHash(address);
 
     private ReadOnlySpan<byte> GetInternal(in StorageCell storageCell)
     {
