@@ -87,14 +87,14 @@ public struct ILogger : IEquatable<ILogger>
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void DebugError(
-        [InterpolatedStringHandlerArgument("")] ref DebugErrorInterpolatedStringHandler handler,
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler,
         Exception ex = null)
     {
-        if (IsDebug) _logger.Error(handler.ToStringAndClear(), LogEventKind.DebugError, ex);
+        if (IsDebug) _logger.Error("DEBUG/ERROR: " + handler.ToStringAndClear(), LogEventKind.DebugError, ex);
     }
 
     /// <summary>
-    /// Plain-string overload of <see cref="DebugError(ref DebugErrorInterpolatedStringHandler, Exception)"/>
+    /// Plain-string overload of <see cref="DebugError(ref DebugInterpolatedStringHandler, Exception)"/>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -111,13 +111,13 @@ public struct ILogger : IEquatable<ILogger>
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void DebugWarn(
-        [InterpolatedStringHandlerArgument("")] ref DebugWarnInterpolatedStringHandler handler)
+        [InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler)
     {
-        if (IsDebug) _logger.Warn(handler.ToStringAndClear(), LogEventKind.DebugWarn);
+        if (IsDebug) _logger.Warn("DEBUG/WARN: " + handler.ToStringAndClear(), LogEventKind.DebugWarn);
     }
 
     /// <summary>
-    /// Plain-string overload of <see cref="DebugWarn(ref DebugWarnInterpolatedStringHandler)"/>
+    /// Plain-string overload of <see cref="DebugWarn(ref DebugInterpolatedStringHandler)"/>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -134,14 +134,14 @@ public struct ILogger : IEquatable<ILogger>
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void TraceError(
-        [InterpolatedStringHandlerArgument("")] ref TraceErrorInterpolatedStringHandler handler,
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler,
         Exception ex = null)
     {
-        if (IsTrace) _logger.Error(handler.ToStringAndClear(), LogEventKind.TraceError, ex);
+        if (IsTrace) _logger.Error("TRACE/ERROR: " + handler.ToStringAndClear(), LogEventKind.TraceError, ex);
     }
 
     /// <summary>
-    /// Plain-string overload of <see cref="TraceError(ref TraceErrorInterpolatedStringHandler, Exception)"/>
+    /// Plain-string overload of <see cref="TraceError(ref TraceInterpolatedStringHandler, Exception)"/>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -158,13 +158,13 @@ public struct ILogger : IEquatable<ILogger>
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void TraceWarn(
-        [InterpolatedStringHandlerArgument("")] ref TraceWarnInterpolatedStringHandler handler)
+        [InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler)
     {
-        if (IsTrace) _logger.Warn(handler.ToStringAndClear(), LogEventKind.TraceWarn);
+        if (IsTrace) _logger.Warn("TRACE/WARN: " + handler.ToStringAndClear(), LogEventKind.TraceWarn);
     }
 
     /// <summary>
-    /// Plain-string overload of <see cref="TraceWarn(ref TraceWarnInterpolatedStringHandler)"/>
+    /// Plain-string overload of <see cref="TraceWarn(ref TraceInterpolatedStringHandler)"/>
     /// for callers that pass a literal message with no interpolation.
     /// </summary>
     [MethodImpl(MethodImplOptions.NoInlining)]
