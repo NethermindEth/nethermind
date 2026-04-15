@@ -426,7 +426,7 @@ public abstract class BlockchainTestBase
 
         if (validationError.Contains("InvalidTxType", StringComparison.Ordinal))
         {
-            return ["TransactionException.TYPE_3_TX_PRE_FORK"];
+            return ["TransactionException.TYPE_3_TX_PRE_FORK", "TransactionException.TYPE_4_TX_PRE_FORK"];
         }
 
         if (validationError.Contains("InvalidBlobVersionedHashVersion", StringComparison.Ordinal))
@@ -434,14 +434,45 @@ public abstract class BlockchainTestBase
             return ["TransactionException.TYPE_3_TX_INVALID_BLOB_VERSIONED_HASH"];
         }
 
+        if (validationError.Contains("Invalid block hash", StringComparison.Ordinal)
+            && validationError.Contains("does not match calculated hash", StringComparison.Ordinal))
+        {
+            return ["BlockException.INVALID_BLOCK_HASH"];
+        }
+
         if (validationError.Contains("InvalidRequestsHash", StringComparison.Ordinal))
         {
             return ["BlockException.INVALID_REQUESTS"];
         }
 
+        if (validationError.Contains("WithdrawalsFailed: Contract execution failed", StringComparison.Ordinal))
+        {
+            return ["BlockException.SYSTEM_CONTRACT_CALL_FAILED"];
+        }
+
+        if (validationError.Contains("WithdrawalsEmpty: Contract is not deployed", StringComparison.Ordinal))
+        {
+            return ["BlockException.SYSTEM_CONTRACT_EMPTY"];
+        }
+
+        if (validationError.Contains("ConsolidationsFailed: Contract execution failed", StringComparison.Ordinal))
+        {
+            return ["BlockException.SYSTEM_CONTRACT_CALL_FAILED"];
+        }
+
+        if (validationError.Contains("ConsolidationsEmpty: Contract is not deployed", StringComparison.Ordinal))
+        {
+            return ["BlockException.SYSTEM_CONTRACT_EMPTY"];
+        }
+
         if (validationError.Contains("DepositsInvalid: Invalid deposit event layout", StringComparison.Ordinal))
         {
             return ["BlockException.INVALID_DEPOSIT_EVENT_LAYOUT"];
+        }
+
+        if (validationError.Contains("HeaderExcessBlobGasMismatch", StringComparison.Ordinal))
+        {
+            return ["BlockException.INCORRECT_EXCESS_BLOB_GAS"];
         }
 
         if (validationError.Contains("HeaderBlobGasMismatch", StringComparison.Ordinal))
@@ -457,6 +488,56 @@ public abstract class BlockchainTestBase
         if (validationError.Contains("BlockBlobGasExceeded", StringComparison.Ordinal))
         {
             return ["TransactionException.TYPE_3_TX_MAX_BLOB_GAS_ALLOWANCE_EXCEEDED"];
+        }
+
+        if (validationError.Contains("InsufficientMaxFeePerBlobGas", StringComparison.Ordinal))
+        {
+            return ["TransactionException.INSUFFICIENT_MAX_FEE_PER_BLOB_GAS"];
+        }
+
+        if (validationError.Contains("blob transaction of type create", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_CONTRACT_CREATION", "BlockException.RLP_STRUCTURES_ENCODING"];
+        }
+
+        if (validationError.Contains("blob transaction must have at least 1 blob", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_ZERO_BLOBS"];
+        }
+
+        if (validationError.Contains("Unexpected length of long value", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_3_TX_WITH_FULL_BLOBS", "BlockException.RLP_STRUCTURES_ENCODING"];
+        }
+
+        if (validationError.Contains("miner premium is negative", StringComparison.Ordinal))
+        {
+            return ["TransactionException.INSUFFICIENT_MAX_FEE_PER_GAS"];
+        }
+
+        if (validationError.Contains("InvalidMaxPriorityFeePerGas", StringComparison.Ordinal))
+        {
+            return ["TransactionException.PRIORITY_GREATER_THAN_MAX_FEE_PER_GAS"];
+        }
+
+        if (validationError.Contains("NotAllowedCreateTransaction", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_4_TX_CONTRACT_CREATION"];
+        }
+
+        if (validationError.Contains("MissingAuthorizationList", StringComparison.Ordinal))
+        {
+            return ["TransactionException.TYPE_4_EMPTY_AUTHORIZATION_LIST"];
+        }
+
+        if (validationError.Contains("transaction nonce is too low", StringComparison.Ordinal))
+        {
+            return ["TransactionException.NONCE_MISMATCH_TOO_LOW"];
+        }
+
+        if (validationError.Contains("sender has deployed code", StringComparison.Ordinal))
+        {
+            return ["TransactionException.SENDER_NOT_EOA"];
         }
 
         if (validationError.Contains("TxGasLimitCapExceeded", StringComparison.Ordinal))
