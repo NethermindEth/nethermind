@@ -63,8 +63,8 @@ internal sealed class StateCompositionStateHolder
 
     /// <summary>
     /// Returns a cloned snapshot of the current depth stats under the holder's lock.
-    /// Callers (RPC + Metrics.UpdateDepthDistribution) iterate all 10 long[16] fields;
-    /// returning a clone eliminates torn reads from concurrent ApplyDelta calls.
+    /// Callers (RPC + Metrics.UpdateDepthDistribution) iterate all 9 long[16] fields;
+    /// returning a clone eliminates torn reads from concurrent AddInPlace calls.
     /// </summary>
     public CumulativeDepthStats CurrentDepthStats
     {
@@ -251,7 +251,7 @@ internal sealed class StateCompositionStateHolder
             _diffsSinceBaseline++;
             _lastProcessedStateRoot = stateRoot;
             if (diff.DepthDelta is not null)
-                _currentDepthStats.ApplyDelta(diff.DepthDelta);
+                _currentDepthStats.AddInPlace(diff.DepthDelta);
 
             return updated;
         }

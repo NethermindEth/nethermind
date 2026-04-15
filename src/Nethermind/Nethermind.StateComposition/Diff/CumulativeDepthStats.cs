@@ -9,9 +9,9 @@ using Nethermind.StateComposition.Service;
 namespace Nethermind.StateComposition.Diff;
 
 /// <summary>
-/// Mutable cumulative per-depth trie node counters.
-/// One instance owned by <see cref="StateCompositionStateHolder"/>;
-/// updated in-place under the holder's lock via <see cref="ApplyDelta"/>.
+/// Mutable cumulative per-depth trie node counters. Doubles as the per-block
+/// delta container produced by <see cref="TrieDiffWalker"/> — same shape, same
+/// field semantics, merged into the holder's baseline via <see cref="AddInPlace"/>.
 ///
 /// Physical-depth storage: arrays are indexed by physical depth [0..15].
 /// The Geth +1 shift for ValueNodeCount is applied only at presentation time
@@ -39,7 +39,7 @@ public sealed class CumulativeDepthStats
 
     /// <summary>
     /// True once a baseline has been installed via <see cref="SeedFromScan"/> or
-    /// <see cref="SeedFromSnapshot"/>. Until that happens, <see cref="ApplyDelta"/>
+    /// <see cref="SeedFromSnapshot"/>. Until that happens, <see cref="AddInPlace"/>
     /// is a no-op — applying deltas on top of an unseeded (all-zero) baseline would
     /// push gauges negative whenever a diff removes more nodes than it adds at a
     /// given depth. The gate guarantees gauges stay at 0 until a correct baseline is
@@ -48,25 +48,48 @@ public sealed class CumulativeDepthStats
     /// </summary>
     public bool IsSeeded { get; private set; }
 
-    /// <summary>Apply a diff delta in-place. Allocation-free on the hot path.</summary>
-    /// <remarks>No-op until <see cref="IsSeeded"/> is true.</remarks>
-    public void ApplyDelta(DepthDelta d)
+    /// <summary>
+    /// Add another instance's fields into this one in place. Values in
+    /// <paramref name="other"/> can be negative (diff removes). Allocation-free on the hot path.
+    /// </summary>
+    /// <remarks>No-op until this instance's <see cref="IsSeeded"/> is true.</remarks>
+    public void AddInPlace(CumulativeDepthStats other)
     {
         if (!IsSeeded) return;
         for (int i = 0; i < 16; i++)
         {
-            AccountFullNodes[i] += d.AccountFullNodes[i];
-            AccountShortNodes[i] += d.AccountShortNodes[i];
-            AccountValueNodes[i] += d.AccountValueNodes[i];
-            AccountNodeBytes[i] += d.AccountNodeBytes[i];
-            StorageFullNodes[i] += d.StorageFullNodes[i];
-            StorageShortNodes[i] += d.StorageShortNodes[i];
-            StorageValueNodes[i] += d.StorageValueNodes[i];
-            StorageNodeBytes[i] += d.StorageNodeBytes[i];
-            BranchOccupancy[i] += d.BranchOccupancy[i];
+            AccountFullNodes[i] += other.AccountFullNodes[i];
+            AccountShortNodes[i] += other.AccountShortNodes[i];
+            AccountValueNodes[i] += other.AccountValueNodes[i];
+            AccountNodeBytes[i] += other.AccountNodeBytes[i];
+            StorageFullNodes[i] += other.StorageFullNodes[i];
+            StorageShortNodes[i] += other.StorageShortNodes[i];
+            StorageValueNodes[i] += other.StorageValueNodes[i];
+            StorageNodeBytes[i] += other.StorageNodeBytes[i];
+            BranchOccupancy[i] += other.BranchOccupancy[i];
         }
-        TotalBranchNodes += d.TotalBranchNodesDelta;
-        TotalBranchChildren += d.TotalBranchChildrenDelta;
+        TotalBranchNodes += other.TotalBranchNodes;
+        TotalBranchChildren += other.TotalBranchChildren;
+    }
+
+    /// <summary>
+    /// Returns true when every array element and both scalars are zero.
+    /// Used by the diff walker to skip <see cref="Metrics.UpdateDepthDistribution"/>
+    /// republishes for blocks that do not change the depth distribution.
+    /// </summary>
+    public bool IsEmpty()
+    {
+        if (TotalBranchNodes != 0 || TotalBranchChildren != 0) return false;
+        for (int i = 0; i < 16; i++)
+        {
+            if (AccountFullNodes[i] != 0 || AccountShortNodes[i] != 0
+                || AccountValueNodes[i] != 0 || AccountNodeBytes[i] != 0
+                || StorageFullNodes[i] != 0 || StorageShortNodes[i] != 0
+                || StorageValueNodes[i] != 0 || StorageNodeBytes[i] != 0
+                || BranchOccupancy[i] != 0)
+                return false;
+        }
+        return true;
     }
 
     /// <summary>Zero all arrays and scalars. Used when a fresh scan re-baselines.</summary>

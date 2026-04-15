@@ -24,8 +24,8 @@ internal sealed partial class TrieDiffWalker
             int children = CountBranchChildren(branch);
             if (children <= 0) return;
             _depthDelta.BranchOccupancy[children - 1] += sign;
-            _depthDelta.TotalBranchNodesDelta += sign;
-            _depthDelta.TotalBranchChildrenDelta += sign * children;
+            _depthDelta.TotalBranchNodes += sign;
+            _depthDelta.TotalBranchChildren += sign * children;
         }
     }
 
