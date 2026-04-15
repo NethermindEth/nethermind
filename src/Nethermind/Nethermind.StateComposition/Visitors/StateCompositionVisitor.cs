@@ -197,25 +197,20 @@ internal sealed class StateCompositionVisitor(
             c.EmptyAccounts++;
     }
 
+    // Ownership transfers on the three tracker maps: the visitor is one-shot
+    // (internal sealed, used under a `using` in StateCompositionService) and the
+    // holder takes its own defensive copy inside InitializeIncremental. Callers
+    // must not reuse the visitor post-GetStats.
     public StateCompositionStats GetStats(long blockNumber, Hash256? stateRoot)
     {
         VisitorCounters agg = GetAggregated();
 
-        // Materialize the per-address slot count tracker from the merged
-        // SlotCountsByOwner list. Each owner appears at most once because each
-        // account is visited by exactly one worker thread.
+        // Materialize the merged SlotCountsByOwner list into a dict. Indexed
+        // assignment (not `new Dictionary(list)`) is required because the list
+        // may contain the zero-owner sentinel more than once across worker threads.
         Dictionary<ValueHash256, long> slotCountByAddress = new(agg.SlotCountsByOwner.Count);
         foreach (KeyValuePair<ValueHash256, long> kvp in agg.SlotCountsByOwner)
             slotCountByAddress[kvp.Key] = kvp.Value;
-
-        // Snapshot the visitor-wide code-hash size map into a plain dictionary so
-        // the state holder owns its own immutable copy.
-        Dictionary<ValueHash256, int> codeHashSizes = new(_codeHashSizes.Count);
-        foreach (KeyValuePair<ValueHash256, int> kvp in _codeHashSizes)
-            codeHashSizes[kvp.Key] = kvp.Value;
-
-        // Copy the merged refcount dict so later access is decoupled from the aggregate.
-        Dictionary<ValueHash256, int> codeHashRefcounts = new(agg.CodeHashRefcounts);
 
         return new StateCompositionStats
         {
@@ -241,8 +236,8 @@ internal sealed class StateCompositionVisitor(
             TopContractsByValueNodes = BuildSortedTopN(agg.TopN.TopByValueNodes, agg.TopN.TopByValueNodesCount, TopNTracker.CompareByValueNodes),
             TopContractsBySize = BuildSortedTopN(agg.TopN.TopBySize, agg.TopN.TopBySizeCount, TopNTracker.CompareBySize),
             SlotCountByAddress = slotCountByAddress,
-            CodeHashSizes = codeHashSizes,
-            CodeHashRefcounts = codeHashRefcounts,
+            CodeHashSizes = _codeHashSizes,
+            CodeHashRefcounts = agg.CodeHashRefcounts,
         };
     }
 
