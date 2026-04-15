@@ -58,22 +58,6 @@ public class StateCompositionRpcModuleTests
     }
 
     [Test]
-    public async Task GetCacheMetadata_ReturnsNull_WhenNeverScanned()
-    {
-        StateCompositionStateHolder stateHolder = new();
-
-        StateCompositionRpcModule rpc = new(
-            new FakeService(),
-            stateHolder,
-            Substitute.For<IBlockTree>(),
-            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
-
-        ResultWrapper<ScanMetadata?> result = await rpc.statecomp_getCacheMetadata();
-
-        Assert.That(result.Data, Is.Null);
-    }
-
-    [Test]
     public async Task CancelScan_ReturnsTrue()
     {
         FakeService service = new();

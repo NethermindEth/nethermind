@@ -67,6 +67,15 @@ internal partial class StateCompositionService : IDisposable
         _blockTree.NewHeadBlock += OnNewHeadBlock;
     }
 
+    /// <summary>
+    /// Run a full trie scan. Legal call sites — do not add more:
+    /// <list type="bullet">
+    /// <item><description>Explicit RPC: <c>statecomp_getStats</c> (operator-initiated).</description></item>
+    /// <item><description>Error recovery: <see cref="ScheduleBaselineRescan"/> after a
+    /// <see cref="Nethermind.Trie.MissingTrieNodeException"/> invalidates the incremental baseline.</description></item>
+    /// </list>
+    /// Fail-fast / queued via <see cref="_scanLock"/> so back-to-back triggers collapse into one scan.
+    /// </summary>
     public async Task<Result<StateCompositionStats>> AnalyzeAsync(BlockHeader header, CancellationToken ct)
     {
         // If the semaphore is busy, either fail-fast (timeout <= 0) or wait briefly.

@@ -43,21 +43,8 @@ internal sealed class StateCompositionRpcModule(
 
     public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats()
     {
-        CachedStatsResponse response = new()
-        {
-            CurrentStats = stateHolder.IncrementalStats,
-            BlockNumber = stateHolder.IncrementalStats is not null ? stateHolder.IncrementalBlock : null,
-            DiffsSinceLastScan = stateHolder.DiffsSinceBaseline,
-            LastScanMetadata = stateHolder.LastScanMetadata,
-        };
-
-        return Task.FromResult(ResultWrapper<CachedStatsResponse>.Success(response));
-    }
-
-    public Task<ResultWrapper<ScanMetadata?>> statecomp_getCacheMetadata()
-    {
         return Task.FromResult(
-            ResultWrapper<ScanMetadata?>.Success(stateHolder.LastScanMetadata));
+            ResultWrapper<CachedStatsResponse>.Success(stateHolder.BuildCachedStatsResponse()));
     }
 
     public Task<ResultWrapper<TrieDepthDistribution>> statecomp_getTrieDistribution()
