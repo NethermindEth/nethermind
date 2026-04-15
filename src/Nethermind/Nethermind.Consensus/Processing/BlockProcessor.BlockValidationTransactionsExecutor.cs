@@ -35,7 +35,8 @@ namespace Nethermind.Consensus.Processing
 #if !ZK_EVM
             virtual
 #endif
-            void SetBlockAccessListManager(in IBlockAccessListManager balManager) { }
+            void SetBlockAccessListManager(in IBlockAccessListManager balManager)
+            { }
 
             public
 #if !ZK_EVM
