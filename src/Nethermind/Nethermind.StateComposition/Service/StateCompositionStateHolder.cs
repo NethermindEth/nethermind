@@ -12,9 +12,6 @@ using Nethermind.StateComposition.Visitors;
 
 namespace Nethermind.StateComposition.Service;
 
-/// <summary>
-/// Thread-safe store of baseline scan results and scan lifecycle state.
-/// </summary>
 internal sealed class StateCompositionStateHolder
 {
     private readonly Lock _lock = new();
@@ -61,11 +58,6 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _incrementalStats; }
     }
 
-    /// <summary>
-    /// Returns a cloned snapshot of the current depth stats under the holder's lock.
-    /// Callers (RPC + Metrics.UpdateDepthDistribution) iterate all 9 long[16] fields;
-    /// returning a clone eliminates torn reads from concurrent AddInPlace calls.
-    /// </summary>
     public CumulativeDepthStats CurrentDepthStats
     {
         get { lock (_lock) return _currentDepthStats.Clone(); }
@@ -86,11 +78,6 @@ internal sealed class StateCompositionStateHolder
         get { lock (_lock) return _lastProcessedStateRoot; }
     }
 
-    /// <summary>
-    /// Build the RPC <see cref="CachedStatsResponse"/> under a single <see cref="_lock"/> entry
-    /// so the four fields (stats, block, diff count, scan metadata) cannot tear against a
-    /// concurrent diff application.
-    /// </summary>
     public CachedStatsResponse BuildCachedStatsResponse()
     {
         lock (_lock)
@@ -105,12 +92,6 @@ internal sealed class StateCompositionStateHolder
         }
     }
 
-    /// <summary>
-    /// Build a fully-populated <see cref="StateCompositionSnapshot"/> atomically. Stats,
-    /// baseline metadata, depth stats, and the three tracker dictionaries are all captured
-    /// under a single <see cref="_lock"/> entry so the persisted snapshot cannot tear
-    /// against a concurrent <see cref="InitializeIncremental"/> or diff application.
-    /// </summary>
     public StateCompositionSnapshot BuildSnapshot(
         CumulativeSizeStats stats,
         long blockNumber,

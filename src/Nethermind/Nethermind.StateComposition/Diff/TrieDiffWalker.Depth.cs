@@ -7,7 +7,6 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    /// <summary>Record a branch node add/remove in the depth delta arrays.</summary>
     private void RecordDepthBranch(TrieNode branch, int depth, bool isStorage, bool added)
     {
         int sign = added ? 1 : -1;
@@ -29,7 +28,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>Record an extension node add/remove in the depth delta arrays.</summary>
     private void RecordDepthShort(long rlpLen, int depth, bool isStorage, bool added)
     {
         int sign = added ? 1 : -1;
@@ -45,11 +43,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Record a leaf node add/remove in the depth delta arrays.
-    /// Both ShortNodes (Geth convention: leaf is a shortNode) and ValueNodes are updated.
-    /// ValueNodes[depth] stores physical leaves (unshifted); the +1 shift is applied at metrics time.
-    /// </summary>
     private void RecordDepthLeaf(long rlpLen, int depth, bool isStorage, bool added)
     {
         int sign = added ? 1 : -1;

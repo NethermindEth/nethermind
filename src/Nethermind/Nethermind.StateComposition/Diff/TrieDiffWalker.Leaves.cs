@@ -12,11 +12,6 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    /// <summary>
-    /// Compare two leaf nodes. Both are at the same trie path.
-    /// For account trie: decode accounts to detect contract/storage changes.
-    /// For storage trie: each leaf is one storage slot.
-    /// </summary>
     private void DiffLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path, bool isStorage, int depth)
     {
         // Record both leaf nodes (old removed, new added)
@@ -38,10 +33,6 @@ internal sealed partial class TrieDiffWalker
         DecodeAndDiffAccountLeaves(oldLeaf, newLeaf, ref path);
     }
 
-    /// <summary>
-    /// Decode two account leaves and diff their contract status and storage roots.
-    /// Both leaves are at the same account path (same address hash).
-    /// </summary>
     private void DecodeAndDiffAccountLeaves(TrieNode oldLeaf, TrieNode newLeaf, ref TreePath path)
     {
         AccountStruct oldAccount = DecodeAccount(oldLeaf);
@@ -88,10 +79,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Decode account leaf value to a full <see cref="AccountStruct"/>. Provides access to
-    /// nonce, balance, code hash, and storage root needed for HasCode/HasStorage/IsTotallyEmpty.
-    /// </summary>
     private static AccountStruct DecodeAccount(TrieNode leaf)
     {
         var value = leaf.Value;
@@ -100,10 +87,6 @@ internal sealed partial class TrieDiffWalker
         return account;
     }
 
-    /// <summary>
-    /// Get the address hash from a leaf node's position in the account trie.
-    /// The full 64-nibble path at a leaf = the keccak256 hash of the address.
-    /// </summary>
     private static Hash256 GetAddressHash(TrieNode leaf, ref TreePath path)
     {
         // Append leaf's key nibbles to build the full 64-nibble path

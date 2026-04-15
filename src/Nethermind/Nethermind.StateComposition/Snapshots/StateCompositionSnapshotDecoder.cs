@@ -137,10 +137,6 @@ public sealed class StateCompositionSnapshotDecoder : RlpValueDecoder<StateCompo
         return contentLength;
     }
 
-    // Null map ⇒ encoded as count=0. Kept for backward-safety with legacy snapshots
-    // written before BuildSnapshot centralised tracker population; the decoder
-    // reads them back as an empty dict so the plugin treats that baseline as
-    // "no trackers" and triggers a fresh scan.
     private static int GetMapLength<TValue>(
         IReadOnlyDictionary<ValueHash256, TValue>? map,
         System.Func<TValue, int> lengthOfValue)

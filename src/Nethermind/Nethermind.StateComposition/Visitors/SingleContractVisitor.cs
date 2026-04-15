@@ -12,11 +12,6 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
 
-/// <summary>
-/// Specialized visitor that walks the full state trie but only collects storage statistics
-/// for a single target contract identified by its storage root.
-/// Skips all non-target storage tries for efficiency.
-/// </summary>
 internal sealed class SingleContractVisitor(
     ILogManager logManager,
     ValueHash256 targetStorageRoot,

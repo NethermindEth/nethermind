@@ -74,10 +74,5 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
         return Task.CompletedTask;
     }
 
-    public Task InitRpcModules()
-    {
-        // Snapshot restore and service instantiation happen in Init() so they run
-        // regardless of whether JSON-RPC is enabled. Nothing to do here.
-        return Task.CompletedTask;
-    }
+    public Task InitRpcModules() => Task.CompletedTask;
 }

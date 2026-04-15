@@ -14,24 +14,17 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    /// <summary>
-    /// Per-call leaf policy. Implementations customise only what happens when
-    /// <see cref="WalkStructure{TH}"/> reaches a <see cref="NodeType.Leaf"/> —
-    /// the branch/extension traversal (plus depth and node bookkeeping) is shared.
-    /// </summary>
     private interface ILeafHandler
     {
         void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage);
     }
 
-    /// <summary>Count accounts/contracts/slots and recurse into storage tries at each leaf.</summary>
     private struct SemanticLeafHandler(TrieDiffWalker walker) : ILeafHandler
     {
         public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
             => walker.CollectLeaf(leaf, ref path, added, isStorage);
     }
 
-    /// <summary>Store each leaf in a dictionary keyed by full trie path for deferred matching.</summary>
     private struct DictionaryLeafHandler(Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves) : ILeafHandler
     {
         public void Handle(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
@@ -45,14 +38,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Shared branch/extension walker. Records every structural node via
-    /// <see cref="RecordNode"/> and the depth histograms when tracking is on.
-    /// Leaves are delegated to <typeparamref name="TH"/> so each caller picks its
-    /// own policy — semantic counting vs. deferred-match dictionary store.
-    /// <c>where TH : struct, ILeafHandler</c> lets the JIT specialise and
-    /// devirtualise per handler type; no delegate allocation on the hot path.
-    /// </summary>
     private void WalkStructure<TH>(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
         bool isStorage, bool added, int depth, ref TH leafHandler)
         where TH : struct, ILeafHandler
@@ -145,21 +130,12 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Recursively collect all nodes in a subtree as either added or removed.
-    /// Also counts accounts, contracts, and storage slots at leaves.
-    /// </summary>
     private void CollectSubtree(TrieNode node, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int depth)
     {
         SemanticLeafHandler handler = new(this);
         WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
     }
 
-    /// <summary>
-    /// Walk a subtree recording all structural node changes (via RecordNode) and collecting
-    /// leaf entries into a dictionary keyed by full path. Leaf semantic counting is deferred
-    /// to the caller for correct diff matching.
-    /// </summary>
     private void CollectSubtreeForDiff(TrieNode node, ref TreePath path, ITrieNodeResolver resolver,
         bool isStorage, bool added, Dictionary<ValueHash256, (TrieNode Leaf, TreePath Path)> leaves, int depth)
     {
@@ -167,10 +143,6 @@ internal sealed partial class TrieDiffWalker
         WalkStructure(node, ref path, resolver, isStorage, added, depth, ref handler);
     }
 
-    /// <summary>
-    /// Count a leaf node's semantic content (account/contract/slot).
-    /// For account trie leaves, also recurse into storage tries.
-    /// </summary>
     private void CollectLeaf(TrieNode leaf, ref TreePath path, bool added, bool isStorage)
     {
         if (isStorage)
@@ -247,9 +219,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Record a single trie node as added or removed, incrementing the appropriate counter.
-    /// </summary>
     private void RecordNode(NodeType nodeType, int rlpLength, bool isStorage, bool added)
     {
         if (isStorage)

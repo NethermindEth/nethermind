@@ -10,10 +10,6 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    /// <summary>
-    /// Compare two extension nodes. If keys match, recurse into child.
-    /// If keys differ, collect both subtrees independently.
-    /// </summary>
     private void DiffExtensions(TrieNode oldExt, TrieNode newExt, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         byte[]? oldKey = oldExt.Key;
