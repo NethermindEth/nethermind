@@ -21,26 +21,6 @@ internal sealed class StateCompositionRpcModule(
     StateCompositionSnapshotStore snapshotStore)
     : IStateCompositionRpcModule
 {
-    public async Task<ResultWrapper<StateCompositionStats>> statecomp_getStats()
-    {
-        Block? head = blockTree.Head;
-        if (head is null)
-            return ResultWrapper<StateCompositionStats>.Fail("No head block available", ErrorCodes.ResourceUnavailable);
-
-        try
-        {
-            Result<StateCompositionStats> result = await service.AnalyzeAsync(head.Header, CancellationToken.None)
-                .ConfigureAwait(false);
-            return !result.Success(out StateCompositionStats stats, out var error) ?
-                ResultWrapper<StateCompositionStats>.Fail(error, ErrorCodes.ResourceUnavailable) :
-                ResultWrapper<StateCompositionStats>.Success(stats);
-        }
-        catch (OperationCanceledException)
-        {
-            return ResultWrapper<StateCompositionStats>.Fail("Scan was cancelled");
-        }
-    }
-
     public Task<ResultWrapper<CachedStatsResponse>> statecomp_getCachedStats()
     {
         return Task.FromResult(

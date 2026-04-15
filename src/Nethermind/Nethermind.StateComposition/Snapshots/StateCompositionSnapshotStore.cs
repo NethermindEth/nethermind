@@ -72,7 +72,7 @@ public class StateCompositionSnapshotStore(
         {
             if (_logger.IsWarn)
                 _logger.Warn($"StateComposition: persisted snapshot at block {blockNumber} could not be decoded " +
-                             $"(reason: {ex.Message}). Call statecomp_getStats to rebuild the cached baseline.");
+                             $"(reason: {ex.Message}). Falling back to a fresh scan to rebuild the cached baseline.");
             return null;
         }
     }

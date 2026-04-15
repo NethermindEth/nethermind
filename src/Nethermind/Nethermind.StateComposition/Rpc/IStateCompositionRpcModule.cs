@@ -18,12 +18,6 @@ namespace Nethermind.StateComposition.Rpc;
 public interface IStateCompositionRpcModule : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true,
-        Description = "Run full state composition scan at head block. " +
-                      "Fails fast if scan already in progress.",
-        ExampleResponse = "{\"accountsTotal\":12345678,\"contractsTotal\":987654,\"contractsWithStorage\":123456,\"storageSlotsTotal\":9876543,\"emptyAccounts\":1000}")]
-    Task<ResultWrapper<StateCompositionStats>> statecomp_getStats();
-
-    [JsonRpcMethod(IsImplemented = true,
         Description = "Get cached stats from last completed scan. " +
                       "Stats field is null if never scanned. " +
                       "LastScanMetadata carries scan freshness/completion info.",
