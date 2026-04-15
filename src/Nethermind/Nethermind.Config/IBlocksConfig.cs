@@ -63,7 +63,7 @@ public interface IBlocksConfig : IConfig
 
     [ConfigItem(
         Description = "Parallelize transaction execution with Block access lists.",
-        DefaultValue = "false")]
+        DefaultValue = "true")]
     bool ParallelExecution { get; set; }
 
     [ConfigItem(
