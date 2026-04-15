@@ -39,11 +39,11 @@ public class LegacyTransactionForRpc : TransactionForRpc, ITxTyped, IFromTransac
     // Accept during deserialization, ignore during serialization
     // See: https://github.com/NethermindEth/nethermind/pull/6067
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    [JsonConverter(typeof(EvenLengthByteArrayConverter))]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Data { set { Input = value; } private get { return null; } }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
-    [JsonConverter(typeof(EvenLengthByteArrayConverter))]
+    [JsonConverter(typeof(StrictHexByteArrayConverter))]
     public byte[]? Input { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]

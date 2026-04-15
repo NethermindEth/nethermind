@@ -468,7 +468,7 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
 
             try
             {
-                byte[]? result = new EvenLengthByteArrayConverter()
+                byte[]? result = new StrictHexByteArrayConverter()
                     .Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default);
 
                 Assert.That(result, Is.EqualTo((byte[])expected));

@@ -319,12 +319,12 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 }
 
 /// <summary>
-/// A strict variant of <see cref="ByteArrayConverter"/> that rejects odd-length hex strings.
-/// Odd-length hex (e.g. "0x1ab") is ambiguous and rejected by Geth, Reth, and Erigon.
-/// Use on RPC transaction fields (input, data) to return -32602 instead of letting
-/// malformed calldata reach the EVM.
+/// A strict variant of <see cref="ByteArrayConverter"/> that enforces canonical hex encoding:
+/// the <c>0x</c> prefix is required and the hex string must have an even number of digits.
+/// Matches Geth, Reth, and Erigon behaviour — returns -32602 for malformed input.
+/// Use on RPC transaction fields (input, data) to reject malformed calldata before it reaches the EVM.
 /// </summary>
-public class EvenLengthByteArrayConverter : JsonConverter<byte[]>
+public class StrictHexByteArrayConverter : JsonConverter<byte[]>
 {
     public override byte[]? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
