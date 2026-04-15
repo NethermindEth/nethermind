@@ -19,15 +19,15 @@ public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
     public string Name => XdcSubnet;
     public string Description => "Xdc subnet support for Nethermind";
     public bool Enabled => chainSpec.SealEngineType == SealEngineType;
-    public string SealEngineType => Core.SealEngineType.XDPoSSubnet;
+    public string SealEngineType => XdcConstants.XDPoSSubnet;
     public IModule Module => new XdcSubnetModule();
 
     public Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
-    public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol(); 
+    public Task InitNetworkProtocol() => _xdcPlugin.InitNetworkProtocol();
 
     // IConsensusPlugin
     public IBlockProducerRunner InitBlockProducerRunner(IBlockProducer blockProducer) => _xdcPlugin.InitBlockProducerRunner(blockProducer);
 
-    public IBlockProducer InitBlockProducer() => _xdcPlugin.InitBlockProducer();    
+    public IBlockProducer InitBlockProducer() => _xdcPlugin.InitBlockProducer();
 }

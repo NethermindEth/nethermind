@@ -21,8 +21,6 @@ public class XdcSubnetModule : XdcModule
 
     }
 
-    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler)
-    {
-        return new SubnetSnapshotManager(db, blockTree, votingContract, specProvider, penaltyHandler);
-    }
+    private ISnapshotManager CreateSnapshotManager([KeyFilter(XdcRocksDbConfigFactory.XdcSnapshotDbName)] IDb db, IBlockTree blockTree, IMasternodeVotingContract votingContract, ISpecProvider specProvider, IPenaltyHandler penaltyHandler) =>
+        new SubnetSnapshotManager(db, blockTree, votingContract, specProvider, penaltyHandler);
 }
