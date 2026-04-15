@@ -52,7 +52,7 @@ public class GasEstimator(
 
         // Calculate and return additional gas required in case of insufficient funds.
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
-        if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance && !tx.IsSystem())
+        if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance)
         {
             long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             if (additionalGas == 0)
@@ -65,7 +65,7 @@ public class GasEstimator(
 
         // tx.ValueRef <= senderBalance is guaranteed for non-system transactions (early return above handles the opposite).
         // Subtract value so the gas allowance cap reflects only what is available for gas, matching Geth's behavior.
-        UInt256 available = !tx.IsSystem() ? senderBalance - tx.ValueRef : senderBalance;
+        UInt256 available = senderBalance - tx.ValueRef;
 
         long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
 
@@ -87,7 +87,7 @@ public class GasEstimator(
         // Cap rightBound to what the sender can afford (Geth parity: allowance = (balance - value) / gasPrice).
         // With the shrunk gas limit the TransactionProcessor balance check passes, the EVM runs,
         // and fails at intrinsic gas with OOG — producing "gas required exceeds allowance (N)".
-        if (!tx.IsFree() && tx.MaxFeePerGas > UInt256.Zero)
+        if (tx.MaxFeePerGas > UInt256.Zero)
         {
             long allowance = (long)UInt256.Min(available / tx.MaxFeePerGas, (UInt256)long.MaxValue);
             rightBound = Math.Min(rightBound, allowance);
