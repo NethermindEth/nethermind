@@ -38,49 +38,20 @@ public class StateCompositionServiceTests
         return config;
     }
 
-    [Test]
-    public void Constructor_ClampsZeroParallelism_DoesNotThrow()
+    [TestCase("Parallelism")]
+    [TestCase("MemoryBudget")]
+    [TestCase("TopN")]
+    public void Constructor_AcceptsZeroConfigValue_DoesNotThrow(string field)
     {
+        // Zero values are clamped lazily inside AnalyzeAsync via ResolveScanOptions.
+        // The constructor itself must stay cheap and side-effect-free.
         IStateCompositionConfig config = CreateValidConfig();
-        config.ScanParallelism.Returns(0);
-
-        Assert.DoesNotThrow(() =>
+        switch (field)
         {
-            using StateCompositionService _ = new(
-                Substitute.For<IStateReader>(),
-                Substitute.For<IWorldStateManager>(),
-                Substitute.For<IBlockTree>(),
-                new StateCompositionStateHolder(),
-                CreateSnapshotStore(),
-                config,
-                LimboLogs.Instance);
-        });
-    }
-
-    [Test]
-    public void Constructor_ClampsZeroMemoryBudget_DoesNotThrow()
-    {
-        IStateCompositionConfig config = CreateValidConfig();
-        config.ScanMemoryBudgetBytes.Returns(0L);
-
-        Assert.DoesNotThrow(() =>
-        {
-            using StateCompositionService _ = new(
-                Substitute.For<IStateReader>(),
-                Substitute.For<IWorldStateManager>(),
-                Substitute.For<IBlockTree>(),
-                new StateCompositionStateHolder(),
-                CreateSnapshotStore(),
-                config,
-                LimboLogs.Instance);
-        });
-    }
-
-    [Test]
-    public void Constructor_ClampsZeroTopN_DoesNotThrow()
-    {
-        IStateCompositionConfig config = CreateValidConfig();
-        config.TopNContracts.Returns(0);
+            case "Parallelism": config.ScanParallelism.Returns(0); break;
+            case "MemoryBudget": config.ScanMemoryBudgetBytes.Returns(0L); break;
+            case "TopN": config.TopNContracts.Returns(0); break;
+        }
 
         Assert.DoesNotThrow(() =>
         {
