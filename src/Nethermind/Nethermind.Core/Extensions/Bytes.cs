@@ -987,7 +987,7 @@ namespace Nethermind.Core.Extensions
                 ? HexConverter.TryDecodeFromUtf16_Vector128(chars, writeToSpan)
                 : HexConverter.TryDecodeFromUtf16(chars, writeToSpan, oddMod == 1);
 
-            if (!isSuccess) throw new FormatException("invalid hex string");
+            if (!isSuccess) throw new FormatException(ErrSyntax);
         }
 
         private static ReadOnlySpan<char> Trim0X(ReadOnlySpan<char> hexString)

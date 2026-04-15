@@ -107,7 +107,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
 
             firstNibble = (byte)HexConverter.FromLowerChar(firstNibble | 0x20);
             if (firstNibble > 0x0F)
-                Bytes.ThrowFormatException(Bytes.ErrSyntax);
+                Bytes.ThrowFormatException();
 
             Unsafe.Add(ref resultRef, outPos++) = firstNibble;
         }
