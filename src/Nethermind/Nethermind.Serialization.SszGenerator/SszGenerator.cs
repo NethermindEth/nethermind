@@ -502,7 +502,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -671,7 +671,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
@@ -875,7 +875,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.Serialization.SszCodecHelpers;
-{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x)).Select(n => $"using {n};"))}
+{string.Join("\n", foundTypes.Select(x => x.Namespace).Distinct().OrderBy(x => x).Where(x => !string.IsNullOrEmpty(x) && x != "Nethermind.Serialization.Ssz").Select(n => $"using {n};"))}
 {Whitespace}
 using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
