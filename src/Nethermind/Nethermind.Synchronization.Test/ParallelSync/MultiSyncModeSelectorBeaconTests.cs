@@ -362,22 +362,6 @@ public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSy
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.WaitingForBlock));
 
     [Test]
-    public void Fast_sync_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-            .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeNeedsAFastSyncCatchUp()
-            .AndGoodPeersAreKnown()
-            .ThenInAnyFastSyncConfiguration()
-            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.FastSync));
-
-    [Test]
-    public void Nearly_fast_sync_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
-            .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeNearlyNeedsAFastSyncCatchUp()
-            .AndGoodPeersAreKnown()
-            .ThenInAnyFastSyncConfiguration()
-            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
-
-    [Test]
     public void State_far_in_the_past() => Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
             .IfThisNodeHasStateThatIsFarInThePast()
@@ -416,17 +400,13 @@ public class MultiSyncModeSelectorBeaconTests(bool needToWaitForHeaders, MultiSy
             .ThenInAnyFastSyncConfiguration()
             .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
 
-    /// <summary>
-    /// We should switch to State Sync in a case like below
-    /// 2020-04-27 11:48:30.6691|Changing state to StateNodes at processed:2594949|state:2594949|block:2596807|header:2596807|peer block:2596807
-    /// </summary>
     [Test]
-    public void When_long_range_state_catch_up_is_needed() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+    public void When_node_has_been_offline_for_long_time_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
             .WhenInBeaconSyncMode(_mode)
-            .IfThisNodeJustCameBackFromBeingOfflineForLongTimeAndFinishedFastSyncCatchUp()
+            .IfThisNodeHasBeenOfflineForLongTime()
             .When_FastSync_NoSnapSync_Configured()
             .AndGoodPeersAreKnown()
-            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.StateNodes));
+            .TheSyncModeShouldBe(GetBeaconSyncExpectations(SyncMode.Full));
 
     [Test]
     public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
