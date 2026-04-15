@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -23,9 +24,11 @@ public class BranchProcessor(
     IBeaconBlockRootHandler beaconBlockRootHandler,
     IBlockhashProvider blockhashProvider,
     ILogManager logManager,
+    IBlocksConfig blocksConfig,
     IBlockCachePreWarmer? preWarmer = null)
     : IBranchProcessor
 {
+    private readonly bool _parallelExecutionBatchRead = blocksConfig.ParallelExecutionBatchRead;
     private readonly ILogger _logger = logManager.GetClassLogger<BranchProcessor>();
     private Task _clearTask = Task.CompletedTask;
 
@@ -197,7 +200,7 @@ public class BranchProcessor(
     }
 
     private Task? PreWarmTransactions(Block suggestedBlock, BlockHeader preBlockBaseBlock, IReleaseSpec spec, CancellationToken token) =>
-        suggestedBlock.Transactions.Length < 3
+        suggestedBlock.Transactions.Length < 3 && !(_parallelExecutionBatchRead && spec.BlockLevelAccessListsEnabled && suggestedBlock.BlockAccessList is not null)
             ? null
             : preWarmer?.PreWarmCaches(suggestedBlock,
                 preBlockBaseBlock,

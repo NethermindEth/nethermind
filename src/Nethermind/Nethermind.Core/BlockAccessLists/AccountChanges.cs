@@ -24,8 +24,11 @@ public class AccountChanges : IEquatable<AccountChanges>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<SlotChanges> StorageChanges => _storageChanges.Values;
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.Always)]
+    public IList<UInt256> ChangedSlots => _storageChanges.Keys;
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
-    public IReadOnlyCollection<UInt256> StorageReads => _storageReads;
+    public SortedSet<UInt256> StorageReads => _storageReads;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public IList<BalanceChange> BalanceChanges => _balanceChanges.Values;
@@ -392,8 +395,8 @@ public class AccountChanges : IEquatable<AccountChanges>
 
         if (lastChange.Key == index)
         {
-            changes.RemoveAt(changes.Count - 1);
             change = lastChange.Value;
+            changes.RemoveAt(c - 1);
             return true;
         }
 
