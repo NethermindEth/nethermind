@@ -183,38 +183,37 @@ internal sealed partial class TrieDiffWalker
             else _emptyAccountsRemoved++;
         }
 
+        if (!account.HasCode && !account.HasStorage) return;
+
         // Whole-account create or delete: emit a code-hash transition between NoCode
         // and the account's code hash so the incremental tracker can refcount correctly.
         // DecodeAndDiffAccountLeaves handles the matched-leaf path separately.
-        if (account.HasCode || account.HasStorage)
+        Hash256 addressHash = GetAddressHash(leaf, ref path);
+
+        if (account.HasCode)
         {
-            Hash256 addressHash = GetAddressHash(leaf, ref path);
+            ValueHash256 oldCh = added ? CodeHashChange.NoCode : account.CodeHash;
+            ValueHash256 newCh = added ? account.CodeHash : CodeHashChange.NoCode;
+            RecordCodeHashChange(addressHash.ValueHash256, oldCh, newCh);
+        }
 
-            if (account.HasCode)
+        if (account.HasStorage)
+        {
+            ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
+            TreePath storagePath = TreePath.Empty;
+            Hash256 storageRoot = new(account.StorageRoot);
+
+            TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
+            storageRootNode.ResolveNode(storageResolver, in storagePath);
+
+            BeginContractStorage(addressHash.ValueHash256);
+            try
             {
-                ValueHash256 oldCh = added ? CodeHashChange.NoCode : account.CodeHash;
-                ValueHash256 newCh = added ? account.CodeHash : CodeHashChange.NoCode;
-                RecordCodeHashChange(addressHash.ValueHash256, oldCh, newCh);
+                CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added, depth: 0);
             }
-
-            if (account.HasStorage)
+            finally
             {
-                ITrieNodeResolver storageResolver = rootResolver.GetStorageTrieNodeResolver(addressHash);
-                TreePath storagePath = TreePath.Empty;
-                Hash256 storageRoot = new(account.StorageRoot);
-
-                TrieNode storageRootNode = storageResolver.FindCachedOrUnknown(in storagePath, storageRoot);
-                storageRootNode.ResolveNode(storageResolver, in storagePath);
-
-                BeginContractStorage(addressHash.ValueHash256);
-                try
-                {
-                    CollectSubtree(storageRootNode, ref storagePath, storageResolver, isStorage: true, added, depth: 0);
-                }
-                finally
-                {
-                    EndContractStorage();
-                }
+                EndContractStorage();
             }
         }
     }
