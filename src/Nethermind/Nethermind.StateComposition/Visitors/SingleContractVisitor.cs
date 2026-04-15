@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Immutable;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -106,27 +105,8 @@ internal sealed class SingleContractVisitor(
         if (!_collectingTarget && !_targetCompleted)
             return null;
 
-        ImmutableArray<TrieLevelStat>.Builder levelsBuilder =
-            ImmutableArray.CreateBuilder<TrieLevelStat>(VisitorCounters.MaxTrackedDepth);
-        long summaryShort = 0, summaryFull = 0, summaryValue = 0, summarySize = 0;
-
-        for (int i = 0; i < VisitorCounters.MaxTrackedDepth; i++)
-        {
-            ref DepthCounter dc = ref _depths[i];
-            long shiftedValue = i > 0 ? _depths[i - 1].ValueNodes : 0;
-            levelsBuilder.Add(new TrieLevelStat
-            {
-                Depth = i,
-                ShortNodeCount = dc.ShortNodes + dc.ValueNodes,
-                FullNodeCount = dc.FullNodes,
-                ValueNodeCount = shiftedValue,
-                TotalSize = dc.TotalSize,
-            });
-            summaryShort += dc.ShortNodes + dc.ValueNodes;
-            summaryFull += dc.FullNodes;
-            summaryValue += dc.ValueNodes; // Real total (not shifted)
-            summarySize += dc.TotalSize;
-        }
+        TrieLevelStat[] levels = new TrieLevelStat[VisitorCounters.MaxTrackedDepth];
+        TrieLevelStat summary = LevelStatsBuilder.Fill(_depths, levels);
 
         return new TopContractEntry
         {
@@ -136,15 +116,8 @@ internal sealed class SingleContractVisitor(
             TotalNodes = _totalNodes + _valueNodes, // Geth: Full+Short(ext+leaf)+Value(leaf)
             ValueNodes = _valueNodes,
             TotalSize = _totalSize,
-            Levels = levelsBuilder.MoveToImmutable(),
-            Summary = new TrieLevelStat
-            {
-                Depth = -1,
-                ShortNodeCount = summaryShort,
-                FullNodeCount = summaryFull,
-                ValueNodeCount = summaryValue,
-                TotalSize = summarySize,
-            },
+            Levels = System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(levels),
+            Summary = summary,
         };
     }
 
