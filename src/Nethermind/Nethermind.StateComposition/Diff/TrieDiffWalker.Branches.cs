@@ -11,10 +11,6 @@ namespace Nethermind.StateComposition.Diff;
 
 internal sealed partial class TrieDiffWalker
 {
-    /// <summary>
-    /// Compare two branch nodes. Record both branch nodes, then diff each of the 16 children.
-    /// Uses hash comparison for fast skip of identical children.
-    /// </summary>
     private void DiffBranches(TrieNode oldBranch, TrieNode newBranch, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         RecordNode(NodeType.Branch, oldBranch.FullRlp.Length, isStorage, added: false);
@@ -51,10 +47,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Dispatch a single branch-child slot given pre-computed hash/null state.
-    /// Path must already be appended with the child nibble.
-    /// </summary>
     private void DiffBranchChild(TrieNode oldBranch, TrieNode newBranch, int i,
         Hash256? oldChildHash, Hash256? newChildHash, bool oldIsNull, bool newIsNull,
         ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int childDepth)
@@ -102,10 +94,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Collect one branch-child slot (hash-referenced or inline) as added or removed.
-    /// Used when the opposite side of the branch is null.
-    /// </summary>
     private void CollectBranchSlotSide(TrieNode branch, int i, Hash256? childHash,
         ref TreePath path, ITrieNodeResolver resolver, bool isStorage, bool added, int childDepth)
     {
@@ -125,13 +113,6 @@ internal sealed partial class TrieDiffWalker
         }
     }
 
-    /// <summary>
-    /// Handle type mismatch between old and new nodes by enumerating leaves from both
-    /// subtrees, matching by full path, and diffing semantically. Structural node counts
-    /// (branches, extensions, leaf nodes, bytes) are recorded for all nodes since the
-    /// actual trie nodes ARE created/destroyed. Semantic counts (accounts, contracts, slots)
-    /// only count genuinely new or removed items.
-    /// </summary>
     private void DiffMismatchedNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path,
         ITrieNodeResolver resolver, bool isStorage, int depth)
     {

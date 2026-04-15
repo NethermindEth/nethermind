@@ -15,11 +15,6 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
 
-/// <summary>
-/// Enhanced ITreeVisitor that collects all composition metrics in a single pass.
-/// Uses ThreadLocal&lt;VisitorCounters&gt; for lock-free scaling to 64+ cores.
-/// Uses StateCompositionContext for path tracking to reconstruct account hashes (Owner).
-/// </summary>
 internal sealed class StateCompositionVisitor(
     ILogManager logManager,
     int topN = 20,
@@ -34,13 +29,6 @@ internal sealed class StateCompositionVisitor(
 
     private const int MaxDepthIndex = VisitorCounters.MaxTrackedDepth - 1;
 
-    /// <summary>
-    /// Visitor-wide dedup map for codeHash observations. Maps every unique code hash
-    /// seen during the scan to its bytecode length. The winner of <see cref="ConcurrentDictionary{TKey,TValue}.TryAdd"/>
-    /// resolves the length exactly once across all workers and writes it here; subsequent
-    /// threads observe the stored value without paying another <c>GetCode</c> lookup.
-    /// This dict doubles as the seed for the state holder's incremental code-size tracker.
-    /// </summary>
     private readonly ConcurrentDictionary<ValueHash256, int> _codeHashSizes = new();
 
     private VisitorCounters? _aggregated;
@@ -241,13 +229,6 @@ internal sealed class StateCompositionVisitor(
         };
     }
 
-    /// <summary>
-    /// Take a mid-scan snapshot of counters for progress reporting.
-    /// Safe to call without fences: the progress timer runs concurrently with workers
-    /// but only reads — stale values produce imprecise but non-crashing output.
-    /// Final barrier (Task.WaitAll in the visitor driver) guarantees all writes are
-    /// visible before GetStats/GetTrieDistribution are called post-scan.
-    /// </summary>
     public ScanSnapshot GetSnapshot()
     {
         long accounts = 0, contracts = 0, withStorage = 0, slots = 0, nodes = 0, bytes = 0;
@@ -285,16 +266,6 @@ internal sealed class StateCompositionVisitor(
         };
     }
 
-    /// <summary>
-    /// Returns cached aggregation or computes it once. Flushes all per-thread
-    /// storage trie accumulators before merging.
-    /// <para>
-    /// Caller must ensure all worker tasks have completed before calling.
-    /// Relies on the happens-before guarantee from <c>Task.WaitAll</c> /
-    /// <c>Parallel.ForEach</c> barrier — no internal memory fence is added here,
-    /// as that would regress performance with no safety benefit.
-    /// </para>
-    /// </summary>
     private VisitorCounters GetAggregated()
     {
         if (_aggregated is not null)
@@ -325,11 +296,6 @@ internal sealed class StateCompositionVisitor(
         return System.Runtime.InteropServices.ImmutableCollectionsMarshal.AsImmutableArray(sorted);
     }
 
-    /// <summary>
-    /// Struct-based descending wrapper for <see cref="TopNTracker.EntryComparer"/>.
-    /// Passed to <see cref="Array.Sort{T,TComparer}"/> so the JIT can inline the comparison
-    /// call and no delegate is allocated on each <see cref="BuildSortedTopN"/> invocation.
-    /// </summary>
     private readonly struct DescendingComparer(TopNTracker.EntryComparer inner)
         : System.Collections.Generic.IComparer<TopContractEntry>
     {
@@ -367,17 +333,10 @@ internal sealed class StateCompositionVisitor(
     }
 }
 
-/// <summary>
-/// Mid-scan counter snapshot for progress reporting.
-/// </summary>
 internal readonly record struct ScanSnapshot(
     long Accounts, long Contracts, long ContractsWithStorage,
     long StorageSlots, long Nodes, long Bytes)
 {
-    /// <summary>
-    /// Format a count using the Nethermind convention (see VisitorProgressTracker):
-    /// values &gt;= 1M shown as "1.2M", otherwise as "1,234".
-    /// </summary>
     internal static string Fmt(double value) =>
         value >= 1_000_000 ? $"{value / 1_000_000.0:F1}M" : $"{value:N0}";
 }

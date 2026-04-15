@@ -16,11 +16,6 @@ namespace Nethermind.StateComposition.Visitors;
 /// </summary>
 internal static class LevelStatsBuilder
 {
-    /// <summary>
-    /// Populate <paramref name="dest"/> with one row per depth (no filtering) and
-    /// return the rolled-up summary row. Summary <see cref="TrieLevelStat.ValueNodeCount"/>
-    /// carries the unshifted total; per-row <c>ValueNodeCount</c> carries the shifted value.
-    /// </summary>
     public static TrieLevelStat Fill(ReadOnlySpan<DepthCounter> depths, Span<TrieLevelStat> dest)
     {
         long summaryShort = 0, summaryFull = 0, summaryValue = 0, summarySize = 0;
@@ -51,11 +46,6 @@ internal static class LevelStatsBuilder
         };
     }
 
-    /// <summary>
-    /// Build a compacted <see cref="ImmutableArray{TrieLevelStat}"/> skipping depths
-    /// with no nodes. Used for the full-scan depth distribution where only populated
-    /// levels matter to the RPC consumer.
-    /// </summary>
     public static ImmutableArray<TrieLevelStat> BuildCompact(ReadOnlySpan<DepthCounter> depths)
     {
         Span<TrieLevelStat> scratch = stackalloc TrieLevelStat[depths.Length];

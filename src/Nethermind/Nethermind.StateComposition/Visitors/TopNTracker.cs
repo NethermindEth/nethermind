@@ -6,12 +6,6 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
 
-/// <summary>
-/// Manages Top-N contract rankings across 4 categories: by depth, by total nodes,
-/// by value nodes, and by total size. Uses O(N) min-replacement insertion with
-/// deterministic multi-field comparators matching Geth's sort order + Owner hash tiebreaker.
-/// Extracted from VisitorCounters to satisfy SRP (H3).
-/// </summary>
 internal sealed class TopNTracker(int topN)
 {
     public readonly TopContractEntry[] TopByDepth = new TopContractEntry[topN];
@@ -25,9 +19,6 @@ internal sealed class TopNTracker(int topN)
 
     internal delegate int EntryComparer(in TopContractEntry a, in TopContractEntry b);
 
-    /// <summary>
-    /// Insert an entry into all 4 ranking categories.
-    /// </summary>
     public void Insert(TopContractEntry entry)
     {
         TryInsert(TopByDepth, ref TopByDepthCount, entry, CompareByDepth);
@@ -36,20 +27,12 @@ internal sealed class TopNTracker(int topN)
         TryInsert(TopBySize, ref TopBySizeCount, entry, CompareBySize);
     }
 
-    /// <summary>
-    /// Returns true if <paramref name="entry"/> would be inserted into at least one of the 4
-    /// ranking categories. Used to defer expensive <see cref="ImmutableArray{T}"/> allocation
-    /// until we know the entry actually ranks — most contracts never rank and can skip the freeze.
-    /// </summary>
     public bool WouldInsert(in TopContractEntry entry) =>
         WouldTryInsert(TopByDepth, TopByDepthCount, entry, CompareByDepth)
         || WouldTryInsert(TopByNodes, TopByNodesCount, entry, CompareByTotalNodes)
         || WouldTryInsert(TopByValueNodes, TopByValueNodesCount, entry, CompareByValueNodes)
         || WouldTryInsert(TopBySize, TopBySizeCount, entry, CompareBySize);
 
-    /// <summary>
-    /// Merge another tracker's entries into this one.
-    /// </summary>
     public void MergeFrom(TopNTracker other)
     {
         MergeTopN(TopByDepth, ref TopByDepthCount, other.TopByDepth, other.TopByDepthCount, CompareByDepth);

@@ -10,11 +10,6 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Diff;
 
-/// <summary>
-/// Walks two committed state roots and computes exact adds/removes for every metric.
-/// Content-addressed property: if hash(old) == hash(new), entire subtree identical → skip.
-/// Read-only — uses only <see cref="ITrieNodeResolver.FindCachedOrUnknown"/>.
-/// </summary>
 internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, bool trackDepth = false)
 {
     private readonly CumulativeDepthStats _depthDelta = new();
@@ -42,10 +37,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
     private int _contractsWithStorageAdded, _contractsWithStorageRemoved;
     private int _emptyAccountsAdded, _emptyAccountsRemoved;
 
-    /// <summary>
-    /// Compute exact diff between two committed state roots.
-    /// Both roots must already be persisted and resolvable via the resolver.
-    /// </summary>
     public TrieDiff ComputeDiff(Hash256? oldRoot, Hash256? newRoot)
     {
         ResetCounters();
@@ -79,10 +70,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         );
     }
 
-    /// <summary>
-    /// Enter a per-contract storage walk. All storage-leaf add/remove events
-    /// recorded until <see cref="EndContractStorage"/> are attributed to this address.
-    /// </summary>
     private void BeginContractStorage(in ValueHash256 addressHash)
     {
         _currentContract = addressHash;
@@ -90,10 +77,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         _inContractStorage = true;
     }
 
-    /// <summary>
-    /// Exit the current per-contract storage walk. Emits a <see cref="SlotCountChange"/>
-    /// when the net delta for this contract is non-zero.
-    /// </summary>
     private void EndContractStorage()
     {
         if (_inContractStorage && _currentContractSlotDelta != 0)
@@ -105,11 +88,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         _currentContractSlotDelta = 0;
     }
 
-    /// <summary>
-    /// Record a code-hash transition for one account. Translates the empty-bytecode
-    /// hash (<see cref="Keccak.OfAnEmptyString"/>) to <see cref="CodeHashChange.NoCode"/>
-    /// so the tracker's refcount/sizes maps never see the "no code" sentinel.
-    /// </summary>
     private void RecordCodeHashChange(in ValueHash256 addressHash, in ValueHash256 oldCodeHash, in ValueHash256 newCodeHash)
     {
         ValueHash256 emptyCode = Keccak.OfAnEmptyString.ValueHash256;
@@ -121,11 +99,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         _codeHashChanges.Add(new CodeHashChange(addressHash, oldNormalized, newNormalized));
     }
 
-    /// <summary>
-    /// Diff two subtree roots. Resolves nodes and dispatches to type-specific comparison.
-    /// If both hashes are equal → skip (content-addressed fast path).
-    /// If only one exists → collect entire subtree as added or removed.
-    /// </summary>
     private void DiffSubtree(Hash256? oldHash, Hash256? newHash, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         // Fast path: identical subtrees
@@ -157,10 +130,6 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         DiffNodes(oldResolved, newResolved, ref path, resolver, isStorage, depth);
     }
 
-    /// <summary>
-    /// Compare two resolved nodes. Dispatches based on matching node types.
-    /// On type mismatch, collects both subtrees independently.
-    /// </summary>
     private void DiffNodes(TrieNode oldNode, TrieNode newNode, ref TreePath path, ITrieNodeResolver resolver, bool isStorage, int depth)
     {
         if (oldNode.NodeType != newNode.NodeType)
@@ -187,19 +156,12 @@ internal sealed partial class TrieDiffWalker(ITrieNodeResolver rootResolver, boo
         }
     }
 
-    /// <summary>
-    /// Normalize empty tree hash to null for uniform comparison.
-    /// Content-addressed: EmptyTreeHash means "no trie" = null.
-    /// </summary>
     private static Hash256? NormalizeHash(Hash256? hash)
     {
         if (hash is null) return null;
         return hash == Keccak.EmptyTreeHash ? null : hash;
     }
 
-    /// <summary>
-    /// Count the non-null children of a branch node. Used for branch-occupancy histogram deltas.
-    /// </summary>
     private static int CountBranchChildren(TrieNode branch)
     {
         int count = 0;

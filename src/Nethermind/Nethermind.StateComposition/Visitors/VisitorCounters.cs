@@ -11,17 +11,8 @@ using Nethermind.StateComposition.Data;
 
 namespace Nethermind.StateComposition.Visitors;
 
-/// <summary>
-/// Mutable counters for ThreadLocal usage in StateCompositionVisitor.
-/// Each worker thread gets its own instance — no locking needed.
-/// Aggregate via MergeFrom() after traversal completes.
-/// Short=Extension+Leaf (matches Geth shortNode), Full=Branch, Value=Leaf.
-/// </summary>
 public sealed class VisitorCounters(int topN = 20)
 {
-    /// <summary>
-    /// Maximum trie depth tracked per-level. Depths beyond this are clamped.
-    /// </summary>
     public const int MaxTrackedDepth = 16;
 
     public long AccountsTotal;
@@ -100,10 +91,6 @@ public sealed class VisitorCounters(int topN = 20)
 
     internal TopNTracker TopN { get; } = new(topN);
 
-    /// <summary>
-    /// Begin tracking a new storage trie. Finalizes the previous one if active.
-    /// Called from VisitAccount when account.HasStorage is true.
-    /// </summary>
     public void BeginStorageTrie(in ValueHash256 storageRoot, in ValueHash256 owner)
     {
         if (_hasActiveStorageTrie)
@@ -120,9 +107,6 @@ public sealed class VisitorCounters(int topN = 20)
         Array.Clear(_currentStorageDepths);
     }
 
-    /// <summary>
-    /// Track a storage node visit for per-contract statistics including per-depth breakdown.
-    /// </summary>
     public void TrackStorageNode(int depth, int byteSize, bool isLeaf, bool isBranch)
     {
         _currentStorageNodes++;
@@ -141,10 +125,6 @@ public sealed class VisitorCounters(int topN = 20)
             _currentStorageDepths[depthIdx].AddShortNode(byteSize);
     }
 
-    /// <summary>
-    /// Flush any active storage trie tracking. Must be called after traversal completes
-    /// to finalize the last contract's storage trie.
-    /// </summary>
     public void Flush()
     {
         if (_hasActiveStorageTrie)
@@ -197,10 +177,6 @@ public sealed class VisitorCounters(int topN = 20)
     private TrieLevelStat BuildCurrentStorageLevels(TrieLevelStat[] scratch) =>
         LevelStatsBuilder.Fill(_currentStorageDepths.AsSpan(0, MaxTrackedDepth), scratch);
 
-    /// <summary>
-    /// Attempt to insert the candidate into the Top-N ranking. Freezes Levels only when the
-    /// contract ranks — most contracts (~99.99%) skip the freeze entirely.
-    /// </summary>
     private void RankCurrentContract(TopContractEntry candidate)
     {
         if (!TopN.WouldInsert(candidate)) return;
@@ -274,11 +250,6 @@ public sealed class VisitorCounters(int topN = 20)
         TopN.MergeFrom(other.TopN);
     }
 
-    /// <summary>
-    /// Compute the log2 bucket index for a given slot count.
-    /// <c>bucket = min(SlotHistogramLength-1, floor(log2(slotCount + 1)))</c>.
-    /// <para>slotCount = 0 maps to bucket 0.</para>
-    /// </summary>
     public static int ComputeSlotBucket(long slotCount)
     {
         if (slotCount <= 0) return 0;

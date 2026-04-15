@@ -14,7 +14,6 @@ public readonly record struct TrieDepthDistribution
     public int MaxAccountDepth { get; init; }
     public int MaxStorageDepth { get; init; }
     public double AvgBranchOccupancy { get; init; }
-
     public ImmutableArray<long> StorageMaxDepthHistogram { get; init; }
 
     /// <summary>Index i = count of account-trie branches with (i+1) children (1..16).</summary>

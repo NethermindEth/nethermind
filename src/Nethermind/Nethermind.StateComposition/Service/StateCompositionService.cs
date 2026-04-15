@@ -19,10 +19,6 @@ using Nethermind.StateComposition.Snapshots;
 
 namespace Nethermind.StateComposition.Service;
 
-/// <summary>
-/// Orchestrates state composition analysis using <see cref="StateCompositionVisitor"/>
-/// and <see cref="IStateReader"/> for trie traversal.
-/// </summary>
 internal partial class StateCompositionService : IDisposable
 {
     private const long MinMemoryBudgetBytes = 1_048_576L; // 1 MiB
@@ -208,9 +204,6 @@ internal partial class StateCompositionService : IDisposable
         }
     }
 
-    /// <summary>
-    /// Clamp config-driven scan options to their supported ranges, warning on clamp.
-    /// </summary>
     private (int topN, int parallelism, long memoryBudget) ResolveScanOptions()
     {
         int topN = Math.Clamp(_config.TopNContracts, 1, MaxTopNContracts);
@@ -228,10 +221,6 @@ internal partial class StateCompositionService : IDisposable
         return (topN, parallelism, memoryBudget);
     }
 
-    /// <summary>
-    /// Fire an 8-second periodic progress logger. The returned timer owns the fire-and-forget
-    /// task — disposing it ends the log loop (via ObjectDisposedException on WaitForNextTickAsync).
-    /// </summary>
     private PeriodicTimer StartProgressLogging(Stopwatch sw, StateCompositionVisitor visitor)
     {
         PeriodicTimer progressTimer = new(TimeSpan.FromSeconds(8));
@@ -260,9 +249,6 @@ internal partial class StateCompositionService : IDisposable
         return progressTimer;
     }
 
-    /// <summary>
-    /// Write the finalized baseline into the state holder, publish metrics, and persist a snapshot.
-    /// </summary>
     private void PublishScanResults(StateCompositionStats stats, TrieDepthDistribution dist, BlockHeader header, Stopwatch sw)
     {
         _stateHolder.SetBaseline(stats, dist);
