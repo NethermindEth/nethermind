@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -89,7 +90,7 @@ public class SimulateTxExecutor<TTrace>(
         };
     }
 
-    public override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    public override async Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>> Execute(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -179,10 +180,10 @@ public class SimulateTxExecutor<TTrace>(
         Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), data, stateOverride, timeout.Token);
+            : await Execute(header.Clone(), data, stateOverride, timeout.Token);
     }
 
-    protected override ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
+    protected override Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>> Execute(
         BlockHeader header,
         SimulatePayload<TransactionWithSourceDetails> tx,
         Dictionary<Address, AccountOverride>? stateOverride,
@@ -214,11 +215,12 @@ public class SimulateTxExecutor<TTrace>(
             ? null
             : MapSimulateErrorCode(results.TransactionResult);
         if (results.IsInvalidInput) errorCode = ErrorCodes.Default;
-        return results.Error is null
+        ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> resultWrapper = results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Success([.. results.Items])
             : errorCode is not null
                 ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error!, errorCode.Value)
                 : ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(results.Error);
+        return Task.FromResult(resultWrapper);
     }
 
     private static int MapSimulateErrorCode(TransactionResult txResult)

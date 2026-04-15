@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -37,7 +38,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            protected override Task<ResultWrapper<TResult>> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
                 BlockHeader clonedHeader = header.Clone();
 
@@ -51,7 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, stateOverride, token);
             }
 
-            public override ResultWrapper<TResult> Execute(
+            public override Task<ResultWrapper<TResult>> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter,
                 Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -73,10 +74,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return base.Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 
-            public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
+            public Task<ResultWrapper<TResult>> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null)
                 => Execute(transactionCall, blockParameter, stateOverride);
 
-            protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+            protected abstract Task<ResultWrapper<TResult>> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 
             protected ResultWrapper<TResult> CreateResultWrapper(bool inputError, string? errorMessage, TResult? bodyData, bool executionReverted, byte[]? executionRevertedReason)
             {
@@ -113,9 +114,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CallTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : TxExecutor<string>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            protected override ResultWrapper<string> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
+            protected override async Task<ResultWrapper<string>> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.Call(header, tx, stateOverride, token);
+                CallOutput result = await _blockchainBridge.Call(header, tx, stateOverride, token);
                 return CreateResultWrapper(result.InputError, result.Error, result.OutputData?.ToHexString(true), result.ExecutionReverted, result.OutputData);
             }
         }
@@ -125,9 +126,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             private readonly int _errorMargin = rpcConfig.EstimateErrorMargin;
 
-            protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
+            protected override async Task<ResultWrapper<UInt256?>> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
+                CallOutput result = await _blockchainBridge.EstimateGas(header, tx, _errorMargin, stateOverride, token);
 
                 return CreateResultWrapper(result.InputError, result.Error, result.InputError || result.Error is not null ? null : (UInt256)result.GasSpent, result.ExecutionReverted, result.OutputData);
             }
@@ -136,9 +137,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            protected override ResultWrapper<AccessListResultForRpc?> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
+            protected override async Task<ResultWrapper<AccessListResultForRpc?>> ExecuteTx(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride> stateOverride, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
+                CallOutput result = await _blockchainBridge.CreateAccessList(header, tx, stateOverride, token, optimize);
 
                 AccessListResultForRpc rpcAccessListResult = new(
                     accessList: AccessListForRpc.FromAccessList(result.AccessList ?? tx.AccessList),

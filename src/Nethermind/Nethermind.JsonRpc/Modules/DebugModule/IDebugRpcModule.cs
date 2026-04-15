@@ -113,11 +113,11 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 
     [JsonRpcMethod(Description = "Retrieves geth like traces of the simulated blocks")]
-    ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+    Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Executes a list of bundles of transactions without creating transactions on the blockchain and returns their traces", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+    Task<ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Reprocesses the existing block with the parameters specified and returns the generated execution witness.")]
     ResultWrapper<Witness> debug_executionWitness(BlockParameter blockParameter);

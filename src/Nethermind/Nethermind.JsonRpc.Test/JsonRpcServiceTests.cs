@@ -95,7 +95,7 @@ public class JsonRpcServiceTests
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(static _ =>
-            ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
+            Task.FromResult(ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success(Array.Empty<SimulateBlockResult<SimulateCallResult>>())));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult<SimulateCallResult>>()));
     }
@@ -105,7 +105,7 @@ public class JsonRpcServiceTests
     public void CanHandleOptionalArguments()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(static _ => ResultWrapper<string>.Success("0x1"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(static _ => Task.FromResult(ResultWrapper<string>.Success("0x1")));
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x1"));
     }
@@ -185,7 +185,7 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_implicit_null_as_the_last_argument()
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => Task.FromResult(ResultWrapper<string>.Success("0x")));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc()) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));
@@ -196,7 +196,7 @@ public class JsonRpcServiceTests
     public void Eth_call_is_working_with_explicit_null_as_the_last_argument(string? nullValue)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => ResultWrapper<string>.Success("0x"));
+        ethRpcModule.eth_call(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter?>()).ReturnsForAnyArgs(static x => Task.FromResult(ResultWrapper<string>.Success("0x")));
 
         JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_call", new LegacyTransactionForRpc(), nullValue) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo("0x"));

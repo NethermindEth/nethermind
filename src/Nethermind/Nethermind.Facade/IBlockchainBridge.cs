@@ -14,6 +14,7 @@ using Nethermind.Trie;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
+using System.Threading.Tasks;
 using Block = Nethermind.Core.Block;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Consensus.Stateless;
@@ -29,11 +30,11 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
-        CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
+        ValueTask<CallOutput> Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
         SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken);
-        CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
+        ValueTask<CallOutput> EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, CancellationToken cancellationToken = default);
 
-        CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize);
+        ValueTask<CallOutput> CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
 
         int NewBlockFilter();

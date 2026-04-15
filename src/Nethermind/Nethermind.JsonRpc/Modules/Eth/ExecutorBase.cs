@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Evm;
@@ -19,7 +20,7 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
     protected readonly IBlockFinder _blockFinder = blockFinder;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig;
 
-    public virtual ResultWrapper<TResult> Execute(
+    public virtual async Task<ResultWrapper<TResult>> Execute(
         TRequest call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
@@ -38,10 +39,10 @@ public abstract class ExecutorBase<TResult, TRequest, TProcessing>(
         Result<TProcessing> prepareResult = Prepare(call, header);
         return !prepareResult.Success(out TProcessing? data, out string? error)
             ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
-            : Execute(header.Clone(), data, stateOverride, timeout.Token);
+            : await Execute(header.Clone(), data, stateOverride, timeout.Token);
     }
 
     protected abstract Result<TProcessing> Prepare(TRequest call, BlockHeader header);
 
-    protected abstract ResultWrapper<TResult> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
+    protected abstract Task<ResultWrapper<TResult>> Execute(BlockHeader header, TProcessing tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token);
 }

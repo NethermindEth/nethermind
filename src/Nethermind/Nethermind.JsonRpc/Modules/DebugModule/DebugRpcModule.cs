@@ -423,11 +423,11 @@ public class DebugRpcModule(
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
         jsonRpcConfig.BuildTimeoutCancellationToken();
 
-    public ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> debug_simulateV1(
+    public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>>> debug_simulateV1(
         SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, GethTraceOptions? options = null) => new SimulateTxExecutor<GethLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default), _secondsPerSlot)
             .Execute(payload, blockParameter);
 
-    public ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    public async Task<ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>> debug_traceCallMany(TransactionBundle[] bundles, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         if (bundles is null)
             return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Fail("Bundles array cannot be null", ErrorCodes.InvalidParams);
@@ -450,7 +450,7 @@ public class DebugRpcModule(
         }
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
-            ? TraceCallManyWithOverrides(bundles, options, header)
+            ? await TraceCallManyWithOverrides(bundles, options, header)
             : TraceCallMany(bundles, blockParameter, options, header);
     }
 
@@ -473,7 +473,7 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>.Success(bundleTraces);
     }
 
-    private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
+    private async Task<ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>>> TraceCallManyWithOverrides(TransactionBundle[] bundles, GethTraceOptions? options, BlockHeader header)
     {
         PrepareTransactions(bundles, header);
         SimulatePayload<TransactionForRpc> simulatePayload = new()
@@ -491,7 +491,7 @@ public class DebugRpcModule(
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
-            new SimulateTxExecutor<GethLikeTxTrace>(
+            await new SimulateTxExecutor<GethLikeTxTrace>(
                 blockchainBridge,
                 blockFinder,
                 jsonRpcConfig,

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -42,7 +44,7 @@ namespace Nethermind.Facade
 {
     [Todo(Improve.Refactor, "I want to remove BlockchainBridge, split it into something with logging, state and tx processing. Then we can start using independent modules.")]
     public class BlockchainBridge(
-        IOverridableEnv<BlockchainBridge.BlockProcessingComponents> processingEnv,
+        OverridableEnvPool<BlockchainBridge.BlockProcessingComponents> processingEnvPool,
         Lazy<ISimulateReadOnlyBlocksProcessingEnv> lazySimulateProcessingEnv,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
@@ -149,22 +151,28 @@ namespace Nethermind.Facade
             return blockHash is not null ? receiptStorage.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public async ValueTask<CallOutput> Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-
-            CallOutputTracer callOutputTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
-                callOutputTracer.WithCancellation(cancellationToken));
-
-            return new CallOutput
+            IOverridableEnv<BlockProcessingComponents> env = await processingEnvPool.RentAsync(cancellationToken);
+            try
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = callOutputTracer.GasSpent,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
-            };
+                using Scope<BlockProcessingComponents> scope = env.BuildAndOverride(header, stateOverride);
+                CallOutputTracer callOutputTracer = new();
+                TransactionResult tryCallResult = TryCallAndRestore(scope.Component, header, tx, false,
+                    callOutputTracer.WithCancellation(cancellationToken));
+                return new CallOutput
+                {
+                    Error = ConstructError(tryCallResult, callOutputTracer.Error),
+                    GasSpent = callOutputTracer.GasSpent,
+                    OutputData = callOutputTracer.ReturnValue,
+                    InputError = !tryCallResult.TransactionExecuted,
+                    ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert,
+                };
+            }
+            finally
+            {
+                processingEnvPool.Return(env);
+            }
         }
 
         public SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, long gasCapLimit, CancellationToken cancellationToken)
@@ -175,36 +183,39 @@ namespace Nethermind.Facade
             return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
+        public async ValueTask<CallOutput> EstimateGas(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken)
         {
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            BlockProcessingComponents components = scope.Component;
-
-            EstimateGasTracer estimateGasTracer = new();
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
-                estimateGasTracer.WithCancellation(cancellationToken));
-
-            GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
-
-            string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
-
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
-            if (err is not null)
+            IOverridableEnv<BlockProcessingComponents> env = await processingEnvPool.RentAsync(cancellationToken);
+            try
             {
-                error ??= err;
+                using Scope<BlockProcessingComponents> scope = env.BuildAndOverride(header, stateOverride);
+                BlockProcessingComponents components = scope.Component;
+
+                EstimateGasTracer estimateGasTracer = new();
+                TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, true,
+                    estimateGasTracer.WithCancellation(cancellationToken));
+
+                GasEstimator gasEstimator = new(components.TransactionProcessor, components.WorldState, specProvider, blocksConfig);
+                string? error = ConstructError(tryCallResult, estimateGasTracer.Error);
+                long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, out string? err, errorMargin, cancellationToken);
+                if (err is not null) error ??= err;
+
+                return new CallOutput
+                {
+                    Error = error,
+                    GasSpent = estimate,
+                    OutputData = estimateGasTracer.ReturnValue,
+                    InputError = !tryCallResult.TransactionExecuted || err is not null,
+                    ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
+                };
             }
-
-            return new CallOutput
+            finally
             {
-                Error = error,
-                GasSpent = estimate,
-                OutputData = estimateGasTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted || err is not null,
-                ExecutionReverted = tryCallResult.EvmExceptionType == EvmExceptionType.Revert
-            };
+                processingEnvPool.Return(env);
+            }
         }
 
-        public CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize)
+        public async ValueTask<CallOutput> CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken cancellationToken, bool optimize)
         {
             AccessTxTracer accessTxTracer = optimize
                 ? new(tx.SenderAddress,
@@ -213,21 +224,29 @@ namespace Nethermind.Facade
 
             CallOutputTracer callOutputTracer = new();
 
-            using Scope<BlockProcessingComponents> scope = processingEnv.BuildAndOverride(header, stateOverride);
-            BlockProcessingComponents components = scope.Component;
-
-            TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
-                new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
-
-            return new CallOutput
+            IOverridableEnv<BlockProcessingComponents> env = await processingEnvPool.RentAsync(cancellationToken);
+            try
             {
-                Error = ConstructError(tryCallResult, callOutputTracer.Error),
-                GasSpent = accessTxTracer.GasSpent,
-                OperationGas = callOutputTracer.OperationGas,
-                OutputData = callOutputTracer.ReturnValue,
-                InputError = !tryCallResult.TransactionExecuted,
-                AccessList = accessTxTracer.AccessList,
-            };
+                using Scope<BlockProcessingComponents> scope = env.BuildAndOverride(header, stateOverride);
+                BlockProcessingComponents components = scope.Component;
+
+                TransactionResult tryCallResult = TryCallAndRestore(components, header, tx, false,
+                    new CompositeTxTracer(callOutputTracer, accessTxTracer).WithCancellation(cancellationToken));
+
+                return new CallOutput
+                {
+                    Error = ConstructError(tryCallResult, callOutputTracer.Error),
+                    GasSpent = accessTxTracer.GasSpent,
+                    OperationGas = callOutputTracer.OperationGas,
+                    OutputData = callOutputTracer.ReturnValue,
+                    InputError = !tryCallResult.TransactionExecuted,
+                    AccessList = accessTxTracer.AccessList,
+                };
+            }
+            finally
+            {
+                processingEnvPool.Return(env);
+            }
         }
 
         private TransactionResult TryCallAndRestore(
@@ -440,7 +459,7 @@ namespace Nethermind.Facade
 
     public interface IBlockchainBridgeFactory
     {
-        IBlockchainBridge CreateBlockchainBridge();
+        IBlockchainBridge CreateBlockchainBridge(int poolSize = 1);
     }
 
     public class BlockchainBridgeFactory(
@@ -449,27 +468,63 @@ namespace Nethermind.Facade
         ILifetimeScope rootLifetimeScope
     ) : IBlockchainBridgeFactory
     {
-        public IBlockchainBridge CreateBlockchainBridge()
+        public IBlockchainBridge CreateBlockchainBridge(int poolSize = 1)
         {
-            IOverridableEnv env = envFactory.Create();
+            IOverridableEnv<BlockchainBridge.BlockProcessingComponents>[] pooledEnvs =
+                new IOverridableEnv<BlockchainBridge.BlockProcessingComponents>[poolSize];
 
-            ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
-                .AddModule(env)
-                .Add<BlockchainBridge.BlockProcessingComponents>());
+            ILifetimeScope[] envScopes = new ILifetimeScope[poolSize];
 
-            // Split it out to isolate the world state and processing components
-            IOverridableEnv<BlockchainBridge.BlockProcessingComponents> blockProcessingEnv = overridableScopeLifetime
-                .Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+            for (int i = 0; i < poolSize; i++)
+            {
+                IOverridableEnv env = envFactory.Create();
+                ILifetimeScope overridableScopeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
+                    .AddModule(env)
+                    .Add<BlockchainBridge.BlockProcessingComponents>());
+                pooledEnvs[i] = overridableScopeLifetime.Resolve<IOverridableEnv<BlockchainBridge.BlockProcessingComponents>>();
+                envScopes[i] = overridableScopeLifetime;
+            }
+
+            OverridableEnvPool<BlockchainBridge.BlockProcessingComponents> pool = new(pooledEnvs);
 
             ILifetimeScope blockchainBridgeLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
                 .AddScoped<BlockchainBridge>()
                 .AddScoped<ISimulateReadOnlyBlocksProcessingEnv>((_) => simulateEnvFactory.Create())
-                .AddScoped(blockProcessingEnv));
+                .AddScoped(_ => pool));
 
-            blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(overridableScopeLifetime);
+            foreach (ILifetimeScope envScope in envScopes)
+                blockchainBridgeLifetime.Disposer.AddInstanceForAsyncDisposal(envScope);
+
+            blockchainBridgeLifetime.Disposer.AddInstanceForDisposal(pool);
             rootLifetimeScope.Disposer.AddInstanceForDisposal(blockchainBridgeLifetime);
 
             return blockchainBridgeLifetime.Resolve<BlockchainBridge>();
         }
     }
+}
+
+/// <summary>
+/// Thread-safe pool of <see cref="IOverridableEnv{T}"/> instances.
+/// Pre-warms <paramref name="envs"/> at construction; callers rent one via
+/// <see cref="RentAsync"/> and must return it via <see cref="Return"/> (use try/finally).
+/// </summary>
+public sealed class OverridableEnvPool<T>(IOverridableEnv<T>[] envs) : IDisposable
+{
+    private readonly ConcurrentQueue<IOverridableEnv<T>> _queue = new(envs);
+    private readonly SemaphoreSlim _semaphore = new(envs.Length, envs.Length);
+
+    public async ValueTask<IOverridableEnv<T>> RentAsync(CancellationToken cancellationToken = default)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
+        _queue.TryDequeue(out IOverridableEnv<T>? env);
+        return env!;
+    }
+
+    public void Return(IOverridableEnv<T> env)
+    {
+        _queue.Enqueue(env);
+        _semaphore.Release();
+    }
+
+    public void Dispose() => _semaphore.Dispose();
 }

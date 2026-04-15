@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -40,10 +41,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly IReadOnlyBlockTree _blockTree = blockTree.AsReadOnly();
+        private readonly IBlockchainBridge _sharedBridge = blockchainBridgeFactory.CreateBlockchainBridge(config.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
 
         public override IEthRpcModule Create() => new EthRpcModule(
                 config,
-                blockchainBridgeFactory.CreateBlockchainBridge(),
+                _sharedBridge,
                 _blockTree,
                 receiptStorage,
                 stateReader,

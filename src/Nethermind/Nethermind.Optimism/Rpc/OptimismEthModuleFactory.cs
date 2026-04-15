@@ -48,6 +48,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly ILogIndexConfig _logIndexConfig;
     private readonly ulong? _secondsPerSlot;
     private readonly IJsonRpcClient? _sequencerRpcClient;
+    private IBlockchainBridge _sharedBridge = null!;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
@@ -106,11 +107,12 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         ITxSigner txSigner = new WalletTxSigner(wallet, specProvider.ChainId);
         TxSealer sealer = new(txSigner, timestamper);
         _sealer = sealer;
+        _sharedBridge = blockchainBridgeFactory.CreateBlockchainBridge(_rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
     }
 
     public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
             _rpcConfig,
-            _blockchainBridgeFactory.CreateBlockchainBridge(),
+            _sharedBridge,
             _blockFinder,
             _receiptFinder,
             _stateReader,
