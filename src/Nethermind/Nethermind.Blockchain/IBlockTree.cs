@@ -167,6 +167,14 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewSuggestedBlock;
 
         /// <summary>
+        /// Fired after a block has been fully removed from the tree because it failed consensus
+        /// validation.  The event is raised only on success — if <see cref="DeleteInvalidBlock"/>
+        /// throws, the event is not raised.  Subscribers can rely on the block being absent from
+        /// <see cref="IBlockFinder.FindBlock"/> by the time the handler runs.
+        /// </summary>
+        event EventHandler<BlockEventArgs> BlockInvalidated;
+
+        /// <summary>
         /// A block is marked as canon
         /// </summary>
         event EventHandler<BlockReplacementEventArgs> BlockAddedToMain;

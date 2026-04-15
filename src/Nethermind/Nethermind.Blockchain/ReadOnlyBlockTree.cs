@@ -128,6 +128,14 @@ namespace Nethermind.Blockchain
             remove { }
         }
 
+        // ReadOnlyBlockTree never calls DeleteInvalidBlock (it throws), so this event
+        // never fires.  The no-op accessors satisfy the IBlockTree contract.
+        public event EventHandler<BlockEventArgs> BlockInvalidated
+        {
+            add { }
+            remove { }
+        }
+
         public event EventHandler<BlockReplacementEventArgs> BlockAddedToMain
         {
             add { }

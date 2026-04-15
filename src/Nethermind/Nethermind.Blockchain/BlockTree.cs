@@ -816,15 +816,27 @@ namespace Nethermind.Blockchain
 
             BlockAcceptingNewBlocks();
 
+            // Track whether DeleteBlocks completed without throwing so we only raise
+            // BlockInvalidated on a clean deletion — not when an exception cut it short.
+            bool deleted = false;
             try
             {
                 DeleteBlocks(invalidBlock.Hash!);
+                deleted = true;
             }
             finally
             {
                 ReleaseAcceptingNewBlocks();
             }
+
+            // Raise the event after the accept-new-blocks lock is released so that
+            // subscribers see a fully consistent tree state (the block is gone and the
+            // tree is open for new suggestions again).
+            if (deleted)
+                BlockInvalidated?.Invoke(this, new BlockEventArgs(invalidBlock));
         }
+
+        public event EventHandler<BlockEventArgs>? BlockInvalidated;
 
         public void DeleteOldBlock(long blockNumber, Hash256 blockHash)
             => _blockStore.Delete(blockNumber, blockHash);

@@ -30,6 +30,8 @@ internal class TestBlockTree : IBlockTree
     public event EventHandler<BlockEventArgs>? NewHeadBlock { add { } remove { } }
     public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain { add { } remove { } }
     public event EventHandler<IBlockTree.ForkChoiceUpdateEventArgs>? OnForkChoiceUpdated { add { } remove { } }
+    // TestBlockTree.DeleteInvalidBlock is a no-op, so this event never fires.
+    public event EventHandler<BlockEventArgs>? BlockInvalidated { add { } remove { } }
 
     public void RaiseBlockAddedToMain(BlockReplacementEventArgs args)
     {

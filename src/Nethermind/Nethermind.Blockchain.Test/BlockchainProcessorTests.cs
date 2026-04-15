@@ -489,14 +489,49 @@ public class BlockchainProcessorTests
 
             public ProcessingTestContext IsDeletedAsInvalid()
             {
-                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted");
-                // Drain any stale signal (no NewHeadBlock fires for invalid blocks, so this always times out).
-                processingTestContext._resetEvent.WaitOne(IgnoreWait);
-                Assert.That(processingTestContext._blockTree.Head!.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
-                // Poll until the block is actually deleted — the 200 ms drain above is not enough on slow CI.
-                Assert.That(() => processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None),
-                    Is.Null.After(ProcessingWait, 50), $"block {block.ToString(Block.Format.Short)} should be deleted as invalid");
-                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted");
+                _logger.Info($"Waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
+
+                // Use an event-driven wait instead of polling so that slow CI runners
+                // (e.g. the no-intrinsics variant) cannot time out before block processing
+                // has a chance to complete.
+                //
+                // Race-free subscription protocol:
+                //   1. Subscribe to BlockInvalidated first.
+                //   2. Then check whether deletion already happened (handles the window
+                //      where BlockchainProcessor completed deletion before we subscribed).
+                //   3. Wait on the event.
+                //
+                // If deletion fires between steps 1 and 2 the handler will have already
+                // Set() the event, so the subsequent Wait() returns immediately.
+                ManualResetEventSlim deletedEvent = new(false);
+
+                void OnBlockInvalidated(object? sender, BlockEventArgs args)
+                {
+                    if (args.Block.Hash == block.Hash)
+                        deletedEvent.Set();
+                }
+
+                processingTestContext._blockTree.BlockInvalidated += OnBlockInvalidated;
+                try
+                {
+                    // Back-fill: block may already be gone if deletion beat our subscription.
+                    if (processingTestContext._blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None) is null)
+                        deletedEvent.Set();
+
+                    Assert.That(
+                        deletedEvent.Wait(ProcessingWait),
+                        Is.True,
+                        $"Timed out after {ProcessingWait}ms waiting for block {block.ToString(Block.Format.Short)} to be deleted as invalid");
+                }
+                finally
+                {
+                    processingTestContext._blockTree.BlockInvalidated -= OnBlockInvalidated;
+                }
+
+                // Sanity-check: the chain head must not have advanced while an invalid
+                // block was being processed.
+                Assert.That(processingTestContext._blockTree.Head?.Hash, Is.EqualTo(processingTestContext._headBefore), "head");
+                _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} to be deleted as invalid");
                 return processingTestContext;
             }
         }
