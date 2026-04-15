@@ -58,17 +58,15 @@ public class SszGenerator : IIncrementalGenerator
         });
     }
 
-    private static string PartialTypeDeclaration(SszType decl) =>
-        $"partial {(decl.IsStruct ? "struct" : "class")} {decl.Name} : ISszCodec<{decl.Name}>";
+    private static string InternalPartialTypeDeclaration(SszType decl) =>
+        $"internal partial {(decl.IsStruct ? "struct" : "class")} {decl.Name} : ISszCodec<{decl.Name}>";
 
     private static string NamespaceLine(SszType decl) =>
         string.IsNullOrEmpty(decl.Namespace) ? string.Empty : $"namespace {decl.Namespace};";
 
-    private static bool IsClassWithAttribute(SyntaxNode syntaxNode)
-    {
-        return syntaxNode is TypeDeclarationSyntax classDeclaration &&
-               classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
-    }
+    private static bool IsClassWithAttribute(SyntaxNode syntaxNode) =>
+        syntaxNode is TypeDeclarationSyntax classDeclaration &&
+        classDeclaration.AttributeLists.Any(x => x.Attributes.Any());
 
     private static (SszType Type, List<SszType> FoundTypes, Location? Location, bool IsNested)? GetClassWithAttribute(GeneratorSyntaxContext context)
     {
@@ -510,7 +508,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{PartialTypeDeclaration(decl)}
+{InternalPartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -679,7 +677,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{PartialTypeDeclaration(decl)}
+{InternalPartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -883,7 +881,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{PartialTypeDeclaration(decl)}
+{InternalPartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
