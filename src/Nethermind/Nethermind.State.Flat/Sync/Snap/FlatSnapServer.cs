@@ -20,7 +20,9 @@ public class FlatSnapServer(
     IFlatStateRootIndex stateRootIndex,
     ILogManager logManager) : ISnapServer
 {
-    private readonly ILogger _logger = logManager.GetClassLogger();
+    public bool CanServe => true;
+
+    private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapServer>();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;

@@ -32,6 +32,8 @@ namespace Nethermind.State.SnapServer;
 
 public class SnapServer : ISnapServer
 {
+    public bool CanServe => true;
+
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
