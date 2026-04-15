@@ -271,8 +271,8 @@ internal sealed class StateCompositionVisitor(
 
         return new TrieDepthDistribution
         {
-            AccountTrieLevels = BuildLevelStats(agg.AccountDepths),
-            StorageTrieLevels = BuildLevelStats(agg.StorageDepths),
+            AccountTrieLevels = LevelStatsBuilder.BuildCompact(agg.AccountDepths),
+            StorageTrieLevels = LevelStatsBuilder.BuildCompact(agg.StorageDepths),
             AvgAccountPathDepth = CalcAvgDepth(agg.AccountDepths),
             AvgStoragePathDepth = CalcAvgDepth(agg.StorageDepths),
             MaxAccountDepth = CalcMaxDepth(agg.AccountDepths),
@@ -334,36 +334,6 @@ internal sealed class StateCompositionVisitor(
         : System.Collections.Generic.IComparer<TopContractEntry>
     {
         public int Compare(TopContractEntry a, TopContractEntry b) => inner(b, a); // reversed for descending
-    }
-
-    private static ImmutableArray<TrieLevelStat> BuildLevelStats(DepthCounter[] depths)
-    {
-        // stackalloc scratch avoids the grow-reallocs of ImmutableArray.Builder when the
-        // number of non-empty depths is unknown up front. depths.Length is bounded by
-        // VisitorCounters.MaxTrackedDepth (16), so stack pressure is negligible.
-        Span<TrieLevelStat> scratch = stackalloc TrieLevelStat[depths.Length];
-        int n = 0;
-        for (int i = 0; i < depths.Length; i++)
-        {
-            // Geth counts valueNode at depth+1 from its leaf shortNode, so
-            // Value[i] in Geth output = leaves physically at depth i-1 in our counter.
-            long shiftedValue = i > 0 ? depths[i - 1].ValueNodes : 0;
-
-            if (depths[i].FullNodes + depths[i].ShortNodes + depths[i].ValueNodes == 0
-                && shiftedValue == 0)
-                continue;
-
-            scratch[n++] = new TrieLevelStat
-            {
-                Depth = i,
-                FullNodeCount = depths[i].FullNodes,
-                ShortNodeCount = depths[i].ShortNodes + depths[i].ValueNodes,
-                ValueNodeCount = shiftedValue,
-                TotalSize = depths[i].TotalSize,
-            };
-        }
-
-        return [.. scratch[..n]];
     }
 
     private static double CalcAvgDepth(DepthCounter[] depths)

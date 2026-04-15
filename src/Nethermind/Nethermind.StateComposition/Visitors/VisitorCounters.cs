@@ -194,42 +194,8 @@ public sealed class VisitorCounters(int topN = 20)
         RankCurrentContract(candidate);
     }
 
-    /// <summary>
-    /// Populate <paramref name="scratch"/> with the current contract's per-depth stats and
-    /// return the rolled-up summary row. ValueNodes are depth-shifted by +1 to match Geth.
-    /// </summary>
-    private TrieLevelStat BuildCurrentStorageLevels(TrieLevelStat[] scratch)
-    {
-        long summaryShort = 0, summaryFull = 0, summaryValue = 0, summarySize = 0;
-
-        for (int i = 0; i < MaxTrackedDepth; i++)
-        {
-            ref DepthCounter dc = ref _currentStorageDepths[i];
-            // Geth counts valueNode at depth+1 from its leaf shortNode
-            long shiftedValue = i > 0 ? _currentStorageDepths[i - 1].ValueNodes : 0;
-            scratch[i] = new TrieLevelStat
-            {
-                Depth = i,
-                ShortNodeCount = dc.ShortNodes + dc.ValueNodes,
-                FullNodeCount = dc.FullNodes,
-                ValueNodeCount = shiftedValue,
-                TotalSize = dc.TotalSize,
-            };
-            summaryShort += dc.ShortNodes + dc.ValueNodes;
-            summaryFull += dc.FullNodes;
-            summaryValue += dc.ValueNodes; // Real total (not shifted)
-            summarySize += dc.TotalSize;
-        }
-
-        return new TrieLevelStat
-        {
-            Depth = -1, // Summary has no specific depth
-            ShortNodeCount = summaryShort,
-            FullNodeCount = summaryFull,
-            ValueNodeCount = summaryValue,
-            TotalSize = summarySize,
-        };
-    }
+    private TrieLevelStat BuildCurrentStorageLevels(TrieLevelStat[] scratch) =>
+        LevelStatsBuilder.Fill(_currentStorageDepths.AsSpan(0, MaxTrackedDepth), scratch);
 
     /// <summary>
     /// Attempt to insert the candidate into the Top-N ranking. Freezes Levels only when the
