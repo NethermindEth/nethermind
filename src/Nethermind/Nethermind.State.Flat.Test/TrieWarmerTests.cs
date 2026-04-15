@@ -1,11 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -47,7 +47,7 @@ public class TrieWarmerTests
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 1);
 
-        await AssertEventuallyAsync(() => addressWarmer.Received().WarmUpStateTrie(address, 1));
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 1));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -63,7 +63,7 @@ public class TrieWarmerTests
 
         warmer.PushSlotJob(storageWarmer, index, sequenceId: 5);
 
-        await AssertEventuallyAsync(() => storageWarmer.Received().WarmUpStorageTrie(index, 5));
+        await Eventually.AssertAsync<ReceivedCallsException>(() => storageWarmer.Received().WarmUpStorageTrie(index, 5));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
@@ -79,25 +79,9 @@ public class TrieWarmerTests
 
         warmer.PushAddressJob(addressWarmer, address, sequenceId: 999);
 
-        await AssertEventuallyAsync(() => addressWarmer.Received().WarmUpStateTrie(address, 999));
+        await Eventually.AssertAsync<ReceivedCallsException>(() => addressWarmer.Received().WarmUpStateTrie(address, 999));
 
         _cts.Cancel();
         await warmer.DisposeAsync();
-    }
-    private static async Task AssertEventuallyAsync(Action assertion)
-    {
-        const int attempts = 50;
-        for (int attempt = 0; attempt < attempts; attempt++)
-        {
-            try
-            {
-                assertion();
-                return;
-            }
-            catch (ReceivedCallsException) when (attempt < attempts - 1)
-            {
-                await Task.Delay(10);
-            }
-        }
     }
 }
