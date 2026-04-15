@@ -276,13 +276,8 @@ internal partial class StateCompositionService : IDisposable
         Metrics.StateCompScansCompleted++;
 
         if (_config.PersistSnapshots)
-            _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
-                cumulativeBaseline, header.Number, header.StateRoot!, 0, header.Number,
-                // CurrentDepthStats already returns a clone under lock — no extra Clone() needed.
-                _stateHolder.CurrentDepthStats,
-                _stateHolder.CloneSlotCountByAddress(),
-                _stateHolder.CloneCodeHashRefcounts(),
-                _stateHolder.CloneCodeHashSizes()));
+            _snapshotStore.WriteSnapshot(
+                _stateHolder.BuildSnapshot(cumulativeBaseline, header.Number, header.StateRoot!));
     }
 
     public void Dispose()

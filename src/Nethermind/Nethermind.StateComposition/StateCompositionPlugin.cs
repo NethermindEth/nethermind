@@ -25,6 +25,7 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public string Author => "Nethermind";
 
     public bool Enabled => config.Enabled;
+    public bool MustInitialize => true;
     public IModule Module => new StateCompositionModule();
 
     public Task Init(INethermindApi nethermindApi)
