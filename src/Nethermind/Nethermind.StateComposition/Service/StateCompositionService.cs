@@ -66,11 +66,15 @@ internal partial class StateCompositionService : IDisposable
     }
 
     /// <summary>
-    /// Run a full trie scan. Legal call sites — do not add more:
+    /// Run a full trie scan. The plugin has exactly two legal callers — any third
+    /// caller collapses the single-operating-mode invariant, so a reviewer adding
+    /// one must delete this comment as a tripwire:
     /// <list type="bullet">
-    /// <item><description>Explicit RPC: <c>statecomp_getStats</c> (operator-initiated).</description></item>
-    /// <item><description>Error recovery: <see cref="ScheduleBaselineRescan"/> after a
-    /// <see cref="Nethermind.Trie.MissingTrieNodeException"/> invalidates the incremental baseline.</description></item>
+    /// <item><description>Plugin bootstrap: <see cref="StateCompositionPlugin.Init"/> when
+    /// no persisted snapshot is available.</description></item>
+    /// <item><description>Incremental recovery: <see cref="ScheduleBaselineRescan"/>
+    /// from the <see cref="Nethermind.Trie.MissingTrieNodeException"/> handler in
+    /// <see cref="RunIncrementalDiff"/>.</description></item>
     /// </list>
     /// Fail-fast / queued via <see cref="_scanLock"/> so back-to-back triggers collapse into one scan.
     /// </summary>
@@ -146,7 +150,7 @@ internal partial class StateCompositionService : IDisposable
             return Result<TrieDepthDistribution>.Success(_stateHolder.CurrentDistribution);
 
         return Result<TrieDepthDistribution>.Fail(
-            "No cached data available. Run statecomp_getStats() first to trigger a scan.");
+            "No cached data available. Wait for the bootstrap scan to complete.");
     }
 
     public async Task<Result<TopContractEntry?>> InspectContractAsync(Address address, BlockHeader header, CancellationToken ct)

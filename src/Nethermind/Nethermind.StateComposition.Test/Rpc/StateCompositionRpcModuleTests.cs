@@ -78,23 +78,6 @@ public class StateCompositionRpcModuleTests
     }
 
     [Test]
-    public async Task GetStats_Fails_WhenNoHeadBlock()
-    {
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.Head.Returns((Block?)null);
-
-        StateCompositionRpcModule rpc = new(
-            new FakeService(),
-            new StateCompositionStateHolder(),
-            blockTree,
-            new StateCompositionSnapshotStore(new MemDb(), LimboLogs.Instance));
-
-        ResultWrapper<StateCompositionStats> result = await rpc.statecomp_getStats();
-
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
-    }
-
-    [Test]
     public async Task InspectContract_Fails_WhenAddressNull()
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
