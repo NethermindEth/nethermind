@@ -73,7 +73,7 @@ public class SszBasicVectorTests
 
         // Decode and re-encode to verify round-trip
         byte[] reEncoded = new byte[expectedByteLength];
-        VerifyDecodeReencode(elementType, ssz, reEncoded);
+        VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength);
         Assert.That(reEncoded, Is.EqualTo(ssz), $"Re-encoded SSZ does not match original for {caseName}");
 
         // Verify hash tree root
@@ -102,7 +102,7 @@ public class SszBasicVectorTests
         if (ssz.Length != expectedByteLength)
         {
             byte[] reEncoded = new byte[ssz.Length];
-            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded), Throws.InstanceOf<Exception>(),
+            Assert.That(() => VerifyDecodeReencode(elementType, ssz, reEncoded, expectedByteLength), Throws.InstanceOf<Exception>(),
                 $"Decoder should reject wrong-length input for {caseName}");
             return;
         }
@@ -126,8 +126,15 @@ public class SszBasicVectorTests
         Assert.Fail($"Unhandled invalid basic_vector case: {caseName}");
     }
 
-    private static void VerifyDecodeReencode(string elementType, byte[] ssz, byte[] reEncoded)
+    private static void VerifyDecodeReencode(string elementType, byte[] ssz, byte[] reEncoded, int expectedByteLength)
     {
+        // Basic element decoders are length-agnostic; vector tests must enforce the exact byte length.
+        if (ssz.Length != expectedByteLength)
+        {
+            throw new InvalidDataException(
+                $"Invalid SSZ length for basic_vector<{elementType}>: expected {expectedByteLength} bytes but got {ssz.Length}");
+        }
+
         switch (elementType)
         {
             case TypeBool:
