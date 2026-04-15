@@ -40,7 +40,9 @@ internal partial class StateCompositionService : IDisposable
     // SemaphoreSlim — removes the IDisposable/kernel-object overhead.
     private readonly Lock _diffLock = new();
 
-    private CancellationTokenSource? _currentScanCts;
+    // Written from the scan task, read by CancelScan() from arbitrary threads.
+    // volatile guarantees the read sees the most recent write without a lock.
+    private volatile CancellationTokenSource? _currentScanCts;
 
     public StateCompositionService(
         IStateReader stateReader,
