@@ -8,7 +8,7 @@ namespace Nethermind.EraE.Proofs;
 
 // Per the Ethereum beacon chain spec, HistoricalBatch.block_roots and .state_roots are
 // fixed-length vectors of SLOTS_PER_HISTORICAL_ROOT = 8192 entries (one per slot in a period).
-[SszSerializable]
+[SszContainer]
 public struct HistoricalBatch
 {
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
@@ -27,7 +27,7 @@ public struct HistoricalBatch
     }
 }
 
-[SszSerializable]
+[SszContainer]
 public struct ValueHash256Vector
 {
     [SszVector(8192)] // SLOTS_PER_HISTORICAL_ROOT
