@@ -455,8 +455,8 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         ["0xzz"],
     };
 
-    [TestCaseSource(nameof(StrictOddLengthCases))]
-    public void StrictConverter_InvalidHex_ShouldThrowJsonException(string hex)
+    [TestCaseSource(nameof(StrictInvalidHexCases))]
+    public void StrictConverter_InvalidHex_ShouldThrowJsonExceptionWithGethMessage(string hex, string expectedMessage)
     {
         byte[] json = Encoding.UTF8.GetBytes($"\"{hex}\"");
 
@@ -465,10 +465,11 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
             Utf8JsonReader reader = new(seq);
             reader.Read();
             EvenLengthByteArrayConverter converter = new();
-            Exception? caught = null;
+            JsonException? caught = null;
             try { converter.Read(ref reader, typeof(byte[]), JsonSerializerOptions.Default); }
-            catch (Exception ex) { caught = ex; }
-            caught.Should().BeOfType<JsonException>();
+            catch (JsonException ex) { caught = ex; }
+            caught.Should().NotBeNull();
+            caught!.Message.Should().Be(expectedMessage);
         }
     }
 
@@ -487,17 +488,19 @@ public class ByteArrayConverterTests : ConverterTestBase<byte[]>
         }
     }
 
-    public static IEnumerable<object[]> StrictOddLengthCases() => new object[][]
+    public static IEnumerable<object[]> StrictInvalidHexCases() => new object[][]
     {
-        ["F"],
-        ["0xF"],
-        ["123"],
-        ["0x123"],
-        ["0x1fF"],
-        ["abc"],
-        ["0xabc"],
-        ["1f"],
-        ["DEADBEEF"],
+        ["0xF",    ByteArrayConverter.ErrOddLength],
+        ["0x123",  ByteArrayConverter.ErrOddLength],
+        ["0x1fF",  ByteArrayConverter.ErrOddLength],
+        ["0xabc",  ByteArrayConverter.ErrOddLength],
+        ["F",        ByteArrayConverter.ErrMissingPrefix],
+        ["123",      ByteArrayConverter.ErrMissingPrefix],
+        ["abc",      ByteArrayConverter.ErrMissingPrefix],
+        ["1f",       ByteArrayConverter.ErrMissingPrefix],
+        ["DEADBEEF", ByteArrayConverter.ErrMissingPrefix],
+        ["0xxx",      ByteArrayConverter.ErrSyntax],
+        ["0x01zz01",  ByteArrayConverter.ErrSyntax],
     };
 
     public static IEnumerable<object[]> StrictEvenLengthCases() => new object[][]
