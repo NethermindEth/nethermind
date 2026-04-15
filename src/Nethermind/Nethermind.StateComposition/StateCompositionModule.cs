@@ -22,7 +22,16 @@ public class StateCompositionModule : Module
         builder
             .AddSingleton<StateCompositionStateHolder>()
             .AddSingleton<StateCompositionSnapshotStore>()
-            .AddSingleton<StateCompositionService>()
             .RegisterSingletonJsonRpcModule<IStateCompositionRpcModule, StateCompositionRpcModule>();
+
+        // AutoActivate so the service constructs itself as soon as the container
+        // is built, wiring its NewHeadBlock subscription without requiring the
+        // plugin's Init method to pull it from the context. RegisterType + AsSelf
+        // mirrors the behaviour of AddSingleton<T>() plus Autofac's AutoActivate
+        // startup hook.
+        builder.RegisterType<StateCompositionService>()
+            .AsSelf()
+            .SingleInstance()
+            .AutoActivate();
     }
 }

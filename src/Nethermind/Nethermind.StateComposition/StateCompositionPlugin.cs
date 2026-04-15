@@ -42,7 +42,8 @@ public class StateCompositionPlugin(IStateCompositionConfig config) : INethermin
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
-        _api.Context.Resolve<StateCompositionService>();
+        // StateCompositionService is AutoActivated by StateCompositionModule so it
+        // has already constructed itself (and wired NewHeadBlock) by this point.
 
         if (!config.PersistSnapshots) return Task.CompletedTask;
 
