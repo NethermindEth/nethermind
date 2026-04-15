@@ -58,8 +58,8 @@ public class SszGenerator : IIncrementalGenerator
         });
     }
 
-    private static string InternalPartialTypeDeclaration(SszType decl) =>
-        $"internal partial {(decl.IsStruct ? "struct" : "class")} {decl.Name} : ISszCodec<{decl.Name}>";
+    private static string PartialTypeDeclaration(SszType decl) =>
+        $"partial {(decl.IsStruct ? "struct" : "class")} {decl.Name} : ISszCodec<{decl.Name}>";
 
     private static string NamespaceLine(SszType decl) =>
         string.IsNullOrEmpty(decl.Namespace) ? string.Empty : $"namespace {decl.Namespace};";
@@ -508,7 +508,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{InternalPartialTypeDeclaration(decl)}
+{PartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -677,7 +677,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{InternalPartialTypeDeclaration(decl)}
+{PartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
@@ -881,7 +881,7 @@ using SszLib = Nethermind.Serialization.Ssz.Ssz;
 {Whitespace}
 {NamespaceLine(decl)}
 {Whitespace}
-{InternalPartialTypeDeclaration(decl)}
+{PartialTypeDeclaration(decl)}
 {{
     public static int GetLength({decl.Name}{(decl.IsStruct ? "" : "?")} container)
     {{
