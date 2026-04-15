@@ -192,8 +192,7 @@ namespace Nethermind.Facade
             if (err is not null)
             {
                 bool allowanceFailure = err.StartsWith("gas required exceeds allowance", StringComparison.Ordinal);
-                bool gasRelatedExecutionFailure = tryCallResult.Error is TransactionResult.ErrorType.GasLimitBelowIntrinsicGas or TransactionResult.ErrorType.BlockGasLimitExceeded;
-                if (allowanceFailure || gasRelatedExecutionFailure)
+                if (allowanceFailure)
                     error = err;
                 else
                     error ??= err;
