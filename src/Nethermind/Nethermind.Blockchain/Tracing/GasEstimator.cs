@@ -31,52 +31,33 @@ public class GasEstimator(
 
     private const int MaxErrorMargin = 10000;
 
-    public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, out string? err,
-        int errorMargin = DefaultErrorMargin, CancellationToken token = new())
+    public long Estimate(
+        Transaction tx,
+        BlockHeader header,
+        EstimateGasTracer gasTracer,
+        out string? err,
+        int errorMargin = DefaultErrorMargin,
+        CancellationToken token = default)
     {
-        err = null;
+        err = ValidateErrorMargin(errorMargin);
+        if (err is not null)
+            return 0;
 
-        switch (errorMargin)
-        {
-            case < 0:
-                err = "Invalid error margin, cannot be negative.";
-                return 0;
-            case >= MaxErrorMargin:
-                err = $"Invalid error margin, must be lower than {MaxErrorMargin}.";
-                return 0;
-        }
+        IReleaseSpec spec = GetReleaseSpec(header);
+        tx.SenderAddress ??= Address.Zero;
 
-        IReleaseSpec releaseSpec = specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
-
-        tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
-
-        // Calculate and return additional gas required in case of insufficient funds.
         UInt256 senderBalance = stateProvider.GetBalance(tx.SenderAddress);
-        if (tx.ValueRef != UInt256.Zero && tx.ValueRef > senderBalance)
-        {
-            long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
-            if (additionalGas == 0)
-            {
-                // If no additional gas can help, it's an insufficient balance error
-                err = GetError(gasTracer, "insufficient balance");
-            }
-            return additionalGas;
-        }
 
-        // tx.ValueRef <= senderBalance is guaranteed for non-system transactions (early return above handles the opposite).
+        long additionalGas = TryGetAdditionalGasRequired(tx, spec, gasTracer, senderBalance, out err);
+        if (additionalGas != 0 || err is not null)
+            return additionalGas;
+
+        // tx.ValueRef <= senderBalance is guaranteed here (early return above handles the opposite).
         // Subtract value so the gas allowance cap reflects only what is available for gas, matching Geth's behavior.
         UInt256 available = senderBalance - tx.ValueRef;
+        long lowerBound = IntrinsicGasCalculator.Calculate(tx, spec).MinimalGas;
 
-        long lowerBound = IntrinsicGasCalculator.Calculate(tx, releaseSpec).MinimalGas;
-
-        // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-        long leftBound = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
-            ? gasTracer.GasSpent - 1
-            : lowerBound - 1;
-        long rightBound = tx.GasLimit != 0 && tx.GasLimit >= lowerBound
-            ? tx.GasLimit
-            : header.GasLimit;
-        rightBound = Math.Min(rightBound, releaseSpec.GetTxGasLimitCap());
+        (long leftBound, long rightBound) = GetSearchBounds(tx, header, gasTracer, spec, lowerBound);
 
         if (leftBound > rightBound)
         {
@@ -87,14 +68,11 @@ public class GasEstimator(
         // Cap rightBound to what the sender can afford (Geth parity: allowance = (balance - value) / gasPrice).
         // With the shrunk gas limit the TransactionProcessor balance check passes, the EVM runs,
         // and fails at intrinsic gas with OOG — producing "gas required exceeds allowance (N)".
-        if (tx.MaxFeePerGas > UInt256.Zero)
-        {
-            long allowance = (long)UInt256.Min(available / tx.MaxFeePerGas, (UInt256)long.MaxValue);
-            rightBound = Math.Min(rightBound, allowance);
-        }
+        rightBound = CapByAllowance(tx, available, rightBound);
 
         // If transaction is simple transfer return intrinsic gas
-        if (tx.To is not null && tx.Data.IsEmpty && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token)) return lowerBound;
+        if (IsSimpleTransfer(tx) && TryExecutableTransaction(tx, header, lowerBound, gasTracer, token))
+            return lowerBound;
 
         // Execute at the highest allowable gas limit first (Geth parity).
         // If it fails with OOG (or another gas-related pre-check failure), return allowance exceeded.
@@ -108,9 +86,71 @@ public class GasEstimator(
             return 0;
         }
 
-        // Execute binary search to find the optimal gas estimation.
         return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token, out err);
     }
+
+    private static string? ValidateErrorMargin(int errorMargin) =>
+        errorMargin switch
+        {
+            < 0 => "Invalid error margin, cannot be negative.",
+            >= MaxErrorMargin => $"Invalid error margin, must be lower than {MaxErrorMargin}.",
+            _ => null
+        };
+
+    private IReleaseSpec GetReleaseSpec(BlockHeader header) =>
+        specProvider.GetSpec(header.Number + 1, header.Timestamp + blocksConfig.SecondsPerSlot);
+
+    private long TryGetAdditionalGasRequired(
+        Transaction tx,
+        IReleaseSpec spec,
+        EstimateGasTracer gasTracer,
+        UInt256 senderBalance,
+        out string? err)
+    {
+        err = null;
+
+        if (tx.ValueRef == UInt256.Zero || tx.ValueRef <= senderBalance)
+            return 0;
+
+        long additionalGas = gasTracer.CalculateAdditionalGasRequired(tx, spec);
+        if (additionalGas == 0)
+            err = GetError(gasTracer, "insufficient balance");
+
+        return additionalGas;
+    }
+
+    private static (long Left, long Right) GetSearchBounds(
+        Transaction tx,
+        BlockHeader header,
+        EstimateGasTracer gasTracer,
+        IReleaseSpec spec,
+        long lowerBound)
+    {
+        // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
+        long left = gasTracer.GasSpent != 0 && gasTracer.GasSpent >= lowerBound
+            ? gasTracer.GasSpent - 1
+            : lowerBound - 1;
+
+        long right = tx.GasLimit != 0 && tx.GasLimit >= lowerBound
+            ? tx.GasLimit
+            : header.GasLimit;
+
+        right = Math.Min(right, spec.GetTxGasLimitCap());
+
+        return (left, right);
+    }
+
+    private static long CapByAllowance(Transaction tx, UInt256 available, long rightBound)
+    {
+        if (tx.MaxFeePerGas == UInt256.Zero)
+            return rightBound;
+
+        long allowance = (long)UInt256.Min(available / tx.MaxFeePerGas, (UInt256)long.MaxValue);
+        return Math.Min(rightBound, allowance);
+    }
+
+    private static bool IsSimpleTransfer(Transaction tx) =>
+        tx.To is not null && tx.Data.IsEmpty;
 
     private long BinarySearchEstimate(
         long leftBound,
