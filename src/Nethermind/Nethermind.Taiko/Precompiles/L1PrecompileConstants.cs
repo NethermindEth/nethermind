@@ -16,6 +16,12 @@ public static class L1PrecompileConstants
     public const int BlockNumberBytes = 32;
 
     /// <summary>
+    /// Maximum number of blocks behind <c>l1_origin</c> that an L1 precompile request may target.
+    /// Matches the EVM <c>BLOCKHASH</c> opcode window and bounds the state roots the prover must verify.
+    /// </summary>
+    public const long MaxBlockLookback = 256;
+
+    /// <summary>
     /// Timeout for L1 RPC calls (eth_call, eth_getStorageAt).
     /// </summary>
     public static readonly TimeSpan L1RpcTimeout = TimeSpan.FromSeconds(30);

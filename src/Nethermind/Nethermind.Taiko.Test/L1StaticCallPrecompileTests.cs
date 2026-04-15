@@ -30,7 +30,11 @@ public class L1StaticCallPrecompileTests
     }
 
     [TearDown]
-    public void TearDown() => L1StaticCallPrecompile.L1CallProvider = null;
+    public void TearDown()
+    {
+        L1StaticCallPrecompile.L1CallProvider = null;
+        L1PrecompileExecutionContext.Clear();
+    }
 
     // --- BaseGasCost ---
 
@@ -241,6 +245,56 @@ public class L1StaticCallPrecompileTests
 
         Assert.That(disabledSpec.IsPrecompile(precompileAddress), Is.False,
             "L1StaticCallPrecompile address should not be identified as precompile when L1StaticCall is disabled");
+    }
+
+    // --- Block-range validation (via L1PrecompileExecutionContext) ---
+
+    [Test]
+    public void Run_BlockBeyondLookback_Should_Reject()
+    {
+        L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
+        L1PrecompileExecutionContext.Set(anchor: 900, l1Origin: 1000);
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)700);
+
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+
+        Assert.That(result.IsSuccess, Is.False, "Block 700 is 300 away from l1Origin 1000 — exceeds 256 lookback");
+    }
+
+    [Test]
+    public void Run_BlockAtExactBoundary_Should_Accept()
+    {
+        L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
+        L1PrecompileExecutionContext.Set(anchor: 500, l1Origin: 1000);
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)744);
+
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+
+        Assert.That(result.IsSuccess, Is.True, "Block 744 is exactly 256 from l1Origin 1000 — should be accepted");
+    }
+
+    [Test]
+    public void Run_FutureBlock_Should_Reject()
+    {
+        L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
+        L1PrecompileExecutionContext.Set(anchor: 900, l1Origin: 1000);
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)1001);
+
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+
+        Assert.That(result.IsSuccess, Is.False, "Block 1001 > l1Origin 1000 — must be rejected");
+    }
+
+    [Test]
+    public void Run_InvariantViolation_Should_Reject()
+    {
+        L1StaticCallPrecompile.L1CallProvider = MockL1CallProvider.Returning([0x01], MockGasUsed);
+        L1PrecompileExecutionContext.Set(anchor: 1100, l1Origin: 1000);
+        byte[] input = CreateValidInput(Address.FromNumber(1), (UInt256)999);
+
+        Result<(byte[] returnValue, long gasConsumed)> result = _precompile.Run(input, _spec, TestRemainingGas);
+
+        Assert.That(result.IsSuccess, Is.False, "l1Origin < anchor is an invariant violation — must be rejected");
     }
 
     // --- Helpers ---
