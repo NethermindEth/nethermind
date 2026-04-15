@@ -87,40 +87,28 @@ internal sealed class StateCompositionStateHolder
     }
 
     /// <summary>
-    /// Returns a cloned snapshot of the per-address slot count tracker so callers
-    /// (snapshot persistence) can serialize it without racing against diff application.
+    /// Build a fully-populated <see cref="StateCompositionSnapshot"/> atomically. Stats,
+    /// baseline metadata, depth stats, and the three tracker dictionaries are all captured
+    /// under a single <see cref="_lock"/> entry so the persisted snapshot cannot tear
+    /// against a concurrent <see cref="InitializeIncremental"/> or diff application.
     /// </summary>
-    public Dictionary<ValueHash256, long> CloneSlotCountByAddress()
+    public StateCompositionSnapshot BuildSnapshot(
+        CumulativeSizeStats stats,
+        long blockNumber,
+        Hash256 stateRoot)
     {
-        lock (_lock) return new Dictionary<ValueHash256, long>(_slotCountByAddress);
-    }
-
-    /// <summary>Clone of the per-code-hash refcount tracker — see <see cref="CloneSlotCountByAddress"/>.</summary>
-    public Dictionary<ValueHash256, int> CloneCodeHashRefcounts()
-    {
-        lock (_lock) return new Dictionary<ValueHash256, int>(_codeHashRefcounts);
-    }
-
-    /// <summary>Clone of the per-code-hash size tracker — see <see cref="CloneSlotCountByAddress"/>.</summary>
-    public Dictionary<ValueHash256, int> CloneCodeHashSizes()
-    {
-        lock (_lock) return new Dictionary<ValueHash256, int>(_codeHashSizes);
-    }
-
-    /// <summary>
-    /// True when the incremental trackers have been seeded from a consistent baseline
-    /// (either a full scan or a persisted snapshot that carried them). When false, the
-    /// incremental path must not apply TrieDiff payloads — the plugin should trigger a
-    /// full rescan instead.
-    /// </summary>
-    public bool HasIncrementalTrackers
-    {
-        get
+        lock (_lock)
         {
-            lock (_lock)
-                return _slotCountByAddress.Count > 0
-                    || _codeHashRefcounts.Count > 0
-                    || _codeHashSizes.Count > 0;
+            return new StateCompositionSnapshot(
+                stats,
+                blockNumber,
+                stateRoot,
+                _diffsSinceBaseline,
+                _lastScanMetadata?.BlockNumber ?? 0,
+                _currentDepthStats.Clone(),
+                new Dictionary<ValueHash256, long>(_slotCountByAddress),
+                new Dictionary<ValueHash256, int>(_codeHashRefcounts),
+                new Dictionary<ValueHash256, int>(_codeHashSizes));
         }
     }
 

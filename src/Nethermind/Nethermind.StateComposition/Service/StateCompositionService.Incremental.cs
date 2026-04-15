@@ -140,20 +140,13 @@ internal partial class StateCompositionService
 
     /// <summary>
     /// Persist a snapshot at the configured interval and prune entries beyond the retention window.
+    /// The holder captures every field under a single lock so the write cannot tear.
     /// </summary>
     private void MaybeWriteSnapshot(Block head, CumulativeSizeStats updated)
     {
         if (!_config.PersistSnapshots || head.Number % _config.SnapshotInterval != 0) return;
 
-        _snapshotStore.WriteSnapshot(new StateCompositionSnapshot(
-            updated, head.Number, head.Header.StateRoot!,
-            _stateHolder.DiffsSinceBaseline,
-            _stateHolder.LastScanMetadata?.BlockNumber ?? 0,
-            // CurrentDepthStats already returns a clone under lock.
-            _stateHolder.CurrentDepthStats,
-            _stateHolder.CloneSlotCountByAddress(),
-            _stateHolder.CloneCodeHashRefcounts(),
-            _stateHolder.CloneCodeHashSizes()));
+        _snapshotStore.WriteSnapshot(_stateHolder.BuildSnapshot(updated, head.Number, head.Header.StateRoot!));
 
         int blocksToKeep = _config.SnapshotBlocksToKeep;
         if (blocksToKeep <= 0) return;
